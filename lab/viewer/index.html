@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FireRed Lab</title>
+    <style>
+      :root {
+        --bg: #14161a;
+        --panel: #1d2026;
+        --line: #2c313a;
+        --text: #e6e8eb;
+        --muted: #8b929c;
+        --accent: #e8643c;
+        --ok: #5cc98a;
+        --bad: #e05757;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      main {
+        display: flex;
+        gap: 16px;
+        padding: 16px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .screen-column { display: flex; flex-direction: column; gap: 10px; }
+      .screen {
+        position: relative;
+        width: 720px;
+        height: 480px;
+        max-width: calc(100vw - 32px);
+        aspect-ratio: 3 / 2;
+        height: auto;
+        background: #000;
+        border: 1px solid var(--line);
+      }
+      .screen canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+      #tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(10, 12, 15, 0.92);
+        border: 1px solid var(--line);
+        padding: 6px 8px;
+        font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre;
+        display: none;
+      }
+      .controls { display: flex; flex-wrap: wrap; gap: 6px; }
+      button {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--muted); }
+      button.on { border-color: var(--accent); color: var(--accent); }
+      button:disabled { opacity: 0.4; cursor: default; }
+      aside {
+        flex: 1;
+        min-width: 280px;
+        max-width: 420px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      h2 {
+        margin: 0 0 6px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .big { font-size: 18px; font-weight: 600; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      .muted { color: var(--muted); }
+      .mon { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+      .mon:first-child { border-top: 0; }
+      .hp { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+      .hp > div { height: 100%; background: var(--ok); }
+      .badges { display: flex; gap: 6px; }
+      .badge { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); }
+      .badge.got { background: var(--accent); border-color: var(--accent); }
+      .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+      .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
+      #notice { min-height: 1.4em; color: var(--accent); }
+      kbd {
+        font: 11px ui-monospace, Menlo, monospace;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="screen-column">
+        <div class="screen" id="screen">
+          <canvas id="game" width="240" height="160"></canvas>
+          <canvas id="overlay" width="720" height="480"></canvas>
+          <div id="tooltip"></div>
+        </div>
+        <div class="controls">
+          <button id="pause">Pause</button>
+          <button data-speed="1">×1</button>
+          <button data-speed="4">×4</button>
+          <button data-speed="max">Max</button>
+          <button id="overlay-toggle">Calque (G)</button>
+          <button id="quick-save">Garder l'état (K)</button>
+          <button id="quick-load">Revenir (L)</button>
+          <button id="reset">Relancer</button>
+          <button id="start-save">Écrire la sauvegarde de départ</button>
+        </div>
+        <div class="legend" id="legend">
+          <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>bloqué</span>
+          <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>eau</span>
+          <span><span class="swatch" style="background: rgba(80, 200, 110, 0.35)"></span>hautes herbes</span>
+          <span>➜ rebord</span>
+          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp</span>
+          <span><span class="swatch" style="background: rgba(240, 200, 40, 0.8)"></span>PNJ</span>
+          <span><span class="swatch" style="border: 2px solid rgba(255, 150, 40, 0.9)"></span>panneau / déclencheur</span>
+        </div>
+        <div class="muted">
+          Clavier : flèches, <kbd>X</kbd> = A, <kbd>W</kbd> ou <kbd>Z</kbd> = B, <kbd>Entrée</kbd> = Start,
+          <kbd>⌫</kbd> = Select, <kbd>Q</kbd> = L, <kbd>S</kbd> = R, <kbd>G</kbd> = calque.
+          Survolez une case avec le calque pour voir ses données.
+        </div>
+        <div id="notice"></div>
+      </div>
+      <aside>
+        <section>
+          <h2>Carte</h2>
+          <div class="big" id="map-name">–</div>
+          <div class="mono muted" id="map-pos"></div>
+        </section>
+        <section>
+          <h2>Contexte</h2>
+          <div class="big" id="mode">–</div>
+          <div class="mono muted" id="callbacks"></div>
+        </section>
+        <section>
+          <h2>Équipe</h2>
+          <div id="party" class="muted">–</div>
+        </section>
+        <section>
+          <h2>Badges et argent</h2>
+          <div class="badges" id="badges"></div>
+          <div style="margin-top: 6px" id="money"></div>
+        </section>
+        <section>
+          <h2>Run</h2>
+          <div class="mono" id="status">connexion…</div>
+        </section>
+      </aside>
+    </main>
+    <script type="module" src="./viewer.ts"></script>
+  </body>
+</html>

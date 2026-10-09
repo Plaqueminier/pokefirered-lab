@@ -18,6 +18,19 @@ ifeq (compare,$(MAKECMDGOALS))
   COMPARE := 1
 endif
 
+# Builds the lab ROM: same gameplay, plus test and observation aids (see CONTEXT.md)
+LAB           ?= 0
+ifeq (lab,$(MAKECMDGOALS))
+  MODERN := 1
+  LAB    := 1
+endif
+
+# The lab build keeps debug info in the .elf: the harness reads types and addresses from it.
+# Not on by default elsewhere: -g changes the order of linker veneers, so the .gba bytes change.
+ifeq ($(LAB),1)
+  DINFO ?= 1
+endif
+
 # For gbafix
 MAKER_CODE := 01
 
@@ -50,6 +63,10 @@ endif
 # Modern GCC
 ifeq ($(MODERN),1)
   BUILD_NAME := $(BUILD_NAME)_modern
+endif
+
+ifeq ($(LAB),1)
+  BUILD_NAME := $(BUILD_NAME)_lab
 endif
 
 # Language
