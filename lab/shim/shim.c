@@ -13,6 +13,7 @@ struct LabCore {
 	color_t* video;
 	unsigned width;
 	unsigned height;
+	bool audio;
 };
 
 static void discardLog(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
@@ -59,14 +60,44 @@ void lab_set_keys(struct LabCore* lab, uint32_t keys) {
 	lab->core->setKeys(lab->core, keys);
 }
 
-// Runs one frame. Audio is dropped so the buffers do not fill up.
-void lab_run_frame(struct LabCore* lab) {
-	lab->core->runFrame(lab->core);
+static void clearAudio(struct LabCore* lab) {
 	for (int ch = 0; ch < 2; ++ch) {
 		struct blip_t* blip = lab->core->getAudioChannel(lab->core, ch);
 		if (blip) {
 			blip_clear(blip);
 		}
+	}
+}
+
+// Keeps audio samples at sampleRate (Hz) for lab_audio_read, or drops them when disabled.
+void lab_audio_enable(struct LabCore* lab, bool enabled, uint32_t sampleRate) {
+	if (enabled) {
+		for (int ch = 0; ch < 2; ++ch) {
+			blip_set_rates(lab->core->getAudioChannel(lab->core, ch), lab->core->frequency(lab->core), sampleRate);
+		}
+	}
+	clearAudio(lab);
+	lab->audio = enabled;
+}
+
+// Reads at most maxFrames stereo frames as interleaved 16-bit samples (L, R, L, R...).
+uint32_t lab_audio_read(struct LabCore* lab, int16_t* out, uint32_t maxFrames) {
+	struct blip_t* left = lab->core->getAudioChannel(lab->core, 0);
+	struct blip_t* right = lab->core->getAudioChannel(lab->core, 1);
+	int count = blip_samples_avail(left);
+	if (count > (int) maxFrames) {
+		count = maxFrames;
+	}
+	blip_read_samples(left, out, count, true);
+	blip_read_samples(right, out + 1, count, true);
+	return count;
+}
+
+// Runs one frame. Without audio enabled, the samples are dropped so the buffers do not fill up.
+void lab_run_frame(struct LabCore* lab) {
+	lab->core->runFrame(lab->core);
+	if (!lab->audio) {
+		clearAudio(lab);
 	}
 }
 

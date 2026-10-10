@@ -27,7 +27,11 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
 - `src/game.ts`: FireRed state (map, party, badges, money, context) and the cell overlay.
 - `src/server.ts`: the Run loop, the WebSocket and the Viewer page.
-- `viewer/`: the page.
+- `viewer/`: the page. `viewer/audio.ts` plays the sound.
+
+## Sound
+
+The sound plays only at speed ×1. The browser starts it after the first click or key press; `M` turns it off and on. The page keeps about 60 ms of audio queued and sends the queue length to the harness, which makes the Run up to 1% faster or slower to hold it there (the emulator clock and the sound card clock drift apart).
 
 ## Notes
 

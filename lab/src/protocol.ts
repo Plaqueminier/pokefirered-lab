@@ -21,7 +21,7 @@ export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 export type Speed = 1 | 4 | "max";
 
 export type ServerMessage =
-  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean }
+  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean }
   | { type: "state"; state: GameState }
   | { type: "overlay"; overlay: Overlay | null }
   | { type: "notice"; text: string };
@@ -31,6 +31,9 @@ export type ClientMessage =
   | { type: "speed"; speed: Speed }
   | { type: "pause"; paused: boolean }
   | { type: "overlay"; enabled: boolean }
+  | { type: "audio"; enabled: boolean }
+  /** Audio queued in the Viewer, in milliseconds. */
+  | { type: "audio-level"; ms: number }
   | { type: "quick-save" }
   | { type: "quick-load" }
   | { type: "reset" }

@@ -18,6 +18,9 @@ const ROM_NAME = process.env.LAB_ROM ?? "pokefirered_modern_lab";
 const GBA_FPS = 16777216 / 280896; // 59.7275
 const SCREEN_INTERVAL_MS = 1000 / 60;
 const STATE_INTERVAL_MS = 100;
+const AUDIO_RATE = 48000;
+// The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
+const AUDIO_TARGET_MS = 60;
 
 class Run {
   keys = 0;
@@ -25,8 +28,13 @@ class Run {
   paused = false;
   overlay = false;
   quickState: Uint8Array | null = null;
-  private clockStart = 0;
-  private clockFrames = 0;
+  audioWanted = false;
+  /** Speed factor near 1, set from the Viewer audio queue (the two clocks drift apart). */
+  rateTrim = 1;
+  private audioOn = false;
+  private lastTick = performance.now();
+  /** Frames due but not run yet (fractional). */
+  private credit = 0;
   private fpsWindow = { start: performance.now(), frames: 0, value: 0 };
 
   private constructor(
@@ -55,23 +63,36 @@ class Run {
   }
 
   resyncClock(): void {
-    this.clockStart = performance.now();
-    this.clockFrames = 0;
+    this.lastTick = performance.now();
+    this.credit = 0;
+  }
+
+  /** Audio only at normal speed: at other speeds it would sound wrong. */
+  get audioActive(): boolean {
+    return this.audioWanted && this.speed === 1 && !this.paused;
+  }
+
+  syncAudio(): void {
+    if (this.audioActive === this.audioOn) return;
+    this.audioOn = this.audioActive;
+    this.core.enableAudio(this.audioOn, AUDIO_RATE);
+    this.rateTrim = 1;
   }
 
   /** Runs the frames that are due now. Returns the number of frames run. */
   tick(now: number): number {
+    const elapsed = now - this.lastTick;
+    this.lastTick = now;
     if (this.paused) return 0;
     let due: number;
     if (this.speed === "max") {
       due = Number.POSITIVE_INFINITY;
     } else {
-      due = Math.floor(((now - this.clockStart) / 1000) * GBA_FPS * this.speed) - this.clockFrames;
-      // Too far behind (for example after a pause): do not try to catch up.
-      if (due > 20) {
-        this.resyncClock();
-        due = 1;
-      }
+      const trim = this.audioOn ? this.rateTrim : 1;
+      this.credit += (elapsed / 1000) * GBA_FPS * this.speed * trim;
+      // Too far behind (for example after a slow tick): do not try to catch up.
+      if (this.credit > 20) this.credit = 1;
+      due = Math.floor(this.credit);
     }
     const budgetEnd = now + 12;
     let ran = 0;
@@ -80,7 +101,7 @@ class Run {
       this.core.runFrame();
       ran++;
     }
-    this.clockFrames += ran;
+    if (this.speed !== "max") this.credit -= ran;
     this.fpsWindow.frames += ran;
     if (now - this.fpsWindow.start >= 1000) {
       this.fpsWindow.value = Math.round((this.fpsWindow.frames * 1000) / (now - this.fpsWindow.start));
@@ -96,6 +117,14 @@ class Run {
 
 const run = await Run.open(ROM_NAME);
 const clients = new Set<ServerWebSocket<unknown>>();
+const audioClients = new Set<ServerWebSocket<unknown>>();
+
+function setAudioClient(ws: ServerWebSocket<unknown>, enabled: boolean): void {
+  if (enabled) audioClients.add(ws);
+  else audioClients.delete(ws);
+  run.audioWanted = audioClients.size > 0;
+  run.syncAudio();
+}
 
 function send(message: ServerMessage, to?: ServerWebSocket<unknown>): void {
   const text = JSON.stringify(message);
@@ -113,6 +142,7 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
       frame: run.core.frameCounter,
       hasQuickState: run.quickState !== null,
       hasStartSave: await Bun.file(START_SAVE).exists(),
+      audio: run.audioActive,
     },
     to,
   );
@@ -169,11 +199,22 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "speed":
       run.speed = message.speed;
       run.resyncClock();
+      run.syncAudio();
       break;
     case "pause":
       run.paused = message.paused;
       run.resyncClock();
+      run.syncAudio();
       break;
+    case "audio":
+      setAudioClient(ws, message.enabled);
+      break;
+    case "audio-level": {
+      // Queue too long: run a little slower, and the reverse. At most 1% off.
+      const error = AUDIO_TARGET_MS - message.ms;
+      run.rateTrim = 1 + Math.max(-0.01, Math.min(0.01, error * 0.0005));
+      return;
+    }
     case "overlay":
       run.overlay = message.enabled;
       if (!run.overlay) send({ type: "overlay", overlay: null }, ws);
@@ -201,12 +242,23 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
 
 const screenMessage = new Uint8Array(1 + run.core.width * run.core.height * 4);
 screenMessage[0] = BinaryKind.Screen;
+
+/** Audio message: 2 header bytes (kind, 0) so the 16-bit samples stay aligned. */
+function sendAudio(): void {
+  const samples = run.core.readAudio();
+  if (samples.length === 0) return;
+  const message = new Uint8Array(2 + samples.byteLength);
+  message[0] = BinaryKind.Audio;
+  message.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 2);
+  for (const ws of audioClients) ws.send(message);
+}
 let lastScreen = 0;
 let lastState = 0;
 
 function loop(): void {
   const now = performance.now();
   const ran = run.tick(now);
+  if (ran > 0 && run.audioActive) sendAudio();
   if (clients.size > 0 && ran > 0 && now - lastScreen >= SCREEN_INTERVAL_MS) {
     lastScreen = now;
     screenMessage.set(run.core.screen(), 1);
@@ -237,6 +289,7 @@ Bun.serve({
     },
     close(ws) {
       clients.delete(ws);
+      setAudioClient(ws, false);
       if (clients.size === 0) run.keys = 0;
     },
     message(ws, data) {

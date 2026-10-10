@@ -33,6 +33,8 @@ const symbols = {
   lab_height: { args: [FFIType.ptr], returns: FFIType.u32 },
   lab_set_keys: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.void },
   lab_run_frame: { args: [FFIType.ptr], returns: FFIType.void },
+  lab_audio_enable: { args: [FFIType.ptr, FFIType.bool, FFIType.u32], returns: FFIType.void },
+  lab_audio_read: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
   lab_frame_counter: { args: [FFIType.ptr], returns: FFIType.u32 },
   lab_frame_rgba: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.void },
   lab_read: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.u32], returns: FFIType.void },
@@ -51,6 +53,7 @@ export class Core implements MemoryBus {
   readonly width: number;
   readonly height: number;
   private readonly frame: Uint8Array;
+  private readonly audio = new Int16Array(2 * 8192);
 
   private constructor(private handle: Pointer) {
     const f = lib!.symbols;
@@ -84,6 +87,17 @@ export class Core implements MemoryBus {
 
   runFrame(): void {
     this.f.lab_run_frame(this.handle);
+  }
+
+  /** Keeps audio at this sample rate for readAudio(), or drops it. */
+  enableAudio(enabled: boolean, sampleRate = 48000): void {
+    this.f.lab_audio_enable(this.handle, enabled, sampleRate);
+  }
+
+  /** The audio made since the last call: interleaved stereo 16-bit samples. */
+  readAudio(): Int16Array {
+    const frames = this.f.lab_audio_read(this.handle, ptr(this.audio), this.audio.length / 2);
+    return this.audio.subarray(0, frames * 2);
   }
 
   get frameCounter(): number {

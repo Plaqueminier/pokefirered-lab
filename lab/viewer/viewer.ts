@@ -1,5 +1,6 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Cell, GameState, Overlay } from "../src/game";
+import { AudioOut } from "./audio";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -32,6 +33,9 @@ let keys = 0;
 let overlayOn = false;
 let paused = false;
 let lastOverlay: Overlay | null = null;
+let soundOn = true;
+let audioLevel = 0;
+const audio = new AudioOut((ms) => (audioLevel = ms));
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -46,6 +50,8 @@ function connect(): void {
       if (bytes[0] === BinaryKind.Screen) {
         image.data.set(bytes.subarray(1));
         gameCtx.putImageData(image, 0, 0);
+      } else if (bytes[0] === BinaryKind.Audio) {
+        audio.push(event.data.slice(2));
       }
       return;
     }
@@ -53,6 +59,7 @@ function connect(): void {
   };
   ws.onopen = () => {
     if (overlayOn) send({ type: "overlay", enabled: true });
+    if (soundOn && audio.running) send({ type: "audio", enabled: true });
   };
   ws.onclose = () => {
     $("status").textContent = "déconnecté, nouvelle tentative…";
@@ -69,8 +76,10 @@ function onMessage(message: ServerMessage): void {
         b.classList.toggle("on", String(message.speed) === b.dataset.speed);
       }
       $<HTMLButtonElement>("quick-load").disabled = !message.hasQuickState;
+      $("sound").classList.toggle("on", soundOn);
       $("status").textContent =
         `${message.rom} · image ${message.frame} · ${message.fps} img/s` +
+        (!soundOn ? " · son coupé" : !audio.running ? " · son : cliquez ou appuyez sur une touche" : message.audio ? ` · son ${Math.round(audioLevel)} ms` : " · son seulement à ×1") +
         (message.hasStartSave ? "" : " · pas encore de sauvegarde de départ");
       break;
     }
@@ -219,12 +228,38 @@ function setOverlay(on: boolean): void {
   }
 }
 
+/** Browsers allow sound only after a click or a key press. */
+function startSound(): void {
+  if (!soundOn || audio.running) return;
+  void audio.start().then(() => send({ type: "audio", enabled: true }));
+}
+
+function setSound(on: boolean): void {
+  soundOn = on;
+  $("sound").classList.toggle("on", on);
+  if (on) {
+    startSound();
+    if (audio.running) send({ type: "audio", enabled: true });
+  } else {
+    send({ type: "audio", enabled: false });
+    audio.clear();
+  }
+}
+
+window.addEventListener("pointerdown", startSound);
+
+// The harness trims the Run speed from the queue length (the two clocks drift apart).
+setInterval(() => {
+  if (soundOn && audio.running) send({ type: "audio-level", ms: audioLevel });
+}, 250);
+
 function keyOf(event: KeyboardEvent): number | undefined {
   return KEY_MAP[event.key.length === 1 ? event.key.toLowerCase() : event.key];
 }
 
 window.addEventListener("keydown", (event) => {
   if (event.metaKey || event.ctrlKey) return;
+  startSound();
   const bit = keyOf(event);
   if (bit !== undefined) {
     event.preventDefault();
@@ -237,6 +272,7 @@ window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   const key = event.key.toLowerCase();
   if (key === "g") setOverlay(!overlayOn);
+  else if (key === "m") setSound(!soundOn);
   else if (key === "k") send({ type: "quick-save" });
   else if (key === "l") send({ type: "quick-load" });
 });
@@ -262,6 +298,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
   });
 }
 $("overlay-toggle").addEventListener("click", () => setOverlay(!overlayOn));
+$("sound").addEventListener("click", () => setSound(!soundOn));
 $("quick-save").addEventListener("click", () => send({ type: "quick-save" }));
 $("quick-load").addEventListener("click", () => send({ type: "quick-load" }));
 $("reset").addEventListener("click", () => send({ type: "reset" }));
