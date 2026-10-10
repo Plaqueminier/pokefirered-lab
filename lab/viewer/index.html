@@ -29,7 +29,7 @@
         align-items: flex-start;
         flex-wrap: wrap;
       }
-      .screen-column { display: flex; flex-direction: column; gap: 10px; }
+      .screen-column { display: flex; flex-direction: column; gap: 10px; width: 720px; max-width: 100%; }
       .screen {
         position: relative;
         width: 720px;
@@ -48,7 +48,9 @@
         image-rendering: pixelated;
       }
       #tooltip {
-        position: absolute;
+        position: fixed;
+        z-index: 10;
+        max-width: 420px;
         pointer-events: none;
         background: rgba(10, 12, 15, 0.92);
         border: 1px solid var(--line);
@@ -70,14 +72,52 @@
       button:hover { border-color: var(--muted); }
       button.on { border-color: var(--accent); color: var(--accent); }
       button:disabled { opacity: 0.4; cursor: default; }
-      aside {
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 10px;
+        max-width: 720px;
+      }
+      .map-column {
         flex: 1;
-        min-width: 280px;
-        max-width: 420px;
+        min-width: 320px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
+      .map-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .map-head h2 { margin: 0; flex: 1; }
+      #map {
+        width: 100%;
+        height: min(620px, 70vh);
+        background: #101216;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: grab;
+        touch-action: none;
+      }
+      #map:active { cursor: grabbing; }
+      .lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+      #map-search {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font: inherit;
+        width: 220px;
+      }
+      #exits { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+      button.link {
+        background: none;
+        border: 0;
+        padding: 0;
+        color: var(--text);
+        text-align: left;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      button.link:hover { color: var(--accent); text-decoration: underline; }
+      .list, pre.list { margin: 0; white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
       section {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -118,7 +158,6 @@
         <div class="screen" id="screen">
           <canvas id="game" width="240" height="160"></canvas>
           <canvas id="overlay" width="720" height="480"></canvas>
-          <div id="tooltip"></div>
         </div>
         <div class="controls">
           <button id="pause">Pause</button>
@@ -137,9 +176,14 @@
           <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>eau</span>
           <span><span class="swatch" style="background: rgba(80, 200, 110, 0.35)"></span>hautes herbes</span>
           <span>➜ rebord</span>
-          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp</span>
-          <span><span class="swatch" style="background: rgba(240, 200, 40, 0.8)"></span>PNJ</span>
-          <span><span class="swatch" style="border: 2px solid rgba(255, 150, 40, 0.9)"></span>panneau / déclencheur</span>
+          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp (contour : inactif)</span>
+          <span><span class="swatch" style="border-radius: 50%; background: rgba(240, 200, 40, 0.8)"></span>PNJ (creux : hors écran)</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)"></span>dresseur</span>
+          <span><span class="swatch" style="background: rgba(255, 60, 60, 0.35)"></span>vue d'un dresseur</span>
+          <span><span class="swatch" style="border: 2px solid rgba(255, 110, 30, 0.95)"></span>déclencheur actif (!)</span>
+          <span><span class="swatch" style="border: 2px dashed rgba(200, 200, 200, 0.6)"></span>déclencheur inactif</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 170, 60, 0.85)"></span>panneau</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(80, 230, 230, 0.9)"></span>objet caché</span>
         </div>
         <div class="muted">
           Clavier : flèches, <kbd>X</kbd> = A, <kbd>W</kbd> ou <kbd>Z</kbd> = B, <kbd>Entrée</kbd> = Start,
@@ -147,33 +191,55 @@
           Survolez une case avec le calque pour voir ses données.
         </div>
         <div id="notice"></div>
+        <div class="cards">
+          <section>
+            <h2>Carte</h2>
+            <div class="big" id="map-name">–</div>
+            <div class="mono muted" id="map-pos"></div>
+          </section>
+          <section>
+            <h2>Contexte</h2>
+            <div class="big" id="mode">–</div>
+            <div class="mono muted" id="callbacks"></div>
+          </section>
+          <section>
+            <h2>Équipe</h2>
+            <div id="party" class="muted">–</div>
+          </section>
+          <section>
+            <h2>Badges et argent</h2>
+            <div class="badges" id="badges"></div>
+            <div style="margin-top: 6px" id="money"></div>
+          </section>
+          <section>
+            <h2>Run</h2>
+            <div class="mono" id="status">connexion…</div>
+          </section>
+        </div>
       </div>
-      <aside>
-        <section>
-          <h2>Carte</h2>
-          <div class="big" id="map-name">–</div>
-          <div class="mono muted" id="map-pos"></div>
-        </section>
-        <section>
-          <h2>Contexte</h2>
-          <div class="big" id="mode">–</div>
-          <div class="mono muted" id="callbacks"></div>
-        </section>
-        <section>
-          <h2>Équipe</h2>
-          <div id="party" class="muted">–</div>
-        </section>
-        <section>
-          <h2>Badges et argent</h2>
-          <div class="badges" id="badges"></div>
-          <div style="margin-top: 6px" id="money"></div>
-        </section>
-        <section>
-          <h2>Run</h2>
-          <div class="mono" id="status">connexion…</div>
-        </section>
-      </aside>
+      <section class="map-column">
+        <div class="map-head">
+          <h2 id="map-title">Carte entière</h2>
+          <input id="map-search" list="map-names" placeholder="Aller à une carte…" autocomplete="off" />
+          <datalist id="map-names"></datalist>
+          <button id="map-back" hidden>← Précédente</button>
+          <button id="follow" class="on">Suivre le joueur</button>
+        </div>
+        <canvas id="map"></canvas>
+        <div class="muted">Molette : zoom. Glisser : déplacer. Clic sur un warp ou au-delà d'un bord : voir l'autre carte (le joueur ne bouge pas). Double-clic : revenir au joueur. Le cadre blanc est l'écran du jeu.</div>
+        <div class="lists">
+          <section>
+            <h2>Sorties</h2>
+            <div class="list" id="exits">–</div>
+          </section>
+          <section>
+            <h2>Ce qui peut vous arrêter</h2>
+            <pre class="list" id="stops">–</pre>
+          </section>
+        </div>
+      </section>
     </main>
+    <div id="tooltip"></div>
     <script type="module" src="./viewer.ts"></script>
   </body>
 </html>

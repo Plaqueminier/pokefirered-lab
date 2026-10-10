@@ -12,8 +12,20 @@ const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
 // For substruct order n = personality % 24, the position of the growth substruct (species).
 const GROWTH_POSITION = [0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3];
-const MB_JUMP = { 0x38: "east", 0x39: "west", 0x3a: "north", 0x3b: "south" } as Record<number, string>;
+// Ledge behaviors, as the arrow of the jump direction.
+const MB_JUMP: Record<number, string> = { 0x38: ">", 0x39: "<", 0x3a: "^", 0x3b: "v" };
 const MB_TALL_GRASS = 0x02;
+const BG_EVENT_HIDDEN_ITEM = 7;
+const OBJ_KIND_NORMAL = 0;
+const TRAINER_TYPE_NORMAL = 1;
+const TRAINER_FLAGS_START = 0x500;
+const FLAG_HIDDEN_ITEMS_START = 0x3e8;
+const VARS_START = 0x4000;
+const SPECIAL_VARS_START = 0x8000;
+const DIRECTION_NAMES: Record<number, string> = { 1: "south", 2: "north", 3: "west", 4: "east", 5: "dive", 6: "emerge" };
+const DIRECTION_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
+// MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
+const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 
 export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number };
 
@@ -26,27 +38,55 @@ export type GameState = {
   context: { mode: "overworld" | "battle" | "other"; callback1: string; callback2: string };
 };
 
-export type Cell = {
-  x: number;
-  y: number;
-  /** Raw map grid value: metatile id, collision and elevation bits. */
-  metatile: number;
-  collision: number;
-  elevation: number;
-  behavior: string;
-  kind: "blocked" | "water" | "ledge" | "grass" | "open";
-  ledge?: string;
+export type Camera = { x: number; y: number };
+
+export type MapGrid = {
+  /** "group.num": changes when the map changes. */
+  key: string;
+  group: number;
+  num: number;
+  name: string;
+  /** Map coordinates of the first cell: the player's map has a border of 7 cells on each side. */
+  x0: number;
+  y0: number;
+  width: number;
+  height: number;
+  /** Size of the map itself, inside the border. */
+  mapWidth: number;
+  mapHeight: number;
+  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), . open. */
+  kinds: string;
+  /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
+  blocks: number[];
+  /** Metatile behavior id per cell; names in behaviorNames. */
+  behaviors: number[];
+  behaviorNames: Record<number, string>;
+  /** `how`: what the player does to take the warp; a warp event on a normal cell does nothing. */
+  warps: { x: number; y: number; to: string; group: number; num: number; behavior: string; how: "step" | "press" | "none" }[];
+  connections: { direction: string; offset: number; map: string; group: number; num: number }[];
+  signs: { x: number; y: number; kind: "sign" | "hidden-item" }[];
+  /** Cells that start a script when the player steps on them, if `variable` has `value`. */
+  triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
 
-export type Overlay = {
-  /** Screen pixel of the top-left corner of cells[0]. */
-  originX: number;
-  originY: number;
-  columns: number;
-  cells: Cell[];
-  warps: { x: number; y: number; to: string }[];
-  npcs: { x: number; y: number }[];
-  events: { x: number; y: number; kind: "sign" | "trigger" }[];
+export type MapActors = {
+  player: { x: number; y: number; facing: number } | null;
+  /** Every person of the map. `loaded`: the game has it in memory now (near the screen). */
+  people: {
+    localId: number;
+    x: number;
+    y: number;
+    /** 1 south, 2 north, 3 west, 4 east, 0 unknown. */
+    facing: number;
+    loaded: boolean;
+    /** The area where a wandering person can walk. */
+    wander?: { x: number; y: number; w: number; h: number };
+    trainer?: { id: number; defeated: boolean; range: number; allDirections: boolean; sight: [number, number][] };
+  }[];
+  /** Per grid trigger: true active, false inactive, null unknown (special variable). */
+  triggers: (boolean | null)[];
+  /** Per grid sign: hidden items say if they were found. */
+  signs: ({ found: boolean } | null)[];
 };
 
 export class Game {
@@ -179,22 +219,12 @@ export class Game {
     return cached;
   }
 
-  overlay(): Overlay | null {
+  /** Screen position of map cell (0, 0), in GBA pixels. Null when not on the overworld. */
+  camera(): Camera | null {
     if (this.context().mode !== "overworld") return null;
-    const vmap = this.mem.global("VMap");
-    const width = vmap.field("Xsize").int();
-    const height = vmap.field("Ysize").int();
-    const grid = vmap.field("map").pointer();
-    const layout = this.mem.global("gMapHeader").field("mapLayout").deref();
-    const primary = this.attributes(layout.field("primaryTileset"), NUM_METATILES_IN_PRIMARY);
-    const secondary = this.attributes(layout.field("secondaryTileset"), 1024 - NUM_METATILES_IN_PRIMARY);
-    const surfable = this.mem.global("sBehaviorSurfable");
-
-    // Camera: the game draws cell (pos.x, pos.y) at tile (xTileOffset, yTileOffset) of
-    // the background, then scrolls the background by (HOFS, VOFS). See field_camera.c.
+    // The game draws cell (pos.x, pos.y) of the map grid at tile (xTileOffset, yTileOffset)
+    // of the background, then scrolls the background by (HOFS, VOFS). See field_camera.c.
     const pos = this.saveBlock1.field("pos");
-    const camX = pos.field("x").int();
-    const camY = pos.field("y").int();
     const cam = this.mem.global("sFieldCameraOffset");
     const hofs = cam.field("xPixelOffset").int() + this.mem.global("sHorizontalCameraPan").int();
     const vofs = cam.field("yPixelOffset").int() + this.mem.global("sVerticalCameraPan").int() + 8;
@@ -202,68 +232,242 @@ export class Game {
     const wrap = (v: number) => ((((v + 128) % 256) + 256) % 256) - 128;
     const originX = wrap(cam.field("xTileOffset").int() * 8 - hofs);
     const originY = wrap(cam.field("yTileOffset").int() * 8 - vofs);
+    return {
+      x: originX + (MAP_OFFSET - pos.field("x").int()) * 16,
+      y: originY + (MAP_OFFSET - pos.field("y").int()) * 16,
+    };
+  }
 
-    const columns = 16;
-    const rows = 12;
-    const cells: Cell[] = [];
-    for (let row = 0; row < rows; row++) {
-      const y = camY + row;
-      const rowBytes = y >= 0 && y < height ? this.mem.bus.read(grid + (y * width + camX) * 2, columns * 2) : null;
-      for (let col = 0; col < columns; col++) {
-        const x = camX + col;
-        const inside = rowBytes && x >= 0 && x < width;
-        const block = inside ? rowBytes[col * 2] | (rowBytes[col * 2 + 1] << 8) : 0x03ff;
-        const metatile = block & 0x03ff;
-        const collision = inside ? (block & 0x0c00) >> 10 : 1;
-        const elevation = block >> 12;
-        const attrs = metatile < NUM_METATILES_IN_PRIMARY ? primary[metatile] : secondary[metatile - NUM_METATILES_IN_PRIMARY];
-        const behaviorId = (attrs ?? 0) & 0x1ff;
-        const ledge = MB_JUMP[behaviorId];
-        const kind: Cell["kind"] =
-          collision !== 0 ? "blocked"
-          : behaviorId < surfable.length && surfable.at(behaviorId).int() & 1 ? "water"
-          : ledge ? "ledge"
-          : behaviorId === MB_TALL_GRASS ? "grass"
-          : "open";
-        cells.push({
-          x: x - MAP_OFFSET,
-          y: y - MAP_OFFSET,
-          metatile,
-          collision,
-          elevation,
-          behavior: this.behaviorNames.get(behaviorId) ?? `0x${behaviorId.toString(16)}`,
-          kind,
-          ...(ledge ? { ledge } : {}),
+  /** Map header in ROM. The current map also has a copy in RAM (gMapHeader). */
+  private mapHeader(group: number, num: number): Ref {
+    return this.mem.global("gMapGroups").at(group).at(num).deref();
+  }
+
+  private eventList(header: Ref, arrayField: string, countField: string): Ref[] {
+    const events = header.field("events").deref();
+    const count = events.field(countField).int();
+    return Array.from({ length: count }, (_, i) => events.field(arrayField).at(i));
+  }
+
+  private mapName(group: number, num: number): string {
+    return this.mapNames[group]?.[num] ?? `${group}.${num}`;
+  }
+
+  /** All map names, by group then number. */
+  get allMapNames(): string[][] {
+    return this.mapNames;
+  }
+
+  private location(): { group: number; num: number } {
+    const location = this.saveBlock1.field("location");
+    return { group: location.field("mapGroup").int(), num: location.field("mapNum").int() };
+  }
+
+  /**
+   * The grid of the player's map, from RAM: it has a border of 7 cells with the edges of the
+   * neighbor maps, and the cells that scripts changed. Null when not on the overworld.
+   */
+  grid(): MapGrid | null {
+    if (this.context().mode !== "overworld") return null;
+    const vmap = this.mem.global("VMap");
+    const width = vmap.field("Xsize").int();
+    const height = vmap.field("Ysize").int();
+    const bytes = this.mem.bus.read(vmap.field("map").pointer(), width * height * 2);
+    const { group, num } = this.location();
+    return this.buildGrid(group, num, this.mem.global("gMapHeader"), bytes, width, height, MAP_OFFSET);
+  }
+
+  /** The grid of any map, from ROM: no border, and as the map is before its scripts run. */
+  gridOf(group: number, num: number): MapGrid | null {
+    if (!this.mapNames[group]?.[num]) return null;
+    const header = this.mapHeader(group, num);
+    const layout = header.field("mapLayout").deref();
+    const width = layout.field("width").int();
+    const height = layout.field("height").int();
+    const bytes = this.mem.bus.read(layout.field("map").pointer(), width * height * 2);
+    return this.buildGrid(group, num, header, bytes, width, height, 0);
+  }
+
+  private buildGrid(group: number, num: number, header: Ref, bytes: Uint8Array, width: number, height: number, border: number): MapGrid {
+    const layout = header.field("mapLayout").deref();
+    const primary = this.attributes(layout.field("primaryTileset"), NUM_METATILES_IN_PRIMARY);
+    const secondary = this.attributes(layout.field("secondaryTileset"), 1024 - NUM_METATILES_IN_PRIMARY);
+    const surfable = this.mem.global("sBehaviorSurfable");
+
+    let kinds = "";
+    const blocks: number[] = [];
+    const behaviors: number[] = [];
+    const behaviorNames: Record<number, string> = {};
+    for (let i = 0; i < width * height; i++) {
+      const block = bytes[i * 2] | (bytes[i * 2 + 1] << 8);
+      const metatile = block & 0x03ff;
+      const attrs = metatile < NUM_METATILES_IN_PRIMARY ? primary[metatile] : secondary[metatile - NUM_METATILES_IN_PRIMARY];
+      const behavior = (attrs ?? 0) & 0x1ff;
+      behaviorNames[behavior] ??= this.behaviorNames.get(behavior) ?? `0x${behavior.toString(16)}`;
+      blocks.push(block);
+      behaviors.push(behavior);
+      kinds +=
+        block === 0x03ff || block & 0x0c00 ? "#"
+        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? "~"
+        : (MB_JUMP[behavior] ?? (behavior === MB_TALL_GRASS ? '"' : "."));
+    }
+
+    const connectionsRef = header.field("connections");
+    const connections: MapGrid["connections"] = [];
+    if (connectionsRef.pointer() !== 0) {
+      const list = connectionsRef.deref();
+      for (let i = 0; i < list.field("count").int(); i++) {
+        const c = list.field("connections").at(i);
+        const toGroup = c.field("mapGroup").int();
+        const toNum = c.field("mapNum").int();
+        connections.push({
+          direction: DIRECTION_NAMES[c.field("direction").int()] ?? `#${c.field("direction").int()}`,
+          offset: c.field("offset").int() | 0,
+          map: this.mapName(toGroup, toNum),
+          group: toGroup,
+          num: toNum,
         });
       }
     }
 
-    const events = this.mem.global("gMapHeader").field("events").deref();
-    const list = <T>(arrayField: string, countField: string, f: (r: Ref) => T): T[] => {
-      const count = events.field(countField).int();
-      const out: T[] = [];
-      for (let i = 0; i < count; i++) out.push(f(events.field(arrayField).at(i)));
-      return out;
+    return {
+      key: `${group}.${num}`,
+      group,
+      num,
+      name: this.mapName(group, num),
+      x0: -border,
+      y0: -border,
+      width,
+      height,
+      mapWidth: layout.field("width").int(),
+      mapHeight: layout.field("height").int(),
+      kinds,
+      blocks,
+      behaviors,
+      behaviorNames,
+      warps: this.eventList(header, "warps", "warpCount").map((w) => {
+        const x = w.field("x").int();
+        const y = w.field("y").int();
+        const gx = x + border;
+        const gy = y + border;
+        const inside = gx >= 0 && gy >= 0 && gx < width && gy < height;
+        const behavior = inside ? behaviorNames[behaviors[gy * width + gx]] : "?";
+        // Arrow and stair warps run when the player pushes against them (field_control_avatar.c).
+        const how = /ARROW_WARP|STAIR_WARP/.test(behavior) ? "press" : /WARP|DOOR|LADDER|ESCALATOR|HOLE/.test(behavior) ? "step" : "none";
+        const toGroup = w.field("mapGroup").int();
+        const toNum = w.field("mapNum").int();
+        return { x, y, to: this.mapName(toGroup, toNum), group: toGroup, num: toNum, behavior, how };
+      }),
+      connections,
+      signs: this.eventList(header, "bgEvents", "bgEventCount").map((e) => ({
+        x: e.field("x").int(),
+        y: e.field("y").int(),
+        kind: e.field("kind").int() === BG_EVENT_HIDDEN_ITEM ? ("hidden-item" as const) : ("sign" as const),
+      })),
+      triggers: this.eventList(header, "coordEvents", "coordEventCount").map((e) => ({
+        x: e.field("x").int(),
+        y: e.field("y").int(),
+        variable: e.field("trigger").int(),
+        value: e.field("index").int() & 0xff,
+        weather: e.field("script").pointer() === 0,
+      })),
     };
-    const warps = list("warps", "warpCount", (w) => {
-      const group = w.field("mapGroup").int();
-      const num = w.field("mapNum").int();
-      return { x: w.field("x").int(), y: w.field("y").int(), to: this.mapNames[group]?.[num] ?? `${group}.${num}` };
-    });
-    const signs = list("bgEvents", "bgEventCount", (e) => ({ x: e.field("x").int(), y: e.field("y").int(), kind: "sign" as const }));
-    const triggers = list("coordEvents", "coordEventCount", (e) => ({ x: e.field("x").int(), y: e.field("y").int(), kind: "trigger" as const }));
+  }
 
-    const npcs: Overlay["npcs"] = [];
+  /** Value of a script variable, as VarGet() returns it. Null for special variables. */
+  private varGet(id: number): number | null {
+    if (id < VARS_START) return id;
+    if (id >= SPECIAL_VARS_START) return null;
+    return this.saveBlock1.field("vars").at(id - VARS_START).int();
+  }
+
+  /** What moves or changes on the player's map: player, people, trainer sight, active triggers. */
+  actors(grid: MapGrid): MapActors | null {
+    if (this.context().mode !== "overworld") return null;
+    return this.buildActors(grid, this.mem.global("gMapHeader"), true);
+  }
+
+  /** The same for any map, from the story state in the save: people at their start position. */
+  actorsOf(grid: MapGrid): MapActors {
+    const here = this.location();
+    const isHere = this.context().mode === "overworld" && here.group === grid.group && here.num === grid.num;
+    return this.buildActors(grid, this.mapHeader(grid.group, grid.num), isHere);
+  }
+
+  private buildActors(grid: MapGrid, header: Ref, isPlayerMap: boolean): MapActors {
     const objects = this.mem.global("gObjectEvents");
     const playerId = this.mem.global("gPlayerAvatar").field("objectEventId").int();
-    for (let i = 0; i < objects.length; i++) {
-      if (i === playerId) continue;
+    const live = new Map<number, Ref>();
+    let player: MapActors["player"] = null;
+    for (let i = 0; i < (isPlayerMap ? objects.length : 0); i++) {
       const obj = objects.at(i);
-      if (!obj.field("active").int() || obj.field("invisible").int()) continue;
-      const c = obj.field("currentCoords");
-      npcs.push({ x: c.field("x").int() - MAP_OFFSET, y: c.field("y").int() - MAP_OFFSET });
+      if (!obj.field("active").int()) continue;
+      if (i === playerId) {
+        const c = obj.field("currentCoords");
+        player = { x: c.field("x").int() - MAP_OFFSET, y: c.field("y").int() - MAP_OFFSET, facing: obj.field("facingDirection").int() };
+      } else {
+        live.set(obj.field("localId").int(), obj);
+      }
     }
 
-    return { originX, originY, columns, cells, warps, npcs, events: [...signs, ...triggers] };
+    const kindAt = (x: number, y: number) => {
+      const gx = x - grid.x0;
+      const gy = y - grid.y0;
+      return gx < 0 || gy < 0 || gx >= grid.width || gy >= grid.height ? "#" : grid.kinds[gy * grid.width + gx];
+    };
+
+    // The map lists every person; only those near the screen are loaded in gObjectEvents.
+    const people: MapActors["people"] = [];
+    for (const template of this.eventList(header, "objectEvents", "objectEventCount")) {
+      if (template.field("kind").int() !== OBJ_KIND_NORMAL) continue;
+      const localId = template.field("localId").int();
+      const obj = live.get(localId);
+      const hideFlag = template.field("flagId").int();
+      if (!obj && hideFlag !== 0 && this.flag(hideFlag)) continue;
+      const normal = template.field("objUnion").field("normal");
+      const x = obj ? obj.field("currentCoords").field("x").int() - MAP_OFFSET : template.field("x").int();
+      const y = obj ? obj.field("currentCoords").field("y").int() - MAP_OFFSET : template.field("y").int();
+      const facing = obj ? obj.field("facingDirection").int() : (FACING_OF_MOVEMENT[normal.field("movementType").int()] ?? 0);
+      const rangeX = normal.field("movementRangeX").int();
+      const rangeY = normal.field("movementRangeY").int();
+      const person: MapActors["people"][number] = { localId, x, y, facing, loaded: obj !== undefined };
+      if (rangeX > 0 || rangeY > 0) {
+        person.wander = { x: template.field("x").int() - rangeX, y: template.field("y").int() - rangeY, w: rangeX * 2 + 1, h: rangeY * 2 + 1 };
+      }
+
+      const trainerType = normal.field("trainerType").int();
+      const script = template.field("script").pointer();
+      // A trainer script starts with "trainerbattle" (0x5C); its trainer id is at byte 2.
+      if (trainerType !== 0 && script !== 0 && this.mem.u8(script) === 0x5c) {
+        const trainerId = this.mem.u8(script + 2) | (this.mem.u8(script + 3) << 8);
+        const range = normal.field("trainerRange_berryTreeId").int();
+        const defeated = this.flag(TRAINER_FLAGS_START + trainerId);
+        const directions = trainerType === TRAINER_TYPE_NORMAL ? (facing ? [facing] : []) : [1, 2, 3, 4];
+        const sight: [number, number][] = [];
+        if (!defeated) {
+          for (const dir of directions) {
+            const [dx, dy] = DIRECTION_STEP[dir];
+            // The game stops the line at a cell the trainer cannot walk on.
+            for (let i = 1; i <= range && kindAt(x + dx * i, y + dy * i) !== "#"; i++) sight.push([x + dx * i, y + dy * i]);
+          }
+        }
+        person.trainer = { id: trainerId, defeated, range, allDirections: trainerType !== TRAINER_TYPE_NORMAL, sight };
+      }
+      people.push(person);
+    }
+
+    // As TryRunCoordEventScript: a trigger runs when its variable has its value (or always with variable 0).
+    const triggers = grid.triggers.map((t) => {
+      if (t.weather) return false;
+      if (t.variable === 0) return true;
+      const v = this.varGet(t.variable);
+      return v === null ? null : (v & 0xff) === t.value;
+    });
+    const signs = this.eventList(header, "bgEvents", "bgEventCount").map((e) => {
+      if (e.field("kind").int() !== BG_EVENT_HIDDEN_ITEM) return null;
+      const raw = e.field("bgUnion").field("hiddenItem").int();
+      return { found: this.flag(FLAG_HIDDEN_ITEMS_START + ((raw >>> 16) & 0xff)) };
+    });
+    return { player, people, triggers, signs };
   }
 }

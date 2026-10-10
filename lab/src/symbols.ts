@@ -27,7 +27,7 @@ export type Symbols = {
   functions: [number, string][];
 };
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 export async function loadSymbols(elfPath: string, cacheDir: string): Promise<Symbols> {
   const mtime = (await Bun.file(elfPath).stat()).mtimeMs;
@@ -59,6 +59,7 @@ async function parseDwarf(elfPath: string): Promise<Symbols> {
   // dwarfdump exits with 1 on small errors in assembly units; the output is still complete.
   await proc.exited;
   if (!text.includes("DW_TAG_compile_unit")) throw new Error(`dwarfdump failed on ${elfPath}`);
+  const elfSymbols = await readSymbolTable(elfPath);
 
   const dies = new Map<string, Die>();
   const stack: string[] = [];
@@ -85,7 +86,20 @@ async function parseDwarf(elfPath: string): Promise<Symbols> {
       current.attrs[attr[1]] = attr[2];
     }
   }
-  return buildSymbols(dies);
+  return buildSymbols(dies, elfSymbols);
+}
+
+/** Addresses from the ELF symbol table: also covers data defined in assembly (no debug info). */
+async function readSymbolTable(elfPath: string): Promise<Map<string, number>> {
+  const proc = Bun.spawn(["nm", elfPath], { stdout: "pipe", stderr: "ignore" });
+  const text = await new Response(proc.stdout).text();
+  await proc.exited;
+  const out = new Map<string, number>();
+  for (const line of text.split("\n")) {
+    const m = /^([0-9a-f]{8}) [A-Za-z] (\S+)$/.exec(line);
+    if (m) out.set(m[2], parseInt(m[1], 16));
+  }
+  return out;
 }
 
 function unquote(value: string): string {
@@ -103,7 +117,7 @@ function num(value: string | undefined): number {
   return m ? Number(m[1]) : 0;
 }
 
-function buildSymbols(dies: Map<string, Die>): Symbols {
+function buildSymbols(dies: Map<string, Die>, elfSymbols: Map<string, number>): Symbols {
   // Many compile units repeat the same types: map each repeated type to one id.
   const canonical = new Map<string, string>();
   const byKey = new Map<string, string>();
@@ -222,10 +236,17 @@ function buildSymbols(dies: Map<string, Die>): Symbols {
 
   const globals: Record<string, Global> = {};
   const functions: [number, string][] = [];
+  const declarations = new Map<string, Die>();
   for (const die of dies.values()) {
     if (die.tag === "DW_TAG_variable") {
       const loc = /DW_OP_addr (0x[0-9a-f]+)\)?$/.exec(die.attrs.DW_AT_location ?? "");
-      if (!loc) continue;
+      if (!loc) {
+        if (die.attrs.DW_AT_declaration && die.attrs.DW_AT_name && die.attrs.DW_AT_type) {
+          const name = unquote(die.attrs.DW_AT_name);
+          if (!declarations.has(name)) declarations.set(name, die);
+        }
+        continue;
+      }
       // A definition can point to its declaration for the name and type.
       const spec = dies.get(ref(die.attrs.DW_AT_specification) ?? "");
       const nameAttr = die.attrs.DW_AT_name ?? spec?.attrs.DW_AT_name;
@@ -243,6 +264,12 @@ function buildSymbols(dies: Map<string, Die>): Symbols {
       const name = named && /"(.*)"$/.exec(named)?.[1];
       if (name) functions.push([num(die.attrs.DW_AT_low_pc), name]);
     }
+  }
+  // Declared in C but defined in assembly (for example gMapGroups): address from the symbol table.
+  for (const [name, die] of declarations) {
+    const addr = elfSymbols.get(name);
+    if (globals[name] || addr === undefined) continue;
+    globals[name] = { addr, type: addType(ref(die.attrs.DW_AT_type))!, file: basename(unquote(die.attrs.DW_AT_decl_file ?? "")) };
   }
   functions.sort((a, b) => a[0] - b[0]);
   return { types, globals, functions };

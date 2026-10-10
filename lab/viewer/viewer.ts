@@ -1,10 +1,10 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
-import type { Cell, GameState, Overlay } from "../src/game";
+import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
+import { describe, draw } from "./mapdraw";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
-const CELL = 16 * SCALE;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const gameCanvas = $<HTMLCanvasElement>("game");
@@ -32,7 +32,9 @@ let ws: WebSocket;
 let keys = 0;
 let overlayOn = false;
 let paused = false;
-let lastOverlay: Overlay | null = null;
+let grid: MapGrid | null = null;
+let actors: MapActors | null = null;
+let camera: Camera | null = null;
 let soundOn = true;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
@@ -86,9 +88,29 @@ function onMessage(message: ServerMessage): void {
     case "state":
       renderState(message.state);
       break;
-    case "overlay":
-      lastOverlay = message.overlay;
+    case "map":
+      if (message.grid && message.grid.key !== grid?.key && !preview) fitMap(message.grid);
+      grid = message.grid;
+      renderMapLists();
+      if (grid && follow) centerOnPlayer();
+      redraw();
+      break;
+    case "actors":
+      actors = message.actors;
+      renderMapLists();
+      if (follow) centerOnPlayer();
+      redraw();
+      break;
+    case "camera":
+      camera = message.camera;
       drawOverlay();
+      drawMap();
+      break;
+    case "maps":
+      setMapNames(message.names);
+      break;
+    case "preview":
+      showPreview(message.grid, message.actors);
       break;
     case "notice":
       $("notice").textContent = message.text;
@@ -123,109 +145,275 @@ function renderState(state: GameState): void {
   $("money").textContent = `${state.money} ₽`;
 }
 
-const KIND_FILL: Record<Cell["kind"], string | null> = {
-  blocked: "rgba(224, 70, 70, 0.45)",
-  water: "rgba(60, 130, 230, 0.45)",
-  grass: "rgba(80, 200, 110, 0.3)",
-  ledge: null,
-  open: null,
-};
-const ARROW: Record<string, string> = { north: "↑", south: "↓", east: "→", west: "←" };
-
-function cellRect(overlay: Overlay, x: number, y: number): [number, number] {
-  const first = overlay.cells[0];
-  return [(overlay.originX + (x - first.x) * 16) * SCALE, (overlay.originY + (y - first.y) * 16) * SCALE];
-}
+// ---- Overlay on the game screen
 
 function drawOverlay(): void {
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  const overlay = lastOverlay;
-  if (!overlayOn || !overlay) return;
-  overlayCtx.font = `bold ${CELL * 0.6}px ui-sans-serif, system-ui`;
-  overlayCtx.textAlign = "center";
-  overlayCtx.textBaseline = "middle";
-  for (const cell of overlay.cells) {
-    const [px, py] = cellRect(overlay, cell.x, cell.y);
-    const fill = KIND_FILL[cell.kind];
-    if (fill) {
-      overlayCtx.fillStyle = fill;
-      overlayCtx.fillRect(px, py, CELL, CELL);
-    }
-    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.12)";
-    overlayCtx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
-    if (cell.ledge) {
-      overlayCtx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      overlayCtx.fillText(ARROW[cell.ledge], px + CELL / 2, py + CELL / 2);
-    }
-  }
-  for (const warp of overlay.warps) {
-    const [px, py] = cellRect(overlay, warp.x, warp.y);
-    overlayCtx.fillStyle = "rgba(170, 90, 230, 0.6)";
-    overlayCtx.fillRect(px + 4, py + 4, CELL - 8, CELL - 8);
-  }
-  for (const event of overlay.events) {
-    const [px, py] = cellRect(overlay, event.x, event.y);
-    overlayCtx.strokeStyle = "rgba(255, 150, 40, 0.9)";
-    overlayCtx.lineWidth = 3;
-    overlayCtx.strokeRect(px + 6, py + 6, CELL - 12, CELL - 12);
-    overlayCtx.lineWidth = 1;
-  }
-  for (const npc of overlay.npcs) {
-    const [px, py] = cellRect(overlay, npc.x, npc.y);
-    overlayCtx.fillStyle = "rgba(240, 200, 40, 0.7)";
-    overlayCtx.beginPath();
-    overlayCtx.arc(px + CELL / 2, py + CELL / 2, CELL / 3, 0, Math.PI * 2);
-    overlayCtx.fill();
-  }
+  if (!overlayOn || !grid || !camera) return;
+  draw(overlayCtx, grid, actors, { x: camera.x * SCALE, y: camera.y * SCALE, cell: 16 * SCALE }, "overlay");
 }
 
-function describeCell(overlay: Overlay, x: number, y: number): string | null {
-  const cell = overlay.cells.find((c) => c.x === x && c.y === y);
-  if (!cell) return null;
-  const lines = [
-    `case (${cell.x}, ${cell.y})`,
-    `metatile  ${cell.metatile} (0x${cell.metatile.toString(16)})`,
-    `collision ${cell.collision}${cell.collision ? " (bloqué)" : ""}`,
-    `hauteur   ${cell.elevation}`,
-    `${cell.behavior}`,
-  ];
-  for (const w of overlay.warps) if (w.x === x && w.y === y) lines.push(`warp → ${w.to}`);
-  for (const e of overlay.events) if (e.x === x && e.y === y) lines.push(e.kind === "sign" ? "panneau / objet caché" : "déclencheur (script)");
-  if (overlay.npcs.some((n) => n.x === x && n.y === y)) lines.push("PNJ");
-  return lines.join("\n");
+function showTooltip(text: string | null, clientX: number, clientY: number): void {
+  tooltip.style.display = text ? "block" : "none";
+  if (!text) return;
+  tooltip.textContent = text;
+  const width = tooltip.offsetWidth;
+  const left = clientX + 14 + width > window.innerWidth - 8 ? clientX - 14 - width : clientX + 14;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.min(clientY + 14, window.innerHeight - tooltip.offsetHeight - 8)}px`;
 }
 
 $("screen").addEventListener("mousemove", (event) => {
-  const overlay = lastOverlay;
-  if (!overlayOn || !overlay) {
-    tooltip.style.display = "none";
-    return;
-  }
+  if (!overlayOn || !grid || !camera) return showTooltip(null, 0, 0);
   const rect = overlayCanvas.getBoundingClientRect();
   const sx = ((event.clientX - rect.left) / rect.width) * 240;
   const sy = ((event.clientY - rect.top) / rect.height) * 160;
-  const first = overlay.cells[0];
-  const x = first.x + Math.floor((sx - overlay.originX) / 16);
-  const y = first.y + Math.floor((sy - overlay.originY) / 16);
-  const text = describeCell(overlay, x, y);
-  tooltip.style.display = text ? "block" : "none";
-  if (text) {
-    tooltip.textContent = text;
-    tooltip.style.left = `${Math.min(event.clientX - rect.left + 14, rect.width - 220)}px`;
-    tooltip.style.top = `${event.clientY - rect.top + 14}px`;
+  showTooltip(describe(grid, actors, Math.floor((sx - camera.x) / 16), Math.floor((sy - camera.y) / 16)), event.clientX, event.clientY);
+});
+$("screen").addEventListener("mouseleave", () => showTooltip(null, 0, 0));
+
+// ---- Whole-map view: wheel to zoom, drag to move, double-click to follow the player.
+// A click on a warp or on a neighbor map opens that map (read from ROM); the player does not move.
+
+const mapCanvas = $<HTMLCanvasElement>("map");
+const mapCtx = mapCanvas.getContext("2d")!;
+let mapView = { x: 0, y: 0, cell: 12 };
+let follow = true;
+let drag: { x: number; y: number; viewX: number; viewY: number; moved: boolean } | null = null;
+let mapNames: string[][] = [];
+/** Another map shown instead of the player's map. */
+let preview: { grid: MapGrid; actors: MapActors | null } | null = null;
+let previewHistory: { group: number; num: number }[] = [];
+
+/** The map that the whole-map view shows now. */
+function shown(): { grid: MapGrid | null; actors: MapActors | null } {
+  return preview ?? { grid, actors };
+}
+
+function resizeMap(): void {
+  const rect = mapCanvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  mapCanvas.width = Math.round(rect.width * ratio);
+  mapCanvas.height = Math.round(rect.height * ratio);
+  const current = shown().grid;
+  if (current) fitMap(current);
+  if (follow) centerOnPlayer();
+  drawMap();
+}
+
+/** Zoom so that the whole map (without its border) fits in the view. */
+function fitMap(next: MapGrid): void {
+  const cell = Math.max(4, Math.min(64, Math.min(mapCanvas.width / (next.mapWidth + 4), mapCanvas.height / (next.mapHeight + 4))));
+  mapView = { cell, x: (mapCanvas.width - next.mapWidth * cell) / 2, y: (mapCanvas.height - next.mapHeight * cell) / 2 };
+}
+
+function centerOnPlayer(): void {
+  const p = actors?.player;
+  if (!p || preview) return;
+  mapView.x = mapCanvas.width / 2 - (p.x + 0.5) * mapView.cell;
+  mapView.y = mapCanvas.height / 2 - (p.y + 0.5) * mapView.cell;
+}
+
+function drawMap(): void {
+  mapCtx.fillStyle = "#101216";
+  mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+  const { grid: g, actors: a } = shown();
+  if (!g) {
+    mapCtx.fillStyle = "#8b929c";
+    mapCtx.font = `${14 * (window.devicePixelRatio || 1)}px ui-sans-serif, system-ui`;
+    mapCtx.fillText("Pas de carte (menu, combat ou transition).", 16, 28);
+    return;
+  }
+  draw(mapCtx, g, a, mapView, "map");
+  // The part of the map that the game screen shows now.
+  if (camera && !preview) {
+    mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    mapCtx.lineWidth = 2;
+    mapCtx.strokeRect(mapView.x - (camera.x / 16) * mapView.cell, mapView.y - (camera.y / 16) * mapView.cell, 15 * mapView.cell, 10 * mapView.cell);
+  }
+}
+
+function redraw(): void {
+  drawOverlay();
+  drawMap();
+}
+
+function mapCellAt(event: MouseEvent): [number, number] {
+  const rect = mapCanvas.getBoundingClientRect();
+  const ratio = mapCanvas.width / rect.width;
+  const cx = (event.clientX - rect.left) * ratio;
+  const cy = (event.clientY - rect.top) * ratio;
+  return [Math.floor((cx - mapView.x) / mapView.cell), Math.floor((cy - mapView.y) / mapView.cell)];
+}
+
+function setFollow(on: boolean): void {
+  follow = on;
+  $("follow").classList.toggle("on", on);
+  if (on) {
+    centerOnPlayer();
+    drawMap();
+  }
+}
+
+function viewMap(group: number, num: number): void {
+  const current = shown().grid;
+  if (current) previewHistory.push({ group: current.group, num: current.num });
+  send({ type: "view-map", group, num });
+}
+
+function backToPlayer(): void {
+  preview = null;
+  previewHistory = [];
+  if (grid) fitMap(grid);
+  setFollow(true);
+  renderMapLists();
+  drawMap();
+}
+
+/** The map that a click on this cell opens: a warp destination, or the neighbor map past an edge. */
+function linkAt(g: MapGrid, x: number, y: number): { group: number; num: number; name: string } | null {
+  const warp = g.warps.find((w) => w.x === x && w.y === y);
+  if (warp) return { group: warp.group, num: warp.num, name: warp.to };
+  const side = y < 0 ? "north" : y >= g.mapHeight ? "south" : x < 0 ? "west" : x >= g.mapWidth ? "east" : null;
+  const conn = side ? g.connections.find((c) => c.direction === side) : undefined;
+  return conn ? { group: conn.group, num: conn.num, name: conn.map } : null;
+}
+
+mapCanvas.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const rect = mapCanvas.getBoundingClientRect();
+  const ratio = mapCanvas.width / rect.width;
+  const cx = (event.clientX - rect.left) * ratio;
+  const cy = (event.clientY - rect.top) * ratio;
+  const next = Math.min(64, Math.max(2, mapView.cell * Math.exp(-event.deltaY * 0.002)));
+  // Keep the point under the cursor in place.
+  mapView = { x: cx - ((cx - mapView.x) * next) / mapView.cell, y: cy - ((cy - mapView.y) * next) / mapView.cell, cell: next };
+  if (follow) centerOnPlayer();
+  drawMap();
+}, { passive: false });
+
+mapCanvas.addEventListener("pointerdown", (event) => {
+  drag = { x: event.clientX, y: event.clientY, viewX: mapView.x, viewY: mapView.y, moved: false };
+  mapCanvas.setPointerCapture(event.pointerId);
+});
+mapCanvas.addEventListener("pointermove", (event) => {
+  if (drag) {
+    const ratio = mapCanvas.width / mapCanvas.getBoundingClientRect().width;
+    const dx = (event.clientX - drag.x) * ratio;
+    const dy = (event.clientY - drag.y) * ratio;
+    if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (follow && drag.moved) setFollow(false);
+    if (!follow) {
+      mapView.x = drag.viewX + dx;
+      mapView.y = drag.viewY + dy;
+      drawMap();
+    }
+    return showTooltip(null, 0, 0);
+  }
+  const { grid: g, actors: a } = shown();
+  if (!g) return;
+  const [x, y] = mapCellAt(event);
+  const link = linkAt(g, x, y);
+  mapCanvas.style.cursor = link ? "pointer" : "";
+  const text = describe(g, a, x, y) ?? (link ? `bord de la carte` : null);
+  showTooltip(text && link ? `${text}\nclic : voir ${link.name}` : text, event.clientX, event.clientY);
+});
+mapCanvas.addEventListener("pointerup", (event) => {
+  const clicked = drag && !drag.moved;
+  drag = null;
+  const g = shown().grid;
+  if (!clicked || !g) return;
+  const [x, y] = mapCellAt(event);
+  const link = linkAt(g, x, y);
+  if (link) viewMap(link.group, link.num);
+});
+mapCanvas.addEventListener("pointerleave", () => showTooltip(null, 0, 0));
+mapCanvas.addEventListener("dblclick", () => (preview ? backToPlayer() : setFollow(true)));
+$("follow").addEventListener("click", () => (preview ? backToPlayer() : setFollow(!follow)));
+$("map-back").addEventListener("click", () => {
+  const previous = previewHistory.pop();
+  if (!previous) return;
+  if (grid && previous.group === grid.group && previous.num === grid.num && previewHistory.length === 0) return backToPlayer();
+  send({ type: "view-map", group: previous.group, num: previous.num });
+});
+$("map-search").addEventListener("change", (event) => {
+  const input = event.target as HTMLInputElement;
+  const name = input.value.trim();
+  for (let group = 0; group < mapNames.length; group++) {
+    const num = mapNames[group].indexOf(name);
+    if (num >= 0) {
+      viewMap(group, num);
+      input.value = "";
+      input.blur();
+      return;
+    }
   }
 });
-$("screen").addEventListener("mouseleave", () => (tooltip.style.display = "none"));
+new ResizeObserver(resizeMap).observe(mapCanvas);
+
+function setMapNames(names: string[][]): void {
+  mapNames = names;
+  $("map-names").innerHTML = names.flat().map((n) => `<option value="${n}"></option>`).join("");
+}
+
+function showPreview(next: MapGrid | null, nextActors: MapActors | null): void {
+  if (!next) return;
+  if (grid && next.key === grid.key) return backToPlayer();
+  preview = { grid: next, actors: nextActors };
+  setFollow(false);
+  fitMap(next);
+  renderMapLists();
+  drawMap();
+}
+
+const HOW_LABEL = { step: "marcher dessus", press: "pousser", none: "inactif" };
+const SIDE_LABEL: Record<string, string> = { north: "nord", south: "sud", west: "ouest", east: "est" };
+
+function linkButton(label: string, group: number, num: number): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "link";
+  b.textContent = label;
+  b.addEventListener("click", () => viewMap(group, num));
+  return b;
+}
+
+function renderMapLists(): void {
+  const exits = $("exits");
+  const stops = $("stops");
+  const { grid: g, actors: a } = shown();
+  $("follow").textContent = preview ? "Revenir au joueur" : "Suivre le joueur";
+  $("follow").classList.toggle("on", follow && !preview);
+  $<HTMLButtonElement>("map-back").hidden = !preview;
+  if (!g) {
+    exits.textContent = "–";
+    stops.textContent = "–";
+    $("map-title").textContent = "Carte entière";
+    return;
+  }
+  $("map-title").textContent = `${preview ? "Aperçu" : "Carte du joueur"} · ${g.name} (${g.mapWidth}×${g.mapHeight})`;
+  exits.replaceChildren(
+    ...g.connections.map((c) => linkButton(`bord ${SIDE_LABEL[c.direction] ?? c.direction} → ${c.map}`, c.group, c.num)),
+    ...g.warps.map((w) => linkButton(`warp (${w.x}, ${w.y}) → ${w.to} · ${HOW_LABEL[w.how]}`, w.group, w.num)),
+  );
+  if (!exits.childElementCount) exits.textContent = "aucune";
+  const stopLines: string[] = [];
+  g.triggers.forEach((t, i) => {
+    if (t.weather) return;
+    const state = a?.triggers[i];
+    stopLines.push(`déclencheur (${t.x}, ${t.y}) · ${state === null ? "état inconnu" : state ? "ACTIF" : "inactif"}`);
+  });
+  for (const p of a?.people ?? []) {
+    if (p.trainer) stopLines.push(`dresseur ${p.trainer.id} en (${p.x}, ${p.y}) · vue ${p.trainer.range} · ${p.trainer.defeated ? "battu" : "pas battu"}`);
+  }
+  stops.textContent = stopLines.length ? stopLines.join("\n") : "aucun";
+}
 
 function setOverlay(on: boolean): void {
   overlayOn = on;
   $("overlay-toggle").classList.toggle("on", on);
   send({ type: "overlay", enabled: on });
-  if (!on) {
-    lastOverlay = null;
-    drawOverlay();
-    tooltip.style.display = "none";
-  }
+  drawOverlay();
+  if (!on) showTooltip(null, 0, 0);
 }
 
 /** Browsers allow sound only after a click or a key press. */
@@ -258,7 +446,7 @@ function keyOf(event: KeyboardEvent): number | undefined {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.metaKey || event.ctrlKey) return;
+  if (event.metaKey || event.ctrlKey || event.target instanceof HTMLInputElement) return;
   startSound();
   const bit = keyOf(event);
   if (bit !== undefined) {
@@ -278,6 +466,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
+  if (event.target instanceof HTMLInputElement) return;
   const bit = keyOf(event);
   if (bit !== undefined && keys & bit) {
     keys &= ~bit;

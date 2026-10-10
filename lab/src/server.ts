@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { CACHE_DIR, Core } from "./core";
-import { Game } from "./game";
+import { Game, type MapGrid } from "./game";
 import { Memory } from "./memory";
 import { BinaryKind, type ClientMessage, type ServerMessage, type Speed } from "./protocol";
 import { loadSymbols } from "./symbols";
@@ -209,6 +209,11 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "audio":
       setAudioClient(ws, message.enabled);
       break;
+    case "view-map": {
+      const grid = safely(() => run.game.gridOf(message.group, message.num));
+      send({ type: "preview", grid, actors: grid ? safely(() => run.game.actorsOf(grid)) : null }, ws);
+      return;
+    }
     case "audio-level": {
       // Queue too long: run a little slower, and the reverse. At most 1% off.
       const error = AUDIO_TARGET_MS - message.ms;
@@ -217,7 +222,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     }
     case "overlay":
       run.overlay = message.enabled;
-      if (!run.overlay) send({ type: "overlay", overlay: null }, ws);
+      send({ type: "camera", camera: safely(() => run.game.camera()) }, ws);
       break;
     case "quick-save":
       run.quickState = run.core.saveState();
@@ -254,6 +259,21 @@ function sendAudio(): void {
 }
 let lastScreen = 0;
 let lastState = 0;
+let lastGrid: MapGrid | null = null;
+let lastGridJson = "";
+
+/** The grid only when it changed; the actors each time. */
+function sendMap(to?: ServerWebSocket<unknown>): void {
+  const grid = safely(() => run.game.grid());
+  const json = JSON.stringify(grid);
+  if (to || json !== lastGridJson) {
+    lastGridJson = json;
+    lastGrid = grid;
+    for (const ws of to ? [to] : clients) ws.send(`{"type":"map","grid":${json}}`);
+  }
+  const current = lastGrid;
+  send({ type: "actors", actors: current ? safely(() => run.game.actors(current)) : null }, to);
+}
 
 function loop(): void {
   const now = performance.now();
@@ -263,12 +283,15 @@ function loop(): void {
     lastScreen = now;
     screenMessage.set(run.core.screen(), 1);
     for (const ws of clients) ws.send(screenMessage);
-    if (run.overlay) send({ type: "overlay", overlay: safely(() => run.game.overlay()) });
+    if (run.overlay) send({ type: "camera", camera: safely(() => run.game.camera()) });
   }
   if (clients.size > 0 && now - lastState >= STATE_INTERVAL_MS) {
     lastState = now;
     const state = safely(() => run.game.state());
     if (state) send({ type: "state", state });
+    sendMap();
+    // The whole-map view shows the screen area; the overlay gets the camera with each screen too.
+    send({ type: "camera", camera: safely(() => run.game.camera()) });
     void sendStatus();
   }
   setTimeout(loop, run.speed === "max" && !run.paused ? 0 : 2);
@@ -286,6 +309,8 @@ Bun.serve({
     open(ws) {
       clients.add(ws);
       void sendStatus(ws);
+      send({ type: "maps", names: run.game.allMapNames }, ws);
+      sendMap(ws);
     },
     close(ws) {
       clients.delete(ws);

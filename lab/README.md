@@ -25,9 +25,9 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/core.ts`: one emulator instance (bun:ffi).
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
-- `src/game.ts`: FireRed state (map, party, badges, money, context) and the cell overlay.
+- `src/game.ts`: FireRed state (map, party, badges, money, context), the grid of the player's map or of any map from ROM, and the actors on it (people, trainer sight, triggers).
 - `src/server.ts`: the Run loop, the WebSocket and the Viewer page.
-- `viewer/`: the page. `viewer/audio.ts` plays the sound.
+- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
 
 ## Sound
 

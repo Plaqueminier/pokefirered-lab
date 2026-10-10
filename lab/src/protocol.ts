@@ -1,5 +1,5 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
-import type { GameState, Overlay } from "./game";
+import type { Camera, GameState, MapActors, MapGrid } from "./game";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -23,7 +23,15 @@ export type Speed = 1 | 4 | "max";
 export type ServerMessage =
   | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean }
   | { type: "state"; state: GameState }
-  | { type: "overlay"; overlay: Overlay | null }
+  /** Sent when the map grid changes (new map, or a cell changed). */
+  | { type: "map"; grid: MapGrid | null }
+  | { type: "actors"; actors: MapActors | null }
+  /** All map names, by group then number. Sent once. */
+  | { type: "maps"; names: string[][] }
+  /** Another map, read from ROM, as asked with "view-map". The player does not move. */
+  | { type: "preview"; grid: MapGrid | null; actors: MapActors | null }
+  /** With each screen, while the screen overlay is on. */
+  | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string };
 
 export type ClientMessage =
@@ -34,6 +42,7 @@ export type ClientMessage =
   | { type: "audio"; enabled: boolean }
   /** Audio queued in the Viewer, in milliseconds. */
   | { type: "audio-level"; ms: number }
+  | { type: "view-map"; group: number; num: number }
   | { type: "quick-save" }
   | { type: "quick-load" }
   | { type: "reset" }
