@@ -34,7 +34,7 @@ _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
 **Decision point**:
 A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
-_Avoid_: turn, pause, step
+_Avoid_: turn (in a battle, a turn is one round), pause, step
 
 **Knowledge level**:
 The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more, for example hidden items and exact enemy stats.
@@ -56,7 +56,7 @@ One emulator instance that plays the game from a **Starting save**. The **Harnes
 _Avoid_: game, instance, session
 
 **Milestone**:
-A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "has the Pokédex" or a badge. It is the unit of progress of a **Run**.
+A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is the unit of progress of a **Run**, and the goal of a **Run** is a **Milestone**.
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:

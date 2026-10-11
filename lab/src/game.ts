@@ -1,8 +1,10 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
+import { type Battle, type BattleMenu, battleCursor, battleMenu, enemyMovePrinted, levelUpBoxWaits, partyPick, type PrintedMove, readBattle } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { type PartyMon, readParty } from "./party";
+import { nameAt, type PartyMon, readParty } from "./party";
+import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
 import { functionName } from "./symbols";
 
 const REPO_DIR = join(import.meta.dir, "..", "..");
@@ -13,12 +15,17 @@ const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
 const FLAG_SYS_POKEDEX_GET = 0x829;
+// EndRivalBattle sets it after the first rival battle, won or lost.
+const FLAG_BEAT_RIVAL_IN_OAKS_LAB = 0x258;
 const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const MILESTONE_FLAGS: [Milestone, number][] = [
   ["has-pokemon", FLAG_SYS_POKEMON_GET],
+  ["first-rival-battle", FLAG_BEAT_RIVAL_IN_OAKS_LAB],
   ["has-pokedex", FLAG_SYS_POKEDEX_GET],
   ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
 ];
+const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic"]);
+const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
 const MB_TALL_GRASS = 0x02;
 export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
 export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
@@ -59,32 +66,7 @@ const SCRIPT_MODE_NATIVE = 2;
 const MAP_SCRIPT_ON_FRAME_TABLE = 2;
 const MAP_SCRIPT_ENTRY_SIZE = 5;
 const MAP_SCRIPT_ROW_SIZE = 8;
-// RENDER_STATE_WAIT, RENDER_STATE_CLEAR and RENDER_STATE_SCROLL_START (text.h) wait for A or B.
-const PRINTER_WAIT_STATES = new Set([1, 2, 3]);
-// Task_YesNoMenu_HandleInput (script_menu.c) reads no input while its tTimer (data[2]) is below 5.
-const YES_NO_TIMER = 2;
-const YES_NO_INPUT_DELAY = 5;
-// The field message box is window 0 (sStandardTextBox_WindowTemplates, new_menu_helpers.c); text printer n prints in window n.
-const FIELD_MESSAGE_WINDOW = 0;
-// The background tilemap of the text windows is 32 tiles wide; bits 0-9 of an entry are the tile.
-const TILEMAP_WIDTH = 32;
-const TILE_INDEX_MASK = 0x3ff;
-// Character codes (characters.h).
-const CHAR_DYNAMIC = 0xf7;
-const CHAR_KEYPAD_ICON = 0xf8;
-const CHAR_EXTRA_SYMBOL = 0xf9;
-const CHAR_PROMPT_SCROLL = 0xfa;
-const CHAR_PROMPT_CLEAR = 0xfb;
-const EXT_CTRL_CODE_BEGIN = 0xfc;
-const PLACEHOLDER_BEGIN = 0xfd;
-const CHAR_NEWLINE = 0xfe;
-const CHAR_EOS = 0xff;
-const ONE_ARG_CODES = new Set([CHAR_DYNAMIC, CHAR_KEYPAD_ICON, CHAR_EXTRA_SYMBOL, PLACEHOLDER_BEGIN]);
-// The table of GetExtCtrlCodeLength (string_util.c): the length of each extended code, with the code byte.
-const EXT_CTRL_CODE_LENGTHS = [1, 2, 2, 2, 4, 2, 2, 1, 2, 1, 1, 3, 2, 2, 2, 1, 3, 2, 2, 2, 2, 1, 1, 1, 1];
-const CHARMAP_JAPANESE = "@ Hiragana";
-
-export type Milestone = "has-pokemon" | "has-pokedex" | `badge-${(typeof BADGES)[number]}`;
+export type Milestone = "has-pokemon" | "first-rival-battle" | "has-pokedex" | `badge-${(typeof BADGES)[number]}`;
 
 export type GameState = {
   map: { group: number; num: number; name: string };
@@ -97,11 +79,14 @@ export type GameState = {
 
 export type Camera = { x: number; y: number };
 
-export type Choice = { options: string[]; cursor: number };
-
-export type WaitingFor = { kind: "walk" } | { kind: "text" } | ({ kind: "choice" } & Choice) | { kind: "busy" };
-
-export type FieldMessage = { shown: boolean; printerActive: boolean };
+export type WaitingFor =
+  | { kind: "walk" }
+  | { kind: "text" }
+  | ({ kind: "choice" } & Choice)
+  | { kind: "battleAction" }
+  | { kind: "battleMove" }
+  | { kind: "partyPick" }
+  | { kind: "busy" };
 
 export type Direction = "south" | "north" | "west" | "east";
 
@@ -167,16 +152,18 @@ export type MapActors = {
 };
 
 export class Game {
-  private readonly charmap: string[];
+  private readonly decode: Decode;
+  private readonly prompts: Prompts;
   private readonly behaviorNames: Map<number, string>;
   private readonly mapNames: string[][];
   private readonly attributeCache = new Map<number, Uint32Array>();
 
   private constructor(
     private readonly mem: Memory,
-    tables: { charmap: string[]; behaviorNames: Map<number, string>; mapNames: string[][] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; mapNames: string[][] },
   ) {
-    this.charmap = tables.charmap;
+    this.decode = tables.decode;
+    this.prompts = new Prompts(mem, tables.decode);
     this.behaviorNames = tables.behaviorNames;
     this.mapNames = tables.mapNames;
   }
@@ -187,28 +174,10 @@ export class Game {
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
     ]);
-    // The Japanese part gives the same bytes again. In the Latin part, a later line wins ('\'' over '’').
-    const japanese = charmapText.indexOf(CHARMAP_JAPANESE);
-    if (japanese < 0) throw new Error(`charmap.txt: no "${CHARMAP_JAPANESE}" line`);
-    const latin = charmapText.slice(0, japanese);
-    const charmap: string[] = [];
-    for (const m of latin.matchAll(/^'(\\'|.)'\s*=\s*([0-9A-F]{2})\s*$/gm)) charmap[parseInt(m[2], 16)] = m[1].replace("\\", "");
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { charmap, behaviorNames, mapNames });
-  }
-
-  decodeText(bytes: Uint8Array): string {
-    let out = "";
-    for (let i = 0; i < bytes.length && bytes[i] !== CHAR_EOS; i++) {
-      const b = bytes[i];
-      if (b === CHAR_NEWLINE || b === CHAR_PROMPT_SCROLL || b === CHAR_PROMPT_CLEAR) out += "\n";
-      else if (b === EXT_CTRL_CODE_BEGIN) i += this.extCtrlCodeLength(bytes[i + 1]);
-      else if (ONE_ARG_CODES.has(b)) i++;
-      else out += this.charmap[b] ?? "?";
-    }
-    return out;
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, mapNames });
   }
 
   private get saveBlock1(): Ref {
@@ -233,8 +202,9 @@ export class Game {
 
   waitingFor(): WaitingFor {
     const { mode, callback1 } = this.context();
+    if (mode === "battle") return this.battleWaitingFor();
     if (mode !== "overworld") return { kind: "busy" };
-    const choice = this.choice();
+    const choice = this.prompts.choice();
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
@@ -276,11 +246,14 @@ export class Game {
     return value;
   }
 
+  private battleWaitingFor(): WaitingFor {
+    if (partyPick(this.mem)) return { kind: "partyPick" };
+    if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem)) return { kind: "text" };
+    return { kind: battleMenu(this.mem) ?? "busy" };
+  }
+
   private textWaits(): boolean {
-    const printer = this.fieldPrinter();
-    if (printer.field("active").int()) {
-      return PRINTER_WAIT_STATES.has(printer.field("state").int()) && !this.mem.global("gTextFlags").field("autoScroll").int();
-    }
+    if (this.prompts.fieldPrinterActive()) return this.prompts.fieldPrinterWaits();
     const script = this.mem.global("sGlobalScriptContext");
     return (
       this.scriptRunning() &&
@@ -289,53 +262,16 @@ export class Game {
     );
   }
 
-  private choice(): Choice | null {
-    const task = this.activeTask("Task_YesNoMenu_HandleInput");
-    if (!task || task.field("data").at(YES_NO_TIMER).int() < YES_NO_INPUT_DELAY) return null;
-    const options = ["gText_Yes", "gText_No"].map((name) => this.decodeText(this.mem.global(name).bytes()));
-    return { options, cursor: this.mem.global("sMenu").field("cursorPos").int() };
+  messages(): Messages {
+    return this.context().mode === "battle" ? this.prompts.battleMessages() : this.prompts.fieldMessages();
   }
 
-  private activeTask(func: string): Ref | null {
-    const tasks = this.mem.global("gTasks");
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks.at(i);
-      if (task.field("isActive").int() && functionName(this.mem.symbols, task.field("func").pointer()) === func) return task;
-    }
-    return null;
+  messageText(window: number): string {
+    return this.prompts.messageText(window);
   }
 
-  fieldMessage(): FieldMessage {
-    return { shown: this.messageBoxShown(), printerActive: this.fieldPrinter().field("active").int() !== 0 };
-  }
-
-  /** The text of the message box, with its line and page breaks as "\n". */
-  fieldMessageText(): string {
-    const printer = this.fieldPrinter();
-    const buffer = this.mem.global("gStringVar4");
-    const at = printer.field("printerTemplate").field("currentChar").pointer();
-    if (printer.field("active").int() && (at < buffer.addr || at >= buffer.addr + buffer.size)) {
-      throw new Error(`the message box prints a string at 0x${at.toString(16)}, not from gStringVar4`);
-    }
-    return this.decodeText(buffer.bytes());
-  }
-
-  private fieldPrinter(): Ref {
-    return this.mem.global("sTextPrinters").at(FIELD_MESSAGE_WINDOW);
-  }
-
-  private extCtrlCodeLength(code: number): number {
-    const length = EXT_CTRL_CODE_LENGTHS[code];
-    if (length === undefined) throw new Error(`unknown extended control code 0x${code.toString(16)} in a game string`);
-    return length;
-  }
-
-  private messageBoxShown(): boolean {
-    const window = this.mem.global("gWindows").at(FIELD_MESSAGE_WINDOW).field("window");
-    const tilemap = this.mem.global("sGpuBgConfigs2").at(window.field("bg").int()).field("tilemap").pointer();
-    if (tilemap === 0) return false;
-    const cell = window.field("tilemapTop").int() * TILEMAP_WIDTH + window.field("tilemapLeft").int();
-    return (this.mem.u16(tilemap + cell * 2) & TILE_INDEX_MASK) === window.field("baseBlock").int();
+  battleCursor(menu: BattleMenu): number {
+    return battleCursor(this.mem, menu);
   }
 
   fieldLocked(): boolean {
@@ -343,7 +279,7 @@ export class Game {
   }
 
   interruption(): GameInterruption | null {
-    if (this.battleStarting()) return "battle";
+    if (this.battleUnderway()) return "battle";
     if (!this.scriptRunning()) return null;
     const player = this.player();
     const grid = this.grid();
@@ -360,8 +296,22 @@ export class Game {
     return this.context().mode === "overworld" && this.mem.global("sGlobalScriptContextStatus").int() !== SCRIPT_CONTEXT_SHUTDOWN;
   }
 
-  battleStarting(): boolean {
-    return this.context().mode === "battle" || this.activeTask("Task_BattleStart") !== null;
+  battleUnderway(): boolean {
+    const { mode, callback2 } = this.context();
+    return mode === "battle" || BATTLE_START_CALLBACKS.has(callback2) || activeTask(this.mem, "Task_BattleStart") !== null;
+  }
+
+  battle(): Battle | null {
+    return this.context().mode === "battle" ? readBattle(this.mem, this.decode) : null;
+  }
+
+  // Read also outside a battle, so that BattleWatch sees the old value before the battle intro clears it.
+  enemyMovePrinted(): PrintedMove | null {
+    return enemyMovePrinted(this.mem);
+  }
+
+  moveName(move: number): string {
+    return nameAt(this.mem, "gMoveNames", move, this.decode);
   }
 
   map(): GameState["map"] {
@@ -395,12 +345,12 @@ export class Game {
     };
     const callback1 = name("callback1");
     const callback2 = name("callback2");
-    const mode = callback2 === "CB2_Overworld" ? "overworld" : callback2 === "BattleMainCB2" ? "battle" : "other";
+    const mode = main.field("inBattle").int() ? "battle" : OVERWORLD_CALLBACKS.has(callback2) ? "overworld" : "other";
     return { mode, callback1, callback2 };
   }
 
   party(): PartyMon[] {
-    return readParty(this.mem, (bytes) => this.decodeText(bytes));
+    return readParty(this.mem, this.decode);
   }
 
   milestones(): Milestone[] {

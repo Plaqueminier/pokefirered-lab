@@ -12,9 +12,11 @@ Requirements: Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfd
 
 ## Run a Bot
 
-In `lab/`: `bun run bot starter`. The command runs the **Bot** `bots/starter.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. At the end, it prints the **Milestones** and the party. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
+In `lab/`: `bun run bot starter`, or `bun run bot starter full` for the `full` **Knowledge level** (the default is `player`). The command runs the **Bot** `bots/starter.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result, its frame count and its texts. At the end, it prints the end reason of the **Run**, the **Milestones** and the party. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
 
-There is one **Bot**, `starter`: each new step of the story goes into it, not into a new **Bot**. A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`. `must(result)` stops the Bot with an error when a result is not `done`.
+There is one **Bot**, `starter`: each new step of the story goes into it, not into a new **Bot**. A **Bot** is a module in `bots/` that exports `{ name, version, goal?, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`. `must(result)` stops the Bot with an error when a result is not `done`.
+
+`harness.play(bot)` plays a **Run** and gives its result: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` when the game reaches the **Milestone** `goal` of the Bot: the **Macro-action** that reaches it does not return to the Bot, and the Run ends. It is `bot stopped` when `play` of the Bot returns first.
 
 `goTo(x, y, map?)` walks to a cell of the player's map, or of the map with the name `map`, for example `goTo(12, 3, "PalletTown")`. The route goes through warps, map edges and ledges (only in their jump direction). People are obstacles. The player takes a stair or arrow warp when it stands on the cell and pushes toward its direction, and a door when it pushes north from the cell below. The result is one of:
 
@@ -29,22 +31,33 @@ There is one **Bot**, `starter`: each new step of the story goes into it, not in
 
 - When the game waits for the player to walk: `{ name: "goTo" }` (the Bot chooses the cell), and `{ name: "interact", x, y }` for each cell next to the player with a person or a sign. A sign that is read from one side only is in the list only when the player is on that side. Bookshelves, PCs on a metatile, water and the people behind a counter are not in the list yet, but `interact` works on them.
 - At a choice: `{ name: "choose", option }` for each option.
+- At the battle action menu: `{ name: "fight", move }` for each move with PP, and `{ name: "run" }` in a wild battle. At the move menu: the same `fight` entries.
+- In the party menu of a battle: nothing. No **Macro-action** picks a Pokémon yet; use **Raw inputs**.
 - At a text, or when the game is busy: `{ name: "readText" }`. The harness cannot tell a busy game from a menu that it does not know (multichoice, the PC): there, `readText` is `impossible` after 3600 frames.
 
 A **Macro-action** that the game does not accept now (for the kind of `waitingFor`) returns `impossible`, and no frames run. `interact` runs at each walk Decision point, also when the list has no `interact` entry. The list does not check the elevation of a person or a sign, or a person who is invisible or has no script; no such case is on the path to the starter.
 
-`observe()` gives what the game waits for, the map, the player, the grid of the map, the party and the **Milestones**. Each Pokémon of the party has its species, nickname, level, HP, status (`none`, `sleep`, `poison` (also for toxic poison), `burn`, `freeze` or `paralysis`; a Pokémon with 0 HP keeps its status) and moves with their PP. The **Milestones** are the story steps reached, in story order: `has-pokemon`, `has-pokedex` and `badge-1` to `badge-8`.
+`observe()` gives what the game waits for, the party and the **Milestones**. On the overworld (`mode: "overworld"`), it also gives the map, the player and the grid of the map. In a battle (`mode: "battle"`), it gives `battle`: the kind (`trainer` or `wild`), the player's Pokémon in full (as in the party, with its battle stats `attack`, `defense`, `speed`, `spAttack` and `spDefense`, and `statStages` from -6 to 6 for these stats, `accuracy` and `evasion`), and the enemy Pokémon as the player sees it: species, level, `hpPercent` (the HP bar, 48 pixels, as a percentage), status, `statStages` and `movesSeen` (the moves that the game announced for this enemy Pokémon in this battle, for example "Foe BULBASAUR used GROWL!"). At the `full` **Knowledge level**, the enemy also has `exact`: its `hp`, `maxHp` and `stats`. The volatile states (for example confusion), the types, the ability and the held item are not in the battle state yet. Open the harness with `Harness.open({ knowledge: "full" })`. Each Pokémon of the party has its species, nickname, level, HP, status (`none`, `sleep`, `poison` (also for toxic poison), `burn`, `freeze` or `paralysis`; a Pokémon with 0 HP keeps its status) and moves with their PP. The **Milestones** are the story steps reached, in story order: `has-pokemon`, `first-rival-battle` (the rival leaves the lab after the first battle, won or lost), `has-pokedex` and `badge-1` to `badge-8`.
 
 `observe().waitingFor` tells what the game waits for now:
 
 - `{ kind: "walk" }`: the player can walk.
 - `{ kind: "text" }`: a text box waits for A.
 - `{ kind: "choice", options, cursor }`: a yes/no, for example `["YES", "NO"]` with the cursor on 0.
+- `{ kind: "battleAction" }`: the battle menu FIGHT, BAG, POKéMON, RUN.
+- `{ kind: "battleMove" }`: the move menu of the battle.
+- `{ kind: "partyPick" }`: the party menu of a battle waits for a Pokémon.
 - `{ kind: "busy" }`: the game waits for no input. For example, a text prints, people walk or the screen fades.
+
+In a battle, `text` is also the level-up stats box, and the texts of Oak in the party menu of the first battle.
 
 A text box that closes by itself is not a `text` Decision point. On the frame of a map arrival, the game can show `busy` while a frame script of the map starts, for example in Oak's lab.
 
-`readText()` reads the texts of the game. It runs the game until a text waits for A. Then it presses A at each `text` Decision point, until the text box closes or a choice shows. Then it runs the game to the next Decision point. Its result has `text`: one plain string for each message. Line and page breaks become spaces. The result also has the messages that closed by themselves. A text that waits for A after the box closed is not in the result: the next `readText()` reads it. The result is `impossible` when the game waits for the player to walk or shows a choice, and `interrupted` with `battle` when a battle starts.
+`readText()` reads the texts of the game. It runs the game until a text waits for A. Then it presses A at each `text` Decision point, until the text box closes or a choice shows. Then it runs the game to the next Decision point. Its result has `text`: one plain string for each message. Line and page breaks become spaces. The result also has the messages that closed by themselves. A text that waits for A after the box closed is not in the result: the next `readText()` reads it. The result is `impossible` when the game waits for the player to walk, shows a choice or a battle menu, and `interrupted` with `battle` when a battle starts. In a battle, `readText` reads the battle messages and the texts of Oak (the first battle is a tutorial), and stops at the next battle menu. At the end of a battle, it stops at the first text of the overworld: the next `readText` reads it. In the party menu of a battle, it presses A at the texts of Oak but does not read them.
+
+`fight(move)` uses the move `move` (0 to 3, the order of `battle.player.moves`): from the battle action menu it moves the cursor to FIGHT and presses A, then it moves the cursor to the move and presses A, and runs the game to the next Decision point. Its result has `text`: the messages of the turn, for example "SQUIRTLE used TACKLE!". A message that waits for A at the end is not in it: the next `readText()` reads it. `fight` is `impossible`, with no frames, when the Pokémon has no such move or the move has no PP. When no move has PP, the game uses Struggle from FIGHT, but no Macro-action selects it yet: use **Raw inputs**.
+
+`run()` selects RUN in a wild battle, with the messages of the turn as `fight`. Against a trainer, it is `impossible`, with no frames.
 
 `choose(option)` moves the cursor of the choice to the option (for example `"NO"`), presses A, and runs the game to the next Decision point. It is `impossible` when the game shows no choice or when the choice has no such option.
 
@@ -52,9 +65,9 @@ A text box that closes by itself is not a `text` Decision point. On the frame of
 
 After its A press, `interact` stops only for a battle (`interrupted` with `battle`), as `readText`, `choose` and `press` do, because a script runs during them. These four are `impossible` when the game waits for no known input for 3600 frames. `choose` is also `impossible` when the cursor does not move.
 
-Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `choice` now. Other menus (multichoice, the PC) and the texts outside the overworld show `busy`.
+Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `choice` now. Other menus (multichoice, the PC, the bag) and the texts outside the overworld and the battles show `busy`.
 
-`bun run bot starter` leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. The player is at (9, 5) with SQUIRTLE (level 5, TACKLE and TAIL WHIP) and the Milestone `has-pokemon`, with no Raw input.
+`bun run bot starter` (Bot version 3, goal `first-rival-battle`) leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. Then it walks to the door: the rival stops it at (7, 8) (`goTo(6, 11)` returns `interrupted` with `trigger`), and `readText()` returns `interrupted` with `battle`. In the battle against BULBASAUR, it uses TAIL WHIP, then TACKLE, and `readText()` at each text. With TACKLE only, SQUIRTLE loses. SQUIRTLE wins and grows to level 6, the rival leaves the lab, and the **Run** ends with the reason `goal` at frame 15017, with no Raw input.
 
 `bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
@@ -73,7 +86,9 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/core.ts`: one emulator instance (bun:ffi).
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
-- `src/game.ts`: FireRed state (map, party, badges, money, context, **Milestones**), what the game waits for (walk, text, choice) and the text of the message box, the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
+- `src/game.ts`: FireRed state (map, party, badges, money, context, **Milestones**), what the game waits for (walk, text, choice, the battle menus), the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
+- `src/prompts.ts`: the text decoder, the message boxes and their text, and the yes/no.
+- `src/battle.ts`: the battle: the kind, the player's and the enemy's Pokémon from the battle data, the enemy as the player sees it, the battle menus and their cursors, the party menu of a battle, and the moves that the enemy used.
 - `src/party.ts`: the party: species, moves and PP from the encrypted Pokémon data, and level, HP and status from the party fields.
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
 - `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.

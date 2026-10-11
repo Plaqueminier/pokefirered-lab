@@ -1,9 +1,9 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
+import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
   DIRECTION_STEPS,
   type Direction,
-  type FieldMessage,
   type Game,
   type GameInterruption,
   type GameState,
@@ -14,6 +14,7 @@ import {
   type WaitingFor,
 } from "../game";
 import type { PartyMon } from "../party";
+import type { Messages } from "../prompts";
 import { Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap } from "./path";
@@ -27,16 +28,32 @@ const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
-const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = { walk: ["goTo", "interact"], choice: ["choose"], text: ["readText"], busy: ["readText"] };
-
-export type Observation = {
-  waitingFor: WaitingFor;
-  map: GameState["map"];
-  player: PlayerPosition;
-  grid: MapGrid;
-  party: PartyMon[];
-  milestones: Milestone[];
+const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
+  walk: ["goTo", "interact"],
+  choice: ["choose"],
+  text: ["readText"],
+  battleAction: ["fight", "run"],
+  battleMove: ["fight"],
+  partyPick: [],
+  busy: ["readText"],
 };
+const FIGHT_CURSOR = 0;
+const RUN_CURSOR = 3;
+const CURSOR_COLUMN = 1;
+const CURSOR_ROW = 2;
+export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
+
+export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
+
+export type BattleState = { kind: Battle["kind"]; player: BattleMon; enemy: EnemyMon };
+
+type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[] };
+
+export type Observation = ObservationBase & ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid } | { mode: "battle"; battle: BattleState });
+
+export type EndReason = "goal" | "bot stopped";
+
+export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
 export type Interruption = GameInterruption | "map";
 
@@ -52,13 +69,17 @@ export type ActionResult = Outcome & {
   frames: number;
 };
 
-export type TextResult = ActionResult & { text: string[] };
+type Texts = { text: string[] };
+
+export type TextResult = ActionResult & Texts;
 
 export type MacroAction =
   | { name: "goTo"; x: number; y: number; map?: string }
   | { name: "interact"; x: number; y: number }
   | { name: "readText" }
-  | { name: "choose"; option: string };
+  | { name: "choose"; option: string }
+  | { name: "fight"; move: number }
+  | { name: "run" };
 
 export type AvailableAction = { name: "goTo" } | Exclude<MacroAction, { name: "goTo" }>;
 
@@ -74,23 +95,38 @@ export function must(result: ActionResult): void {
 
 type ActionListener = (entry: ActionEntry, harness: Harness) => void;
 
+export type HarnessOptions = { knowledge?: KnowledgeLevel; onAction?: ActionListener };
+
+/**
+ * With `goal`, `harness.play(bot)` ends the Run when the game reaches this Milestone: the Macro-action
+ * that reaches it throws, so `play` must not catch the errors of the harness.
+ */
 export type Bot = {
   name: string;
   version: string;
+  goal?: Milestone;
   play(harness: Harness): Promise<void>;
 };
 
+class GoalReached extends Error {}
+
 export class Harness {
   readonly actions: ActionEntry[] = [];
+  readonly #run: Run;
+  readonly #knowledge: KnowledgeLevel;
+  readonly #onAction?: ActionListener;
+  readonly #battles = new BattleWatch();
+  #goal: Milestone | null = null;
 
-  private constructor(
-    private readonly run: Run,
-    private readonly onAction?: ActionListener,
-  ) {}
+  private constructor(run: Run, options: HarnessOptions) {
+    this.#run = run;
+    this.#knowledge = options.knowledge ?? "player";
+    this.#onAction = options.onAction;
+  }
 
-  static async open(options: { onAction?: ActionListener } = {}): Promise<Harness> {
+  static async open(options: HarnessOptions = {}): Promise<Harness> {
     if (!(await Bun.file(START_SAVE).exists())) throw new Error(`${START_SAVE} not found: make the Starting save first (lab/README.md)`);
-    const harness = new Harness(await Run.open(), options.onAction);
+    const harness = new Harness(await Run.open(), options);
     const interruption = harness.settle();
     if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
     return harness;
@@ -101,28 +137,39 @@ export class Harness {
   }
 
   get frame(): number {
-    return this.run.frame;
+    return this.#run.frame;
   }
 
   screenHash(): string {
-    return this.run.screenHash();
+    return this.#run.screenHash();
+  }
+
+  async play(bot: Bot): Promise<RunResult> {
+    const start = this.frame;
+    this.#goal = bot.goal ?? null;
+    let endReason: EndReason = "bot stopped";
+    try {
+      await bot.play(this);
+    } catch (error) {
+      if (!(error instanceof GoalReached)) throw error;
+      endReason = "goal";
+    } finally {
+      this.#goal = null;
+    }
+    return { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs };
   }
 
   observe(): Observation {
-    const game = this.run.game;
+    const game = this.#run.game;
+    const base = { waitingFor: game.waitingFor(), party: game.party(), milestones: game.milestones() };
+    const battle = game.battle();
+    if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid } = this.overworld();
-    return {
-      waitingFor: game.waitingFor(),
-      map: game.map(),
-      player,
-      grid,
-      party: game.party(),
-      milestones: game.milestones(),
-    };
+    return { ...base, mode: "overworld", map: game.map(), player, grid };
   }
 
   availableActions(): AvailableAction[] {
-    const waiting = this.run.game.waitingFor();
+    const waiting = this.#run.game.waitingFor();
     return ACCEPTS[waiting.kind].flatMap((name): AvailableAction[] => {
       switch (name) {
         case "goTo":
@@ -132,6 +179,10 @@ export class Harness {
           return this.interactions();
         case "choose":
           return waiting.kind === "choice" ? waiting.options.map((option) => ({ name, option })) : [];
+        case "fight":
+          return this.battle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
+        case "run":
+          return this.battle().kind === "wild" ? [{ name }] : [];
       }
     });
   }
@@ -177,7 +228,7 @@ export class Harness {
 
   async interact(x: number, y: number): Promise<ActionResult> {
     return this.act({ name: "interact", x, y }, () => {
-      const game = this.run.game;
+      const game = this.#run.game;
       const here = this.place();
       const direction = neighbours(here).find((n) => n.x === x && n.y === y)?.direction;
       if (!direction) return { status: "impossible", reason: `(${x}, ${y}) is not next to the player at ${at(here)}` };
@@ -192,13 +243,13 @@ export class Harness {
   }
 
   async readText(): Promise<TextResult> {
-    return this.act<{ text: string[] }>({ name: "readText" }, () => {
-      const game = this.run.game;
+    return this.act<Texts>({ name: "readText" }, () => {
+      const game = this.#run.game;
       const reader = new MessageReader(game);
       for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
         const outcome = this.untilDecision(() => reader.update());
         if (outcome.status !== "done" || game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
-        if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeNextText() };
+        if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
         const battle = this.tap(Keys.A);
         if (battle) return { status: "interrupted", reason: battle, text: reader.text };
         reader.pressed();
@@ -209,40 +260,100 @@ export class Harness {
 
   async choose(option: string): Promise<ActionResult> {
     return this.act({ name: "choose", option }, () => {
-      const choice = this.run.game.waitingFor();
+      const game = this.#run.game;
+      const choice = game.waitingFor();
       if (choice.kind !== "choice") throw new Error("choose is available only at a choice");
       const target = choice.options.indexOf(option);
       if (target < 0) return { status: "impossible", reason: `no option "${option}" in ${choice.options.join(", ")}` };
-      for (let cursor = choice.cursor; cursor !== target; ) {
-        const moved = this.input(target > cursor ? Keys.Down : Keys.Up);
-        if (moved.status !== "done") return moved;
-        const now = this.run.game.waitingFor();
-        if (now.kind !== "choice") return { status: "impossible", reason: "the choice closed when the cursor moved" };
-        if (now.cursor === cursor) return { status: "impossible", reason: `the cursor does not move from ${cursor}` };
-        cursor = now.cursor;
-      }
-      return this.input(Keys.A);
+      const cursor = () => {
+        const now = game.waitingFor();
+        return now.kind === "choice" ? now.cursor : null;
+      };
+      const moved = this.moveCursor(target, cursor, (at) => (target > at ? Keys.Down : Keys.Up));
+      return moved.status === "done" ? this.input(Keys.A) : moved;
     });
+  }
+
+  async fight(move: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "fight", move }, () => {
+      const game = this.#run.game;
+      const chosen = this.battle().player.moves[move];
+      if (!chosen) return { status: "impossible", reason: `the Pokémon has no move ${move}` };
+      if (chosen.pp === 0) return { status: "impossible", reason: `${chosen.name} has no PP` };
+      if (game.waitingFor().kind === "battleAction") {
+        const opened = this.select("battleAction", FIGHT_CURSOR);
+        if (opened.status !== "done") return opened;
+        if (game.waitingFor().kind !== "battleMove") return { status: "impossible", reason: "the move menu does not open" };
+      }
+      return this.turn("battleMove", move);
+    }, { text: [] });
+  }
+
+  async run(): Promise<TextResult> {
+    return this.act<Texts>({ name: "run" }, () => {
+      if (this.battle().kind === "trainer") return { status: "impossible", reason: "there is no running from a trainer battle" };
+      return this.turn("battleAction", RUN_CURSOR);
+    }, { text: [] });
   }
 
   async press(button: Button): Promise<ActionResult> {
     return this.act({ name: "press", button }, () => this.input(Keys[button]));
   }
 
-  private act<T extends object = object>(action: MacroAction | RawInput, body: () => Outcome & T, onRefusal = {} as T): ActionResult & T {
+  private act(action: MacroAction | RawInput, body: () => Outcome): ActionResult;
+  private act<T extends object>(action: MacroAction | RawInput, body: () => Outcome & Partial<T>, defaults: T): ActionResult & T;
+  private act(action: MacroAction | RawInput, body: () => Outcome, defaults = {}): ActionResult {
     const start = this.frame;
-    const kind = this.run.game.waitingFor().kind;
+    const kind = this.#run.game.waitingFor().kind;
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
-    const outcome = refused ? { status: "impossible" as const, reason: `${action.name} is not available: the game waits for a ${kind}`, ...onRefusal } : body();
-    const result: ActionResult & T = { ...outcome, frames: this.frame - start };
+    const outcome: Outcome = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
+    const result = { ...defaults, ...outcome, frames: this.frame - start };
     const entry = { action, result };
     this.actions.push(entry);
-    this.onAction?.(entry, this);
+    this.#onAction?.(entry, this);
+    if (this.#goal && this.#run.game.milestones().includes(this.#goal)) throw new GoalReached();
     return result;
   }
 
+  private battle(): Battle {
+    const battle = this.#run.game.battle();
+    if (!battle) throw new Error("the game is not in a battle");
+    return battle;
+  }
+
+  private battleState({ kind, player, enemy }: Battle): BattleState {
+    const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => this.#run.game.moveName(move));
+    return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
+  }
+
+  private turn(menu: BattleMenu, target: number): Outcome & Texts {
+    const reader = new MessageReader(this.#run.game);
+    return { ...this.select(menu, target, () => reader.update()), text: reader.textBeforeWaitingText() };
+  }
+
+  private select(menu: BattleMenu, target: number, watch?: () => void): Outcome {
+    const game = this.#run.game;
+    const cursor = () => (game.waitingFor().kind === menu ? game.battleCursor(menu) : null);
+    const moved = this.moveCursor(target, cursor, (at) => gridKey(at, target));
+    if (moved.status !== "done") return moved;
+    const battle = this.tap(Keys.A);
+    return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
+  }
+
+  private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number): Outcome {
+    for (let cursor = read(); cursor !== target; ) {
+      if (cursor === null) return { status: "impossible", reason: "the menu closed when the cursor moved" };
+      const moved = this.input(key(cursor));
+      if (moved.status !== "done") return moved;
+      const now = read();
+      if (now === cursor) return { status: "impossible", reason: `the cursor does not move from ${cursor}` };
+      cursor = now;
+    }
+    return { status: "done" };
+  }
+
   private overworld(): { player: PlayerPosition; grid: MapGrid; actors: MapActors } {
-    const game = this.run.game;
+    const game = this.#run.game;
     const player = game.player();
     const grid = game.grid();
     const actors = grid && game.actors(grid);
@@ -258,35 +369,35 @@ export class Harness {
   private untilDecision(watch: () => void = () => {}): Outcome {
     for (let frames = 0; ; frames++) {
       watch();
-      if (this.run.game.waitingFor().kind !== "busy") return { status: "done" };
+      if (this.#run.game.waitingFor().kind !== "busy") return { status: "done" };
       if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game waits for no known input for ${DECISION_FRAME_LIMIT} frames` };
-      const battle = this.battleFrame(0);
-      if (battle) return { status: "interrupted", reason: battle };
+      if (this.advance(0)) return { status: "interrupted", reason: "battle" };
     }
   }
 
   // JOY_NEW sees a press only after a frame with the button up.
   private tap(keys: number): "battle" | null {
-    return this.battleFrame(keys) ?? this.battleFrame(0);
+    return this.advance(keys) || this.advance(0) ? "battle" : null;
   }
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
-  private battleFrame(keys: number): "battle" | null {
-    this.run.runFrame(keys);
-    return this.run.game.battleStarting() ? "battle" : null;
+  private advance(keys: number): boolean {
+    this.#run.runFrame(keys);
+    const game = this.#run.game;
+    return this.#battles.onFrame(game.battleUnderway(), game.enemyMovePrinted());
   }
 
   private place(): Place {
-    const player = this.run.game.player();
+    const player = this.#run.game.player();
     if (!player) throw new Error("the player is not on the overworld");
-    return { map: this.run.game.map().name, x: player.x, y: player.y };
+    return { map: this.#run.game.map().name, x: player.x, y: player.y };
   }
 
   private routeMaps(): MapSource {
     const maps = new Map<string, RouteMap | null>();
     return (name) => {
       if (!maps.has(name)) {
-        const view = this.run.game.mapView(name);
+        const view = this.#run.game.mapView(name);
         maps.set(name, view && { ...view.grid, people: view.actors.people });
       }
       return maps.get(name)!;
@@ -297,17 +408,17 @@ export class Harness {
     for (const move of leg.moves) {
       const result = move.kind === "push" ? this.push(move.direction) : this.step(move.direction, move.kind === "jump" ? 2 : 1);
       if (result !== "done") return result;
-      if (this.run.game.map().name !== leg.map) break;
+      if (this.#run.game.map().name !== leg.map) break;
     }
     const interruption = this.settle();
     if (interruption) return interruption;
-    return this.run.game.map().name === next ? "done" : "map";
+    return this.#run.game.map().name === next ? "done" : "map";
   }
 
   // Hold the direction: a short press only turns a player who faces another way. A jump moves the
   // player two times (InitJump, then the jump halfway), so a step ends on its arrival cell.
   private step(direction: Direction, cells: number): LegResult {
-    const game = this.run.game;
+    const game = this.#run.game;
     const before = this.place();
     const [dx, dy] = DIRECTION_STEP[direction];
     const path = Array.from({ length: cells }, (_, i) => ({ x: before.x + dx * (i + 1), y: before.y + dy * (i + 1) }));
@@ -333,7 +444,7 @@ export class Harness {
   }
 
   private face(direction: Direction): Outcome {
-    const game = this.run.game;
+    const game = this.#run.game;
     if (game.player()?.facing === direction) return { status: "done" };
     const before = this.place();
     const turned = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => game.player()?.facing === direction);
@@ -346,12 +457,12 @@ export class Harness {
   }
 
   private push(direction: Direction): LegResult {
-    const result = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => this.run.game.fieldLocked());
+    const result = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => this.#run.game.fieldLocked());
     return result === "limit" ? "no warp" : result;
   }
 
   private settle(): Interruption | null {
-    const result = this.hold(0, SETTLE_FRAME_LIMIT, () => this.run.game.waitingFor().kind === "walk");
+    const result = this.hold(0, SETTLE_FRAME_LIMIT, () => this.#run.game.waitingFor().kind === "walk");
     if (result === "limit") throw new Error(`the game waits for no input for more than ${SETTLE_FRAME_LIMIT} frames`);
     return result === "done" ? null : result;
   }
@@ -360,38 +471,35 @@ export class Harness {
     for (let frames = 0; ; frames++) {
       if (done()) return "done";
       if (frames === limit) return "limit";
-      const interruption = this.runFrame(keys);
+      const interruption = this.frameOrInterruption(keys);
       if (interruption) return interruption;
     }
   }
 
   private wait(frames: number): Interruption | null {
     for (let i = 0; i < frames; i++) {
-      const interruption = this.runFrame(0);
+      const interruption = this.frameOrInterruption(0);
       if (interruption) return interruption;
     }
     return null;
   }
 
-  private runFrame(keys: number): Interruption | null {
-    this.run.runFrame(keys);
-    return this.run.game.interruption();
+  private frameOrInterruption(keys: number): Interruption | null {
+    this.advance(keys);
+    return this.#run.game.interruption();
   }
 }
 
 class MessageReader {
   readonly text: string[] = [];
-  private message: FieldMessage;
+  private messages: Messages;
   private pressedOnce = false;
-  private readBeforeClose: number | null = null;
+  private lastWindow: number | null = null;
+  closedAfterPress = false;
 
   constructor(private readonly game: Game) {
-    this.message = game.fieldMessage();
-    if (this.message.shown) this.text.push(plain(game.fieldMessageText()));
-  }
-
-  get closedAfterPress(): boolean {
-    return this.readBeforeClose !== null;
+    this.messages = game.messages();
+    for (const window of this.messages.onScreen) this.push(window);
   }
 
   pressed(): void {
@@ -399,15 +507,22 @@ class MessageReader {
   }
 
   update(): void {
-    const wasActive = this.message.printerActive;
-    this.message = this.game.fieldMessage();
-    if (this.message.printerActive && !wasActive) this.text.push(plain(this.game.fieldMessageText()));
-    if (this.pressedOnce && !this.message.shown && this.readBeforeClose === null) this.readBeforeClose = this.text.length;
+    const before = this.messages.printing;
+    this.messages = this.game.messages();
+    for (const window of this.messages.printing) if (!before.includes(window)) this.push(window);
+    if (this.pressedOnce && this.messages.boxClosed) this.closedAfterPress = true;
   }
 
-  // A text that waits for A after the box closed belongs to the next readText.
-  textBeforeNextText(): string[] {
-    return this.text.length > (this.readBeforeClose ?? this.text.length) ? this.text.slice(0, -1) : this.text;
+  textBeforeWaitingText(): string[] {
+    const waits = this.game.waitingFor().kind === "text" && this.lastWindow !== null && this.game.messages().onScreen.includes(this.lastWindow);
+    return waits ? this.text.slice(0, -1) : this.text;
+  }
+
+  private push(window: number): void {
+    const text = plain(this.game.messageText(window));
+    if (!text) return;
+    this.text.push(text);
+    this.lastWindow = window;
   }
 }
 
@@ -416,7 +531,7 @@ function withoutPeople(map: RouteMap | null): RouteMap | null {
 }
 
 function plain(text: string): string {
-  return text.split("\n").join(" ");
+  return text.split("\n").join(" ").trim();
 }
 
 function neighbours(cell: { x: number; y: number }): { direction: Direction; x: number; y: number }[] {
@@ -425,4 +540,12 @@ function neighbours(cell: { x: number; y: number }): { direction: Direction; x: 
 
 function at(place: Place): string {
   return `${place.map} (${place.x}, ${place.y})`;
+}
+
+// The battle menus are 2x2 grids. The game does not move the cursor to an empty move slot, and the moves fill
+// the slots in order: so the cursor goes left and up first, and passes only on cells before the target.
+function gridKey(cursor: number, target: number): number {
+  if (cursor & CURSOR_COLUMN & ~target) return Keys.Left;
+  if (cursor & CURSOR_ROW & ~target) return Keys.Up;
+  return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
 }

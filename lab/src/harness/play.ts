@@ -1,9 +1,10 @@
 import { join } from "node:path";
-import { type Bot, Harness } from "./harness";
+import { type Bot, Harness, KNOWLEDGE_LEVELS } from "./harness";
 
-const name = process.argv[2];
-if (!name) {
-  console.error("Usage: bun run bot <name>");
+const [name, level = "player"] = process.argv.slice(2);
+const knowledge = KNOWLEDGE_LEVELS.find((l) => l === level);
+if (!name || !knowledge) {
+  console.error("Usage: bun run bot <name> [player|full]");
   process.exit(1);
 }
 const bot: Bot = (await import(join(import.meta.dir, "..", "..", "bots", `${name}.ts`))).default;
@@ -13,6 +14,7 @@ if (typeof bot?.play !== "function") {
 }
 
 const harness = await Harness.open({
+  knowledge,
   onAction: ({ action, result }) => {
     const { name, ...args } = action;
     const call = `${name}(${Object.values(args).join(", ")})`;
@@ -21,11 +23,14 @@ const harness = await Harness.open({
     if ("text" in result) for (const message of result.text) console.log(`  "${message}"`);
   },
 });
-console.log(`Bot ${bot.name} ${bot.version}: first Decision point at frame ${harness.frame}`);
-await bot.play(harness);
+console.log(`Bot ${bot.name} ${bot.version}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
+const result = await harness.play(bot);
 
-const { map, player, party, milestones } = harness.observe();
-console.log(`End: ${map.name} (${player.x}, ${player.y}) facing ${player.facing}, frame ${harness.frame}, screen ${harness.screenHash()}, raw inputs ${harness.rawInputs}`);
+const observation = harness.observe();
+const { party, milestones } = observation;
+const where = observation.mode === "overworld" ? `${observation.map.name} (${observation.player.x}, ${observation.player.y}) facing ${observation.player.facing}` : "in a battle";
+console.log(`End: ${where}, frame ${harness.frame}, screen ${harness.screenHash()}, raw inputs ${harness.rawInputs}`);
+console.log(`Run end: ${result.endReason}, ${result.frames} frames`);
 console.log(`Milestones: ${milestones.join(", ") || "none"}`);
 for (const mon of party) {
   const moves = mon.moves.map((m) => `${m.name} ${m.pp}/${m.maxPp}`).join(", ");
