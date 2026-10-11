@@ -3,6 +3,7 @@ import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
 import { describe, draw, howLabel, SIDE_NAME } from "./mapdraw";
 import { ReplayPanel } from "./replay";
+import { RunsPanel } from "./runs";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -53,6 +54,9 @@ const replayPanel = new ReplayPanel(
   send,
 );
 
+const runsPanel = new RunsPanel({ runs: $<HTMLSelectElement>("runs"), bots: $<HTMLSelectElement>("bots"), start: $<HTMLButtonElement>("bot-start") }, send);
+let shownRunId: number | null = null;
+
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
 }
@@ -87,17 +91,21 @@ function onMessage(message: ServerMessage): void {
   switch (message.type) {
     case "status": {
       paused = message.paused;
+      const run = message.shown.kind === "bot" ? message.shown.run : null;
+      // A preview shows the actors of one Run only.
+      if ((run?.id ?? null) !== shownRunId && preview) backToPlayer();
+      shownRunId = run?.id ?? null;
       $("pause").classList.toggle("on", paused);
-      for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
-        b.classList.toggle("on", String(message.speed) === b.dataset.speed);
-      }
-      $<HTMLButtonElement>("quick-load").disabled = !message.hasQuickState;
+      for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) b.classList.toggle("on", String(message.speed) === b.dataset.speed);
+      for (const b of document.querySelectorAll<HTMLButtonElement>("[data-viewer-run]")) b.disabled = run !== null;
+      if (!message.hasQuickState) $<HTMLButtonElement>("quick-load").disabled = true;
       $("sound").classList.toggle("on", soundOn);
       $("status").textContent =
-        `${message.rom} · image ${message.frame} · ${message.fps} img/s` +
-        (!soundOn ? " · son coupé" : !audio.running ? " · son : cliquez ou appuyez sur une touche" : message.audio ? ` · son ${Math.round(audioLevel)} ms` : " · son seulement à ×1") +
+        `${message.rom} · image ${message.frame} · ` +
+        (run ? `Run ${run.id} du Bot ${run.bot}, pas de son` : `${message.fps} img/s · ${soundText(message.audio)}`) +
         (message.hasStartSave ? "" : " · pas encore de sauvegarde de départ");
-      replayPanel.onStatus(message.frame, message.replay);
+      replayPanel.onStatus(message.frame, message.shown);
+      runsPanel.onStatus(message.runs, message.shown);
       break;
     }
     case "state":
@@ -133,10 +141,20 @@ function onMessage(message: ServerMessage): void {
     case "records":
       replayPanel.setRecords(message.names);
       break;
+    case "bots":
+      runsPanel.setBots(message.names);
+      break;
     case "events":
       replayPanel.onEvents(message.events);
       break;
   }
+}
+
+function soundText(playing: boolean): string {
+  if (!soundOn) return "son coupé";
+  if (!audio.running) return "son : cliquez ou appuyez sur une touche";
+  if (playing) return `son ${Math.round(audioLevel)} ms`;
+  return "son seulement à ×1";
 }
 
 const MODE_LABEL = { overworld: "Sur la carte", battle: "En combat", other: "Menu / transition" };

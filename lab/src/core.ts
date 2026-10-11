@@ -1,6 +1,6 @@
 // One emulator instance (libmgba through shim/shim.c and bun:ffi).
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { MemoryBus } from "./memory";
 
@@ -17,11 +17,17 @@ async function buildShim(): Promise<string> {
   const out = Bun.file(lib);
   if ((await out.exists()) && (await out.stat()).mtimeMs >= (await src.stat()).mtimeMs) return lib;
   await mkdir(CACHE_DIR, { recursive: true });
+  // Runs start in parallel workers: write then rename, so dlopen never loads a partial library.
+  const tmp = `${lib}.${crypto.randomUUID()}`;
   const cc = Bun.spawnSync(
-    ["cc", "-O2", "-shared", "-fPIC", SHIM_SOURCE, `-I${MGBA}/include`, `-L${MGBA}/lib`, "-lmgba", `-Wl,-rpath,${MGBA}/lib`, "-o", lib],
+    ["cc", "-O2", "-shared", "-fPIC", SHIM_SOURCE, `-I${MGBA}/include`, `-L${MGBA}/lib`, "-lmgba", `-Wl,-rpath,${MGBA}/lib`, "-o", tmp],
     { stderr: "pipe" },
   );
-  if (cc.exitCode !== 0) throw new Error(`shim build failed:\n${cc.stderr.toString()}`);
+  if (cc.exitCode !== 0) {
+    await rm(tmp, { force: true });
+    throw new Error(`shim build failed:\n${cc.stderr.toString()}`);
+  }
+  await rename(tmp, lib);
   return lib;
 }
 

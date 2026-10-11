@@ -1,4 +1,6 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -92,13 +94,31 @@ export type RawInput = { name: "press"; button: Button };
 
 export type ActionEntry = { action: MacroAction | RawInput; result: ActionResult | TextResult };
 
+const BOTS_DIR = join(import.meta.dir, "..", "..", "bots");
+
+export async function botNames(): Promise<string[]> {
+  return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
+}
+
+export async function loadBot(name: string): Promise<Bot> {
+  const bot: Bot = (await import(join(BOTS_DIR, `${name}.ts`))).default;
+  if (typeof bot?.play !== "function") throw new Error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
+  return bot;
+}
+
 export function must(result: ActionResult): void {
   if (result.status !== "done") throw new Error(`${result.status}${"reason" in result ? `: ${result.reason}` : ""}`);
 }
 
 type ActionListener = (entry: ActionEntry, harness: Harness) => void;
 
-export type HarnessOptions = { knowledge?: KnowledgeLevel; onAction?: ActionListener; frameBudget?: number; noProgressLimit?: number };
+export type HarnessOptions = {
+  knowledge?: KnowledgeLevel;
+  onAction?: ActionListener;
+  onFrame?: () => void;
+  frameBudget?: number;
+  noProgressLimit?: number;
+};
 
 /** The Harness ends a Run with an error that a Macro-action or a Raw input throws: `play` must not catch it. */
 export type Bot = {
@@ -142,6 +162,7 @@ export class Harness {
   readonly #run: Run;
   readonly #knowledge: KnowledgeLevel;
   readonly #onAction?: ActionListener;
+  readonly #onFrame?: () => void;
   readonly #frameBudget: number;
   readonly #noProgressLimit: number;
   readonly #battles = new BattleWatch();
@@ -154,21 +175,36 @@ export class Harness {
     this.#run = run;
     this.#knowledge = options.knowledge ?? "player";
     this.#onAction = options.onAction;
+    this.#onFrame = options.onFrame;
     this.#frameBudget = options.frameBudget ?? FRAME_BUDGET;
     this.#noProgressLimit = options.noProgressLimit ?? NO_PROGRESS_LIMIT;
     this.#watch = new GameWatch(run.game);
   }
 
-  static async open(options: HarnessOptions = {}): Promise<Harness> {
-    if (!(await Bun.file(START_SAVE).exists())) throw new Error(`${START_SAVE} not found: make the Starting save first (lab/README.md)`);
-    const harness = new Harness(await Run.open(), options);
-    const interruption = harness.settle();
-    if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
-    return harness;
+  /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
+  static async open(options: HarnessOptions = {}, run?: Run): Promise<Harness> {
+    if (!(await Bun.file(START_SAVE).exists())) {
+      run?.core.close();
+      throw new Error(`${START_SAVE} not found: make the Starting save first (lab/README.md)`);
+    }
+    const opened = run ?? (await Run.open());
+    try {
+      const harness = new Harness(opened, options);
+      const interruption = harness.settle();
+      if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
+      return harness;
+    } catch (error) {
+      opened.core.close();
+      throw error;
+    }
   }
 
   get actions(): ActionEntry[] {
     return this.#events.flatMap((e) => (e.type === "action" ? [{ action: e.action, result: e.result }] : []));
+  }
+
+  get events(): readonly RunEvent[] {
+    return this.#events;
   }
 
   get rawInputs(): number {
@@ -181,6 +217,10 @@ export class Harness {
 
   screenHash(): string {
     return this.#run.screenHash();
+  }
+
+  close(): void {
+    this.#run.core.close();
   }
 
   async play(bot: Bot): Promise<RunResult> {
@@ -445,6 +485,7 @@ export class Harness {
     this.#events.push(...events);
     const started = events.some((e) => e.type === "battle" && e.state === "start");
     this.#battles.onFrame(started, this.#run.game.enemyMovePrinted());
+    this.#onFrame?.();
     return started;
   }
 

@@ -1,17 +1,27 @@
 // Usage: bun run viewer   (ROM: LAB_ROM=pokefirered_modern_lab by default)
 import { mkdir, readdir, rename } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
-import type { MapGrid } from "./game";
-import { isRunRecord, originDifferences, RecordPlayer, type RunRecord, RUNS_DIR } from "./harness/record";
-import { BinaryKind, type ClientMessage, type ReplayStatus, type ServerMessage, type Speed } from "./protocol";
-import { ROM_NAME, Run, type RunOrigin, SAVES_DIR, START_SAVE } from "./run";
+import { type Camera, safely } from "./game";
+import { botNames } from "./harness/harness";
+import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
+import { isRunRecord, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import {
+  BinaryKind,
+  type ClientMessage,
+  type ReplayStatus,
+  type RunSummary,
+  SCREEN_INTERVAL_MS,
+  type ServerMessage,
+  type ShownRun,
+  type Speed,
+  STATE_INTERVAL_MS,
+} from "./protocol";
+import { ROM_NAME, Run, type RunOrigin, type RunState, SAVES_DIR, START_SAVE } from "./run";
 
 const PORT = Number(process.env.LAB_PORT ?? 8766);
 const GBA_FPS = 16777216 / 280896; // 59.7275
-const SCREEN_INTERVAL_MS = 1000 / 60;
-const STATE_INTERVAL_MS = 100;
 const AUDIO_RATE = 48000;
 // The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
 const AUDIO_TARGET_MS = 60;
@@ -124,6 +134,42 @@ class LivePlay {
 
 const run = await Run.open();
 const live = new LivePlay(run);
+// The Run of the Viewer is one of the emulators.
+const pool = new RunPool(MAX_RUNS - 1);
+
+/** What the Viewer sends of the Run that it shows. */
+type RunSource = {
+  frame(): number;
+  screen(): Uint8Array | null;
+  state(): RunState;
+  camera(): Camera | null;
+  events(): readonly RunEvent[];
+  summary(): ShownRun;
+};
+
+const viewerRun: RunSource = {
+  frame: () => run.frame,
+  screen: () => run.core.screen(),
+  state: () => run.readState(),
+  camera: () => safely(() => run.game.camera()),
+  events: () => live.replay?.player.played() ?? [],
+  summary: () => ({ kind: "viewer", replay: live.replay && replayStatus(live.replay) }),
+};
+
+function botRun(poolRun: PoolRun): RunSource {
+  return {
+    frame: () => poolRun.view.frame,
+    screen: () => poolRun.view.screen,
+    state: () => poolRun.view,
+    camera: () => poolRun.view.camera,
+    events: () => poolRun.events,
+    summary: () => ({ kind: "bot", run: runSummary(poolRun) }),
+  };
+}
+
+let shown = viewerRun;
+// The keyboard, the speeds, pause, the savestate and the Starting save act on the Run of the Viewer only.
+const VIEWER_RUN_MESSAGES = new Set<ClientMessage["type"]>(["keys", "speed", "pause", "audio-level", "quick-save", "quick-load", "reset", "write-start-save", "end-replay"]);
 const clients = new Set<ServerWebSocket<unknown>>();
 const audioClients = new Set<ServerWebSocket<unknown>>();
 
@@ -148,23 +194,15 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
       speed: live.speed,
       paused: live.paused,
       fps: live.fps,
-      frame: run.frame,
+      frame: shown.frame(),
       hasQuickState: live.quickState !== null,
       hasStartSave,
       audio: live.audioActive,
-      replay: live.replay && replayStatus(live.replay),
+      runs: pool.runs.map(runSummary),
+      shown: shown.summary(),
     },
     to,
   );
-}
-
-/** Reads game memory; returns null while the game is in a state where the reads fail (boot, transitions). */
-function safely<T>(read: () => T): T | null {
-  try {
-    return read();
-  } catch {
-    return null;
-  }
 }
 
 /** True when one save slot has all its sectors (the game writes them over several frames). */
@@ -215,26 +253,61 @@ async function replayFile(name: string): Promise<string> {
   const record: unknown = await Bun.file(join(RUNS_DIR, name)).json().catch(() => null);
   if (!isRunRecord(record)) return `${name} n'est pas un Run record.`;
   const differences = await live.startReplay(name, record);
+  show(viewerRun);
   if (differences.length > 0) {
     return `${name} ne se rejoue pas ici (${differences.join(", ")} différent). La Run repart de la sauvegarde de départ, au clavier.`;
   }
-  sendReplayEvents();
   return `Replay de ${name}.`;
 }
 
-let replayEventsSent = 0;
+function runSummary({ id, spec, end }: PoolRun): RunSummary {
+  return { id, bot: spec.bot, playing: end === null, endReason: end?.record?.result.endReason ?? null, error: end?.error ?? null };
+}
 
-function sendReplayEvents(to?: ServerWebSocket<unknown>): void {
-  const events = live.replay?.player.played() ?? [];
-  if (!to) replayEventsSent = events.length;
+function show(next: RunSource): void {
+  shown = next;
+  live.keys = 0;
+  live.rateTrim = 1;
+  screenFrame = null;
+  sendEvents();
+  sendMap(shown.state());
+}
+
+async function startBot(name: string): Promise<string> {
+  if (!(await botNames()).includes(name)) return `Pas de Bot ${name} dans lab/bots/.`;
+  if (pool.full) return `Pas de nouvelle Run : ${pool.limit} Runs de Bot jouent déjà (${MAX_RUNS} émulateurs au plus, avec la Run du Viewer).`;
+  const started = pool.start({ bot: name });
+  show(botRun(started));
+  void started.done.then((end) => onBotEnd(started, end));
+  return `Run ${started.id} : le Bot ${name} joue.`;
+}
+
+async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
+  const failure = error ? ` · erreur : ${error}` : "";
+  try {
+    const end = record ? `fin : ${record.result.endReason}, Run record runs/${basename(await writeRecord(record))}` : "pas de Run record";
+    send({ type: "notice", text: `Run ${id} (${spec.bot}) : ${end}${failure}.` });
+    send({ type: "records", names: await recordNames() });
+  } catch (writeError) {
+    send({ type: "notice", text: `Run ${id} (${spec.bot}) : le Run record n'est pas écrit (${writeError})${failure}.` });
+  }
+  await sendStatus();
+}
+
+let eventsSent = 0;
+
+function sendEvents(to?: ServerWebSocket<unknown>): void {
+  const events = [...shown.events()];
+  if (!to) eventsSent = events.length;
   send({ type: "events", events }, to);
 }
 
-function sendNewReplayEvents(): void {
-  if ((live.replay?.player.played().length ?? 0) !== replayEventsSent) sendReplayEvents();
+function sendNewEvents(): void {
+  if (shown.events().length !== eventsSent) sendEvents();
 }
 
 async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Promise<void> {
+  if (shown !== viewerRun && VIEWER_RUN_MESSAGES.has(message.type)) return;
   switch (message.type) {
     case "keys":
       live.keys = message.keys;
@@ -254,7 +327,8 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       break;
     case "view-map": {
       const grid = safely(() => run.game.gridOf(message.group, message.num));
-      send({ type: "preview", grid, actors: grid ? safely(() => run.game.actorsOf(grid)) : null }, ws);
+      // The actors are those of the Run of the Viewer: none for a Run of a Bot.
+      send({ type: "preview", grid, actors: grid && shown === viewerRun ? safely(() => run.game.actorsOf(grid)) : null }, ws);
       return;
     }
     case "audio-level": {
@@ -265,7 +339,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     }
     case "overlay":
       live.overlay = message.enabled;
-      send({ type: "camera", camera: safely(() => run.game.camera()) }, ws);
+      send({ type: "camera", camera: shown.camera() }, ws);
       break;
     case "quick-save":
       live.quickState = run.core.saveState();
@@ -276,11 +350,13 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
         send({ type: "notice", text: "Pas de retour au savestate pendant un replay." }, ws);
       } else if (live.quickState && run.core.loadState(live.quickState)) {
         live.resyncClock();
+        show(viewerRun);
         send({ type: "notice", text: "Retour au savestate." });
       }
       break;
     case "reset":
       await live.reset();
+      show(viewerRun);
       send({ type: "notice", text: "Run relancée depuis la sauvegarde de départ." });
       break;
     case "write-start-save":
@@ -294,6 +370,14 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       live.endReplay();
       send({ type: "notice", text: "Fin du replay : le clavier joue la Run depuis cette image." });
       break;
+    case "start-bot":
+      send({ type: "notice", text: await startBot(message.name) });
+      break;
+    case "show": {
+      const poolRun = pool.runs.find((r) => r.id === message.runId);
+      show(poolRun ? botRun(poolRun) : viewerRun);
+      break;
+    }
   }
   await sendStatus();
 }
@@ -304,53 +388,49 @@ screenMessage[0] = BinaryKind.Screen;
 /** Audio message: 2 header bytes (kind, 0) so the 16-bit samples stay aligned. */
 function sendAudio(): void {
   const samples = run.core.readAudio();
-  if (samples.length === 0) return;
+  if (samples.length === 0 || shown !== viewerRun) return;
   const message = new Uint8Array(2 + samples.byteLength);
   message[0] = BinaryKind.Audio;
   message.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 2);
   for (const ws of audioClients) ws.send(message);
 }
 let lastScreen = 0;
-let screenDirty = false;
+/** The frame of the last screen sent; null: send the next screen. */
+let screenFrame: number | null = null;
 let lastState = 0;
-let lastGrid: MapGrid | null = null;
 let lastGridJson = "";
 
 /** The grid only when it changed; the actors each time. */
-function sendMap(to?: ServerWebSocket<unknown>): void {
-  const grid = safely(() => run.game.grid());
+function sendMap({ grid, actors }: RunState, to?: ServerWebSocket<unknown>): void {
   const json = JSON.stringify(grid);
   if (to || json !== lastGridJson) {
     lastGridJson = json;
-    lastGrid = grid;
     for (const ws of to ? [to] : clients) ws.send(`{"type":"map","grid":${json}}`);
   }
-  const current = lastGrid;
-  send({ type: "actors", actors: current ? safely(() => run.game.actors(current)) : null }, to);
+  send({ type: "actors", actors }, to);
 }
 
 function loop(): void {
   const now = performance.now();
   const ran = live.tick(now);
-  if (ran > 0) {
-    sendNewReplayEvents();
-    if (live.audioActive) sendAudio();
-    screenDirty = true;
-  }
-  if (clients.size > 0 && screenDirty && now - lastScreen >= SCREEN_INTERVAL_MS) {
+  if (ran > 0 && live.audioActive) sendAudio();
+  sendNewEvents();
+  const frame = shown.frame();
+  const screen = clients.size > 0 && frame !== screenFrame && now - lastScreen >= SCREEN_INTERVAL_MS ? shown.screen() : null;
+  if (screen) {
     lastScreen = now;
-    screenDirty = false;
-    screenMessage.set(run.core.screen(), 1);
+    screenFrame = frame;
+    screenMessage.set(screen, 1);
     for (const ws of clients) ws.send(screenMessage);
-    if (live.overlay) send({ type: "camera", camera: safely(() => run.game.camera()) });
+    if (live.overlay) send({ type: "camera", camera: shown.camera() });
   }
   if (clients.size > 0 && now - lastState >= STATE_INTERVAL_MS) {
     lastState = now;
-    const state = safely(() => run.game.state());
-    if (state) send({ type: "state", state });
-    sendMap();
+    const runState = shown.state();
+    if (runState.state) send({ type: "state", state: runState.state });
+    sendMap(runState);
     // The whole-map view shows the screen area; the overlay gets the camera with each screen too.
-    send({ type: "camera", camera: safely(() => run.game.camera()) });
+    send({ type: "camera", camera: runState.camera });
     void sendStatus();
   }
   setTimeout(loop, live.speed === "max" && !live.paused ? 0 : 2);
@@ -370,8 +450,9 @@ Bun.serve({
       void sendStatus(ws);
       send({ type: "maps", names: run.game.allMapNames }, ws);
       void recordNames().then((names) => send({ type: "records", names }, ws));
-      if (live.replay) sendReplayEvents(ws);
-      sendMap(ws);
+      void botNames().then((names) => send({ type: "bots", names }, ws));
+      sendEvents(ws);
+      sendMap(shown.state(), ws);
     },
     close(ws) {
       clients.delete(ws);

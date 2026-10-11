@@ -1,6 +1,6 @@
 # Lab harness
 
-The harness runs the **Lab build** in libmgba from Bun. The **Viewer** shows one **Run** in the browser. See `../CONTEXT.md` for the terms and `../docs/adr/` for the decisions.
+The harness runs the **Lab build** in libmgba from Bun. The **Viewer** shows one **Run** at a time in the browser. See `../CONTEXT.md` for the terms and `../docs/adr/` for the decisions.
 
 ## Run the Viewer
 
@@ -16,7 +16,7 @@ In `lab/`: `bun run bot starter`, or `bun run bot starter full` for the `full` *
 
 There is one **Bot**, `starter`: each new step of the story goes into it, not into a new **Bot**. A **Bot** is a module in `bots/` that exports `{ name, version, goal?, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`. `must(result)` stops the Bot with an error when a result is not `done`.
 
-`harness.play(bot)` plays a **Run** and gives its result: the end reason, the frames and the **Raw inputs** from the start of `play`, and the **Milestones**. A `Harness` object plays one Run: a second `play` is an error. The end reason is one of:
+`harness.play(bot)` plays a **Run** and gives its result: the end reason, the frames and the **Raw inputs** from the start of `play`, and the **Milestones**. A `Harness` object plays one Run: a second `play` is an error. `harness.close()` closes its emulator. `Harness.open(options, run)` can also take a `Run` that the caller opened: the Harness then owns it, and closes it when the Run cannot start. The end reason is one of:
 
 - `goal`: the game reaches the **Milestone** `goal` of the Bot. The **Macro-action** that reaches it does not return to the Bot.
 - `bot stopped`: `play` of the Bot returns, or throws an error. In the second case, `harness.play` keeps the result for the Run record, then throws the error again.
@@ -76,7 +76,7 @@ Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `
 
 `bun run bot starter` (Bot version 3, goal `first-rival-battle`) leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. Then it walks to the door: the rival stops it at (7, 8) (`goTo(6, 11)` returns `interrupted` with `trigger`), and `readText()` returns `interrupted` with `battle`. In the battle against BULBASAUR, it uses TAIL WHIP, then TACKLE, and `readText()` at each text. With TACKLE only, SQUIRTLE loses. SQUIRTLE wins and grows to level 6, the rival leaves the lab, and the **Run** ends with the reason `goal` at frame 15017, with no Raw input.
 
-`bun test` runs the tests. The tests of `src/harness/harness.test.ts` and `src/harness/record.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
+`bun test` runs the tests. The tests of `src/harness/harness.test.ts`, `src/harness/record.test.ts` and `src/harness/pool.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
 ## The Run record
 
@@ -101,6 +101,18 @@ While the replay runs, the keyboard does not play, and "Revenir (L)" does not lo
 
 The server sends the events of a frame before the screen of that frame. A page that opens during a replay gets the events that it missed. At the end of the record, the game stops at its last frame: the replay of the starter record ends at frame 15017 with the same screen as the Run. "Reprendre au clavier" ends the replay: the keyboard plays the Run from that frame. "Relancer" also ends it. Then the panel clears.
 
+## Runs in parallel
+
+`RunPool` (in `src/harness/pool.ts`) plays up to 4 **Runs** at the same time. Each **Run** plays in its own Bun worker (`src/harness/worker.ts`), with its **Harness** and its **Bot**: a **Macro-action** runs its frames in one synchronous block, so a **Run** in the Viewer process would stop the Viewer. Each **Run** is one emulator, and this machine runs 4 emulators at most. A pool counts only its own **Runs**: it does not know the emulators of other processes (another Viewer, `bun run bot`, the tests). Do not start them at the same time as a full pool.
+
+- `pool.start({ bot: "starter" })` starts the **Bot** `bots/starter.ts` in a new worker, with the options of `Harness.open` (`knowledge`, `frameBudget`, `noProgressLimit`). It throws an error when `limit` **Runs** play (`new RunPool(limit)`, 4 by default). `pool.full` is true when the pool cannot start one more **Run**. A **Run** keeps its place until its worker stops, after the end of the **Run**.
+- `run.done` gives the **Run record** and the error of the **Bot** (or `null`) when the worker stops; `run.end` has the same value then, and is `null` while the worker plays. When the **Run** cannot start (no such **Bot**, no ROM), the record is `null`.
+- While the **Run** plays, `run.view` has its frame, its screen (at most 60 times a second) and its state, map grid, actors and camera (at most 10 times a second). `run.events` has the events of the **Run record** up to the end of the last **Macro-action** or **Raw input**, and all of them at the end.
+
+A **Run** in a worker gives the same **Run record** as the same **Run** alone: `src/harness/pool.test.ts` plays the starter **Bot** alone, then 4 times at the same time, and compares the records.
+
+In the **Viewer**, the panel "Runs" starts a **Bot** ("Lancer le Bot") and lists the **Runs**: the **Run** of the Viewer (keyboard or replay) and the **Runs** of the **Bots**. Select one in the list to show it: the Viewer then shows its screen, its state and its events (in the panel "Replay"). The other **Runs** do not stop. The whole-map view of another map shows the people of the **Run** of the Viewer only: for a **Run** of a **Bot**, it shows none. The **Run** of the Viewer is one of the 4 emulators, so the Viewer starts 3 **Runs** of **Bots** at most at the same time. A **Run** of a **Bot** plays at full speed, with no sound: the starter **Bot** plays to its goal in about 10 s. The keyboard, the speeds, pause and the savestate act only on the **Run** of the Viewer: while a **Run** of a **Bot** is shown, the server ignores them and the keyboard does not play. At the end of a **Run** of a **Bot**, the Viewer writes its **Run record** to `runs/`. "Rejouer" shows the **Run** of the Viewer again.
+
 ## Make the Starting save
 
 1. Start the Viewer with no `saves/start.sav`. The lab build then starts as the vanilla game: intro, title screen, new game.
@@ -120,11 +132,11 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/prompts.ts`: the text decoder, the message boxes and their text, and the yes/no.
 - `src/battle.ts`: the battle: the kind, the player's and the enemy's Pokémon from the battle data, the enemy as the player sees it, the battle menus and their cursors, the party menu of a battle, and the moves that the enemy used.
 - `src/party.ts`: the party: species, moves and PP from the encrypted Pokémon data, and level, HP and status from the party fields.
-- `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
-- `src/server.ts`: the Viewer page and its WebSocket, the wall-clock pacing of the Run, and the replay of a **Run record**.
-- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs** and the end of a **Run**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record**, `RecordPlayer` that gives its keys and its events frame by frame, and its replay), `play.ts` (the `bot` command).
+- `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**, and `readState()`, the state that the Viewer shows.
+- `src/server.ts`: the Viewer page and its WebSocket, the wall-clock pacing of the Run, the replay of a **Run record**, and the **Runs** of the pool that the Viewer starts and shows.
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs**, the end of a **Run**, and the loading of a **Bot** from `bots/`), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record**, `RecordPlayer` that gives its keys and its events frame by frame, and its replay), `pool.ts` (up to 4 **Runs** in workers) and `worker.ts` (one **Run** of the pool), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**.
-- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound; `viewer/replay.ts` is the replay panel.
+- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound; `viewer/replay.ts` is the replay panel; `viewer/runs.ts` is the panel of the **Runs**.
 
 ## Sound
 

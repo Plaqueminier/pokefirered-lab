@@ -1,7 +1,7 @@
 // Reads the DWARF debug info of a build (.elf) and gives the address and type of
 // every global variable, plus the start address of every function.
 // The result is cached next to the harness, keyed by the .elf modification time.
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 export type TypeId = string;
@@ -39,7 +39,9 @@ export async function loadSymbols(elfPath: string, cacheDir: string): Promise<Sy
   }
   const symbols = await parseDwarf(elfPath);
   await mkdir(cacheDir, { recursive: true });
-  await Bun.write(cachePath, JSON.stringify({ version: CACHE_VERSION, mtime, symbols }));
+  const tmp = `${cachePath}.${crypto.randomUUID()}`;
+  await Bun.write(tmp, JSON.stringify({ version: CACHE_VERSION, mtime, symbols }));
+  await rename(tmp, cachePath);
   return symbols;
 }
 

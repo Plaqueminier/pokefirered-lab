@@ -1,5 +1,5 @@
 import type { RunEvent } from "../src/harness/record";
-import type { ClientMessage, ReplayStatus } from "../src/protocol";
+import type { ClientMessage, ShownRun } from "../src/protocol";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
 
@@ -28,6 +28,14 @@ function eventLabel(event: Exclude<RunEvent, ActionEvent>): string {
     case "model":
       return `modèle : ${event.text}`;
   }
+}
+
+function statusText(frame: number, shown: ShownRun): string {
+  if (shown.kind === "bot") return `Run ${shown.run.id} · image ${frame}`;
+  const { replay } = shown;
+  if (!replay) return "pas de replay : le clavier joue la Run";
+  if (replay.ended) return `${replay.name} · fin du replay à l'image ${replay.frames} · ${replay.endReason}`;
+  return `${replay.name} · image ${frame} / ${replay.frames}`;
 }
 
 export type ReplayElements = {
@@ -68,15 +76,12 @@ export class ReplayPanel {
     this.render();
   }
 
-  onStatus(frame: number, replay: ReplayStatus | null): void {
+  onStatus(frame: number, shown: ShownRun): void {
     this.frame = frame;
-    if (!replay) this.events = [];
-    this.ui.end.hidden = !replay;
-    this.ui.status.textContent = !replay
-      ? "pas de replay : le clavier joue la Run"
-      : replay.ended
-        ? `${replay.name} · fin du replay à l'image ${replay.frames} · ${replay.endReason}`
-        : `${replay.name} · image ${frame} / ${replay.frames}`;
+    const keyboard = shown.kind === "viewer" && !shown.replay;
+    if (keyboard) this.events = [];
+    this.ui.end.hidden = shown.kind === "bot" || keyboard;
+    this.ui.status.textContent = statusText(frame, shown);
     this.render();
   }
 

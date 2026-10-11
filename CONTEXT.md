@@ -52,7 +52,7 @@ _Avoid_: savestate
 A snapshot of the full emulator state at one frame. It becomes invalid after each rebuild, because code addresses move.
 
 **Run**:
-One emulator instance that plays the game from a **Starting save**. The **Harness** can have several runs at the same time.
+One emulator instance that plays the game from a **Starting save**. The **Harness** can play several **Runs** at the same time; this machine runs 4 at most.
 _Avoid_: game, instance, session
 
 **Milestone**:
@@ -68,7 +68,7 @@ What a **Run** gives at its end: the end reason, the frames, the **Milestones** 
 _Avoid_: score, outcome
 
 **Viewer**:
-The web page that shows one **Run** (its screen and its state) and sends keyboard input to it, or replays a **Run record**: then the buttons of the record play the **Run**, not the keyboard. It does not emulate.
+The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. It does not emulate.
 _Avoid_: emulator, web player
 
 ## Relationships

@@ -144,9 +144,9 @@
       .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
       .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
       #notice { min-height: 1.4em; color: var(--accent); }
-      .replay-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-      .replay-head h2 { margin: 0; flex: 1; }
-      #records {
+      .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+      .panel-head h2 { margin: 0; flex: 1; }
+      .panel-head select {
         background: var(--panel);
         color: var(--text);
         border: 1px solid var(--line);
@@ -173,16 +173,16 @@
           <canvas id="overlay" width="720" height="480"></canvas>
         </div>
         <div class="controls">
-          <button id="pause">Pause</button>
-          <button data-speed="1">×1</button>
-          <button data-speed="4">×4</button>
-          <button data-speed="max">Max</button>
+          <button id="pause" data-viewer-run>Pause</button>
+          <button data-speed="1" data-viewer-run>×1</button>
+          <button data-speed="4" data-viewer-run>×4</button>
+          <button data-speed="max" data-viewer-run>Max</button>
           <button id="overlay-toggle">Calque (G)</button>
           <button id="sound" class="on">Son (M)</button>
-          <button id="quick-save">Garder l'état (K)</button>
-          <button id="quick-load">Revenir (L)</button>
-          <button id="reset">Relancer</button>
-          <button id="start-save">Écrire la sauvegarde de départ</button>
+          <button id="quick-save" data-viewer-run>Garder l'état (K)</button>
+          <button id="quick-load" data-viewer-run>Revenir (L)</button>
+          <button id="reset" data-viewer-run>Relancer</button>
+          <button id="start-save" data-viewer-run>Écrire la sauvegarde de départ</button>
         </div>
         <div class="legend" id="legend">
           <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>bloqué</span>
@@ -205,7 +205,16 @@
         </div>
         <div id="notice"></div>
         <section>
-          <div class="replay-head">
+          <div class="panel-head">
+            <h2>Runs</h2>
+            <select id="runs"></select>
+            <select id="bots"></select>
+            <button id="bot-start">Lancer le Bot</button>
+          </div>
+          <div class="muted">Les Runs de Bot jouent en même temps, à pleine vitesse et sans son. Changer de Run ne les arrête pas.</div>
+        </section>
+        <section>
+          <div class="panel-head">
             <h2>Replay</h2>
             <select id="records"></select>
             <button id="replay-start">Rejouer</button>

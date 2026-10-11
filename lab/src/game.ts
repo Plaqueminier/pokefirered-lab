@@ -151,6 +151,15 @@ export type MapActors = {
   signs: ({ found: boolean } | null)[];
 };
 
+/** Reads game memory; returns null while the game is in a state where the reads fail (boot, transitions). */
+export function safely<T>(read: () => T): T | null {
+  try {
+    return read();
+  } catch {
+    return null;
+  }
+}
+
 export class Game {
   private readonly decode: Decode;
   private readonly prompts: Prompts;

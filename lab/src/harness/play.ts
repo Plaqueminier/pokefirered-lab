@@ -1,5 +1,5 @@
-import { join, relative } from "node:path";
-import { type Bot, Harness, KNOWLEDGE_LEVELS } from "./harness";
+import { relative } from "node:path";
+import { Harness, KNOWLEDGE_LEVELS, loadBot } from "./harness";
 import { writeRecord } from "./record";
 
 const [name, level = "player"] = process.argv.slice(2);
@@ -8,11 +8,10 @@ if (!name || !knowledge) {
   console.error("Usage: bun run bot <name> [player|full]");
   process.exit(1);
 }
-const bot: Bot = (await import(join(import.meta.dir, "..", "..", "bots", `${name}.ts`))).default;
-if (typeof bot?.play !== "function") {
-  console.error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
+const bot = await loadBot(name).catch((error: unknown) => {
+  console.error(String(error));
   process.exit(1);
-}
+});
 
 const harness = await Harness.open({
   knowledge,

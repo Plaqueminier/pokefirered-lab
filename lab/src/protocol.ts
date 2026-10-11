@@ -17,6 +17,10 @@ export const Keys = {
   L: 1 << 9,
 } as const;
 
+/** The Viewer shows the screen and the state of a Run at most at these rates. */
+export const SCREEN_INTERVAL_MS = 1000 / 60;
+export const STATE_INTERVAL_MS = 100;
+
 /** First byte of a binary message. */
 export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 
@@ -24,8 +28,13 @@ export type Speed = 1 | 4 | "max";
 
 export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason };
 
+export type RunSummary = { id: number; bot: string; playing: boolean; endReason: EndReason | null; error: string | null };
+
+/** The Run that the Viewer shows: its own Run (keyboard or replay), or a Run of a Bot. */
+export type ShownRun = { kind: "viewer"; replay: ReplayStatus | null } | { kind: "bot"; run: RunSummary };
+
 export type ServerMessage =
-  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean; replay: ReplayStatus | null }
+  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean; runs: RunSummary[]; shown: ShownRun }
   | { type: "state"; state: GameState }
   /** Sent when the map grid changes (new map, or a cell changed). */
   | { type: "map"; grid: MapGrid | null }
@@ -38,7 +47,8 @@ export type ServerMessage =
   | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string }
   | { type: "records"; names: string[] }
-  /** All the events of the replay up to now. Sent before the screen of the same frames. */
+  | { type: "bots"; names: string[] }
+  /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   | { type: "events"; events: RunEvent[] };
 
 export type ClientMessage =
@@ -55,4 +65,6 @@ export type ClientMessage =
   | { type: "reset" }
   | { type: "write-start-save" }
   | { type: "replay"; name: string }
-  | { type: "end-replay" };
+  | { type: "end-replay" }
+  | { type: "start-bot"; name: string }
+  | { type: "show"; runId: number | null };

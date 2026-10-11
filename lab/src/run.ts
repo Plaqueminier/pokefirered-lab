@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { CACHE_DIR, Core } from "./core";
-import { Game } from "./game";
+import { type Camera, Game, type GameState, type MapActors, type MapGrid, safely } from "./game";
 import { Memory } from "./memory";
 import { loadSymbols } from "./symbols";
 
@@ -12,6 +12,8 @@ export const ROM_FILE = join(REPO_DIR, `${ROM_NAME}.gba`);
 const ROM_ADDRESS = 0x08000000;
 
 export type RunOrigin = { rom: string; seed: number; startSave: string | null };
+
+export type RunState = { state: GameState | null; grid: MapGrid | null; actors: MapActors | null; camera: Camera | null };
 
 export class Run {
   #origin: RunOrigin;
@@ -54,6 +56,12 @@ export class Run {
   runFrame(keys: number): void {
     this.core.setKeys(keys);
     this.core.runFrame();
+  }
+
+  readState(): RunState {
+    const { game } = this;
+    const grid = safely(() => game.grid());
+    return { state: safely(() => game.state()), grid, actors: grid && safely(() => game.actors(grid)), camera: safely(() => game.camera()) };
   }
 
   screenHash(): string {
