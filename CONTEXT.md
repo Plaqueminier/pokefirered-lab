@@ -25,8 +25,12 @@ An AI coding assistant that writes or changes the code of a **Bot**. It does not
 _Avoid_: bot
 
 **Macro-action**:
-One game action that a **Bot** asks the **Harness** to do, for example go to a cell, talk to a person or use a move. It runs until it is complete or until the game interrupts it, and it never makes a game decision.
+One game action that a **Bot** asks the **Harness** to do, for example go to a cell, talk to a person or use a move. It runs until it is complete or until the game interrupts it, and it never makes a game decision. Its result is `done`, `impossible` (it cannot start or continue), `blocked` (a person stays in the way) or `interrupted`, with an **Interruption** as the reason.
 _Avoid_: command, move (a move is a Pokémon attack)
+
+**Interruption**:
+An event of the game that stops a **Macro-action**: a coord trigger, a trainer who sees the player, another script, a battle, or an arrival on a map that is not on the route. The **Macro-action** returns at the first frame of the interruption. That frame is not always a **Decision point**, but the game is also frozen there.
+_Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
 **Decision point**:
 A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
@@ -67,7 +71,7 @@ _Avoid_: emulator, web player
 
 - The **Harness** runs a **Lab build** or a **Vanilla build**, and starts it from a **Starting save**.
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
-- A **Bot** gets control only at a **Decision point**, and sees the game through the **Knowledge level** of its **Run**.
+- A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
 - Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, its goal is reached, its frame budget is spent, or its **Bot** makes no progress.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.

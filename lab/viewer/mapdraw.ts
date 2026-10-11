@@ -1,6 +1,6 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
-import type { MapActors, MapGrid } from "../src/game";
+import type { ConnectionSide, Direction, MapActors, MapGrid, Warp } from "../src/game";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
 export type View = { x: number; y: number; cell: number };
@@ -150,7 +150,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
     ctx.font = `600 ${Math.round(13 * (window.devicePixelRatio || 1))}px ui-sans-serif, system-ui`;
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     for (const conn of grid.connections) {
-      const label = `${{ north: "↑", south: "↓", west: "←", east: "→" }[conn.direction] ?? ""} ${conn.map}`;
+      const label = `${SIDE_ARROW[conn.direction]} ${conn.map}`;
       const at: Record<string, [number, number]> = {
         north: [grid.mapWidth / 2, -1.5],
         south: [grid.mapWidth / 2, grid.mapHeight + 1.5],
@@ -164,8 +164,26 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   ctx.restore();
 }
 
-const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: "sud", 2: "nord", 3: "ouest", 4: "est" };
+export const DIRECTION_NAME: Record<Direction, string> = { north: "nord", south: "sud", west: "ouest", east: "est" };
+export const SIDE_NAME: Record<ConnectionSide, string> = { ...DIRECTION_NAME, dive: "plongée", emerge: "remontée" };
+const SIDE_ARROW: Record<ConnectionSide, string> = { north: "↑", south: "↓", west: "←", east: "→", dive: "", emerge: "" };
+const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: DIRECTION_NAME.south, 2: DIRECTION_NAME.north, 3: DIRECTION_NAME.west, 4: DIRECTION_NAME.east };
 const KIND_LABEL: Record<string, string> = { "#": "bloqué", "~": "eau (Surf)", '"': "hautes herbes", ".": "libre", "^": "rebord (saut vers le nord)", v: "rebord (saut vers le sud)", "<": "rebord (saut vers l'ouest)", ">": "rebord (saut vers l'est)" };
+
+const toward = (d: Direction) => (d === "west" || d === "east" ? "l'" : "le ") + DIRECTION_NAME[d];
+
+export function howLabel(w: Warp): string {
+  switch (w.how) {
+    case "step":
+      return "marcher dessus";
+    case "press":
+      return w.from.x === w.x && w.from.y === w.y
+        ? `se tenir dessus et pousser vers ${toward(w.direction)}`
+        : `pousser vers ${toward(w.direction)} depuis (${w.from.x}, ${w.from.y})`;
+    case "none":
+      return "inactif : la case n'est pas une case de warp";
+  }
+}
 
 /** Text for the tooltip of one cell. */
 export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: number): string | null {
@@ -183,8 +201,7 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
   ];
   for (const w of grid.warps) {
     if (w.x !== x || w.y !== y) continue;
-    const how = { step: "marcher dessus", press: "se tenir dessus et pousser vers la direction", none: "inactif : la case n'est pas une case de warp" }[w.how];
-    lines.push(`warp → ${w.to} (${how})`);
+    lines.push(`warp → ${w.to} (${howLabel(w)})`);
   }
   grid.triggers.forEach((t, k) => {
     if (t.x !== x || t.y !== y) return;

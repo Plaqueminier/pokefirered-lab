@@ -1,7 +1,7 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
-import { describe, draw } from "./mapdraw";
+import { describe, draw, howLabel, SIDE_NAME } from "./mapdraw";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -366,9 +366,6 @@ function showPreview(next: MapGrid | null, nextActors: MapActors | null): void {
   drawMap();
 }
 
-const HOW_LABEL = { step: "marcher dessus", press: "pousser", none: "inactif" };
-const SIDE_LABEL: Record<string, string> = { north: "nord", south: "sud", west: "ouest", east: "est" };
-
 function linkButton(label: string, group: number, num: number): HTMLButtonElement {
   const b = document.createElement("button");
   b.className = "link";
@@ -392,8 +389,8 @@ function renderMapLists(): void {
   }
   $("map-title").textContent = `${preview ? "Aperçu" : "Carte du joueur"} · ${g.name} (${g.mapWidth}×${g.mapHeight})`;
   exits.replaceChildren(
-    ...g.connections.map((c) => linkButton(`bord ${SIDE_LABEL[c.direction] ?? c.direction} → ${c.map}`, c.group, c.num)),
-    ...g.warps.map((w) => linkButton(`warp (${w.x}, ${w.y}) → ${w.to} · ${HOW_LABEL[w.how]}`, w.group, w.num)),
+    ...g.connections.map((c) => linkButton(`bord ${SIDE_NAME[c.direction]} → ${c.map}`, c.group, c.num)),
+    ...g.warps.map((w) => linkButton(`warp (${w.x}, ${w.y}) → ${w.to} · ${howLabel(w)}`, w.group, w.num)),
   );
   if (!exits.childElementCount) exits.textContent = "aucune";
   const stopLines: string[] = [];

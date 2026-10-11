@@ -12,10 +12,23 @@ const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
 // For substruct order n = personality % 24, the position of the growth substruct (species).
 const GROWTH_POSITION = [0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3];
-// Ledge behaviors, as the arrow of the jump direction.
-const MB_JUMP: Record<number, string> = { 0x38: ">", 0x39: "<", 0x3a: "^", 0x3b: "v" };
 const MB_TALL_GRASS = 0x02;
 export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
+export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
+const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
+// From IsWarpMetatileBehavior, TryArrowWarp and TryDoorWarp in field_control_avatar.c.
+const STEP_WARPS = new Set(["MB_CAVE_DOOR", "MB_LADDER", "MB_UP_ESCALATOR", "MB_DOWN_ESCALATOR", "MB_REGULAR_WARP", "MB_UNION_ROOM_WARP", "MB_FALL_WARP", "MB_LAVARIDGE_1F_WARP"]);
+const PUSH_WARPS: Record<string, { direction: Direction; from: "cell" | "below" }> = {
+  MB_NORTH_ARROW_WARP: { direction: "north", from: "cell" },
+  MB_SOUTH_ARROW_WARP: { direction: "south", from: "cell" },
+  MB_WEST_ARROW_WARP: { direction: "west", from: "cell" },
+  MB_EAST_ARROW_WARP: { direction: "east", from: "cell" },
+  MB_UP_LEFT_STAIR_WARP: { direction: "west", from: "cell" },
+  MB_DOWN_LEFT_STAIR_WARP: { direction: "west", from: "cell" },
+  MB_UP_RIGHT_STAIR_WARP: { direction: "east", from: "cell" },
+  MB_DOWN_RIGHT_STAIR_WARP: { direction: "east", from: "cell" },
+  MB_WARP_DOOR: { direction: "north", from: "below" },
+};
 const BG_EVENT_HIDDEN_ITEM = 7;
 const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
@@ -24,11 +37,13 @@ const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
-const DIRECTION_NAMES: Record<number, string> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
+const CONNECTION_SIDES: Record<number, ConnectionSide> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
 export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 const T_NOT_MOVING = 0;
+// The enum in script.c is RUNNING, WAITING, SHUTDOWN.
+const SCRIPT_CONTEXT_SHUTDOWN = 2;
 
 export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number };
 
@@ -48,6 +63,16 @@ export type WaitingFor = "walk" | "busy";
 export type Direction = "south" | "north" | "west" | "east";
 
 export type PlayerPosition = { x: number; y: number; facing: Direction };
+
+type WarpHow = { how: "step" } | { how: "press"; from: { x: number; y: number }; direction: Direction } | { how: "none" };
+
+export type WarpExit = { x: number; y: number; to: string; warpId: number } & WarpHow;
+
+export type Warp = WarpExit & { group: number; num: number; behavior: string };
+
+export type GameInterruption = "trigger" | "trainer" | "script" | "battle";
+
+export type ConnectionSide = Direction | "dive" | "emerge";
 
 export type MapGrid = {
   /** "group.num": changes when the map changes. */
@@ -70,9 +95,8 @@ export type MapGrid = {
   /** Metatile behavior id per cell; names in behaviorNames. */
   behaviors: number[];
   behaviorNames: Record<number, string>;
-  /** `how`: what the player does to take the warp; a warp event on a normal cell does nothing. */
-  warps: { x: number; y: number; to: string; group: number; num: number; behavior: string; how: "step" | "press" | "none" }[];
-  connections: { direction: string; offset: number; map: string; group: number; num: number }[];
+  warps: Warp[];
+  connections: { direction: ConnectionSide; offset: number; map: string; group: number; num: number }[];
   signs: { x: number; y: number; kind: "sign" | "hidden-item" }[];
   /** Cells that start a script when the player steps on them, if `variable` has `value`. */
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
@@ -169,10 +193,42 @@ export class Game {
   // DoCB1_Overworld (overworld.c) reads the player input only while the field controls are unlocked.
   private canWalk(): boolean {
     return (
-      !this.mem.global("sLockFieldControls").int() &&
+      !this.fieldLocked() &&
       this.mem.global("gPlayerAvatar").field("tileTransitionState").int() === T_NOT_MOVING &&
       !this.mem.global("gPaletteFade").field("active").int()
     );
+  }
+
+  fieldLocked(): boolean {
+    return this.mem.global("sLockFieldControls").int() !== 0;
+  }
+
+  interruption(): GameInterruption | null {
+    if (this.battleStarting()) return "battle";
+    if (!this.scriptRunning()) return null;
+    const player = this.player();
+    const grid = this.grid();
+    if (!player || !grid) return "script";
+    const actors = this.buildActors(grid, this.mem.global("gMapHeader"), true);
+    const at = (x: number, y: number) => x === player.x && y === player.y;
+    if (grid.triggers.some((t, i) => actors.triggers[i] && at(t.x, t.y))) return "trigger";
+    if (actors.people.some((p) => p.trainer?.sight.some(([x, y]) => at(x, y)))) return "trainer";
+    return "script";
+  }
+
+  // The status is 0 (RUNNING) from boot until the first overworld frame sets it.
+  private scriptRunning(): boolean {
+    return this.context().mode === "overworld" && this.mem.global("sGlobalScriptContextStatus").int() !== SCRIPT_CONTEXT_SHUTDOWN;
+  }
+
+  private battleStarting(): boolean {
+    if (this.context().mode === "battle") return true;
+    const tasks = this.mem.global("gTasks");
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks.at(i);
+      if (task.field("isActive").int() && functionName(this.mem.symbols, task.field("func").pointer()) === "Task_BattleStart") return true;
+    }
+    return false;
   }
 
   map(): GameState["map"] {
@@ -289,6 +345,26 @@ export class Game {
     return this.mapNames[group]?.[num] ?? `${group}.${num}`;
   }
 
+  private mapId(name: string): { group: number; num: number } | null {
+    for (const [group, names] of this.mapNames.entries()) {
+      const num = names.indexOf(name);
+      if (num >= 0) return { group, num };
+    }
+    return null;
+  }
+
+  mapView(name: string): { grid: MapGrid; actors: MapActors } | null {
+    const id = this.mapId(name);
+    if (!id) return null;
+    const here = this.location();
+    if (id.group === here.group && id.num === here.num) {
+      const grid = this.grid();
+      if (grid) return { grid, actors: this.buildActors(grid, this.mem.global("gMapHeader"), true) };
+    }
+    const grid = this.gridOf(id.group, id.num);
+    return grid && { grid, actors: this.actorsOf(grid) };
+  }
+
   /** All map names, by group then number. */
   get allMapNames(): string[][] {
     return this.mapNames;
@@ -342,10 +418,13 @@ export class Game {
       behaviorNames[behavior] ??= this.behaviorNames.get(behavior) ?? `0x${behavior.toString(16)}`;
       blocks.push(block);
       behaviors.push(behavior);
+      // Ledge metatiles have the collision bit set; the game checks the jump before the collision.
       kinds +=
-        block === 0x03ff || block & 0x0c00 ? KIND.blocked
+        MB_JUMP[behavior] ??
+        (block === 0x03ff || block & 0x0c00 ? KIND.blocked
         : behavior < surfable.length && surfable.at(behavior).int() & 1 ? KIND.water
-        : (MB_JUMP[behavior] ?? (behavior === MB_TALL_GRASS ? KIND.grass : KIND.open));
+        : behavior === MB_TALL_GRASS ? KIND.grass
+        : KIND.open);
     }
 
     const connectionsRef = header.field("connections");
@@ -356,8 +435,10 @@ export class Game {
         const c = list.field("connections").at(i);
         const toGroup = c.field("mapGroup").int();
         const toNum = c.field("mapNum").int();
+        const direction = CONNECTION_SIDES[c.field("direction").int()];
+        if (!direction) continue;
         connections.push({
-          direction: DIRECTION_NAMES[c.field("direction").int()] ?? `#${c.field("direction").int()}`,
+          direction,
           offset: c.field("offset").int() | 0,
           map: this.mapName(toGroup, toNum),
           group: toGroup,
@@ -388,11 +469,10 @@ export class Game {
         const gy = y + border;
         const inside = gx >= 0 && gy >= 0 && gx < width && gy < height;
         const behavior = inside ? behaviorNames[behaviors[gy * width + gx]] : "?";
-        // Arrow and stair warps run when the player pushes against them (field_control_avatar.c).
-        const how = /ARROW_WARP|STAIR_WARP/.test(behavior) ? "press" : /WARP|DOOR|LADDER|ESCALATOR|HOLE/.test(behavior) ? "step" : "none";
         const toGroup = w.field("mapGroup").int();
         const toNum = w.field("mapNum").int();
-        return { x, y, to: this.mapName(toGroup, toNum), group: toGroup, num: toNum, behavior, how };
+        const warp = { x, y, to: this.mapName(toGroup, toNum), group: toGroup, num: toNum, warpId: w.field("warpId").int(), behavior };
+        return { ...warp, ...warpHow(x, y, behavior) };
       }),
       connections,
       signs: this.eventList(header, "bgEvents", "bgEventCount").map((e) => ({
@@ -506,4 +586,10 @@ export class Game {
     });
     return { player, people, triggers, signs };
   }
+}
+
+function warpHow(x: number, y: number, behavior: string): WarpHow {
+  const push = PUSH_WARPS[behavior];
+  if (push) return { how: "press", from: { x, y: push.from === "below" ? y + 1 : y }, direction: push.direction };
+  return STEP_WARPS.has(behavior) ? { how: "step" } : { how: "none" };
 }

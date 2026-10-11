@@ -16,7 +16,7 @@ const harness = await Harness.open({
   onAction: ({ action, result }) => {
     const { name, ...args } = action;
     const call = `${name}(${Object.values(args).join(", ")})`;
-    const reason = result.status === "impossible" ? `  ${result.reason}` : "";
+    const reason = "reason" in result ? `  ${result.reason}` : "";
     console.log(`${call.padEnd(24)} ${result.status.padEnd(10)} ${String(result.frames).padStart(6)} frames${reason}`);
   },
 });

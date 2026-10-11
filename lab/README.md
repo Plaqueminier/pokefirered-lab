@@ -16,6 +16,15 @@ In `lab/`: `bun run bot stairs`. The command runs the **Bot** `bots/stairs.ts` h
 
 A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`.
 
+`goTo(x, y, map?)` walks to a cell of the player's map, or of the map with the name `map`, for example `goTo(12, 3, "PalletTown")`. The route goes through warps, map edges and ledges (only in their jump direction). People are obstacles. The player takes a stair or arrow warp when it stands on the cell and pushes toward its direction, and a door when it pushes north from the cell below. The result is one of:
+
+- `done`: the player is on the cell.
+- `impossible`: there is no route, even with no people on the maps; or the player cannot walk now; or the player does not move and no person is in the way; or a warp does not start. When `goTo` finds this before the first move, no frames run.
+- `blocked`: a person stays in the way. `goTo` waits and computes the route again; it stops when a person stops the player three times on the same cell.
+- `interrupted`: the game stopped the walk, with the reason `trigger` (coord trigger), `trainer` (a trainer sees the player), `script` (another script), `battle` (a wild battle starts) or `map` (the player arrived on a map that is not on the route). `goTo` stops at the first frame of the interruption and does nothing more. For `map`, that frame is when the warp ends.
+
+`bun run bot oak` leaves the house and walks north in Pallet Town until Professor Oak stops the player: `goTo(12, 1)` returns `interrupted` with the reason `trigger`.
+
 `bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
 ## Make the Starting save
@@ -33,10 +42,10 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/core.ts`: one emulator instance (bun:ffi).
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
-- `src/game.ts`: FireRed state (map, party, badges, money, context), the grid of the player's map or of any map from ROM, and the actors on it (people, trainer sight, triggers).
+- `src/game.ts`: FireRed state (map, party, badges, money, context), the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
 - `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
-- `src/harness/`: the API of the **Bot**: `harness.ts` (observation and **Macro-actions**), `path.ts` (A* on the map grid), `play.ts` (the `bot` command).
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation and **Macro-actions**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**.
 - `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
 
