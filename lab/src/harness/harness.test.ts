@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import oak from "../../bots/oak";
-import stairs from "../../bots/stairs";
 import { ROM_FILE, START_SAVE } from "../run";
 import { type Bot, Harness } from "./harness";
 
@@ -28,16 +27,6 @@ const OAK_TEXTS = [
 ];
 
 describe.skipIf(!ready)("Harness on the Starting save", () => {
-  test("the stairs Bot reaches the stairs, with the same frames and results on each start", async () => {
-    const first = await play(stairs);
-    const second = await play(stairs);
-    expect(first.actions.map((e) => [e.action, e.result.status])).toEqual([[{ name: "goTo", x: 10, y: 2 }, "done"]]);
-    expect(first.observation.map.name).toBe("PalletTown_PlayersHouse_2F");
-    expect(first.observation.player).toMatchObject({ x: 10, y: 2 });
-    expect(first.observation.waitingFor).toEqual({ kind: "walk" });
-    expect(second).toEqual(first);
-  });
-
   test("the oak Bot follows Oak to his lab with readText only, with the same frames on each start", async () => {
     const first = await play(oak);
     const second = await play(oak);

@@ -12,7 +12,7 @@ Requirements: Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfd
 
 ## Run a Bot
 
-In `lab/`: `bun run bot stairs`. The command runs the **Bot** `bots/stairs.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
+In `lab/`: `bun run bot oak`. The command runs the **Bot** `bots/oak.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
 
 A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`.
 
