@@ -6,7 +6,7 @@ The harness runs the **Lab build** in libmgba from Bun. The **Viewer** shows one
 
 1. At the repo root: `make lab -j8`. This gives `pokefirered_modern_lab.gba` and its `.elf` with debug info.
 2. In `lab/`: `bun install`, then `bun run viewer`.
-3. Open http://localhost:8766.
+3. Open http://localhost:8766. To use another port: `LAB_PORT=8767 bun run viewer`.
 
 Requirements: Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C compiler. The harness compiles `shim/shim.c` into `.cache/` when the file changes.
 
@@ -89,6 +89,18 @@ After `play`, `harness.record()` gives the **Run record**: the whole Run from fr
 
 `replay(record)` (in `src/harness/record.ts`) starts a new Run, runs the buttons alone, and gives the `map`, `battle` and `milestone` events, the last frame and the screen hash. The `action` and `model` events come from the Bot, not from the buttons, so a replay does not give them. `replay` does not compare its events with the record: the caller does, as `src/harness/record.test.ts` does. It does not accept a record when the ROM hash, the seed or the Starting save hash is not the same. A rebuild of the same code at the same repo path keeps the ROM hash: the record of the starter Bot replays after `touch src/main.c && make lab` with the same events, frames and screen.
 
+## Replay a Run record in the Viewer
+
+The panel "Replay" of the Viewer lists the files of `runs/` (the list loads when the page opens). "Rejouer" starts the Run again from the Starting save and runs the buttons of the record at ×1, with sound after the first click or key press. The replay has no pauses: the record has no time for the thinking of the Bot (ADR 0002). The Viewer does not start a file that is not a Run record. It also does not start a record with another ROM hash, seed or Starting save hash: then the Run starts again from the Starting save and the keyboard plays it.
+
+While the replay runs, the keyboard does not play, and "Revenir (L)" does not load the savestate. Pause and the speeds work. The panel shows:
+
+- the current **Macro-action** or **Raw input**, from the frame where the Bot asked for it. When its frames end, the panel adds its result and its texts.
+- the last text of a model Bot (`model` events).
+- the events of the record (actions, maps, battles, **Milestones**, model texts), each one at its frame.
+
+The server sends the events of a frame before the screen of that frame. A page that opens during a replay gets the events that it missed. At the end of the record, the game stops at its last frame: the replay of the starter record ends at frame 15017 with the same screen as the Run. "Reprendre au clavier" ends the replay: the keyboard plays the Run from that frame. "Relancer" also ends it. Then the panel clears.
+
 ## Make the Starting save
 
 1. Start the Viewer with no `saves/start.sav`. The lab build then starts as the vanilla game: intro, title screen, new game.
@@ -109,10 +121,10 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/battle.ts`: the battle: the kind, the player's and the enemy's Pokémon from the battle data, the enemy as the player sees it, the battle menus and their cursors, the party menu of a battle, and the moves that the enemy used.
 - `src/party.ts`: the party: species, moves and PP from the encrypted Pokémon data, and level, HP and status from the party fields.
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
-- `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
-- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs** and the end of a **Run**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record** and its replay), `play.ts` (the `bot` command).
+- `src/server.ts`: the Viewer page and its WebSocket, the wall-clock pacing of the Run, and the replay of a **Run record**.
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs** and the end of a **Run**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record**, `RecordPlayer` that gives its keys and its events frame by frame, and its replay), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**.
-- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
+- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound; `viewer/replay.ts` is the replay panel.
 
 ## Sound
 

@@ -5,7 +5,7 @@ import type { Game, Milestone } from "../game";
 import { Run, type RunOrigin } from "../run";
 import type { ActionEntry, Bot, KnowledgeLevel, RunResult } from "./harness";
 
-const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
+export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
 export type ButtonHold = [keys: number, frames: number];
 
@@ -65,20 +65,85 @@ export class GameWatch {
   }
 }
 
+export class RecordPlayer {
+  readonly frames: number;
+  #frame = 0;
+  #hold = 0;
+  #inHold = 0;
+  #event = 0;
+  readonly #record: RunRecord;
+
+  constructor(record: RunRecord) {
+    this.#record = record;
+    this.frames = record.buttons.reduce((frames, [, count]) => frames + count, 0);
+  }
+
+  get frame(): number {
+    return this.#frame;
+  }
+
+  get ended(): boolean {
+    return this.#frame >= this.frames;
+  }
+
+  next(): number {
+    if (this.ended) throw new Error("the Run record has no more frames");
+    const [keys, count] = this.#record.buttons[this.#hold];
+    if (++this.#inHold === count) {
+      this.#hold++;
+      this.#inHold = 0;
+    }
+    this.#frame++;
+    return keys;
+  }
+
+  get result(): RunResult {
+    return this.#record.result;
+  }
+
+  played(): RunEvent[] {
+    const { events } = this.#record;
+    while (this.#event < events.length && events[this.#event].frame <= this.#frame) this.#event++;
+    return events.slice(0, this.#event);
+  }
+}
+
 export type Replay = { events: GameEvent[]; frame: number; screen: string };
+
+export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin)[] {
+  return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
+}
+
+const EVENT_TYPES = new Set<unknown>(["action", "map", "battle", "milestone", "model"] satisfies RunEvent["type"][]);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isRunEvent(value: unknown): value is RunEvent {
+  if (!isObject(value) || !Number.isInteger(value.frame) || !EVENT_TYPES.has(value.type)) return false;
+  return value.type !== "action" || (isObject(value.action) && isObject(value.result));
+}
+
+export function isRunRecord(value: unknown): value is RunRecord {
+  if (!isObject(value) || !isObject(value.header) || !isObject(value.result)) return false;
+  const { buttons, events } = value;
+  if (!Array.isArray(buttons) || !Array.isArray(events)) return false;
+  const holdsOk = buttons.every((hold) => Array.isArray(hold) && Number.isInteger(hold[0]) && Number.isInteger(hold[1]) && hold[1] > 0);
+  return holdsOk && events.every((event, i) => isRunEvent(event) && (i === 0 || events[i - 1].frame <= event.frame));
+}
 
 export async function replay(record: RunRecord): Promise<Replay> {
   const run = await Run.open();
   try {
-    const differences = (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
+    const differences = originDifferences(run, record);
     if (differences.length > 0) throw new Error(`the Run record does not replay here: different ${differences.join(", ")}`);
     const watch = new GameWatch(run.game);
     const events: GameEvent[] = [];
-    for (const [keys, frames] of record.buttons) {
-      for (let i = 0; i < frames; i++) {
-        run.runFrame(keys);
-        events.push(...watch.onFrame(run.frame));
-      }
+    const player = new RecordPlayer(record);
+    while (!player.ended) {
+      run.runFrame(player.next());
+      events.push(...watch.onFrame(run.frame));
     }
     return { events, frame: run.frame, screen: run.screenHash() };
   } finally {

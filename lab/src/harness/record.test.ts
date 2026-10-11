@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import starter from "../../bots/starter";
 import { ROM_FILE, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
-import { type ButtonHold, replay } from "./record";
+import { isRunRecord, RecordPlayer, replay, type RunRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -15,9 +15,59 @@ function playStarter() {
   return starterRun;
 }
 
-function frameCount(buttons: ButtonHold[]): number {
-  return buttons.reduce((frames, [, count]) => frames + count, 0);
-}
+const result: RunResult = { endReason: "goal", frames: 6, milestones: [], rawInputs: 0 };
+const header = { rom: "rom", seed: 1, startSave: null, knowledge: "player", bot: { name: "test", version: "1" } } as const;
+
+describe("RecordPlayer", () => {
+  test("it gives the keys of each frame from frame 0, then it ends", () => {
+    const record: RunRecord = { header, buttons: [[0, 2], [1, 3], [64, 1]], events: [], result };
+    const player = new RecordPlayer(record);
+    expect(player.frames).toBe(6);
+    const keys: number[] = [];
+    while (!player.ended) keys.push(player.next());
+    expect(keys).toEqual([0, 0, 1, 1, 1, 64]);
+    expect(player.frame).toBe(6);
+    expect(() => player.next()).toThrow("the Run record has no more frames");
+  });
+
+  test("it gives the events up to the current frame: an action from the frame where the Bot asked for it", () => {
+    const goTo = { type: "action", frame: 2, action: { name: "goTo", x: 1, y: 2 }, result: { status: "done", frames: 3 } } as const;
+    const map = { type: "map", frame: 2, map: "PalletTown" } as const;
+    const model = { type: "model", frame: 5, text: "I go north." } as const;
+    const milestone = { type: "milestone", frame: 6, milestone: "has-pokemon" } as const;
+    const record: RunRecord = { header, buttons: [[0, 6]], events: [goTo, map, model, milestone], result };
+    const player = new RecordPlayer(record);
+    const playedAt: [number, number][] = [[player.frame, player.played().length]];
+    while (!player.ended) {
+      player.next();
+      playedAt.push([player.frame, player.played().length]);
+    }
+    expect(playedAt).toEqual([[0, 0], [1, 0], [2, 2], [3, 2], [4, 2], [5, 3], [6, 4]]);
+    expect(player.played()).toEqual([goTo, map, model, milestone]);
+    expect(player.result).toEqual(result);
+  });
+});
+
+describe("isRunRecord", () => {
+  const record = { header, buttons: [[0, 6]], events: [{ type: "map", frame: 2, map: "PalletTown" }], result };
+
+  test("it accepts a Run record", () => {
+    expect(isRunRecord(record)).toBe(true);
+    expect(isRunRecord(JSON.parse(JSON.stringify(record)))).toBe(true);
+  });
+
+  test("it refuses a file with no header or result, bad button holds, or events that are not in frame order", () => {
+    expect(isRunRecord(null)).toBe(false);
+    expect(isRunRecord({ ...record, header: null })).toBe(false);
+    expect(isRunRecord({ ...record, result: null })).toBe(false);
+    expect(isRunRecord({ ...record, buttons: [[0, 0]] })).toBe(false);
+    expect(isRunRecord({ ...record, events: [null] })).toBe(false);
+    expect(isRunRecord({ ...record, events: [{ type: "map" }] })).toBe(false);
+    expect(isRunRecord({ ...record, events: [{ type: "dance", frame: 1 }] })).toBe(false);
+    expect(isRunRecord({ ...record, events: [{ type: "action", frame: 1 }] })).toBe(false);
+    expect(isRunRecord({ ...record, events: [{ type: "map", frame: 3, map: "A" }, { type: "map", frame: 2, map: "B" }] })).toBe(false);
+  });
+});
 
 describe.skipIf(!ready)("Run record on the Starting save", () => {
   test("the Run record of the starter Bot has its header, its buttons at each frame and its events", async () => {
@@ -29,7 +79,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(record.header.startSave).toMatch(/^[0-9a-f]{64}$/);
     expect(record.result).toEqual(result);
 
-    expect(frameCount(record.buttons)).toBe(harness.frame);
+    expect(new RecordPlayer(record).frames).toBe(harness.frame);
     record.buttons.forEach(([keys], i) => expect(keys).not.toBe(record.buttons[i - 1]?.[0]));
 
     const actions = record.events.flatMap((e) => (e.type === "action" ? [e.action.name] : []));
@@ -81,9 +131,9 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(await harness.play(starter)).toEqual({ endReason: "frame budget", frames: 2000, milestones: [], rawInputs: 0 });
     expect(harness.frame).toBe(start + 2000);
     expect(harness.actions.reduce((frames, e) => frames + e.result.frames, 0)).toBeLessThan(2000);
-    const { buttons, result } = harness.record();
-    expect(frameCount(buttons)).toBe(start + 2000);
-    expect(result.endReason).toBe("frame budget");
+    const record = harness.record();
+    expect(new RecordPlayer(record).frames).toBe(start + 2000);
+    expect(record.result.endReason).toBe("frame budget");
   });
 
   test("each Raw input of the play counts in the Run result and is an event of the Run record, as the text of a model Bot", async () => {

@@ -1,5 +1,7 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
 import type { Camera, GameState, MapActors, MapGrid } from "./game";
+import type { EndReason } from "./harness/harness";
+import type { RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -20,8 +22,10 @@ export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 
 export type Speed = 1 | 4 | "max";
 
+export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason };
+
 export type ServerMessage =
-  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean }
+  | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean; replay: ReplayStatus | null }
   | { type: "state"; state: GameState }
   /** Sent when the map grid changes (new map, or a cell changed). */
   | { type: "map"; grid: MapGrid | null }
@@ -32,7 +36,10 @@ export type ServerMessage =
   | { type: "preview"; grid: MapGrid | null; actors: MapActors | null }
   /** With each screen, while the screen overlay is on. */
   | { type: "camera"; camera: Camera | null }
-  | { type: "notice"; text: string };
+  | { type: "notice"; text: string }
+  | { type: "records"; names: string[] }
+  /** All the events of the replay up to now. Sent before the screen of the same frames. */
+  | { type: "events"; events: RunEvent[] };
 
 export type ClientMessage =
   | { type: "keys"; keys: number }
@@ -46,4 +53,6 @@ export type ClientMessage =
   | { type: "quick-save" }
   | { type: "quick-load" }
   | { type: "reset" }
-  | { type: "write-start-save" };
+  | { type: "write-start-save" }
+  | { type: "replay"; name: string }
+  | { type: "end-replay" };

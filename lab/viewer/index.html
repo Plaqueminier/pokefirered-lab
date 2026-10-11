@@ -144,6 +144,19 @@
       .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
       .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
       #notice { min-height: 1.4em; color: var(--accent); }
+      .replay-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+      .replay-head h2 { margin: 0; flex: 1; }
+      #records {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font: inherit;
+        max-width: 320px;
+      }
+      #model { color: var(--accent); white-space: pre-wrap; }
+      #events { max-height: 180px; overflow: auto; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
       kbd {
         font: 11px ui-monospace, Menlo, monospace;
         border: 1px solid var(--line);
@@ -191,6 +204,19 @@
           Survolez une case avec le calque pour voir ses données.
         </div>
         <div id="notice"></div>
+        <section>
+          <div class="replay-head">
+            <h2>Replay</h2>
+            <select id="records"></select>
+            <button id="replay-start">Rejouer</button>
+            <button id="replay-end" hidden>Reprendre au clavier</button>
+          </div>
+          <div class="mono muted" id="replay-status"></div>
+          <div class="big" id="action">–</div>
+          <pre class="list muted" id="action-detail"></pre>
+          <div id="model"></div>
+          <pre class="list" id="events"></pre>
+        </section>
         <div class="cards">
           <section>
             <h2>Carte</h2>

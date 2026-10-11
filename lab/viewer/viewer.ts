@@ -2,6 +2,7 @@
 import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
 import { describe, draw, howLabel, SIDE_NAME } from "./mapdraw";
+import { ReplayPanel } from "./replay";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -38,6 +39,19 @@ let camera: Camera | null = null;
 let soundOn = true;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
+const replayPanel = new ReplayPanel(
+  {
+    records: $<HTMLSelectElement>("records"),
+    start: $<HTMLButtonElement>("replay-start"),
+    end: $<HTMLButtonElement>("replay-end"),
+    status: $("replay-status"),
+    action: $("action"),
+    detail: $("action-detail"),
+    model: $("model"),
+    events: $("events"),
+  },
+  send,
+);
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -83,6 +97,7 @@ function onMessage(message: ServerMessage): void {
         `${message.rom} · image ${message.frame} · ${message.fps} img/s` +
         (!soundOn ? " · son coupé" : !audio.running ? " · son : cliquez ou appuyez sur une touche" : message.audio ? ` · son ${Math.round(audioLevel)} ms` : " · son seulement à ×1") +
         (message.hasStartSave ? "" : " · pas encore de sauvegarde de départ");
+      replayPanel.onStatus(message.frame, message.replay);
       break;
     }
     case "state":
@@ -114,6 +129,12 @@ function onMessage(message: ServerMessage): void {
       break;
     case "notice":
       $("notice").textContent = message.text;
+      break;
+    case "records":
+      replayPanel.setRecords(message.names);
+      break;
+    case "events":
+      replayPanel.onEvents(message.events);
       break;
   }
 }

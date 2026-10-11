@@ -68,7 +68,7 @@ What a **Run** gives at its end: the end reason, the frames, the **Milestones** 
 _Avoid_: score, outcome
 
 **Viewer**:
-The web page that shows one **Run** (its screen and its state) and sends keyboard input to it. It does not emulate.
+The web page that shows one **Run** (its screen and its state) and sends keyboard input to it, or replays a **Run record**: then the buttons of the record play the **Run**, not the keyboard. It does not emulate.
 _Avoid_: emulator, web player
 
 ## Relationships

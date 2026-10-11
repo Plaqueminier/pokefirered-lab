@@ -1,19 +1,22 @@
 // Usage: bun run viewer   (ROM: LAB_ROM=pokefirered_modern_lab by default)
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import type { MapGrid } from "./game";
-import { BinaryKind, type ClientMessage, type ServerMessage, type Speed } from "./protocol";
-import { ROM_NAME, Run, SAVES_DIR, START_SAVE } from "./run";
+import { isRunRecord, originDifferences, RecordPlayer, type RunRecord, RUNS_DIR } from "./harness/record";
+import { BinaryKind, type ClientMessage, type ReplayStatus, type ServerMessage, type Speed } from "./protocol";
+import { ROM_NAME, Run, type RunOrigin, SAVES_DIR, START_SAVE } from "./run";
 
-const PORT = 8766;
+const PORT = Number(process.env.LAB_PORT ?? 8766);
 const GBA_FPS = 16777216 / 280896; // 59.7275
 const SCREEN_INTERVAL_MS = 1000 / 60;
 const STATE_INTERVAL_MS = 100;
 const AUDIO_RATE = 48000;
 // The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
 const AUDIO_TARGET_MS = 60;
+
+type Replay = { name: string; player: RecordPlayer };
 
 class LivePlay {
   keys = 0;
@@ -29,12 +32,40 @@ class LivePlay {
   /** Frames due but not run yet (fractional). */
   private credit = 0;
   private fpsWindow = { start: performance.now(), frames: 0, value: 0 };
+  private activeReplay: Replay | null = null;
 
   constructor(private readonly run: Run) {}
 
   async reset(): Promise<void> {
+    this.activeReplay = null;
     await this.run.reset();
     this.resyncClock();
+  }
+
+  async startReplay(name: string, record: RunRecord): Promise<(keyof RunOrigin)[]> {
+    await this.reset();
+    // No await from here on: a tick in between would run frames that the record does not have.
+    const differences = originDifferences(this.run, record);
+    if (differences.length > 0) return differences;
+    this.activeReplay = { name, player: new RecordPlayer(record) };
+    this.speed = 1;
+    this.paused = false;
+    this.syncAudio();
+    return [];
+  }
+
+  endReplay(): void {
+    this.activeReplay = null;
+  }
+
+  get replay(): Replay | null {
+    return this.activeReplay;
+  }
+
+  private nextKeys(): number | null {
+    const player = this.activeReplay?.player;
+    if (!player) return this.keys;
+    return player.ended ? null : player.next();
   }
 
   resyncClock(): void {
@@ -72,7 +103,9 @@ class LivePlay {
     const budgetEnd = now + 12;
     let ran = 0;
     while (ran < due && performance.now() < budgetEnd) {
-      this.run.runFrame(this.keys);
+      const keys = this.nextKeys();
+      if (keys === null) break;
+      this.run.runFrame(keys);
       ran++;
     }
     if (this.speed !== "max") this.credit -= ran;
@@ -107,6 +140,7 @@ function send(message: ServerMessage, to?: ServerWebSocket<unknown>): void {
 }
 
 async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
+  const hasStartSave = await Bun.file(START_SAVE).exists();
   send(
     {
       type: "status",
@@ -116,8 +150,9 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
       fps: live.fps,
       frame: run.frame,
       hasQuickState: live.quickState !== null,
-      hasStartSave: await Bun.file(START_SAVE).exists(),
+      hasStartSave,
       audio: live.audioActive,
+      replay: live.replay && replayStatus(live.replay),
     },
     to,
   );
@@ -166,6 +201,39 @@ async function writeStartSave(): Promise<string> {
   return "Sauvegarde de départ écrite dans lab/saves/start.sav (l'ancienne est gardée à côté).";
 }
 
+async function recordNames(): Promise<string[]> {
+  const names = await readdir(RUNS_DIR).catch(() => []);
+  return names.filter((name) => name.endsWith(".json")).sort().reverse();
+}
+
+function replayStatus({ name, player }: Replay): ReplayStatus {
+  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended };
+}
+
+async function replayFile(name: string): Promise<string> {
+  if (!(await recordNames()).includes(name)) return `Pas de Run record ${name} dans lab/runs/.`;
+  const record: unknown = await Bun.file(join(RUNS_DIR, name)).json().catch(() => null);
+  if (!isRunRecord(record)) return `${name} n'est pas un Run record.`;
+  const differences = await live.startReplay(name, record);
+  if (differences.length > 0) {
+    return `${name} ne se rejoue pas ici (${differences.join(", ")} différent). La Run repart de la sauvegarde de départ, au clavier.`;
+  }
+  sendReplayEvents();
+  return `Replay de ${name}.`;
+}
+
+let replayEventsSent = 0;
+
+function sendReplayEvents(to?: ServerWebSocket<unknown>): void {
+  const events = live.replay?.player.played() ?? [];
+  if (!to) replayEventsSent = events.length;
+  send({ type: "events", events }, to);
+}
+
+function sendNewReplayEvents(): void {
+  if ((live.replay?.player.played().length ?? 0) !== replayEventsSent) sendReplayEvents();
+}
+
 async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Promise<void> {
   switch (message.type) {
     case "keys":
@@ -204,7 +272,9 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "notice", text: "Savestate gardé (en mémoire)." });
       break;
     case "quick-load":
-      if (live.quickState && run.core.loadState(live.quickState)) {
+      if (live.replay) {
+        send({ type: "notice", text: "Pas de retour au savestate pendant un replay." }, ws);
+      } else if (live.quickState && run.core.loadState(live.quickState)) {
         live.resyncClock();
         send({ type: "notice", text: "Retour au savestate." });
       }
@@ -215,6 +285,14 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       break;
     case "write-start-save":
       send({ type: "notice", text: await writeStartSave() });
+      break;
+    case "replay":
+      send({ type: "notice", text: await replayFile(message.name) });
+      break;
+    case "end-replay":
+      if (!live.replay) break;
+      live.endReplay();
+      send({ type: "notice", text: "Fin du replay : le clavier joue la Run depuis cette image." });
       break;
   }
   await sendStatus();
@@ -233,6 +311,7 @@ function sendAudio(): void {
   for (const ws of audioClients) ws.send(message);
 }
 let lastScreen = 0;
+let screenDirty = false;
 let lastState = 0;
 let lastGrid: MapGrid | null = null;
 let lastGridJson = "";
@@ -253,9 +332,14 @@ function sendMap(to?: ServerWebSocket<unknown>): void {
 function loop(): void {
   const now = performance.now();
   const ran = live.tick(now);
-  if (ran > 0 && live.audioActive) sendAudio();
-  if (clients.size > 0 && ran > 0 && now - lastScreen >= SCREEN_INTERVAL_MS) {
+  if (ran > 0) {
+    sendNewReplayEvents();
+    if (live.audioActive) sendAudio();
+    screenDirty = true;
+  }
+  if (clients.size > 0 && screenDirty && now - lastScreen >= SCREEN_INTERVAL_MS) {
     lastScreen = now;
+    screenDirty = false;
     screenMessage.set(run.core.screen(), 1);
     for (const ws of clients) ws.send(screenMessage);
     if (live.overlay) send({ type: "camera", camera: safely(() => run.game.camera()) });
@@ -285,6 +369,8 @@ Bun.serve({
       clients.add(ws);
       void sendStatus(ws);
       send({ type: "maps", names: run.game.allMapNames }, ws);
+      void recordNames().then((names) => send({ type: "records", names }, ws));
+      if (live.replay) sendReplayEvents(ws);
       sendMap(ws);
     },
     close(ws) {
