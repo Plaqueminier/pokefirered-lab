@@ -15,6 +15,7 @@ const GROWTH_POSITION = [0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3, 1
 // Ledge behaviors, as the arrow of the jump direction.
 const MB_JUMP: Record<number, string> = { 0x38: ">", 0x39: "<", 0x3a: "^", 0x3b: "v" };
 const MB_TALL_GRASS = 0x02;
+export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
 const BG_EVENT_HIDDEN_ITEM = 7;
 const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
@@ -22,10 +23,12 @@ const TRAINER_FLAGS_START = 0x500;
 const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
-const DIRECTION_NAMES: Record<number, string> = { 1: "south", 2: "north", 3: "west", 4: "east", 5: "dive", 6: "emerge" };
-const DIRECTION_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
+const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
+const DIRECTION_NAMES: Record<number, string> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
+export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
+const T_NOT_MOVING = 0;
 
 export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number };
 
@@ -39,6 +42,12 @@ export type GameState = {
 };
 
 export type Camera = { x: number; y: number };
+
+export type WaitingFor = "walk" | "busy";
+
+export type Direction = "south" | "north" | "west" | "east";
+
+export type PlayerPosition = { x: number; y: number; facing: Direction };
 
 export type MapGrid = {
   /** "group.num": changes when the map changes. */
@@ -140,16 +149,43 @@ export class Game {
     return obj.field("active").int() ? obj : null;
   }
 
+  player(): PlayerPosition | null {
+    const obj = this.playerObject();
+    if (!obj) return null;
+    const coords = obj.field("currentCoords");
+    return { x: coords.field("x").int() - MAP_OFFSET, y: coords.field("y").int() - MAP_OFFSET, facing: DIRECTION_OF_DIR[obj.field("facingDirection").int()] };
+  }
+
+  waitingFor(): WaitingFor {
+    const { mode, callback1 } = this.context();
+    switch (mode) {
+      case "overworld":
+        return callback1 === "CB1_Overworld" && this.canWalk() ? "walk" : "busy";
+      default:
+        return "busy";
+    }
+  }
+
+  // DoCB1_Overworld (overworld.c) reads the player input only while the field controls are unlocked.
+  private canWalk(): boolean {
+    return (
+      !this.mem.global("sLockFieldControls").int() &&
+      this.mem.global("gPlayerAvatar").field("tileTransitionState").int() === T_NOT_MOVING &&
+      !this.mem.global("gPaletteFade").field("active").int()
+    );
+  }
+
+  map(): GameState["map"] {
+    const { group, num } = this.location();
+    return { group, num, name: this.mapName(group, num) };
+  }
+
   state(): GameState {
     const sb1 = this.saveBlock1;
-    const location = sb1.field("location");
-    const group = location.field("mapGroup").int();
-    const num = location.field("mapNum").int();
-    const player = this.playerObject();
-    const coords = player?.field("currentCoords");
+    const player = this.player();
     return {
-      map: { group, num, name: this.mapNames[group]?.[num] ?? `${group}.${num}` },
-      player: coords ? { x: coords.field("x").int() - MAP_OFFSET, y: coords.field("y").int() - MAP_OFFSET } : null,
+      map: this.map(),
+      player: player ? { x: player.x, y: player.y } : null,
       party: this.party(),
       badges: Array.from({ length: 8 }, (_, i) => this.flag(FLAG_BADGE01_GET + i)),
       money: (sb1.field("money").int() ^ this.mem.global("gSaveBlock2Ptr").deref().field("encryptionKey").int()) >>> 0,
@@ -307,9 +343,9 @@ export class Game {
       blocks.push(block);
       behaviors.push(behavior);
       kinds +=
-        block === 0x03ff || block & 0x0c00 ? "#"
-        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? "~"
-        : (MB_JUMP[behavior] ?? (behavior === MB_TALL_GRASS ? '"' : "."));
+        block === 0x03ff || block & 0x0c00 ? KIND.blocked
+        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? KIND.water
+        : (MB_JUMP[behavior] ?? (behavior === MB_TALL_GRASS ? KIND.grass : KIND.open));
     }
 
     const connectionsRef = header.field("connections");
@@ -446,7 +482,7 @@ export class Game {
         const sight: [number, number][] = [];
         if (!defeated) {
           for (const dir of directions) {
-            const [dx, dy] = DIRECTION_STEP[dir];
+            const [dx, dy] = DIRECTION_STEP[DIRECTION_OF_DIR[dir]];
             // The game stops the line at a cell the trainer cannot walk on.
             for (let i = 1; i <= range && kindAt(x + dx * i, y + dy * i) !== "#"; i++) sight.push([x + dx * i, y + dy * i]);
           }

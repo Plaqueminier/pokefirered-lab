@@ -1,20 +1,13 @@
-// Harness with one Run, and the Viewer page on http://localhost:8766.
 // Usage: bun run viewer   (ROM: LAB_ROM=pokefirered_modern_lab by default)
 import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
-import { CACHE_DIR, Core } from "./core";
-import { Game, type MapGrid } from "./game";
-import { Memory } from "./memory";
+import type { MapGrid } from "./game";
 import { BinaryKind, type ClientMessage, type ServerMessage, type Speed } from "./protocol";
-import { loadSymbols } from "./symbols";
+import { ROM_NAME, Run, SAVES_DIR, START_SAVE } from "./run";
 
 const PORT = 8766;
-const REPO_DIR = join(import.meta.dir, "..", "..");
-const SAVES_DIR = join(import.meta.dir, "..", "saves");
-const START_SAVE = join(SAVES_DIR, "start.sav");
-const ROM_NAME = process.env.LAB_ROM ?? "pokefirered_modern_lab";
 const GBA_FPS = 16777216 / 280896; // 59.7275
 const SCREEN_INTERVAL_MS = 1000 / 60;
 const STATE_INTERVAL_MS = 100;
@@ -22,7 +15,7 @@ const AUDIO_RATE = 48000;
 // The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
 const AUDIO_TARGET_MS = 60;
 
-class Run {
+class LivePlay {
   keys = 0;
   speed: Speed = 1;
   paused = false;
@@ -37,28 +30,10 @@ class Run {
   private credit = 0;
   private fpsWindow = { start: performance.now(), frames: 0, value: 0 };
 
-  private constructor(
-    readonly core: Core,
-    readonly game: Game,
-  ) {}
+  constructor(private readonly run: Run) {}
 
-  static async open(rom: string): Promise<Run> {
-    const gba = join(REPO_DIR, `${rom}.gba`);
-    const elf = join(REPO_DIR, `${rom}.elf`);
-    if (!(await Bun.file(gba).exists())) throw new Error(`${gba} not found: run "make lab" at the repo root`);
-    const core = await Core.open(gba);
-    const mem = new Memory(core, await loadSymbols(elf, CACHE_DIR));
-    const run = new Run(core, await Game.create(mem));
-    await run.reset();
-    return run;
-  }
-
-  /** Restarts the game from the Starting save (or from an empty save). */
   async reset(): Promise<void> {
-    this.core.reset();
-    const save = Bun.file(START_SAVE);
-    if (await save.exists()) this.core.loadSaveData(new Uint8Array(await save.arrayBuffer()));
-    this.core.reset();
+    await this.run.reset();
     this.resyncClock();
   }
 
@@ -75,7 +50,7 @@ class Run {
   syncAudio(): void {
     if (this.audioActive === this.audioOn) return;
     this.audioOn = this.audioActive;
-    this.core.enableAudio(this.audioOn, AUDIO_RATE);
+    this.run.core.enableAudio(this.audioOn, AUDIO_RATE);
     this.rateTrim = 1;
   }
 
@@ -96,9 +71,8 @@ class Run {
     }
     const budgetEnd = now + 12;
     let ran = 0;
-    this.core.setKeys(this.keys);
     while (ran < due && performance.now() < budgetEnd) {
-      this.core.runFrame();
+      this.run.runFrame(this.keys);
       ran++;
     }
     if (this.speed !== "max") this.credit -= ran;
@@ -115,15 +89,16 @@ class Run {
   }
 }
 
-const run = await Run.open(ROM_NAME);
+const run = await Run.open();
+const live = new LivePlay(run);
 const clients = new Set<ServerWebSocket<unknown>>();
 const audioClients = new Set<ServerWebSocket<unknown>>();
 
 function setAudioClient(ws: ServerWebSocket<unknown>, enabled: boolean): void {
   if (enabled) audioClients.add(ws);
   else audioClients.delete(ws);
-  run.audioWanted = audioClients.size > 0;
-  run.syncAudio();
+  live.audioWanted = audioClients.size > 0;
+  live.syncAudio();
 }
 
 function send(message: ServerMessage, to?: ServerWebSocket<unknown>): void {
@@ -136,13 +111,13 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
     {
       type: "status",
       rom: ROM_NAME,
-      speed: run.speed,
-      paused: run.paused,
-      fps: run.fps,
-      frame: run.core.frameCounter,
-      hasQuickState: run.quickState !== null,
+      speed: live.speed,
+      paused: live.paused,
+      fps: live.fps,
+      frame: run.frame,
+      hasQuickState: live.quickState !== null,
       hasStartSave: await Bun.file(START_SAVE).exists(),
-      audio: run.audioActive,
+      audio: live.audioActive,
     },
     to,
   );
@@ -194,17 +169,17 @@ async function writeStartSave(): Promise<string> {
 async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Promise<void> {
   switch (message.type) {
     case "keys":
-      run.keys = message.keys;
+      live.keys = message.keys;
       break;
     case "speed":
-      run.speed = message.speed;
-      run.resyncClock();
-      run.syncAudio();
+      live.speed = message.speed;
+      live.resyncClock();
+      live.syncAudio();
       break;
     case "pause":
-      run.paused = message.paused;
-      run.resyncClock();
-      run.syncAudio();
+      live.paused = message.paused;
+      live.resyncClock();
+      live.syncAudio();
       break;
     case "audio":
       setAudioClient(ws, message.enabled);
@@ -217,25 +192,25 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "audio-level": {
       // Queue too long: run a little slower, and the reverse. At most 1% off.
       const error = AUDIO_TARGET_MS - message.ms;
-      run.rateTrim = 1 + Math.max(-0.01, Math.min(0.01, error * 0.0005));
+      live.rateTrim = 1 + Math.max(-0.01, Math.min(0.01, error * 0.0005));
       return;
     }
     case "overlay":
-      run.overlay = message.enabled;
+      live.overlay = message.enabled;
       send({ type: "camera", camera: safely(() => run.game.camera()) }, ws);
       break;
     case "quick-save":
-      run.quickState = run.core.saveState();
+      live.quickState = run.core.saveState();
       send({ type: "notice", text: "Savestate gardé (en mémoire)." });
       break;
     case "quick-load":
-      if (run.quickState && run.core.loadState(run.quickState)) {
-        run.resyncClock();
+      if (live.quickState && run.core.loadState(live.quickState)) {
+        live.resyncClock();
         send({ type: "notice", text: "Retour au savestate." });
       }
       break;
     case "reset":
-      await run.reset();
+      await live.reset();
       send({ type: "notice", text: "Run relancée depuis la sauvegarde de départ." });
       break;
     case "write-start-save":
@@ -277,13 +252,13 @@ function sendMap(to?: ServerWebSocket<unknown>): void {
 
 function loop(): void {
   const now = performance.now();
-  const ran = run.tick(now);
-  if (ran > 0 && run.audioActive) sendAudio();
+  const ran = live.tick(now);
+  if (ran > 0 && live.audioActive) sendAudio();
   if (clients.size > 0 && ran > 0 && now - lastScreen >= SCREEN_INTERVAL_MS) {
     lastScreen = now;
     screenMessage.set(run.core.screen(), 1);
     for (const ws of clients) ws.send(screenMessage);
-    if (run.overlay) send({ type: "camera", camera: safely(() => run.game.camera()) });
+    if (live.overlay) send({ type: "camera", camera: safely(() => run.game.camera()) });
   }
   if (clients.size > 0 && now - lastState >= STATE_INTERVAL_MS) {
     lastState = now;
@@ -294,7 +269,7 @@ function loop(): void {
     send({ type: "camera", camera: safely(() => run.game.camera()) });
     void sendStatus();
   }
-  setTimeout(loop, run.speed === "max" && !run.paused ? 0 : 2);
+  setTimeout(loop, live.speed === "max" && !live.paused ? 0 : 2);
 }
 
 Bun.serve({
@@ -315,7 +290,7 @@ Bun.serve({
     close(ws) {
       clients.delete(ws);
       setAudioClient(ws, false);
-      if (clients.size === 0) run.keys = 0;
+      if (clients.size === 0) live.keys = 0;
     },
     message(ws, data) {
       if (typeof data !== "string") return;

@@ -10,6 +10,14 @@ The harness runs the **Lab build** in libmgba from Bun. The **Viewer** shows one
 
 Requirements: Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C compiler. The harness compiles `shim/shim.c` into `.cache/` when the file changes.
 
+## Run a Bot
+
+In `lab/`: `bun run bot stairs`. The command runs the **Bot** `bots/stairs.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
+
+A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`.
+
+`bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
+
 ## Make the Starting save
 
 1. Start the Viewer with no `saves/start.sav`. The lab build then starts as the vanilla game: intro, title screen, new game.
@@ -26,7 +34,10 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
 - `src/game.ts`: FireRed state (map, party, badges, money, context), the grid of the player's map or of any map from ROM, and the actors on it (people, trainer sight, triggers).
-- `src/server.ts`: the Run loop, the WebSocket and the Viewer page.
+- `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
+- `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation and **Macro-actions**), `path.ts` (A* on the map grid), `play.ts` (the `bot` command).
+- `bots/`: the **Bots**.
 - `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
 
 ## Sound

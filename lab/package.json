@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "viewer": "bun run src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "bot": "bun run src/harness/play.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
