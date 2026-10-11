@@ -1,0 +1,3 @@
+# The game freezes at each decision point
+
+The emulator runs frames only while a macro-action runs. At each decision point it stops, and it starts again at the same frame when the bot gives the next action. We chose this instead of real time because FireRed calls `Random()` on each VBlank (`src/main.c`): if the game ran while a bot thinks, the RNG, and so the wild encounters and battles, would depend on how fast the bot thinks. With the freeze, a run depends only on the starting save, the seed and the inputs, and a slow model bot plays the same game as a fast scripted bot. The cost: the live view of a model bot shows a still image while the model thinks; the replay of the recorded inputs has no pauses.
