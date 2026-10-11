@@ -12,9 +12,9 @@ Requirements: Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfd
 
 ## Run a Bot
 
-In `lab/`: `bun run bot oak`. The command runs the **Bot** `bots/oak.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
+In `lab/`: `bun run bot starter`. The command runs the **Bot** `bots/starter.ts` headless from `saves/start.sav`, and prints each **Macro-action** with its result and its frame count. At the end, it prints the **Milestones** and the party. The game is frozen at each **Decision point** (ADR 0002), so each start gives the same frames.
 
-A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`.
+There is one **Bot**, `starter`: each new step of the story goes into it, not into a new **Bot**. A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`. `must(result)` stops the Bot with an error when a result is not `done`.
 
 `goTo(x, y, map?)` walks to a cell of the player's map, or of the map with the name `map`, for example `goTo(12, 3, "PalletTown")`. The route goes through warps, map edges and ledges (only in their jump direction). People are obstacles. The player takes a stair or arrow warp when it stands on the cell and pushes toward its direction, and a door when it pushes north from the cell below. The result is one of:
 
@@ -22,6 +22,18 @@ A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`
 - `impossible`: there is no route, even with no people on the maps; or the player cannot walk now; or the player does not move and no person is in the way; or a warp does not start. When `goTo` finds this before the first move, no frames run.
 - `blocked`: a person stays in the way. `goTo` waits and computes the route again; it stops when a person stops the player three times on the same cell.
 - `interrupted`: the game stopped the walk, with the reason `trigger` (coord trigger), `trainer` (a trainer sees the player), `script` (another script), `battle` (a wild battle starts) or `map` (the player arrived on a map that is not on the route). `goTo` stops at the first frame of the interruption and does nothing more. For `map`, that frame is when the warp ends.
+
+`interact(x, y)` turns the player to the cell next to it and presses A, for example on a person, a sign or the Poké Ball on a table. Then it runs the game to the next Decision point. It is `impossible` when the game does not wait for the player to walk or when the cell is not next to the player (in these two cases, no frames run), when the player does not turn or walks when it turns, or when nothing on the cell starts a script. While the player turns, the game can interrupt `interact` as it interrupts `goTo`.
+
+`availableActions()` gives the **Macro-actions** that the game accepts now:
+
+- When the game waits for the player to walk: `{ name: "goTo" }` (the Bot chooses the cell), and `{ name: "interact", x, y }` for each cell next to the player with a person or a sign. A sign that is read from one side only is in the list only when the player is on that side. Bookshelves, PCs on a metatile, water and the people behind a counter are not in the list yet, but `interact` works on them.
+- At a choice: `{ name: "choose", option }` for each option.
+- At a text, or when the game is busy: `{ name: "readText" }`. The harness cannot tell a busy game from a menu that it does not know (multichoice, the PC): there, `readText` is `impossible` after 3600 frames.
+
+A **Macro-action** that the game does not accept now (for the kind of `waitingFor`) returns `impossible`, and no frames run. `interact` runs at each walk Decision point, also when the list has no `interact` entry. The list does not check the elevation of a person or a sign, or a person who is invisible or has no script; no such case is on the path to the starter.
+
+`observe()` gives what the game waits for, the map, the player, the grid of the map, the party and the **Milestones**. Each Pokémon of the party has its species, nickname, level, HP, status (`none`, `sleep`, `poison` (also for toxic poison), `burn`, `freeze` or `paralysis`; a Pokémon with 0 HP keeps its status) and moves with their PP. The **Milestones** are the story steps reached, in story order: `has-pokemon`, `has-pokedex` and `badge-1` to `badge-8`.
 
 `observe().waitingFor` tells what the game waits for now:
 
@@ -38,11 +50,11 @@ A text box that closes by itself is not a `text` Decision point. On the frame of
 
 `press(button)` is a **Raw input**: one press of a button (`"A"`, `"Up"`...), then the game runs to the next Decision point. The harness counts them in `rawInputs`, and `bun run bot` prints the count at the end.
 
-`readText`, `choose` and `press` stop only for a battle (`interrupted` with `battle`), because a script runs during them. They are `impossible` when the game waits for no known input for 3600 frames. `choose` is also `impossible` when the cursor does not move.
+After its A press, `interact` stops only for a battle (`interrupted` with `battle`), as `readText`, `choose` and `press` do, because a script runs during them. These four are `impossible` when the game waits for no known input for 3600 frames. `choose` is also `impossible` when the cursor does not move.
 
 Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `choice` now. Other menus (multichoice, the PC) and the texts outside the overworld show `busy`.
 
-`bun run bot oak` leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4), with no Raw input.
+`bun run bot starter` leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. The player is at (9, 5) with SQUIRTLE (level 5, TACKLE and TAIL WHIP) and the Milestone `has-pokemon`, with no Raw input.
 
 `bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
@@ -61,7 +73,8 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/core.ts`: one emulator instance (bun:ffi).
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
-- `src/game.ts`: FireRed state (map, party, badges, money, context), what the game waits for (walk, text, choice) and the text of the message box, the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
+- `src/game.ts`: FireRed state (map, party, badges, money, context, **Milestones**), what the game waits for (walk, text, choice) and the text of the message box, the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
+- `src/party.ts`: the party: species, moves and PP from the encrypted Pokémon data, and level, HP and status from the party fields.
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
 - `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
 - `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions** and **Raw inputs**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `play.ts` (the `bot` command).

@@ -29,7 +29,7 @@ One game action that a **Bot** asks the **Harness** to do, for example go to a c
 _Avoid_: command, move (a move is a Pokémon attack)
 
 **Interruption**:
-An event of the game that stops a **Macro-action**: a coord trigger, a trainer who sees the player, another script, a battle, or an arrival on a map that is not on the route. The **Macro-action** returns at the first frame of the interruption. That frame is not always a **Decision point**, but the game is also frozen there. A text, a choice or a **Raw input** stops only for a battle, because a script runs during them.
+An event of the game that stops a **Macro-action**: a coord trigger, a trainer who sees the player, another script, a battle, or an arrival on a map that is not on the route. The **Macro-action** returns at the first frame of the interruption. That frame is not always a **Decision point**, but the game is also frozen there. A text, a choice, an interaction after its A press, or a **Raw input** stops only for a battle, because a script runs during them.
 _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
 **Decision point**:

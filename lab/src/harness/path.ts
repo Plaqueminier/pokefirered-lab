@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, KIND, LEDGE, type MapGrid, type WarpExit } from "../game";
+import { DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
 export type Place = Cell & { map: string };
@@ -15,7 +15,6 @@ export type Leg = { map: string; moves: Move[] };
 
 export type MapSource = (name: string) => RouteMap | null;
 
-const STEPS = Object.entries(DIRECTION_STEP) as [Direction, [number, number]][];
 const WALKABLE = new Set<string>([KIND.open, KIND.grass]);
 const WARP_COST = 4;
 export const MAX_ROUTE_MAPS = 32;
@@ -57,7 +56,7 @@ export function findRoute(from: Place, to: Place, mapOf: MapSource): Leg[] | nul
 
 function* edges(place: Place, load: MapSource): Generator<Edge> {
   const map = load(place.map)!;
-  for (const [direction, [dx, dy]] of STEPS) {
+  for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
     const walk: Move = { direction, kind: "walk" };
     const press = map.warps.find((w) => w.how === "press" && w.from.x === place.x && w.from.y === place.y && w.direction === direction);
     if (press) {

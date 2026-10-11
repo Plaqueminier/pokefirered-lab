@@ -24,5 +24,10 @@ const harness = await Harness.open({
 console.log(`Bot ${bot.name} ${bot.version}: first Decision point at frame ${harness.frame}`);
 await bot.play(harness);
 
-const { map, player } = harness.observe();
+const { map, player, party, milestones } = harness.observe();
 console.log(`End: ${map.name} (${player.x}, ${player.y}) facing ${player.facing}, frame ${harness.frame}, screen ${harness.screenHash()}, raw inputs ${harness.rawInputs}`);
+console.log(`Milestones: ${milestones.join(", ") || "none"}`);
+for (const mon of party) {
+  const moves = mon.moves.map((m) => `${m.name} ${m.pp}/${m.maxPp}`).join(", ");
+  console.log(`Party: ${mon.nickname} (${mon.species}) level ${mon.level}, ${mon.hp}/${mon.maxHp} HP, status ${mon.status}, moves ${moves}`);
+}

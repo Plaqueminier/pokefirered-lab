@@ -2,6 +2,7 @@
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
 import type { Memory, Ref } from "./memory";
+import { type PartyMon, readParty } from "./party";
 import { functionName } from "./symbols";
 
 const REPO_DIR = join(import.meta.dir, "..", "..");
@@ -10,8 +11,14 @@ const REPO_DIR = join(import.meta.dir, "..", "..");
 const MAP_OFFSET = 7;
 const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
-// For substruct order n = personality % 24, the position of the growth substruct (species).
-const GROWTH_POSITION = [0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3, 1, 1, 2, 3, 2, 3];
+const FLAG_SYS_POKEMON_GET = 0x828;
+const FLAG_SYS_POKEDEX_GET = 0x829;
+const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const MILESTONE_FLAGS: [Milestone, number][] = [
+  ["has-pokemon", FLAG_SYS_POKEMON_GET],
+  ["has-pokedex", FLAG_SYS_POKEDEX_GET],
+  ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
+];
 const MB_TALL_GRASS = 0x02;
 export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
 export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
@@ -37,8 +44,11 @@ const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
+// BG_EVENT_PLAYER_FACING_NORTH, _SOUTH, _EAST and _WEST.
+const SIGN_PLAYER_FACING: Record<number, Direction> = { 1: "north", 2: "south", 3: "east", 4: "west" };
 const CONNECTION_SIDES: Record<number, ConnectionSide> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
 export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
+export const DIRECTION_STEPS = Object.entries(DIRECTION_STEP) as [Direction, [number, number]][];
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 const T_NOT_MOVING = 0;
@@ -74,7 +84,7 @@ const ONE_ARG_CODES = new Set([CHAR_DYNAMIC, CHAR_KEYPAD_ICON, CHAR_EXTRA_SYMBOL
 const EXT_CTRL_CODE_LENGTHS = [1, 2, 2, 2, 4, 2, 2, 1, 2, 1, 1, 3, 2, 2, 2, 1, 3, 2, 2, 2, 2, 1, 1, 1, 1];
 const CHARMAP_JAPANESE = "@ Hiragana";
 
-export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number };
+export type Milestone = "has-pokemon" | "has-pokedex" | `badge-${(typeof BADGES)[number]}`;
 
 export type GameState = {
   map: { group: number; num: number; name: string };
@@ -130,7 +140,8 @@ export type MapGrid = {
   behaviorNames: Record<number, string>;
   warps: Warp[];
   connections: { direction: ConnectionSide; offset: number; map: string; group: number; num: number }[];
-  signs: { x: number; y: number; kind: "sign" | "hidden-item" }[];
+  /** `playerFacing`: the direction that the player must face to read the sign. */
+  signs: ({ x: number; y: number } & ({ kind: "sign"; playerFacing: Direction | "any" } | { kind: "hidden-item" }))[];
   /** Cells that start a script when the player steps on them, if `variable` has `value`. */
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
@@ -365,7 +376,7 @@ export class Game {
       map: this.map(),
       player: player ? { x: player.x, y: player.y } : null,
       party: this.party(),
-      badges: Array.from({ length: 8 }, (_, i) => this.flag(FLAG_BADGE01_GET + i)),
+      badges: BADGES.map((n) => this.flag(badgeFlag(n))),
       money: (sb1.field("money").int() ^ this.mem.global("gSaveBlock2Ptr").deref().field("encryptionKey").int()) >>> 0,
       context: this.context(),
     };
@@ -388,36 +399,12 @@ export class Game {
     return { mode, callback1, callback2 };
   }
 
-  private party(): PartyMon[] {
-    const count = Math.min(this.mem.global("gPlayerPartyCount").int(), 6);
-    const party = this.mem.global("gPlayerParty");
-    const out: PartyMon[] = [];
-    for (let i = 0; i < count; i++) {
-      const mon = party.at(i);
-      const box = mon.field("box");
-      const personality = box.field("personality").int();
-      const key = (personality ^ box.field("otId").int()) >>> 0;
-      // The 48 secure bytes are 4 substructs of 12 bytes, XOR-ed with the key and shuffled.
-      const raw = box.field("secure").bytes(48);
-      const words = new DataView(raw.buffer);
-      for (let w = 0; w < 12; w++) words.setUint32(w * 4, (words.getUint32(w * 4, true) ^ key) >>> 0, true);
-      const growth = GROWTH_POSITION[personality % 24] * 12;
-      const species = words.getUint16(growth, true);
-      out.push({
-        species: this.speciesName(species),
-        nickname: this.decodeText(box.field("nickname").bytes()),
-        level: mon.field("level").int(),
-        hp: mon.field("hp").int(),
-        maxHp: mon.field("maxHP").int(),
-      });
-    }
-    return out;
+  party(): PartyMon[] {
+    return readParty(this.mem, (bytes) => this.decodeText(bytes));
   }
 
-  private speciesName(species: number): string {
-    const names = this.mem.global("gSpeciesNames");
-    if (species <= 0 || species >= names.length) return `#${species}`;
-    return this.decodeText(names.at(species).bytes());
+  milestones(): Milestone[] {
+    return MILESTONE_FLAGS.filter(([, flag]) => this.flag(flag)).map(([milestone]) => milestone);
   }
 
   /** Metatile attributes of a tileset, read once per tileset. */
@@ -597,11 +584,11 @@ export class Game {
         return { ...warp, ...warpHow(x, y, behavior) };
       }),
       connections,
-      signs: this.eventList(header, "bgEvents", "bgEventCount").map((e) => ({
-        x: e.field("x").int(),
-        y: e.field("y").int(),
-        kind: e.field("kind").int() === BG_EVENT_HIDDEN_ITEM ? ("hidden-item" as const) : ("sign" as const),
-      })),
+      signs: this.eventList(header, "bgEvents", "bgEventCount").map((e) => {
+        const kind = e.field("kind").int();
+        const at = { x: e.field("x").int(), y: e.field("y").int() };
+        return kind === BG_EVENT_HIDDEN_ITEM ? { ...at, kind: "hidden-item" as const } : { ...at, kind: "sign" as const, playerFacing: SIGN_PLAYER_FACING[kind] ?? "any" };
+      }),
       triggers: this.eventList(header, "coordEvents", "coordEventCount").map((e) => ({
         x: e.field("x").int(),
         y: e.field("y").int(),
@@ -708,6 +695,10 @@ export class Game {
     });
     return { player, people, triggers, signs };
   }
+}
+
+function badgeFlag(badge: number): number {
+  return FLAG_BADGE01_GET + badge - 1;
 }
 
 function warpHow(x: number, y: number, behavior: string): WarpHow {
