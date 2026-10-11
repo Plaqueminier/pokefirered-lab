@@ -16,7 +16,14 @@ In `lab/`: `bun run bot starter`, or `bun run bot starter full` for the `full` *
 
 There is one **Bot**, `starter`: each new step of the story goes into it, not into a new **Bot**. A **Bot** is a module in `bots/` that exports `{ name, version, goal?, play(harness) }`. It calls the harness with `await`, for example `await harness.goTo(10, 2)`. `must(result)` stops the Bot with an error when a result is not `done`.
 
-`harness.play(bot)` plays a **Run** and gives its result: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` when the game reaches the **Milestone** `goal` of the Bot: the **Macro-action** that reaches it does not return to the Bot, and the Run ends. It is `bot stopped` when `play` of the Bot returns first.
+`harness.play(bot)` plays a **Run** and gives its result: the end reason, the frames and the **Raw inputs** from the start of `play`, and the **Milestones**. A `Harness` object plays one Run: a second `play` is an error. The end reason is one of:
+
+- `goal`: the game reaches the **Milestone** `goal` of the Bot. The **Macro-action** that reaches it does not return to the Bot.
+- `bot stopped`: `play` of the Bot returns, or throws an error. In the second case, `harness.play` keeps the result for the Run record, then throws the error again.
+- `frame budget`: the Run used its frame budget, 30 000 frames from the start of `play` by default (`Harness.open({ frameBudget })`). The Run stops at the last frame of the budget, also inside a **Macro-action**: that action does not return, and it is not in `harness.actions` or in the events of the Run record.
+- `no progress`: the Bot made 200 **Decision points** in a row (`Harness.open({ noProgressLimit })`) with no new cell and no new **Milestone**. A new cell is a cell of a map where the player never was in this Run, also a cell that the player only walks through. For this rule, the end of each **Macro-action** and **Raw input** counts as one Decision point, also when it is `impossible` with no frames or when it stops at an **Interruption**. A battle has no cells: its Decision points are not progress.
+
+For `goal`, `frame budget` and `no progress`, the **Macro-action** or the **Raw input** throws an error that ends the Run: the Bot must not catch the errors of the harness.
 
 `goTo(x, y, map?)` walks to a cell of the player's map, or of the map with the name `map`, for example `goTo(12, 3, "PalletTown")`. The route goes through warps, map edges and ledges (only in their jump direction). People are obstacles. The player takes a stair or arrow warp when it stands on the cell and pushes toward its direction, and a door when it pushes north from the cell below. The result is one of:
 
@@ -69,7 +76,18 @@ Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `
 
 `bun run bot starter` (Bot version 3, goal `first-rival-battle`) leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. Then it walks to the door: the rival stops it at (7, 8) (`goTo(6, 11)` returns `interrupted` with `trigger`), and `readText()` returns `interrupted` with `battle`. In the battle against BULBASAUR, it uses TAIL WHIP, then TACKLE, and `readText()` at each text. With TACKLE only, SQUIRTLE loses. SQUIRTLE wins and grows to level 6, the rival leaves the lab, and the **Run** ends with the reason `goal` at frame 15017, with no Raw input.
 
-`bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
+`bun test` runs the tests. The tests of `src/harness/harness.test.ts` and `src/harness/record.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
+
+## The Run record
+
+After `play`, `harness.record()` gives the **Run record**: the whole Run from frame 0 to now, also the actions before `play`. The Harness keeps it in memory; `bun run bot` writes it, also when the Bot throws an error, to `runs/<bot>-<version>-<date>.json`. `runs/` is not in git. The record has:
+
+- `header`: the origin of the Run (`rom`: the SHA-256 of the ROM file with the bytes of `BuildDateTime` at zero; `seed`: `gLabRngSeed` in the ROM; `startSave`: the SHA-256 of `saves/start.sav`, or `null` when there is no Starting save), the **Knowledge level** and the name and version of the Bot. The record has no save data.
+- `buttons`: the keys at each frame from frame 0 (the Starting save), compressed: `[keys, frames]` is a set of keys held for that number of frames. The keys are the bits of `Keys` in `src/protocol.ts`.
+- `events`, in frame order: `action` (each **Macro-action** and **Raw input**, with its parameters, its result and the frame where the Bot asked for it), `map` (the player arrives on a map), `battle` (`start` or `end`), `milestone` (a new **Milestone**) and `model` (a text that a model Bot keeps with `harness.modelText(text)`). The `frame` of a game event is the frame count after the frame where the Harness saw it. The Harness reads the map and the Milestones only on the overworld and in a battle: the first `map` event is the end of the boot.
+- `result`: the result of `play`.
+
+`replay(record)` (in `src/harness/record.ts`) starts a new Run, runs the buttons alone, and gives the `map`, `battle` and `milestone` events, the last frame and the screen hash. The `action` and `model` events come from the Bot, not from the buttons, so a replay does not give them. `replay` does not compare its events with the record: the caller does, as `src/harness/record.test.ts` does. It does not accept a record when the ROM hash, the seed or the Starting save hash is not the same. A rebuild of the same code at the same repo path keeps the ROM hash: the record of the starter Bot replays after `touch src/main.c && make lab` with the same events, frames and screen.
 
 ## Make the Starting save
 
@@ -92,7 +110,7 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/party.ts`: the party: species, moves and PP from the encrypted Pokémon data, and level, HP and status from the party fields.
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
 - `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
-- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions** and **Raw inputs**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `play.ts` (the `bot` command).
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs** and the end of a **Run**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record** and its replay), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**.
 - `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
 
@@ -104,4 +122,4 @@ The sound plays only at speed ×1. The browser starts it after the first click o
 
 - The ROM bytes change on each build: the game stores the build date (`BuildDateTime`). To compare two builds, ignore those bytes.
 - The vanilla build is compiled without `-g`, because `-g` changes the order of linker veneers in the ROM.
-- `saves/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.
+- `saves/`, `runs/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.

@@ -1,5 +1,6 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { type Bot, Harness, KNOWLEDGE_LEVELS } from "./harness";
+import { writeRecord } from "./record";
 
 const [name, level = "player"] = process.argv.slice(2);
 const knowledge = KNOWLEDGE_LEVELS.find((l) => l === level);
@@ -24,12 +25,14 @@ const harness = await Harness.open({
   },
 });
 console.log(`Bot ${bot.name} ${bot.version}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
-const result = await harness.play(bot);
+const result = await harness.play(bot).finally(async () => {
+  console.log(`Run record: ${relative(process.cwd(), await writeRecord(harness.record()))}`);
+});
 
 const observation = harness.observe();
 const { party, milestones } = observation;
 const where = observation.mode === "overworld" ? `${observation.map.name} (${observation.player.x}, ${observation.player.y}) facing ${observation.player.facing}` : "in a battle";
-console.log(`End: ${where}, frame ${harness.frame}, screen ${harness.screenHash()}, raw inputs ${harness.rawInputs}`);
+console.log(`End: ${where}, frame ${harness.frame}, screen ${harness.screenHash()}, raw inputs ${result.rawInputs}`);
 console.log(`Run end: ${result.endReason}, ${result.frames} frames`);
 console.log(`Milestones: ${milestones.join(", ") || "none"}`);
 for (const mon of party) {

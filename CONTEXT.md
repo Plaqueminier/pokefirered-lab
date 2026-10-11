@@ -60,8 +60,12 @@ A story step that the **Harness** reads from the game flags, for example "has a 
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:
-The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame and the events. Its buttons alone replay the **Run**.
+The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
+
+**Run result**:
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal`, `bot stopped`, `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**).
+_Avoid_: score, outcome
 
 **Viewer**:
 The web page that shows one **Run** (its screen and its state) and sends keyboard input to it. It does not emulate.
@@ -73,7 +77,7 @@ _Avoid_: emulator, web player
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, its goal is reached, its frame budget is spent, or its **Bot** makes no progress.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, its goal is reached, its frame budget is used, or its **Bot** makes no progress.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
 

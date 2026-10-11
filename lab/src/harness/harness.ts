@@ -18,6 +18,7 @@ import type { Messages } from "../prompts";
 import { Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap } from "./path";
+import { ButtonTrack, GameWatch, type RunEvent, type RunHeader, type RunRecord } from "./record";
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
@@ -26,6 +27,8 @@ const MAX_TEXT_PRESSES = 256;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
+const FRAME_BUDGET = 30_000;
+const NO_PROGRESS_LIMIT = 200;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
@@ -51,7 +54,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: 
 
 export type Observation = ObservationBase & ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid } | { mode: "battle"; battle: BattleState });
 
-export type EndReason = "goal" | "bot stopped";
+export type EndReason = "goal" | "bot stopped" | "frame budget" | "no progress";
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
@@ -95,12 +98,9 @@ export function must(result: ActionResult): void {
 
 type ActionListener = (entry: ActionEntry, harness: Harness) => void;
 
-export type HarnessOptions = { knowledge?: KnowledgeLevel; onAction?: ActionListener };
+export type HarnessOptions = { knowledge?: KnowledgeLevel; onAction?: ActionListener; frameBudget?: number; noProgressLimit?: number };
 
-/**
- * With `goal`, `harness.play(bot)` ends the Run when the game reaches this Milestone: the Macro-action
- * that reaches it throws, so `play` must not catch the errors of the harness.
- */
+/** The Harness ends a Run with an error that a Macro-action or a Raw input throws: `play` must not catch it. */
 export type Bot = {
   name: string;
   version: string;
@@ -108,20 +108,55 @@ export type Bot = {
   play(harness: Harness): Promise<void>;
 };
 
-class GoalReached extends Error {}
+class RunEnd extends Error {
+  constructor(readonly reason: EndReason) {
+    super(`the Run ends: ${reason}`);
+  }
+}
+
+class RunLimits {
+  #decisionsWithNoProgress = 0;
+
+  constructor(
+    private readonly goal: Milestone | null,
+    private readonly lastFrame: number,
+    private readonly noProgressLimit: number,
+    private progress: number,
+  ) {}
+
+  beforeFrame(frame: number): void {
+    if (frame >= this.lastFrame) throw new RunEnd("frame budget");
+  }
+
+  atDecision(milestones: Milestone[], progress: number): void {
+    if (this.goal && milestones.includes(this.goal)) throw new RunEnd("goal");
+    this.#decisionsWithNoProgress = progress > this.progress ? 0 : this.#decisionsWithNoProgress + 1;
+    this.progress = progress;
+    if (this.#decisionsWithNoProgress >= this.noProgressLimit) throw new RunEnd("no progress");
+  }
+}
+
+type Phase = { kind: "ready" } | { kind: "playing"; limits: RunLimits } | { kind: "ended"; bot: RunHeader["bot"]; result: RunResult };
 
 export class Harness {
-  readonly actions: ActionEntry[] = [];
   readonly #run: Run;
   readonly #knowledge: KnowledgeLevel;
   readonly #onAction?: ActionListener;
+  readonly #frameBudget: number;
+  readonly #noProgressLimit: number;
   readonly #battles = new BattleWatch();
-  #goal: Milestone | null = null;
+  readonly #buttons = new ButtonTrack();
+  readonly #watch: GameWatch;
+  readonly #events: RunEvent[] = [];
+  #phase: Phase = { kind: "ready" };
 
   private constructor(run: Run, options: HarnessOptions) {
     this.#run = run;
     this.#knowledge = options.knowledge ?? "player";
     this.#onAction = options.onAction;
+    this.#frameBudget = options.frameBudget ?? FRAME_BUDGET;
+    this.#noProgressLimit = options.noProgressLimit ?? NO_PROGRESS_LIMIT;
+    this.#watch = new GameWatch(run.game);
   }
 
   static async open(options: HarnessOptions = {}): Promise<Harness> {
@@ -132,8 +167,12 @@ export class Harness {
     return harness;
   }
 
+  get actions(): ActionEntry[] {
+    return this.#events.flatMap((e) => (e.type === "action" ? [{ action: e.action, result: e.result }] : []));
+  }
+
   get rawInputs(): number {
-    return this.actions.filter((e) => e.action.name === "press").length;
+    return this.#events.filter((e) => e.type === "action" && e.action.name === "press").length;
   }
 
   get frame(): number {
@@ -145,18 +184,33 @@ export class Harness {
   }
 
   async play(bot: Bot): Promise<RunResult> {
+    if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
     const start = this.frame;
-    this.#goal = bot.goal ?? null;
+    const rawInputs = this.rawInputs;
+    this.#phase = { kind: "playing", limits: new RunLimits(bot.goal ?? null, start + this.#frameBudget, this.#noProgressLimit, this.#watch.progress) };
     let endReason: EndReason = "bot stopped";
+    let result: RunResult | null = null;
     try {
       await bot.play(this);
     } catch (error) {
-      if (!(error instanceof GoalReached)) throw error;
-      endReason = "goal";
+      if (!(error instanceof RunEnd)) throw error;
+      endReason = error.reason;
     } finally {
-      this.#goal = null;
+      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs };
+      this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version }, result };
     }
-    return { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs };
+    return result;
+  }
+
+  modelText(text: string): void {
+    this.#events.push({ type: "model", frame: this.frame, text });
+  }
+
+  record(): RunRecord {
+    if (this.#phase.kind !== "ended") throw new Error("no Run record: play a Bot first");
+    const { bot, result } = this.#phase;
+    const header = { ...this.#run.origin, knowledge: this.#knowledge, bot };
+    return { header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
   }
 
   observe(): Observation {
@@ -304,14 +358,16 @@ export class Harness {
   private act<T extends object>(action: MacroAction | RawInput, body: () => Outcome & Partial<T>, defaults: T): ActionResult & T;
   private act(action: MacroAction | RawInput, body: () => Outcome, defaults = {}): ActionResult {
     const start = this.frame;
+    const firstEvent = this.#events.length;
     const kind = this.#run.game.waitingFor().kind;
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
     const outcome: Outcome = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
     const result = { ...defaults, ...outcome, frames: this.frame - start };
     const entry = { action, result };
-    this.actions.push(entry);
+    // The action event goes before the game events of its frames.
+    this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#onAction?.(entry, this);
-    if (this.#goal && this.#run.game.milestones().includes(this.#goal)) throw new GoalReached();
+    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress);
     return result;
   }
 
@@ -382,9 +438,14 @@ export class Harness {
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
   private advance(keys: number): boolean {
+    if (this.#phase.kind === "playing") this.#phase.limits.beforeFrame(this.frame);
     this.#run.runFrame(keys);
-    const game = this.#run.game;
-    return this.#battles.onFrame(game.battleUnderway(), game.enemyMovePrinted());
+    this.#buttons.push(keys);
+    const events = this.#watch.onFrame(this.frame);
+    this.#events.push(...events);
+    const started = events.some((e) => e.type === "battle" && e.state === "start");
+    this.#battles.onFrame(started, this.#run.game.enemyMovePrinted());
+    return started;
   }
 
   private place(): Place {

@@ -337,6 +337,10 @@ export class Game {
     return ((byte >> (id & 7)) & 1) === 1;
   }
 
+  mode(): GameState["context"]["mode"] {
+    return this.context().mode;
+  }
+
   private context(): GameState["context"] {
     const main = this.mem.global("gMain");
     const name = (field: string) => {

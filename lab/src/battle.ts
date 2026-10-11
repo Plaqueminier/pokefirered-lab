@@ -86,19 +86,15 @@ export function enemyMovePrinted(mem: Memory): PrintedMove | null {
 }
 
 export class BattleWatch {
-  private inBattle = false;
   private last: PrintedMove | null = null;
   private moves = new Map<number, Set<number>>();
 
   // gLastPrintedMoves keeps the move of the last battle until the intro of the next one clears it.
-  onFrame(inBattle: boolean, printed: PrintedMove | null): boolean {
-    const started = inBattle && !this.inBattle;
+  onFrame(battleStarted: boolean, printed: PrintedMove | null): void {
     const changed = printed && (printed.move !== this.last?.move || printed.partyIndex !== this.last?.partyIndex);
-    this.inBattle = inBattle;
     this.last = printed;
-    if (started) this.moves = new Map();
+    if (battleStarted) this.moves = new Map();
     else if (changed) this.moves.set(printed.partyIndex, (this.moves.get(printed.partyIndex) ?? new Set()).add(printed.move));
-    return started;
   }
 
   movesSeen(partyIndex: number): number[] {
