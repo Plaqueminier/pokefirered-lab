@@ -1,5 +1,5 @@
-// FireRed-specific reads: what the Viewer shows. All addresses and layouts come
-// from the debug info; this file only knows names of game variables.
+// FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
+// from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
 import type { Memory, Ref } from "./memory";
 import { functionName } from "./symbols";
@@ -44,6 +44,35 @@ const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa
 const T_NOT_MOVING = 0;
 // The enum in script.c is RUNNING, WAITING, SHUTDOWN.
 const SCRIPT_CONTEXT_SHUTDOWN = 2;
+const SCRIPT_MODE_NATIVE = 2;
+// Map script tables (script.c): entries of a tag byte and a pointer; frame table rows of two variables and a pointer.
+const MAP_SCRIPT_ON_FRAME_TABLE = 2;
+const MAP_SCRIPT_ENTRY_SIZE = 5;
+const MAP_SCRIPT_ROW_SIZE = 8;
+// RENDER_STATE_WAIT, RENDER_STATE_CLEAR and RENDER_STATE_SCROLL_START (text.h) wait for A or B.
+const PRINTER_WAIT_STATES = new Set([1, 2, 3]);
+// Task_YesNoMenu_HandleInput (script_menu.c) reads no input while its tTimer (data[2]) is below 5.
+const YES_NO_TIMER = 2;
+const YES_NO_INPUT_DELAY = 5;
+// The field message box is window 0 (sStandardTextBox_WindowTemplates, new_menu_helpers.c); text printer n prints in window n.
+const FIELD_MESSAGE_WINDOW = 0;
+// The background tilemap of the text windows is 32 tiles wide; bits 0-9 of an entry are the tile.
+const TILEMAP_WIDTH = 32;
+const TILE_INDEX_MASK = 0x3ff;
+// Character codes (characters.h).
+const CHAR_DYNAMIC = 0xf7;
+const CHAR_KEYPAD_ICON = 0xf8;
+const CHAR_EXTRA_SYMBOL = 0xf9;
+const CHAR_PROMPT_SCROLL = 0xfa;
+const CHAR_PROMPT_CLEAR = 0xfb;
+const EXT_CTRL_CODE_BEGIN = 0xfc;
+const PLACEHOLDER_BEGIN = 0xfd;
+const CHAR_NEWLINE = 0xfe;
+const CHAR_EOS = 0xff;
+const ONE_ARG_CODES = new Set([CHAR_DYNAMIC, CHAR_KEYPAD_ICON, CHAR_EXTRA_SYMBOL, PLACEHOLDER_BEGIN]);
+// The table of GetExtCtrlCodeLength (string_util.c): the length of each extended code, with the code byte.
+const EXT_CTRL_CODE_LENGTHS = [1, 2, 2, 2, 4, 2, 2, 1, 2, 1, 1, 3, 2, 2, 2, 1, 3, 2, 2, 2, 2, 1, 1, 1, 1];
+const CHARMAP_JAPANESE = "@ Hiragana";
 
 export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number };
 
@@ -58,7 +87,11 @@ export type GameState = {
 
 export type Camera = { x: number; y: number };
 
-export type WaitingFor = "walk" | "busy";
+export type Choice = { options: string[]; cursor: number };
+
+export type WaitingFor = { kind: "walk" } | { kind: "text" } | ({ kind: "choice" } & Choice) | { kind: "busy" };
+
+export type FieldMessage = { shown: boolean; printerActive: boolean };
 
 export type Direction = "south" | "north" | "west" | "east";
 
@@ -143,8 +176,12 @@ export class Game {
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
     ]);
+    // The Japanese part gives the same bytes again. In the Latin part, a later line wins ('\'' over '’').
+    const japanese = charmapText.indexOf(CHARMAP_JAPANESE);
+    if (japanese < 0) throw new Error(`charmap.txt: no "${CHARMAP_JAPANESE}" line`);
+    const latin = charmapText.slice(0, japanese);
     const charmap: string[] = [];
-    for (const m of charmapText.matchAll(/^'(.)'\s*=\s*([0-9A-F]{2})\s*$/gm)) charmap[parseInt(m[2], 16)] = m[1];
+    for (const m of latin.matchAll(/^'(\\'|.)'\s*=\s*([0-9A-F]{2})\s*$/gm)) charmap[parseInt(m[2], 16)] = m[1].replace("\\", "");
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
@@ -153,9 +190,12 @@ export class Game {
 
   decodeText(bytes: Uint8Array): string {
     let out = "";
-    for (const b of bytes) {
-      if (b === 0xff) break;
-      out += this.charmap[b] ?? "?";
+    for (let i = 0; i < bytes.length && bytes[i] !== CHAR_EOS; i++) {
+      const b = bytes[i];
+      if (b === CHAR_NEWLINE || b === CHAR_PROMPT_SCROLL || b === CHAR_PROMPT_CLEAR) out += "\n";
+      else if (b === EXT_CTRL_CODE_BEGIN) i += this.extCtrlCodeLength(bytes[i + 1]);
+      else if (ONE_ARG_CODES.has(b)) i++;
+      else out += this.charmap[b] ?? "?";
     }
     return out;
   }
@@ -182,21 +222,109 @@ export class Game {
 
   waitingFor(): WaitingFor {
     const { mode, callback1 } = this.context();
-    switch (mode) {
-      case "overworld":
-        return callback1 === "CB1_Overworld" && this.canWalk() ? "walk" : "busy";
-      default:
-        return "busy";
-    }
+    if (mode !== "overworld") return { kind: "busy" };
+    const choice = this.choice();
+    if (choice) return { kind: "choice", ...choice };
+    if (this.textWaits()) return { kind: "text" };
+    return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
   }
 
   // DoCB1_Overworld (overworld.c) reads the player input only while the field controls are unlocked.
+  // ProcessPlayerFieldInput starts a waiting frame script of the map instead of reading the input.
   private canWalk(): boolean {
     return (
       !this.fieldLocked() &&
       this.mem.global("gPlayerAvatar").field("tileTransitionState").int() === T_NOT_MOVING &&
-      !this.mem.global("gPaletteFade").field("active").int()
+      !this.mem.global("gPaletteFade").field("active").int() &&
+      !this.frameScriptWaits()
     );
+  }
+
+  // As MapHeaderGetScriptTable (script.c).
+  private mapScriptTable(tag: number): number | null {
+    let entry = this.mem.global("gMapHeader").field("mapScripts").pointer();
+    if (entry === 0) return null;
+    for (; this.mem.u8(entry) !== 0; entry += MAP_SCRIPT_ENTRY_SIZE) if (this.mem.u8(entry) === tag) return this.mem.u32(entry + 1);
+    return null;
+  }
+
+  // As MapHeaderCheckScriptTable (script.c): a row runs when its two variables have the same value.
+  private frameScriptWaits(): boolean {
+    const table = this.mapScriptTable(MAP_SCRIPT_ON_FRAME_TABLE);
+    if (table === null) return false;
+    for (let row = table; this.mem.u16(row) !== 0; row += MAP_SCRIPT_ROW_SIZE) {
+      if (this.knownVar(this.mem.u16(row)) === this.knownVar(this.mem.u16(row + 2))) return true;
+    }
+    return false;
+  }
+
+  // No frame table of the game compares a special variable, and varGet cannot read them.
+  private knownVar(id: number): number {
+    const value = this.varGet(id);
+    if (value === null) throw new Error(`a frame script of the map compares the special variable 0x${id.toString(16)}`);
+    return value;
+  }
+
+  private textWaits(): boolean {
+    const printer = this.fieldPrinter();
+    if (printer.field("active").int()) {
+      return PRINTER_WAIT_STATES.has(printer.field("state").int()) && !this.mem.global("gTextFlags").field("autoScroll").int();
+    }
+    const script = this.mem.global("sGlobalScriptContext");
+    return (
+      this.scriptRunning() &&
+      script.field("mode").int() === SCRIPT_MODE_NATIVE &&
+      functionName(this.mem.symbols, script.field("nativePtr").pointer()) === "WaitForAorBPress"
+    );
+  }
+
+  private choice(): Choice | null {
+    const task = this.activeTask("Task_YesNoMenu_HandleInput");
+    if (!task || task.field("data").at(YES_NO_TIMER).int() < YES_NO_INPUT_DELAY) return null;
+    const options = ["gText_Yes", "gText_No"].map((name) => this.decodeText(this.mem.global(name).bytes()));
+    return { options, cursor: this.mem.global("sMenu").field("cursorPos").int() };
+  }
+
+  private activeTask(func: string): Ref | null {
+    const tasks = this.mem.global("gTasks");
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks.at(i);
+      if (task.field("isActive").int() && functionName(this.mem.symbols, task.field("func").pointer()) === func) return task;
+    }
+    return null;
+  }
+
+  fieldMessage(): FieldMessage {
+    return { shown: this.messageBoxShown(), printerActive: this.fieldPrinter().field("active").int() !== 0 };
+  }
+
+  /** The text of the message box, with its line and page breaks as "\n". */
+  fieldMessageText(): string {
+    const printer = this.fieldPrinter();
+    const buffer = this.mem.global("gStringVar4");
+    const at = printer.field("printerTemplate").field("currentChar").pointer();
+    if (printer.field("active").int() && (at < buffer.addr || at >= buffer.addr + buffer.size)) {
+      throw new Error(`the message box prints a string at 0x${at.toString(16)}, not from gStringVar4`);
+    }
+    return this.decodeText(buffer.bytes());
+  }
+
+  private fieldPrinter(): Ref {
+    return this.mem.global("sTextPrinters").at(FIELD_MESSAGE_WINDOW);
+  }
+
+  private extCtrlCodeLength(code: number): number {
+    const length = EXT_CTRL_CODE_LENGTHS[code];
+    if (length === undefined) throw new Error(`unknown extended control code 0x${code.toString(16)} in a game string`);
+    return length;
+  }
+
+  private messageBoxShown(): boolean {
+    const window = this.mem.global("gWindows").at(FIELD_MESSAGE_WINDOW).field("window");
+    const tilemap = this.mem.global("sGpuBgConfigs2").at(window.field("bg").int()).field("tilemap").pointer();
+    if (tilemap === 0) return false;
+    const cell = window.field("tilemapTop").int() * TILEMAP_WIDTH + window.field("tilemapLeft").int();
+    return (this.mem.u16(tilemap + cell * 2) & TILE_INDEX_MASK) === window.field("baseBlock").int();
   }
 
   fieldLocked(): boolean {
@@ -221,14 +349,8 @@ export class Game {
     return this.context().mode === "overworld" && this.mem.global("sGlobalScriptContextStatus").int() !== SCRIPT_CONTEXT_SHUTDOWN;
   }
 
-  private battleStarting(): boolean {
-    if (this.context().mode === "battle") return true;
-    const tasks = this.mem.global("gTasks");
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks.at(i);
-      if (task.field("isActive").int() && functionName(this.mem.symbols, task.field("func").pointer()) === "Task_BattleStart") return true;
-    }
-    return false;
+  battleStarting(): boolean {
+    return this.context().mode === "battle" || this.activeTask("Task_BattleStart") !== null;
   }
 
   map(): GameState["map"] {

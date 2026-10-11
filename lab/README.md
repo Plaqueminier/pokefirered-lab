@@ -23,7 +23,26 @@ A **Bot** is a module in `bots/` that exports `{ name, version, play(harness) }`
 - `blocked`: a person stays in the way. `goTo` waits and computes the route again; it stops when a person stops the player three times on the same cell.
 - `interrupted`: the game stopped the walk, with the reason `trigger` (coord trigger), `trainer` (a trainer sees the player), `script` (another script), `battle` (a wild battle starts) or `map` (the player arrived on a map that is not on the route). `goTo` stops at the first frame of the interruption and does nothing more. For `map`, that frame is when the warp ends.
 
-`bun run bot oak` leaves the house and walks north in Pallet Town until Professor Oak stops the player: `goTo(12, 1)` returns `interrupted` with the reason `trigger`.
+`observe().waitingFor` tells what the game waits for now:
+
+- `{ kind: "walk" }`: the player can walk.
+- `{ kind: "text" }`: a text box waits for A.
+- `{ kind: "choice", options, cursor }`: a yes/no, for example `["YES", "NO"]` with the cursor on 0.
+- `{ kind: "busy" }`: the game waits for no input. For example, a text prints, people walk or the screen fades.
+
+A text box that closes by itself is not a `text` Decision point. On the frame of a map arrival, the game can show `busy` while a frame script of the map starts, for example in Oak's lab.
+
+`readText()` reads the texts of the game. It runs the game until a text waits for A. Then it presses A at each `text` Decision point, until the text box closes or a choice shows. Then it runs the game to the next Decision point. Its result has `text`: one plain string for each message. Line and page breaks become spaces. The result also has the messages that closed by themselves. A text that waits for A after the box closed is not in the result: the next `readText()` reads it. The result is `impossible` when the game waits for the player to walk or shows a choice, and `interrupted` with `battle` when a battle starts.
+
+`choose(option)` moves the cursor of the choice to the option (for example `"NO"`), presses A, and runs the game to the next Decision point. It is `impossible` when the game shows no choice or when the choice has no such option.
+
+`press(button)` is a **Raw input**: one press of a button (`"A"`, `"Up"`...), then the game runs to the next Decision point. The harness counts them in `rawInputs`, and `bun run bot` prints the count at the end.
+
+`readText`, `choose` and `press` stop only for a battle (`interrupted` with `battle`), because a script runs during them. They are `impossible` when the game waits for no known input for 3600 frames. `choose` is also `impossible` when the cursor does not move.
+
+Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `choice` now. Other menus (multichoice, the PC) and the texts outside the overworld show `busy`.
+
+`bun run bot oak` leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4), with no Raw input.
 
 `bun test` runs the tests. The tests of `src/harness/harness.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
@@ -42,10 +61,10 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/core.ts`: one emulator instance (bun:ffi).
 - `src/symbols.ts`: reads the debug info of the `.elf` (addresses and types of all globals, function addresses). Cached in `.cache/`.
 - `src/memory.ts`: typed memory reads, for example `mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()`.
-- `src/game.ts`: FireRed state (map, party, badges, money, context), the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
+- `src/game.ts`: FireRed state (map, party, badges, money, context), what the game waits for (walk, text, choice) and the text of the message box, the grid of the player's map or of any map from ROM, the actors on it (people, trainer sight, triggers), and the **Interruption** of each frame (battle, trigger, trainer, script).
 - `src/run.ts`: one **Run**: the emulator and the game reads, started from the **Starting save**.
 - `src/server.ts`: the Viewer page and its WebSocket, and the wall-clock pacing of the Run.
-- `src/harness/`: the API of the **Bot**: `harness.ts` (observation and **Macro-actions**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `play.ts` (the `bot` command).
+- `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions** and **Raw inputs**), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**.
 - `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound.
 

@@ -1,11 +1,13 @@
-// Frames run only inside a Macro-action: the game is frozen at each Decision point (docs/adr/0002).
-import { DIRECTION_STEP, type Direction, type GameInterruption, type GameState, type MapGrid, type PlayerPosition, type WaitingFor } from "../game";
+// Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
+import { DIRECTION_STEP, type Direction, type FieldMessage, type Game, type GameInterruption, type GameState, type MapGrid, type PlayerPosition, type WaitingFor } from "../game";
 import { Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap } from "./path";
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
+const DECISION_FRAME_LIMIT = 3600;
+const MAX_TEXT_PRESSES = 256;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
@@ -32,9 +34,15 @@ export type ActionResult = Outcome & {
   frames: number;
 };
 
-export type MacroAction = { name: "goTo"; x: number; y: number; map?: string };
+export type TextResult = ActionResult & { text: string[] };
 
-export type ActionEntry = { action: MacroAction; result: ActionResult };
+export type MacroAction = { name: "goTo"; x: number; y: number; map?: string } | { name: "readText" } | { name: "choose"; option: string };
+
+export type Button = keyof typeof Keys;
+
+export type RawInput = { name: "press"; button: Button };
+
+export type ActionEntry = { action: MacroAction | RawInput; result: ActionResult | TextResult };
 
 export type Bot = {
   name: string;
@@ -56,6 +64,10 @@ export class Harness {
     const interruption = harness.settle();
     if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
     return harness;
+  }
+
+  get rawInputs(): number {
+    return this.actions.filter((e) => e.action.name === "press").length;
   }
 
   get frame(): number {
@@ -81,7 +93,7 @@ export class Harness {
 
   async goTo(x: number, y: number, map?: string): Promise<ActionResult> {
     return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
-      if (this.run.game.waitingFor() !== "walk") return { status: "impossible", reason: "the game does not wait for the player to walk" };
+      if (this.run.game.waitingFor().kind !== "walk") return { status: "impossible", reason: "the game does not wait for the player to walk" };
       const target = { map: map ?? this.place().map, x, y };
       let tries = 0;
       let stuckAt: Place | null = null;
@@ -119,13 +131,79 @@ export class Harness {
     });
   }
 
-  private act(action: MacroAction, body: () => Outcome): ActionResult {
+  async readText(): Promise<TextResult> {
+    return this.act({ name: "readText" }, () => {
+      const game = this.run.game;
+      const kind = game.waitingFor().kind;
+      if (kind === "walk" || kind === "choice") return { status: "impossible", reason: `the game waits for a ${kind}, not for a text`, text: [] };
+      const reader = new MessageReader(game);
+      for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
+        const outcome = this.untilDecision(() => reader.update());
+        if (outcome.status !== "done" || game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
+        if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeNextText() };
+        const battle = this.tap(Keys.A);
+        if (battle) return { status: "interrupted", reason: battle, text: reader.text };
+        reader.pressed();
+      }
+      return { status: "impossible", reason: `the text still waits for A after ${MAX_TEXT_PRESSES} presses`, text: reader.text };
+    });
+  }
+
+  async choose(option: string): Promise<ActionResult> {
+    return this.act({ name: "choose", option }, () => {
+      const choice = this.run.game.waitingFor();
+      if (choice.kind !== "choice") return { status: "impossible", reason: "the game shows no choice" };
+      const target = choice.options.indexOf(option);
+      if (target < 0) return { status: "impossible", reason: `no option "${option}" in ${choice.options.join(", ")}` };
+      for (let cursor = choice.cursor; cursor !== target; ) {
+        const moved = this.input(target > cursor ? Keys.Down : Keys.Up);
+        if (moved.status !== "done") return moved;
+        const now = this.run.game.waitingFor();
+        if (now.kind !== "choice") return { status: "impossible", reason: "the choice closed when the cursor moved" };
+        if (now.cursor === cursor) return { status: "impossible", reason: `the cursor does not move from ${cursor}` };
+        cursor = now.cursor;
+      }
+      return this.input(Keys.A);
+    });
+  }
+
+  async press(button: Button): Promise<ActionResult> {
+    return this.act({ name: "press", button }, () => this.input(Keys[button]));
+  }
+
+  private act<T extends object = object>(action: MacroAction | RawInput, body: () => Outcome & T): ActionResult & T {
     const start = this.frame;
-    const outcome = body();
-    const entry = { action, result: { ...outcome, frames: this.frame - start } };
+    const result: ActionResult & T = { ...body(), frames: this.frame - start };
+    const entry = { action, result };
     this.actions.push(entry);
     this.onAction?.(entry);
-    return entry.result;
+    return result;
+  }
+
+  private input(keys: number): Outcome {
+    const battle = this.tap(keys);
+    return battle ? { status: "interrupted", reason: battle } : this.untilDecision();
+  }
+
+  private untilDecision(watch: () => void = () => {}): Outcome {
+    for (let frames = 0; ; frames++) {
+      watch();
+      if (this.run.game.waitingFor().kind !== "busy") return { status: "done" };
+      if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game waits for no known input for ${DECISION_FRAME_LIMIT} frames` };
+      const battle = this.battleFrame(0);
+      if (battle) return { status: "interrupted", reason: battle };
+    }
+  }
+
+  // JOY_NEW sees a press only after a frame with the button up.
+  private tap(keys: number): "battle" | null {
+    return this.battleFrame(keys) ?? this.battleFrame(0);
+  }
+
+  // A script runs during a whole text, choice or Raw input, so only a battle stops them.
+  private battleFrame(keys: number): "battle" | null {
+    this.run.runFrame(keys);
+    return this.run.game.battleStarting() ? "battle" : null;
   }
 
   private place(): Place {
@@ -179,7 +257,7 @@ export class Harness {
   }
 
   private settle(): Interruption | null {
-    const result = this.hold(0, SETTLE_FRAME_LIMIT, () => this.run.game.waitingFor() === "walk");
+    const result = this.hold(0, SETTLE_FRAME_LIMIT, () => this.run.game.waitingFor().kind === "walk");
     if (result === "limit") throw new Error(`the game waits for no input for more than ${SETTLE_FRAME_LIMIT} frames`);
     return result === "done" ? null : result;
   }
@@ -207,8 +285,44 @@ export class Harness {
   }
 }
 
+class MessageReader {
+  readonly text: string[] = [];
+  private message: FieldMessage;
+  private pressedOnce = false;
+  private readBeforeClose: number | null = null;
+
+  constructor(private readonly game: Game) {
+    this.message = game.fieldMessage();
+    if (this.message.shown) this.text.push(plain(game.fieldMessageText()));
+  }
+
+  get closedAfterPress(): boolean {
+    return this.readBeforeClose !== null;
+  }
+
+  pressed(): void {
+    this.pressedOnce = true;
+  }
+
+  update(): void {
+    const wasActive = this.message.printerActive;
+    this.message = this.game.fieldMessage();
+    if (this.message.printerActive && !wasActive) this.text.push(plain(this.game.fieldMessageText()));
+    if (this.pressedOnce && !this.message.shown && this.readBeforeClose === null) this.readBeforeClose = this.text.length;
+  }
+
+  // A text that waits for A after the box closed belongs to the next readText.
+  textBeforeNextText(): string[] {
+    return this.text.length > (this.readBeforeClose ?? this.text.length) ? this.text.slice(0, -1) : this.text;
+  }
+}
+
 function withoutPeople(map: RouteMap | null): RouteMap | null {
   return map && { ...map, people: [] };
+}
+
+function plain(text: string): string {
+  return text.split("\n").join(" ");
 }
 
 function at(place: Place): string {
