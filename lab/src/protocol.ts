@@ -1,7 +1,7 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
 import type { Camera, GameState, MapActors, MapGrid } from "./game";
 import type { EndReason } from "./harness/harness";
-import type { RunEvent } from "./harness/record";
+import type { ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -17,6 +17,9 @@ export const Keys = {
   L: 1 << 9,
 } as const;
 
+/** The model of a model bot when the Run gives none. */
+export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
+
 /** The Viewer shows the screen and the state of a Run at most at these rates. */
 export const SCREEN_INTERVAL_MS = 1000 / 60;
 export const STATE_INTERVAL_MS = 100;
@@ -28,7 +31,17 @@ export type Speed = 1 | 4 | "max";
 
 export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason };
 
-export type RunSummary = { id: number; bot: string; playing: boolean; endReason: EndReason | null; error: string | null };
+export type RunSummary = {
+  id: number;
+  bot: string;
+  playing: boolean;
+  /** A person asked to stop the Run, and it plays to the next decision of its Bot. */
+  stopAsked: boolean;
+  endReason: EndReason | null;
+  error: string | null;
+  /** A Model call runs while `callsStarted` is more than the model events of the Run. */
+  model: (Pick<ModelSettings, "id" | "costLimit"> & { cost: number; callsStarted: number }) | null;
+};
 
 /** The Run that the Viewer shows: its own Run (keyboard or replay), or a Run of a Bot. */
 export type ShownRun = { kind: "viewer"; replay: ReplayStatus | null } | { kind: "bot"; run: RunSummary };
@@ -66,5 +79,6 @@ export type ClientMessage =
   | { type: "write-start-save" }
   | { type: "replay"; name: string }
   | { type: "end-replay" }
-  | { type: "start-bot"; name: string }
+  | { type: "start-bot"; name: string; model: ModelOptions }
+  | { type: "stop-run"; runId: number }
   | { type: "show"; runId: number | null };

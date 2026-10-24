@@ -138,6 +138,7 @@ export type MapActors = {
     localId: number;
     x: number;
     y: number;
+    graphics: string;
     /** 1 south, 2 north, 3 west, 4 east, 0 unknown. */
     facing: number;
     loaded: boolean;
@@ -164,29 +165,34 @@ export class Game {
   private readonly decode: Decode;
   private readonly prompts: Prompts;
   private readonly behaviorNames: Map<number, string>;
+  private readonly graphicsNames: Map<number, string>;
   private readonly mapNames: string[][];
   private readonly attributeCache = new Map<number, Uint32Array>();
 
   private constructor(
     private readonly mem: Memory,
-    tables: { decode: Decode; behaviorNames: Map<number, string>; mapNames: string[][] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; mapNames: string[][] },
   ) {
     this.decode = tables.decode;
     this.prompts = new Prompts(mem, tables.decode);
     this.behaviorNames = tables.behaviorNames;
+    this.graphicsNames = tables.graphicsNames;
     this.mapNames = tables.mapNames;
   }
 
   static async create(mem: Memory): Promise<Game> {
-    const [charmapText, behaviorsText, groups] = await Promise.all([
+    const [charmapText, behaviorsText, graphicsText, groups] = await Promise.all([
       Bun.file(join(REPO_DIR, "charmap.txt")).text(),
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
+      Bun.file(join(REPO_DIR, "include/constants/event_objects.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
     ]);
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
+    const graphicsNames = new Map<number, string>();
+    for (const m of graphicsText.matchAll(/^#define OBJ_EVENT_GFX_(\w+)\s+(\d+)\s*$/gm)) graphicsNames.set(Number(m[2]), m[1]);
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { decode: decoder(charmapText), behaviorNames, mapNames });
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, mapNames });
   }
 
   private get saveBlock1(): Ref {
@@ -618,7 +624,9 @@ export class Game {
       const facing = obj ? obj.field("facingDirection").int() : (FACING_OF_MOVEMENT[normal.field("movementType").int()] ?? 0);
       const rangeX = normal.field("movementRangeX").int();
       const rangeY = normal.field("movementRangeY").int();
-      const person: MapActors["people"][number] = { localId, x, y, facing, loaded: obj !== undefined };
+      const graphicsId = (obj ?? template).field("graphicsId").int();
+      const graphics = this.graphicsNames.get(graphicsId) ?? `#${graphicsId}`;
+      const person: MapActors["people"][number] = { localId, x, y, graphics, facing, loaded: obj !== undefined };
       if (rangeX > 0 || rangeY > 0) {
         person.wander = { x: template.field("x").int() - rangeX, y: template.field("y").int() - rangeY, w: rangeX * 2 + 1, h: rangeY * 2 + 1 };
       }

@@ -332,6 +332,20 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe().milestones).toEqual([]);
   });
 
+  test("on the overworld, observe gives the people of the map with the name of their sprite", async () => {
+    const harness = await Harness.open();
+    await toLab(harness);
+    const observation = harness.observe();
+    if (observation.mode !== "overworld") throw new Error("not on the overworld");
+    expect(observation.people).toEqual(
+      expect.arrayContaining([
+        { x: 6, y: 3, graphics: "PROF_OAK" },
+        { x: 9, y: 4, graphics: "ITEM_BALL" },
+        { x: 5, y: 4, graphics: "BLUE" },
+      ]),
+    );
+  });
+
   test("at a Poké Ball in the lab, the yes/no is a choice, and choose moves the cursor and selects", async () => {
     const harness = await Harness.open();
     await toLab(harness);
@@ -358,6 +372,24 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(await harness.interact(7, 5)).toMatchObject({ status: "impossible", reason: "nothing at (7, 5) starts a script" });
     expect(harness.observe()).toMatchObject({ mode: "overworld", player: { x: 8, y: 5, facing: "west" } });
     expect(harness.observe().waitingFor).toEqual({ kind: "walk" });
+  });
+
+  test("goTo to an exit of the map takes it: the stairs, the door mat, a door and the north edge, and it is done on the other map", async () => {
+    const harness = await Harness.open();
+    expect(await harness.goTo(10, 2)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ map: { name: "PalletTown_PlayersHouse_1F" } });
+    expect(await harness.goTo(4, 8)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ map: { name: "PalletTown" } });
+    expect(await harness.goTo(15, 7)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ map: { name: "PalletTown_RivalsHouse" } });
+    expect(await harness.goTo(12, -1, "PalletTown")).toMatchObject({ status: "impossible", frames: 0 });
+
+    const after = await Harness.open();
+    await starter.play(after);
+    expect(await after.goTo(6, 12)).toMatchObject({ status: "done" });
+    expect(after.observe()).toMatchObject({ map: { name: "PalletTown" } });
+    expect(await after.goTo(12, -1)).toMatchObject({ status: "done" });
+    expect(after.observe()).toMatchObject({ map: { name: "Route1" } });
   });
 
   test("goTo to the cell of Mom waits, plans again, and returns blocked", async () => {

@@ -15,6 +15,8 @@ export type Leg = { map: string; moves: Move[] };
 
 export type MapSource = (name: string) => RouteMap | null;
 
+export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight">;
+
 const WALKABLE = new Set<string>([KIND.open, KIND.grass]);
 const WARP_COST = 4;
 export const MAX_ROUTE_MAPS = 32;
@@ -22,14 +24,17 @@ export const MAX_ROUTE_MAPS = 32;
 type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
 type Link = { from: string; move: Move; leaves: boolean; to: string };
 
-export function findRoute(from: Place, to: Place, mapOf: MapSource): Leg[] | null {
+/** With `exit`, the destination is the arrival of an exit: it can be a cell where the player cannot stand (the arrival of a door is a blocked cell), and the player reaches it when it arrives on its map. */
+export type Destination = Place & { exit?: boolean };
+
+export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[] | null {
   const maps = new Map<string, RouteMap | null>();
   const load = (name: string) => {
     if (!maps.has(name)) maps.set(name, maps.size < MAX_ROUTE_MAPS ? mapOf(name) : null);
     return maps.get(name)!;
   };
   const target = load(to.map);
-  if (!load(from.map) || !target || !free(target, to)) return null;
+  if (!load(from.map) || !target || !(to.exit || free(target, to))) return null;
 
   const id = (p: Place) => `${p.map}:${p.x},${p.y}`;
   const estimate = (p: Place) => (p.map === to.map ? Math.abs(p.x - to.x) + Math.abs(p.y - to.y) : 0);
@@ -86,6 +91,29 @@ function* edges(place: Place, load: MapSource): Generator<Edge> {
   }
 }
 
+/** A cell of the player's map can be an exit: a warp that the player can take, or the cell past an edge with a neighbour map. */
+export function destinationOf(cell: Place, canExit: boolean, load: MapSource): Destination {
+  const map = canExit ? load(cell.map) : null;
+  const arrival = map && exitArrival(map, cell, load);
+  return arrival && arrival.map !== cell.map ? { ...arrival, exit: true } : cell;
+}
+
+export function reached(destination: Destination, here: Place): boolean {
+  return destination.exit ? here.map === destination.map : here.map === destination.map && here.x === destination.x && here.y === destination.y;
+}
+
+function exitArrival(map: RouteMap, cell: Cell, load: MapSource): Place | null {
+  const warp = map.warps.find((w) => w.how !== "none" && w.x === cell.x && w.y === cell.y);
+  if (warp) return arrivalOf(warp, load);
+  const side: Direction | null =
+    cell.y === -1 ? "north"
+    : cell.y === map.mapHeight ? "south"
+    : cell.x === -1 ? "west"
+    : cell.x === map.mapWidth ? "east"
+    : null;
+  return side && acrossConnection(map, { map: map.name, ...cell }, side, load);
+}
+
 function arrivalOf(warp: WarpExit, load: MapSource): Place | null {
   const arrival = load(warp.to)?.warps[warp.warpId];
   return arrival ? { map: warp.to, x: arrival.x, y: arrival.y } : null;
@@ -106,15 +134,15 @@ function acrossConnection(map: RouteMap, outside: Place, direction: Direction, l
   return inside(next, arrival) && free(next, arrival) ? arrival : null;
 }
 
-function inside(map: RouteMap, c: Cell): boolean {
+function inside(map: MapCells, c: Cell): boolean {
   return c.x >= 0 && c.y >= 0 && c.x < map.mapWidth && c.y < map.mapHeight;
 }
 
-function kindAt(map: RouteMap, c: Cell): string {
+export function kindAt(map: MapCells, c: Cell): string {
   return map.kinds[(c.y - map.y0) * map.width + (c.x - map.x0)];
 }
 
-function free(map: RouteMap, c: Cell): boolean {
+export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {
   return inside(map, c) && WALKABLE.has(kindAt(map, c)) && !map.people.some((p) => p.x === c.x && p.y === c.y);
 }
 

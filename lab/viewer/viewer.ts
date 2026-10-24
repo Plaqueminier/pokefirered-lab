@@ -54,7 +54,18 @@ const replayPanel = new ReplayPanel(
   send,
 );
 
-const runsPanel = new RunsPanel({ runs: $<HTMLSelectElement>("runs"), bots: $<HTMLSelectElement>("bots"), start: $<HTMLButtonElement>("bot-start") }, send);
+const runsPanel = new RunsPanel(
+  {
+    runs: $<HTMLSelectElement>("runs"),
+    bots: $<HTMLSelectElement>("bots"),
+    model: $<HTMLInputElement>("model-id"),
+    costLimit: $<HTMLInputElement>("cost-limit"),
+    start: $<HTMLButtonElement>("bot-start"),
+    stop: $<HTMLButtonElement>("run-stop"),
+    shownModel: $("shown-model"),
+  },
+  send,
+);
 let shownRunId: number | null = null;
 
 function send(message: ClientMessage): void {

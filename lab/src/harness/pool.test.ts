@@ -49,6 +49,19 @@ describe.skipIf(!ready)("RunPool", () => {
     expect(record).toBeNull();
     expect(error).toContain("bots/nobody.ts");
     expect((await pool.start({ bot: "starter", frameBudget: 10 }).done).record?.result.endReason).toBe("frame budget");
+    const notModel = await pool.start({ bot: "starter", model: { id: "a/b", costLimit: 0.5, reasoning: "off", temperature: null } }).done;
+    expect(notModel).toEqual({ record: null, error: "Error: bots/starter.ts is not a model bot: it does not export modelBot(model)" });
+  });
+
+  test("stop ends a Run of a scripted Bot at its next decision, with the end reason user stop and a Run record", async () => {
+    const run = new RunPool().start({ bot: "starter" });
+    expect(run.stopAsked).toBe(false);
+    run.stop();
+    expect(run.stopAsked).toBe(true);
+    const { record, error } = await run.done;
+    expect(error).toBeNull();
+    expect(record?.result.endReason).toBe("user stop");
+    expect(record?.events.filter((e) => e.type === "action")).toHaveLength(1);
   });
 
   test("while a Run plays, the pool has its screen, its state and its events; at the end, the last screen and all the events of the Run record", async () => {

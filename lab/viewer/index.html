@@ -146,6 +146,16 @@
       #notice { min-height: 1.4em; color: var(--accent); }
       .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
       .panel-head h2 { margin: 0; flex: 1; }
+      .panel-head input {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font: inherit;
+      }
+      #model-id { width: 240px; }
+      #cost-limit { width: 110px; }
       .panel-head select {
         background: var(--panel);
         color: var(--text);
@@ -208,10 +218,14 @@
           <div class="panel-head">
             <h2>Runs</h2>
             <select id="runs"></select>
+            <button id="run-stop" disabled title="Arrête le Run montré après l'action ou le Model call en cours, et écrit son Run record">Arrêter le Run</button>
             <select id="bots"></select>
+            <input id="model-id" autocomplete="off" title="Modèle OpenRouter du bot modèle" />
+            <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limite en $" title="Limite de coût du bot modèle, en $" />
             <button id="bot-start">Lancer le Bot</button>
           </div>
-          <div class="muted">Les Runs de Bot jouent en même temps, à pleine vitesse et sans son. Changer de Run ne les arrête pas.</div>
+          <div class="mono" id="shown-model"></div>
+          <div class="muted">Les Runs de Bot jouent en même temps, à pleine vitesse et sans son. Changer de Run ne les arrête pas : « Arrêter le Run » arrête le Run montré, avec la fin <code>user stop</code> et un Run record. Le modèle et la limite de coût servent seulement au bot modèle (videz-les pour un bot scripté) : vides, ils prennent le modèle par défaut et <code>LAB_COST_LIMIT</code> (ou 0,50 $).</div>
         </section>
         <section>
           <div class="panel-head">

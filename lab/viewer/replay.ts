@@ -1,4 +1,4 @@
-import type { RunEvent } from "../src/harness/record";
+import type { ModelEvent, RunEvent } from "../src/harness/record";
 import type { ClientMessage, ShownRun } from "../src/protocol";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
@@ -26,8 +26,21 @@ function eventLabel(event: Exclude<RunEvent, ActionEvent>): string {
     case "milestone":
       return `étape ${event.milestone}`;
     case "model":
-      return `modèle : ${event.text}`;
+      return `modèle : ${event.decision?.action ?? "pas d'action"}`;
   }
+}
+
+function modelText(events: RunEvent[], callsStarted: number): string {
+  const calls = events.filter((e): e is ModelEvent => e.type === "model");
+  const thinking = callsStarted > calls.length;
+  const objective = calls.findLast((e) => e.decision?.objective)?.decision?.objective;
+  const last = calls.at(-1);
+  const answer =
+    thinking ? "le modèle réfléchit…"
+    : !last ? null
+    : last.decision ? `${last.decision.reason} → ${last.decision.action}`
+    : `pas d'action : ${last.error}`;
+  return [objective ? `Objectif : ${objective}` : null, answer].filter((line) => line !== null).join("\n");
 }
 
 function statusText(frame: number, shown: ShownRun): string {
@@ -52,6 +65,7 @@ export type ReplayElements = {
 export class ReplayPanel {
   private events: RunEvent[] = [];
   private frame = 0;
+  private modelCallsStarted = 0;
 
   constructor(
     private readonly ui: ReplayElements,
@@ -78,6 +92,8 @@ export class ReplayPanel {
 
   onStatus(frame: number, shown: ShownRun): void {
     this.frame = frame;
+    // A Run that ended with an error can have a Model call with no model event.
+    this.modelCallsStarted = shown.kind === "bot" && shown.run.playing ? (shown.run.model?.callsStarted ?? 0) : 0;
     const keyboard = shown.kind === "viewer" && !shown.replay;
     if (keyboard) this.events = [];
     this.ui.end.hidden = shown.kind === "bot" || keyboard;
@@ -90,7 +106,7 @@ export class ReplayPanel {
     const done = action !== undefined && this.frame >= action.frame + action.result.frames;
     this.ui.action.textContent = action ? actionLabel(action) : "–";
     this.ui.detail.textContent = action ? [`depuis l'image ${action.frame} · ${done ? resultLabel(action) : "en cours"}`, ...(done ? texts(action) : [])].join("\n") : "";
-    this.ui.model.textContent = this.events.findLast((e) => e.type === "model")?.text ?? "";
+    this.ui.model.textContent = modelText(this.events, this.modelCallsStarted);
     const log = this.events.map((event) => `${String(event.frame).padStart(6)}  ${event.type === "action" ? actionLabel(event) : eventLabel(event)}`).join("\n");
     if (this.ui.events.textContent === log) return;
     this.ui.events.textContent = log;

@@ -17,7 +17,7 @@ The program that runs the emulator and gives a **Bot** one interface to the game
 _Avoid_: emulator, AI
 
 **Bot**:
-The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code; a model bot is an AI model that calls the **Harness**.
+The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice or a battle action, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
 **Agent**:
@@ -36,9 +36,21 @@ _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step
 
+**Objective**:
+A short sentence that a model bot sets itself: what it does now, for example "take the parcel to Professor Oak". The AI model changes it when the texts of the game give it a new task. It is not the goal of the **Run**: that goal is a **Milestone**.
+_Avoid_: goal (the **Milestone** that ends a **Run**), quest
+
+**Model call**:
+One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. A model bot makes a model call only when the game waits for a walk, a choice or a battle action. Thus a **Run** has fewer model calls than **Decision points**.
+_Avoid_: prompt, turn, step
+
 **Knowledge level**:
 The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more, for example hidden items and exact enemy stats.
 _Avoid_: mode (used for overworld or battle), cheat mode
+
+**Atlas**:
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took with its destination, the exits that the player saw but did not take, and the text of each sign that the player read. It grows only with what the player saw in the **Run**.
+_Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Raw input**:
 A button press that a **Bot** sends directly, when no **Macro-action** covers the case. The **Harness** counts each one, and then runs the game to the next **Decision point**.
@@ -52,7 +64,7 @@ _Avoid_: savestate
 A snapshot of the full emulator state at one frame. It becomes invalid after each rebuild, because code addresses move.
 
 **Run**:
-One emulator instance that plays the game from a **Starting save**. The **Harness** can play several **Runs** at the same time; this machine runs 4 at most.
+One emulator instance that plays the game from a **Starting save**. The **Harness** plays 4 **Runs** at most at the same time. This is a choice: the machine can play about 12 at full speed.
 _Avoid_: game, instance, session
 
 **Milestone**:
@@ -64,7 +76,7 @@ The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal`, `bot stopped`, `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**).
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal`, `bot stopped`, `user stop` (a person stopped the **Run**), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**).
 _Avoid_: score, outcome
 
 **Viewer**:
@@ -77,7 +89,7 @@ _Avoid_: emulator, web player
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, its goal is reached, its frame budget is used, or its **Bot** makes no progress.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, its goal is reached, its frame budget is used, or its **Bot** makes no progress.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
 

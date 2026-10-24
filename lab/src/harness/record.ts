@@ -15,9 +15,48 @@ export type GameEvent = { frame: number } & (
   | { type: "milestone"; milestone: Milestone }
 );
 
-export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | { type: "model"; frame: number; text: string };
+export const REASONING = ["off", "low", "medium", "high"] as const;
 
-export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version"> };
+export type Reasoning = (typeof REASONING)[number];
+
+// The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
+export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null };
+
+/** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
+export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null };
+
+export type Prompt = { system: string; user: string };
+
+export type Usage = { promptTokens: number; completionTokens: number; reasoningTokens: number; cost: number };
+
+export type Decision = { reason: string; action: string; objective: string; notes: string };
+
+// answer is null when the request failed.
+export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage } & (
+  | { decision: Decision; error: null }
+  | { decision: null; error: string }
+);
+
+export type ModelEvent = { type: "model"; frame: number; latencyMs: number } & ModelAnswer;
+
+export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | ModelEvent;
+
+export type ModelTotals = { calls: number } & Usage;
+
+export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
+  return events.filter((e): e is ModelEvent => e.type === "model");
+}
+
+export function modelTotals(events: readonly RunEvent[]): ModelTotals {
+  const totals: ModelTotals = { calls: 0, promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
+  for (const event of modelEvents(events)) {
+    totals.calls++;
+    for (const key of ["promptTokens", "completionTokens", "reasoningTokens", "cost"] as const) totals[key] += event.usage[key];
+  }
+  return totals;
+}
+
+export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model"> };
 
 export type RunRecord = { header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; result: RunResult };
 

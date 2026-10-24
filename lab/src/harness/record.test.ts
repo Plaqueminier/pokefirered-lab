@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import starter from "../../bots/starter";
 import { ROM_FILE, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
-import { isRunRecord, RecordPlayer, replay, type RunRecord } from "./record";
+import { isRunRecord, type ModelAnswer, type ModelEvent, RecordPlayer, replay, type RunRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -17,6 +17,15 @@ function playStarter() {
 
 const result: RunResult = { endReason: "goal", frames: 6, milestones: [], rawInputs: 0 };
 const header = { rom: "rom", seed: 1, startSave: null, knowledge: "player", bot: { name: "test", version: "1" } } as const;
+const ANSWER: ModelAnswer = {
+  model: "a/b",
+  situation: "a walk on PalletTown (6, 1)",
+  prompt: { system: "rules", user: "now" },
+  answer: '{"reason":"I go north.","action":"goTo 6 0","objective":"","notes":""}',
+  decision: { reason: "I go north.", action: "goTo 6 0", objective: "", notes: "" },
+  error: null,
+  usage: { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: 0.0001 },
+};
 
 describe("RecordPlayer", () => {
   test("it gives the keys of each frame from frame 0, then it ends", () => {
@@ -33,7 +42,7 @@ describe("RecordPlayer", () => {
   test("it gives the events up to the current frame: an action from the frame where the Bot asked for it", () => {
     const goTo = { type: "action", frame: 2, action: { name: "goTo", x: 1, y: 2 }, result: { status: "done", frames: 3 } } as const;
     const map = { type: "map", frame: 2, map: "PalletTown" } as const;
-    const model = { type: "model", frame: 5, text: "I go north." } as const;
+    const model: ModelEvent = { type: "model", frame: 5, latencyMs: 300, ...ANSWER };
     const milestone = { type: "milestone", frame: 6, milestone: "has-pokemon" } as const;
     const record: RunRecord = { header, buttons: [[0, 6]], events: [goTo, map, model, milestone], result };
     const player = new RecordPlayer(record);
@@ -136,14 +145,14 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(record.result.endReason).toBe("frame budget");
   });
 
-  test("each Raw input of the play counts in the Run result and is an event of the Run record, as the text of a model Bot", async () => {
+  test("each Raw input of the play counts in the Run result and is an event of the Run record, as a Model call", async () => {
     const harness = await Harness.open();
     await harness.press("B");
     const presser: Bot = {
       name: "presser",
       version: "1",
       async play(h) {
-        h.modelText("I press B three times.");
+        await h.modelCall(async () => ({ answer: ANSWER, action: null }));
         for (let i = 0; i < 3; i++) await h.press("B");
       },
     };
@@ -151,12 +160,34 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     const events = harness.record().events.filter((e) => e.type === "action" || e.type === "model");
     expect(events.map(({ frame, ...e }) => ("action" in e ? e.action : e))).toEqual([
       { name: "press", button: "B" },
-      { type: "model", text: "I press B three times." },
+      { type: "model", latencyMs: expect.any(Number), ...ANSWER },
       { name: "press", button: "B" },
       { name: "press", button: "B" },
       { name: "press", button: "B" },
     ]);
     await expect(harness.play(presser)).rejects.toThrow("a Harness plays one Run");
+  });
+
+  test("a stop request ends the Run with user stop after the Model call or the Raw input that plays, and the Run record keeps them", async () => {
+    let stop = false;
+    const harness = await Harness.open({ stopAsked: () => stop });
+    const stopped: Bot = {
+      name: "stopped",
+      version: "1",
+      async play(h) {
+        await h.press("B");
+        await h.modelCall(async () => {
+          stop = true;
+          return { answer: ANSWER, action: null };
+        });
+        await h.press("B");
+      },
+    };
+    expect(await harness.play(stopped)).toMatchObject({ endReason: "user stop", rawInputs: 1 });
+    expect(harness.record().events.filter((e) => e.type === "action" || e.type === "model").map((e) => e.type)).toEqual(["action", "model"]);
+
+    const pressed = await Harness.open({ stopAsked: () => true });
+    expect(await pressed.play(stopped)).toMatchObject({ endReason: "user stop", rawInputs: 1 });
   });
 
   test("when the Bot throws an error, play throws it again and the Run record keeps the Run, with the end reason bot stopped", async () => {

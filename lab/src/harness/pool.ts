@@ -1,14 +1,16 @@
 // A Macro-action runs its frames in one synchronous block: each Run plays in a worker, so the Viewer loop never stops.
 import type { RunState } from "../run";
 import type { HarnessOptions } from "./harness";
-import type { RunEvent, RunRecord } from "./record";
+import type { ModelSettings, RunEvent, RunRecord } from "./record";
 
-// The machine runs 4 emulators at most.
+// A choice, not a limit of the machine: it plays about 12 Runs at full speed.
 export const MAX_RUNS = 4;
 
-export type RunSpec = { bot: string } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
+export type RunSpec = { bot: string; model?: ModelSettings } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
 
 export type RunEnd = { record: RunRecord | null; error: string | null };
+
+export type WorkerStart = { spec: RunSpec; stop: Int32Array };
 
 export type RunView = { frame: number; screen: Uint8Array | null } & RunState;
 
@@ -16,11 +18,15 @@ export type WorkerMessage =
   | { type: "screen"; frame: number; screen: Uint8Array }
   | ({ type: "state" } & RunState)
   | { type: "events"; events: RunEvent[] }
+  | { type: "model-call-start" }
   | ({ type: "end" } & RunEnd);
 
 export class PoolRun {
   #end: RunEnd | null = null;
   #view: RunView = { frame: 0, screen: null, state: null, grid: null, actors: null, camera: null };
+  #modelCallsStarted = 0;
+  // A scripted Bot gives the event loop of its worker no turn until the end of its Run, so a message cannot stop it: the worker reads this shared flag.
+  readonly #stop = new Int32Array(new SharedArrayBuffer(4));
   readonly #events: RunEvent[] = [];
   readonly done: Promise<RunEnd>;
 
@@ -43,6 +49,9 @@ export class PoolRun {
         case "events":
           this.#events.push(...data.events);
           break;
+        case "model-call-start":
+          this.#modelCallsStarted++;
+          break;
         case "end":
           end = { record: data.record, error: data.error };
           break;
@@ -54,7 +63,15 @@ export class PoolRun {
         resolve(end);
       });
     });
-    worker.postMessage(spec);
+    worker.postMessage({ spec, stop: this.#stop } satisfies WorkerStart);
+  }
+
+  stop(): void {
+    Atomics.store(this.#stop, 0, 1);
+  }
+
+  get stopAsked(): boolean {
+    return Atomics.load(this.#stop, 0) === 1;
   }
 
   /** Null while the worker plays. */
@@ -66,7 +83,12 @@ export class PoolRun {
     return this.#view;
   }
 
-  /** The events of the Run record up to the end of the last Macro-action or Raw input, and all of them at the end. */
+  /** A Model call runs while its model event is not in `events`. */
+  get modelCallsStarted(): number {
+    return this.#modelCallsStarted;
+  }
+
+  /** The events of the Run record up to the end of the last Macro-action, Raw input or Model call, and all of them at the end. */
   get events(): readonly RunEvent[] {
     return this.#events;
   }

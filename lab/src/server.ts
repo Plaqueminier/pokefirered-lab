@@ -4,9 +4,9 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, safely } from "./game";
-import { botNames } from "./harness/harness";
+import { type Bot, botNames, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
-import { isRunRecord, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { isRunRecord, type ModelOptions, modelTotals, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
   BinaryKind,
   type ClientMessage,
@@ -260,8 +260,16 @@ async function replayFile(name: string): Promise<string> {
   return `Replay de ${name}.`;
 }
 
-function runSummary({ id, spec, end }: PoolRun): RunSummary {
-  return { id, bot: spec.bot, playing: end === null, endReason: end?.record?.result.endReason ?? null, error: end?.error ?? null };
+function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: PoolRun): RunSummary {
+  return {
+    id,
+    bot: spec.bot,
+    playing: end === null,
+    stopAsked,
+    endReason: end?.record?.result.endReason ?? null,
+    error: end?.error ?? null,
+    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
+  };
 }
 
 function show(next: RunSource): void {
@@ -273,13 +281,20 @@ function show(next: RunSource): void {
   sendMap(shown.state());
 }
 
-async function startBot(name: string): Promise<string> {
+async function startBot(name: string, given: ModelOptions): Promise<string> {
   if (!(await botNames()).includes(name)) return `Pas de Bot ${name} dans lab/bots/.`;
   if (pool.full) return `Pas de nouvelle Run : ${pool.limit} Runs de Bot jouent déjà (${MAX_RUNS} émulateurs au plus, avec la Run du Viewer).`;
-  const started = pool.start({ bot: name });
+  let bot: Bot;
+  try {
+    bot = await loadBot(name, given);
+  } catch (error) {
+    return `Pas de Run : ${error instanceof Error ? error.message : String(error)}.`;
+  }
+  const { model } = bot;
+  const started = pool.start({ bot: name, ...(model ? { model } : {}) });
   show(botRun(started));
   void started.done.then((end) => onBotEnd(started, end));
-  return `Run ${started.id} : le Bot ${name} joue.`;
+  return `Run ${started.id} : le Bot ${name} joue${model ? ` avec le modèle ${model.id} (limite ${model.costLimit} $)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
@@ -371,8 +386,15 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "notice", text: "Fin du replay : le clavier joue la Run depuis cette image." });
       break;
     case "start-bot":
-      send({ type: "notice", text: await startBot(message.name) });
+      send({ type: "notice", text: await startBot(message.name, message.model) });
       break;
+    case "stop-run": {
+      const poolRun = pool.runs.find((r) => r.id === message.runId);
+      if (!poolRun || poolRun.end) break;
+      poolRun.stop();
+      send({ type: "notice", text: `Run ${poolRun.id} : arrêt demandé. Le Run s'arrête après l'action ou le Model call en cours.` });
+      break;
+    }
     case "show": {
       const poolRun = pool.runs.find((r) => r.id === message.runId);
       show(poolRun ? botRun(poolRun) : viewerRun);

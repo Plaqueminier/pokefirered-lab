@@ -19,8 +19,8 @@ import type { PartyMon } from "../party";
 import type { Messages } from "../prompts";
 import { Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
-import { findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap } from "./path";
-import { ButtonTrack, GameWatch, type RunEvent, type RunHeader, type RunRecord } from "./record";
+import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
+import { ButtonTrack, GameWatch, type ModelAnswer, type ModelEvent, type ModelOptions, type ModelSettings, type RunEvent, type RunHeader, type RunRecord } from "./record";
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
@@ -54,9 +54,12 @@ export type BattleState = { kind: Battle["kind"]; player: BattleMon; enemy: Enem
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[] };
 
-export type Observation = ObservationBase & ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid } | { mode: "battle"; battle: BattleState });
+export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics">;
 
-export type EndReason = "goal" | "bot stopped" | "frame budget" | "no progress";
+export type Observation = ObservationBase &
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState });
+
+export type EndReason = "goal" | "bot stopped" | "user stop" | "frame budget" | "no progress";
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
@@ -100,10 +103,18 @@ export async function botNames(): Promise<string[]> {
   return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
 }
 
-export async function loadBot(name: string): Promise<Bot> {
-  const bot: Bot = (await import(join(BOTS_DIR, `${name}.ts`))).default;
+/** A module of `bots/` exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run. */
+export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
+  const module = await import(join(BOTS_DIR, `${name}.ts`));
+  if (typeof module.modelBot === "function") return module.modelBot(model);
+  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`bots/${name}.ts is not a model bot: it does not export modelBot(model)`);
+  const bot: Bot | undefined = module.default;
   if (typeof bot?.play !== "function") throw new Error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
   return bot;
+}
+
+export function actionText({ name, ...args }: MacroAction | RawInput): string {
+  return `${name}(${Object.values(args).join(", ")})`;
 }
 
 export function must(result: ActionResult): void {
@@ -112,12 +123,20 @@ export function must(result: ActionResult): void {
 
 type ActionListener = (entry: ActionEntry, harness: Harness) => void;
 
+type ModelCallStartListener = (harness: Harness) => void;
+
+type ModelCallListener = (event: ModelEvent, harness: Harness) => void;
+
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
   onAction?: ActionListener;
   onFrame?: () => void;
+  onModelCallStart?: ModelCallStartListener;
+  onModelCall?: ModelCallListener;
   frameBudget?: number;
   noProgressLimit?: number;
+  /** When it gives true, the Run ends with "user stop" after the Macro-action, the Raw input or the Model call that plays. */
+  stopAsked?: () => boolean;
 };
 
 /** The Harness ends a Run with an error that a Macro-action or a Raw input throws: `play` must not catch it. */
@@ -125,6 +144,8 @@ export type Bot = {
   name: string;
   version: string;
   goal?: Milestone;
+  model?: ModelSettings;
+  frameBudget?: number;
   play(harness: Harness): Promise<void>;
 };
 
@@ -163,8 +184,11 @@ export class Harness {
   readonly #knowledge: KnowledgeLevel;
   readonly #onAction?: ActionListener;
   readonly #onFrame?: () => void;
-  readonly #frameBudget: number;
+  readonly #onModelCallStart?: ModelCallStartListener;
+  readonly #onModelCall?: ModelCallListener;
+  readonly #frameBudget?: number;
   readonly #noProgressLimit: number;
+  readonly #stopAsked: () => boolean;
   readonly #battles = new BattleWatch();
   readonly #buttons = new ButtonTrack();
   readonly #watch: GameWatch;
@@ -176,8 +200,11 @@ export class Harness {
     this.#knowledge = options.knowledge ?? "player";
     this.#onAction = options.onAction;
     this.#onFrame = options.onFrame;
-    this.#frameBudget = options.frameBudget ?? FRAME_BUDGET;
+    this.#onModelCallStart = options.onModelCallStart;
+    this.#onModelCall = options.onModelCall;
+    this.#frameBudget = options.frameBudget;
     this.#noProgressLimit = options.noProgressLimit ?? NO_PROGRESS_LIMIT;
+    this.#stopAsked = options.stopAsked ?? (() => false);
     this.#watch = new GameWatch(run.game);
   }
 
@@ -227,7 +254,8 @@ export class Harness {
     if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
     const start = this.frame;
     const rawInputs = this.rawInputs;
-    this.#phase = { kind: "playing", limits: new RunLimits(bot.goal ?? null, start + this.#frameBudget, this.#noProgressLimit, this.#watch.progress) };
+    const frameBudget = this.#frameBudget ?? bot.frameBudget ?? FRAME_BUDGET;
+    this.#phase = { kind: "playing", limits: new RunLimits(bot.goal ?? null, start + frameBudget, this.#noProgressLimit, this.#watch.progress) };
     let endReason: EndReason = "bot stopped";
     let result: RunResult | null = null;
     try {
@@ -237,13 +265,21 @@ export class Harness {
       endReason = error.reason;
     } finally {
       result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs };
-      this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version }, result };
+      this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}) }, result };
     }
     return result;
   }
 
-  modelText(text: string): void {
-    this.#events.push({ type: "model", frame: this.frame, text });
+  /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the action goes back to the Bot. */
+  async modelCall<T>(ask: () => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
+    this.#onModelCallStart?.(this);
+    const start = performance.now();
+    const { answer, action } = await ask();
+    const event: ModelEvent = { type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
+    this.#events.push(event);
+    this.#onModelCall?.(event, this);
+    this.stopIfAsked();
+    return action;
   }
 
   record(): RunRecord {
@@ -253,13 +289,18 @@ export class Harness {
     return { header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
   }
 
+  waitingFor(): WaitingFor {
+    return this.#run.game.waitingFor();
+  }
+
   observe(): Observation {
     const game = this.#run.game;
     const base = { waitingFor: game.waitingFor(), party: game.party(), milestones: game.milestones() };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
-    const { player, grid } = this.overworld();
-    return { ...base, mode: "overworld", map: game.map(), player, grid };
+    const { player, grid, actors } = this.overworld();
+    const people = actors.people.map(({ x, y, graphics }) => ({ x, y, graphics }));
+    return { ...base, mode: "overworld", map: game.map(), player, grid, people };
   }
 
   availableActions(): AvailableAction[] {
@@ -283,16 +324,17 @@ export class Harness {
 
   async goTo(x: number, y: number, map?: string): Promise<ActionResult> {
     return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
-      const target = { map: map ?? this.place().map, x, y };
+      const asked = { map: map ?? this.place().map, x, y };
+      const destination = destinationOf(asked, map === undefined, this.routeMaps());
       let tries = 0;
       let stuckAt: Place | null = null;
       for (let legs = 0; legs < MAX_LEGS; legs++) {
         const here = this.place();
-        if (here.map === target.map && here.x === x && here.y === y) return { status: "done" };
+        if (reached(destination, here)) return { status: "done" };
         const maps = this.routeMaps();
-        const route = findRoute(here, target, maps);
-        if (!route && !findRoute(here, target, (name) => withoutPeople(maps(name)))) {
-          return { status: "impossible", reason: `no route from ${at(here)} to ${at(target)} in ${MAX_ROUTE_MAPS} maps` };
+        const route = findRoute(here, destination, maps);
+        if (!route && !findRoute(here, destination, (name) => withoutPeople(maps(name)))) {
+          return { status: "impossible", reason: `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps` };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
         switch (result) {
@@ -408,7 +450,12 @@ export class Harness {
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#onAction?.(entry, this);
     if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress);
+    this.stopIfAsked();
     return result;
+  }
+
+  private stopIfAsked(): void {
+    if (this.#phase.kind === "playing" && this.#stopAsked()) throw new RunEnd("user stop");
   }
 
   private battle(): Battle {
