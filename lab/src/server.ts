@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, safely } from "./game";
-import { type Bot, botNames, loadBot } from "./harness/harness";
+import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
 import { isRunRecord, type ModelOptions, modelTotals, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
@@ -288,7 +288,7 @@ async function startBot(name: string, given: ModelOptions): Promise<string> {
   try {
     bot = await loadBot(name, given);
   } catch (error) {
-    return `Pas de Run : ${error instanceof Error ? error.message : String(error)}.`;
+    return `Pas de Run : ${errorText(error)}.`;
   }
   const { model } = bot;
   const started = pool.start({ bot: name, ...(model ? { model } : {}) });
@@ -472,7 +472,7 @@ Bun.serve({
       void sendStatus(ws);
       send({ type: "maps", names: run.game.allMapNames }, ws);
       void recordNames().then((names) => send({ type: "records", names }, ws));
-      void botNames().then((names) => send({ type: "bots", names }, ws));
+      void botInfos().then((bots) => send({ type: "bots", bots }, ws));
       sendEvents(ws);
       sendMap(shown.state(), ws);
     },

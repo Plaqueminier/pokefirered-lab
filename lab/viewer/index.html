@@ -14,8 +14,12 @@
         --accent: #e8643c;
         --ok: #5cc98a;
         --bad: #e05757;
+        --code: #f0b58f;
+        --warn: #e0a85a;
+        --warn-line: #7a5a2a;
       }
       * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
       body {
         margin: 0;
         background: var(--bg);
@@ -124,7 +128,7 @@
         border-radius: 8px;
         padding: 10px 12px;
       }
-      h2 {
+      section h2 {
         margin: 0 0 6px;
         font-size: 11px;
         letter-spacing: 0.08em;
@@ -173,10 +177,41 @@
         border-radius: 4px;
         padding: 0 4px;
       }
+      .tabs { display: flex; gap: 6px; padding: 16px 16px 0; }
+      #doc { padding: 8px 16px 32px; }
+      .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
+      .doc-head h1 { margin: 0; font-size: 20px; }
+      .doc-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+      .doc-grid > section { grid-column: span 12; }
+      @media (min-width: 1100px) {
+        .doc-grid > .w4 { grid-column: span 4; }
+        .doc-grid > .w5 { grid-column: span 5; }
+        .doc-grid > .w7 { grid-column: span 7; }
+        .doc-grid > .w8 { grid-column: span 8; }
+      }
+      #doc p { margin: 8px 0 0; }
+      #doc code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--code); }
+      #doc td:first-child code { white-space: nowrap; }
+      #doc table { width: 100%; border-collapse: collapse; }
+      #doc th, #doc td { padding: 4px 8px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+      #doc th { color: var(--muted); font-weight: 600; }
+      #doc dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+      #doc dt { font-weight: 600; }
+      #doc dd { margin: 0; }
+      .doc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .doc-chips span { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+      .doc-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); }
+      .doc-steps code { background: var(--line); border-radius: 6px; padding: 3px 8px; }
+      .doc-warn { border-color: var(--warn-line); }
+      .doc-warn h2 { color: var(--warn); }
     </style>
   </head>
   <body>
-    <main>
+    <nav class="tabs">
+      <button id="tab-lab" class="on">Lab</button>
+      <button id="tab-doc">Doc</button>
+    </nav>
+    <main id="lab">
       <div class="screen-column">
         <div class="screen" id="screen">
           <canvas id="game" width="240" height="160"></canvas>
@@ -288,6 +323,107 @@
         </div>
       </section>
     </main>
+    <article id="doc" hidden>
+      <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
+      <div class="doc-head">
+        <h1>Ce que le lab sait faire</h1>
+        <span class="muted">Référence complète : <code>lab/README.md</code> · changer d'onglet n'arrête aucun Run</span>
+      </div>
+      <div class="doc-grid">
+        <section class="w4">
+          <h2>Principe</h2>
+          <dl>
+            <dt>Run</dt><dd>un émulateur qui joue depuis la sauvegarde de départ</dd>
+            <dt>Bot</dt><dd>décide quoi faire, et agit seulement par le Harness</dd>
+            <dt>Harness</dt><dd>joue les actions du Bot dans le jeu ; ne décide rien</dd>
+            <dt>Decision point</dt><dd>le jeu attend une entrée : marche, texte, choix, action de combat…</dd>
+            <dt>Jeu figé</dt><dd>dans un Run de Bot, le jeu tourne seulement pendant une action (ADR 0002) : même Run, quelle que soit la vitesse du Bot</dd>
+            <dt>Knowledge level</dt><dd><code>player</code> : ce qu'un joueur attentif sait · <code>full</code> : en plus, les PV et stats exactes de l'ennemi</dd>
+            <dt>Run du Viewer</dt><dd>pas de Bot : le clavier ou un replay le joue, en temps réel</dd>
+          </dl>
+        </section>
+        <section class="w8">
+          <h2>Macro-actions</h2>
+          <table id="doc-macro-actions">
+            <thead><tr><th>Macro-action</th><th>Quand</th><th>Effet</th></tr></thead>
+            <tbody>
+              <tr><td><code>goTo(x, y, map?)</code></td><td>marche</td><td>Va à une case, aussi sur une autre carte : portes, escaliers, bords, rebords. Avec une sortie comme cible, il la prend.</td></tr>
+              <tr><td><code>interact(x, y)</code></td><td>marche</td><td>Se tourne vers la case voisine et appuie sur A : personne, panneau, objet.</td></tr>
+              <tr><td><code>readText()</code></td><td>texte, jeu occupé</td><td>Lit les textes jusqu'à la fin de la boîte ou un choix.</td></tr>
+              <tr><td><code>choose(option)</code></td><td>oui/non</td><td>Met le curseur sur l'option et appuie sur A.</td></tr>
+              <tr><td><code>fight(move)</code></td><td>combat</td><td>Utilise l'attaque 0 à 3, et donne les messages du tour.</td></tr>
+              <tr><td><code>run()</code></td><td>combat sauvage</td><td>Fuit. Impossible contre un dresseur.</td></tr>
+            </tbody>
+          </table>
+          <div class="doc-chips">
+            <span><code>done</code> finie</span>
+            <span><code>impossible</code> ne peut ni commencer ni continuer</span>
+            <span><code>blocked</code> une personne reste sur le chemin</span>
+            <span><code>interrupted</code> déclencheur, dresseur, script, combat ou carte hors du trajet</span>
+          </div>
+          <p><code>press(button)</code> : un Raw input, un appui quand aucune Macro-action ne convient. Le Harness les compte.</p>
+          <p>
+            <code>observe()</code> : ce que le jeu attend, l'équipe, les Milestones ; sur la carte, la grille et les personnes ; en
+            combat, le Pokémon du joueur et l'ennemi comme le joueur le voit. <code>availableActions()</code> : les Macro-actions
+            acceptées maintenant.
+          </p>
+        </section>
+        <section class="w4">
+          <h2>Milestones</h2>
+          <div class="doc-steps">
+            <code>has-pokemon</code>→<code>first-rival-battle</code>→<code>has-pokedex</code>→<code>badge-1 … badge-8</code>
+          </div>
+          <p class="muted">Lues dans les flags du jeu. Le but d'un Run est une Milestone.</p>
+        </section>
+        <section class="w4">
+          <h2>Fins d'un Run</h2>
+          <dl>
+            <dt><code>goal</code></dt><dd>la Milestone but est atteinte</dd>
+            <dt><code>bot stopped</code></dt><dd>le Bot s'arrête ou lance une erreur</dd>
+            <dt><code>user stop</code></dt><dd>« Arrêter le Run », après l'action en cours</dd>
+            <dt><code>frame budget</code></dt><dd>plus d'images : 30 000, ou 200 000 pour le bot modèle</dd>
+            <dt><code>no progress</code></dt><dd>200 Decision points sans nouvelle case ni Milestone</dd>
+          </dl>
+        </section>
+        <section class="w4">
+          <h2>Run record et Runs en parallèle</h2>
+          <p>
+            Un Run de Bot a un Run record : origine (ROM, graine, sauvegarde), Bot, touches à chaque image, événements et
+            résultat. Il est écrit dans <code>lab/runs/</code> à la fin du Run. Les touches seules rejouent le Run : panneau
+            « Replay ».
+          </p>
+          <p>
+            Le Harness joue 4 Runs au plus : le Run du Viewer, et 3 Runs de Bot dans des workers, à pleine vitesse et sans son.
+            Un Run de Bot donne le même Run record que seul.
+          </p>
+        </section>
+        <section class="w5 doc-warn">
+          <h2>Pas encore</h2>
+          <dl>
+            <dt>Menus</dt><dd>Start, sac, boutique, PC, choix multiples : le Harness y voit un jeu occupé.</dd>
+            <dt>Écran des noms</dt><dd>Pas de saisie : au surnom, un Bot répond NO.</dd>
+            <dt>Pokémon en combat</dt><dd>Pas de Macro-action dans le menu de l'équipe : des Raw inputs.</dd>
+          </dl>
+        </section>
+        <section class="w7">
+          <h2>Bots</h2>
+          <dl>
+            <dt>scripté</dt><dd>du code. Chaque nouvelle étape de l'histoire va dans <code>starter</code>.</dd>
+            <dt>modèle</dt>
+            <dd>
+              demande l'action à un modèle d'IA (un <b>Model call</b>) à chaque marche, choix, action ou attaque de combat, et dans
+              le menu de l'équipe. Le code lit les textes seul ; le modèle voit du texte et donne une action, sa raison et son
+              <b>Objective</b> (ADR 0003).
+            </dd>
+          </dl>
+          <p id="doc-model-planned" hidden>Pas encore de bot modèle : il est prévu.</p>
+          <table id="doc-bots">
+            <thead><tr><th>Nom</th><th>Type</th><th>Version</th><th>But</th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">chargement…</td></tr></tbody>
+          </table>
+        </section>
+      </div>
+    </article>
     <div id="tooltip"></div>
     <script type="module" src="./viewer.ts"></script>
   </body>

@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
-import { actionText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
+import { actionText, errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
 import { modelTotals, REASONING, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name> [player|full]
@@ -23,7 +23,7 @@ if (!name || ids.length > 1) {
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, temperature: number(values.temperature) };
 const bot = await loadBot(name, model).catch((error: unknown) => {
-  console.error(String(error));
+  console.error(errorText(error));
   process.exit(1);
 });
 
@@ -48,7 +48,7 @@ const error = await harness.play(bot).then(
 );
 const record = harness.record();
 console.log(`Run record: ${relative(process.cwd(), await writeRecord(record))}`);
-if (error) console.error(`The Bot stops with an error: ${error instanceof Error ? error.message : String(error)}`);
+if (error) console.error(`The Bot stops with an error: ${errorText(error)}`);
 
 const { result } = record;
 console.log(`Run end: ${result.endReason}, ${result.frames} frames, raw inputs ${result.rawInputs}`);

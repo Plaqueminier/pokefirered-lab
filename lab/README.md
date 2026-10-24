@@ -77,7 +77,7 @@ Only the yes/no of the scripts (`yesnobox`, `msgbox` with `MSGBOX_YESNO`) is a `
 
 `bun run bot starter` (Bot version 3, goal `first-rival-battle`) leaves the house and walks north in Pallet Town until Professor Oak stops the player (`goTo(12, 1)` returns `interrupted` with the reason `trigger`). Then it calls `readText()` until the game waits for the player to walk: four calls, and the player is in Oak's lab at (6, 4). Then it takes SQUIRTLE: `goTo(9, 5)`, `interact(9, 4)`, `readText()`, `choose("YES")`, `readText()`, `choose("NO")` for the nickname, and `readText()` while BOB takes BULBASAUR. Then it walks to the door: the rival stops it at (7, 8) (`goTo(6, 11)` returns `interrupted` with `trigger`), and `readText()` returns `interrupted` with `battle`. In the battle against BULBASAUR, it uses TAIL WHIP, then TACKLE, and `readText()` at each text. With TACKLE only, SQUIRTLE loses. SQUIRTLE wins and grows to level 6, the rival leaves the lab, and the **Run** ends with the reason `goal` at frame 15017, with no Raw input.
 
-`bun test` runs the tests. The tests of `src/harness/harness.test.ts`, `src/harness/record.test.ts`, `src/harness/pool.test.ts` and `src/model/model-bot.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
+`bun test` runs the tests. The tests of `src/harness/harness.test.ts` (but not the tests of the list of the **Bots**), `src/harness/record.test.ts`, `src/harness/pool.test.ts` and `src/model/model-bot.test.ts` need the Lab build and `saves/start.sav`; without them, the tests skip.
 
 ## The model bot
 
@@ -144,6 +144,14 @@ In the **Viewer**, the panel "Runs" starts a **Bot** ("Lancer le Bot") and lists
 
 For the model bot, the panel "Runs" has a field for the OpenRouter model id and a field for the cost limit in $. Empty fields take the defaults. For a scripted **Bot**, leave them empty: the Viewer does not start a scripted **Bot** with a model. "Arrêter le Run" stops the shown **Run** of a **Bot** (`user stop`, with a **Run record**): for a model bot, after the **Model call** that runs, so it can take some seconds. Until the end, the list shows "s'arrête…". Under the list, the panel shows the model of the shown **Run** and its cost now, with its cost limit. In the panel "Replay", "le modèle réfléchit…" shows while a **Model call** runs. When the answer comes, the panel shows the **Objective** and the reason with the action, before the action plays. A replay of a **Run record** shows them too, at the frame of each **Model call**.
 
+## The Doc tab
+
+The Viewer has two tabs: "Lab" (the screen, the panels and the whole-map view) and "Doc". The Doc is one page, in French, that tells what the lab can do now: the principle, what the harness can do and cannot do yet, and the **Bots**. Its text is in `viewer/index.html`, and a person writes it by hand: this README stays the full reference. A tab only shows or hides a part of the page, so a change of tab does not stop the **Run** of the Viewer or the **Runs** of the **Bots**. In the Doc tab, the keyboard does not play: the arrow keys scroll the page.
+
+The list of the **Bots** in the Doc and in the panel "Runs" comes from the server: `botInfos()` (in `src/harness/harness.ts`) loads each module of `bots/` and gives its name (the name of the module), the kind of its **Bot** (`model` for a **Bot** with `model`, else `scripted`), its version and its goal. When a module gives no **Bot** (it throws an error, or a model bot has a bad option), the Doc shows the error for that module, and the other **Bots** stay in the two lists. When each module gives a **Bot** and no **Bot** is a model bot, the Doc tells that the model bot is planned.
+
+`viewer/doc.test.ts` fails when the table of the **Macro-actions** in the Doc does not have one line for each **Macro-action** of the harness, or when the Doc does not name the **Raw input** `press`. The harness gives its **Macro-actions** in `MACRO_ACTIONS`: the names in `ACCEPTS`, the map from each kind of `waitingFor` to the **Macro-actions** that it accepts. When you add a **Macro-action**, add its line to the table of the Doc.
+
 ## Make the Starting save
 
 1. Start the Viewer with no `saves/start.sav`. The lab build then starts as the vanilla game: intro, title screen, new game.
@@ -168,7 +176,7 @@ With `saves/start.sav`, the lab build skips the intro, the title screen and the 
 - `src/model/`: the parts of the model bot: `openrouter.ts` (the settings and the request), `decision.ts` (the answer and its action), `targets.ts` (the targets of a walk) and `prompt.ts` (the text of the prompt).
 - `src/harness/`: the API of the **Bot**: `harness.ts` (observation, **Macro-actions**, **Raw inputs**, the end of a **Run**, and the loading of a **Bot** from `bots/`), `path.ts` (A* over the maps: walk, ledges, warps and map edges), `record.ts` (the **Run record**, `RecordPlayer` that gives its keys and its events frame by frame, and its replay), `pool.ts` (up to 4 **Runs** in workers) and `worker.ts` (one **Run** of the pool), `play.ts` (the `bot` command).
 - `bots/`: the **Bots**: `starter.ts` (scripted) and `model.ts` (the model bot).
-- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound; `viewer/replay.ts` is the replay panel; `viewer/runs.ts` is the panel of the **Runs**.
+- `viewer/`: the page. `viewer/mapdraw.ts` draws a map at any scale (screen overlay and whole-map view); `viewer/audio.ts` plays the sound; `viewer/replay.ts` is the replay panel; `viewer/runs.ts` is the panel of the **Runs**; `viewer/doc.ts` is the tabs and the list of the **Bots** in the Doc.
 
 ## Sound
 

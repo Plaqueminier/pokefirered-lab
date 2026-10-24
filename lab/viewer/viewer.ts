@@ -1,6 +1,7 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
+import { DocTab } from "./doc";
 import { describe, draw, howLabel, SIDE_NAME } from "./mapdraw";
 import { ReplayPanel } from "./replay";
 import { RunsPanel } from "./runs";
@@ -67,6 +68,17 @@ const runsPanel = new RunsPanel(
   send,
 );
 let shownRunId: number | null = null;
+const docTab = new DocTab(
+  {
+    labButton: $<HTMLButtonElement>("tab-lab"),
+    docButton: $<HTMLButtonElement>("tab-doc"),
+    lab: $("lab"),
+    doc: $("doc"),
+    bots: $<HTMLTableElement>("doc-bots").tBodies[0],
+    modelPlanned: $("doc-model-planned"),
+  },
+  releaseKeys,
+);
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -153,7 +165,8 @@ function onMessage(message: ServerMessage): void {
       replayPanel.setRecords(message.names);
       break;
     case "bots":
-      runsPanel.setBots(message.names);
+      runsPanel.setBots(message.bots.map((bot) => bot.name));
+      docTab.setBots(message.bots);
       break;
     case "events":
       replayPanel.onEvents(message.events);
@@ -243,8 +256,12 @@ function shown(): { grid: MapGrid | null; actors: MapActors | null } {
 function resizeMap(): void {
   const rect = mapCanvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
-  mapCanvas.width = Math.round(rect.width * ratio);
-  mapCanvas.height = Math.round(rect.height * ratio);
+  const width = Math.round(rect.width * ratio);
+  const height = Math.round(rect.height * ratio);
+  // The Doc tab hides the canvas (size 0). When the Lab tab shows again, the size is the same, and fitMap resets the zoom.
+  if (width === 0 || (width === mapCanvas.width && height === mapCanvas.height)) return;
+  mapCanvas.width = width;
+  mapCanvas.height = height;
   const current = shown().grid;
   if (current) fitMap(current);
   if (follow) centerOnPlayer();
@@ -493,7 +510,7 @@ function keyOf(event: KeyboardEvent): number | undefined {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.metaKey || event.ctrlKey || event.target instanceof HTMLInputElement) return;
+  if (event.metaKey || event.ctrlKey || event.target instanceof HTMLInputElement || docTab.open) return;
   startSound();
   const bit = keyOf(event);
   if (bit !== undefined) {
@@ -521,10 +538,12 @@ window.addEventListener("keyup", (event) => {
   }
 });
 
-window.addEventListener("blur", () => {
+function releaseKeys(): void {
   keys = 0;
   send({ type: "keys", keys });
-});
+}
+
+window.addEventListener("blur", releaseKeys);
 
 $("pause").addEventListener("click", () => send({ type: "pause", paused: !paused }));
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {

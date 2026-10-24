@@ -1,5 +1,5 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
-import type { Camera, GameState, MapActors, MapGrid } from "./game";
+import type { Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { EndReason } from "./harness/harness";
 import type { ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
@@ -28,6 +28,11 @@ export const STATE_INTERVAL_MS = 100;
 export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 
 export type Speed = 1 | 4 | "max";
+
+export type BotKind = "scripted" | "model";
+
+/** `name` is the module in `bots/`. */
+export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null } | { error: string });
 
 export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason };
 
@@ -60,7 +65,7 @@ export type ServerMessage =
   | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string }
   | { type: "records"; names: string[] }
-  | { type: "bots"; names: string[] }
+  | { type: "bots"; bots: BotInfo[] }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   | { type: "events"; events: RunEvent[] };
 

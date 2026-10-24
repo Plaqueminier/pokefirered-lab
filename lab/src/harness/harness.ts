@@ -17,7 +17,7 @@ import {
 } from "../game";
 import type { PartyMon } from "../party";
 import type { Messages } from "../prompts";
-import { Keys } from "../protocol";
+import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
 import { ButtonTrack, GameWatch, type ModelAnswer, type ModelEvent, type ModelOptions, type ModelSettings, type RunEvent, type RunHeader, type RunRecord } from "./record";
@@ -42,6 +42,8 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   partyPick: [],
   busy: ["readText"],
 };
+// Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
+export const MACRO_ACTIONS: readonly MacroAction["name"][] = [...new Set(Object.values(ACCEPTS).flat())];
 const FIGHT_CURSOR = 0;
 const RUN_CURSOR = 3;
 const CURSOR_COLUMN = 1;
@@ -111,6 +113,21 @@ export async function loadBot(name: string, model: ModelOptions = {}): Promise<B
   const bot: Bot | undefined = module.default;
   if (typeof bot?.play !== "function") throw new Error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
   return bot;
+}
+
+export async function botInfos(): Promise<BotInfo[]> {
+  return Promise.all(
+    (await botNames()).map((name) =>
+      loadBot(name).then(
+        (bot): BotInfo => ({ name, kind: bot.model ? "model" : "scripted", version: bot.version, goal: bot.goal ?? null }),
+        (error: unknown): BotInfo => ({ name, error: errorText(error) }),
+      ),
+    ),
+  );
+}
+
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function actionText({ name, ...args }: MacroAction | RawInput): string {

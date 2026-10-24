@@ -2,7 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import starter from "../../bots/starter";
 import { ROM_FILE, START_SAVE } from "../run";
-import { type AvailableAction, type BattleState, type Bot, Harness } from "./harness";
+import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -71,6 +71,27 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
   await harness.readText();
 }
+
+test("the list of the Bots gives the kind, the version and the goal of each Bot of bots/", async () => {
+  expect(await botInfos()).toEqual([
+    { name: "model", kind: "model", version: "1", goal: "first-rival-battle" },
+    { name: "starter", kind: "scripted", version: "3", goal: "first-rival-battle" },
+  ]);
+});
+
+test("a Bot that does not load gives its error in the list of the Bots, and the other Bots stay in it", async () => {
+  const costLimit = process.env.LAB_COST_LIMIT;
+  process.env.LAB_COST_LIMIT = "abc";
+  try {
+    expect(await botInfos()).toEqual([
+      { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' },
+      { name: "starter", kind: "scripted", version: "3", goal: "first-rival-battle" },
+    ]);
+  } finally {
+    if (costLimit === undefined) delete process.env.LAB_COST_LIMIT;
+    else process.env.LAB_COST_LIMIT = costLimit;
+  }
+});
 
 describe.skipIf(!ready)("Harness on the Starting save", () => {
   test("on the way out of the lab, the rival stops the player and starts a battle; readText reads the battle texts to the first battle action", async () => {

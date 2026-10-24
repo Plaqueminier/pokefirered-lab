@@ -1,4 +1,4 @@
-import type { ActionResult, Bot, Harness, Observation } from "../src/harness/harness";
+import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
 import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
@@ -60,14 +60,14 @@ class ModelPlay {
     try {
       reply = await this.ask(prompt);
     } catch (error) {
-      return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: `the request failed: ${message(error)}` }, action: null };
+      return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: `the request failed: ${errorText(error)}` }, action: null };
     }
     const replied = { ...request, answer: reply.content, usage: reply.usage };
     try {
       const decision = readDecision(reply.content);
       return { answer: { ...replied, decision, error: null }, action: readAction(decision.action, asked) };
     } catch (error) {
-      return { answer: { ...replied, decision: null, error: message(error) }, action: null };
+      return { answer: { ...replied, decision: null, error: errorText(error) }, action: null };
     }
   }
 
@@ -118,10 +118,6 @@ class ModelPlay {
     }
     if (interactAt && status === "done") await this.harness.interact(interactAt.x, interactAt.y);
   }
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function dollars(cost: number): string {
