@@ -1,11 +1,11 @@
-import { relative, resolve } from "node:path";
+import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
-import { REASONING, STARTERS } from "../protocol";
-import { actionText, errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
+import { actionText, REASONING, STARTERS } from "../protocol";
+import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
 import { modelTotals, writeRecord } from "./record";
 
-const USAGE = `Usage: bun run bot <name in bots/ | path of a .ts file> [player|full]
+const USAGE = `Usage: bun run bot <name in bots/> [player|full]
        bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning ${REASONING.join("|")}] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}]`;
 
 const { values, positionals } = parseArgs({
@@ -23,7 +23,7 @@ if (!name || ids.length > 1) {
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, temperature: number(values.temperature), starter: values.starter };
-const bot = await loadBot(name.endsWith(".ts") ? resolve(name) : name, model).catch((error: unknown) => {
+const bot = await loadBot(name, model).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);
 });

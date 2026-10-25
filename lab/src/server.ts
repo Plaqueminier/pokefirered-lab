@@ -7,7 +7,7 @@ import { type Camera, safely } from "./game";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
-import { isRunRecord, type ModelOptions, modelTotals, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { type ModelOptions, modelTotals, originDifferences, readRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
   BinaryKind,
   type ClientMessage,
@@ -275,8 +275,8 @@ function replayModel(player: RecordPlayer): ReplayModel | null {
 
 async function replayFile(name: string): Promise<string> {
   if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/.`;
-  const record: unknown = await Bun.file(join(RUNS_DIR, name)).json().catch(() => null);
-  if (!isRunRecord(record)) return `${name} is not a Run record.`;
+  const record = readRecord(await Bun.file(join(RUNS_DIR, name)).json().catch(() => null));
+  if (!record) return `${name} is not a Run record.`;
   const differences = await live.startReplay(name, record);
   show(viewerRun);
   if (differences.length > 0) {

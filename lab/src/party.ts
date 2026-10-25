@@ -1,5 +1,5 @@
 import type { Memory, Ref } from "./memory";
-import type { Decode } from "./prompts";
+import { type Decode, oneLine } from "./prompts";
 
 // SUBSTRUCT_CASE rows of GetSubstruct (pokemon.c): growth, attacks, EVs, misc positions per personality % 24.
 const SUBSTRUCT_POSITIONS = ["0123", "0132", "0213", "0312", "0231", "0321", "1023", "1032", "2013", "3012", "2031", "3021", "1203", "1302", "2103", "3102", "2301", "3201", "1230", "1320", "2130", "3120", "2310", "3210"];
@@ -93,6 +93,11 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
+/** The slots of the party that can enter a battle: not fainted, and not already in the battle. */
+export function sendableSlots(party: PartyMon[], inBattle: number): number[] {
+  return party.flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
+}
+
 export function readMoves(mem: Memory, decode: Decode, ppBonuses: number, slot: (slot: number) => { move: number; pp: number }): PartyMove[] {
   const moves: PartyMove[] = [];
   for (let i = 0; i < MAX_MON_MOVES; i++) {
@@ -154,5 +159,5 @@ export function readStats(mon: Ref): Stats {
 }
 
 function textAt(mem: Memory, address: number, decode: Decode): string {
-  return decode(mem.bus.read(address, MAX_STRING)).split("\n").join(" ");
+  return oneLine(decode(mem.bus.read(address, MAX_STRING)));
 }

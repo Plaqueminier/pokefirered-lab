@@ -18,7 +18,7 @@ import {
 import type { Memory, Ref } from "./memory";
 import { type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
-import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
+import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
 
@@ -236,9 +236,9 @@ export class Game {
   waitingFor(): WaitingFor {
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
+    if (mode !== "overworld") return { kind: "busy" };
     const list = this.buyList();
     if (list) return { kind: "buyList", items: list.items };
-    if (mode !== "overworld") return { kind: "busy" };
     const choice = this.prompts.choice() ?? this.shopMenu();
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
@@ -308,7 +308,7 @@ export class Game {
   }
 
   waitingTexts(): string[] {
-    return this.prompts.waitingWindows().map((window) => this.prompts.messageText(window).split("\n").join(" ").trim());
+    return this.prompts.waitingWindows().map((window) => oneLine(this.prompts.messageText(window)).trim());
   }
 
   bag(): BagPocket[] {
@@ -348,7 +348,7 @@ export class Game {
   }
 
   menuMessage(): string {
-    return this.decode(this.mem.global("gStringVar4").bytes()).split("\n").join(" ");
+    return oneLine(this.decode(this.mem.global("gStringVar4").bytes()));
   }
 
   itemAnimWaits(): boolean {
@@ -390,6 +390,12 @@ export class Game {
     return this.context().mode === "battle" ? readBattle(this.mem, this.decode) : null;
   }
 
+  requireBattle(): Battle {
+    const battle = this.battle();
+    if (!battle) throw new Error("the game is not in a battle");
+    return battle;
+  }
+
   // Read also outside a battle, so that BattleWatch sees the old value before the battle intro clears it.
   enemyMovePrinted(): PrintedMove | null {
     return enemyMovePrinted(this.mem);
@@ -426,7 +432,7 @@ export class Game {
     return {
       map: this.map(),
       player: player ? { x: player.x, y: player.y } : null,
-      party: this.party(),
+      party: this.partyOnScreen(),
       badges: BADGES.map((n) => this.flag(badgeFlag(n))),
       money: this.money(),
       context: this.context(),
@@ -466,8 +472,14 @@ export class Game {
     return { mode, callback1, callback2 };
   }
 
+  /** The party in the order of the game. */
   party(): PartyMon[] {
-    const party = readParty(this.mem, this.decode);
+    return readParty(this.mem, this.decode);
+  }
+
+  /** The party in the order of the screen: the party menu of a battle lists the Pokémon in the battle order. */
+  partyOnScreen(): PartyMon[] {
+    const party = this.party();
     if (this.context().mode !== "battle" || !this.partyMenu()) return party;
     return party.map((_, i) => party[battleMenuSlot(this.mem, i)]);
   }

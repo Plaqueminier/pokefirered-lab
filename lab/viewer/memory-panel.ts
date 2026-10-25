@@ -1,5 +1,6 @@
 import type { RunEvent, SummaryEvent } from "../src/harness/record";
 import { type MemoryNode, type MemoryTree, memoryTree, nodeLine, nodeName, topNodes, zoomNodes } from "../src/model/memory-tree";
+import { element } from "./dom";
 import { dollars } from "./runs";
 
 export type OutlineNode = { name: string; line: string; halves: OutlineNode[] };
@@ -94,11 +95,4 @@ export class MemoryPanel {
     details.append(summary, ...content);
     return details;
   }
-}
-
-function element(tag: string, text: string, className?: string): HTMLElement {
-  const node = document.createElement(tag);
-  node.textContent = text;
-  if (className) node.className = className;
-  return node;
 }

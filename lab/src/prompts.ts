@@ -38,6 +38,11 @@ export type Choice = { options: string[]; cursor: number };
 
 export type Messages = { onScreen: number[]; printing: number[]; boxClosed: boolean };
 
+/** The text of a game message on one line. */
+export function oneLine(text: string): string {
+  return text.split("\n").join(" ");
+}
+
 export function decoder(charmapText: string): Decode {
   // The Japanese part gives the same bytes again. In the Latin part, a later line wins ('\'' over '’').
   const japanese = charmapText.indexOf(CHARMAP_JAPANESE);

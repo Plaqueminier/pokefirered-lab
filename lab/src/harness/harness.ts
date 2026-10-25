@@ -17,7 +17,7 @@ import {
   type PlayerPosition,
   type WaitingFor,
 } from "../game";
-import type { PartyMon } from "../party";
+import { type PartyMon, sendableSlots } from "../party";
 import type { Messages } from "../prompts";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
@@ -146,8 +146,9 @@ export async function botNames(): Promise<string[]> {
 }
 
 export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
-  const file = isAbsolute(name) ? name : `bots/${name}.ts`;
-  const module = await import(isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`));
+  const path = isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`);
+  const file = path === name ? name : `bots/${name}.ts`;
+  const module = await import(path);
   if (typeof module.modelBot === "function") return module.modelBot(model);
   if (Object.values(model).some((option) => option !== undefined)) throw new Error(`${file} is not a model bot: it does not export modelBot(model)`);
   const bot: Bot | undefined = module.default;
@@ -168,10 +169,6 @@ export async function botInfos(): Promise<BotInfo[]> {
 
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-export function actionText({ name, ...args }: MacroAction | RawInput): string {
-  return `${name}(${Object.values(args).join(", ")})`;
 }
 
 export function must(result: ActionResult): void {
@@ -283,7 +280,7 @@ export class Harness {
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
   static async open(options: HarnessOptions = {}, run?: Run): Promise<Harness> {
-    const startSave = run?.startSave ?? options.startSave ?? START_SAVE;
+    const startSave = run?.startSavePath ?? options.startSave ?? START_SAVE;
     if (!(await Bun.file(startSave).exists())) {
       run?.core.close();
       throw new Error(`${startSave} not found: make the Starting save first (lab/README.md)`);
@@ -351,7 +348,7 @@ export class Harness {
     return result;
   }
 
-  /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the action goes back to the Bot. */
+  /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
   async modelCall<T>(ask: () => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
     this.#onModelCallStart?.(this);
     const start = performance.now();
@@ -394,7 +391,7 @@ export class Harness {
     const game = this.#run.game;
     const base = {
       waitingFor: game.waitingFor(),
-      party: game.party(),
+      party: game.partyOnScreen(),
       bag: game.bag(),
       money: game.money(),
       milestones: game.milestones(),
@@ -418,7 +415,7 @@ export class Harness {
           return this.#run.game.party().length > 1 ? [{ name }] : [];
         case "switch":
         case "send":
-          return this.sendable(this.battle().player.partyIndex).map((slot) => ({ name, slot }));
+          return sendableSlots(this.#run.game.partyOnScreen(), this.battle().player.partyIndex).map((slot) => ({ name, slot }));
         case "interact":
           return this.interactions();
         case "choose":
@@ -775,7 +772,6 @@ export class Harness {
   }
 
   // A menu reads the keys from the frame after the frame that shows it.
-  // A menu reads the keys from the frame after the frame that shows it.
   private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
     if (this.tap(keys)) return { status: "interrupted", reason: "battle" };
     for (let frames = 0; !shown(); frames++) {
@@ -798,10 +794,6 @@ export class Harness {
   private battleState({ kind, player, enemy }: Battle): BattleState {
     const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => this.#run.game.moveName(move));
     return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
-  }
-
-  private sendable(inBattle: number): number[] {
-    return this.#run.game.party().flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
   }
 
   private sendOut(menuSlot: number): Outcome & Texts {
@@ -928,7 +920,7 @@ export class Harness {
     return pressed.status === "done" ? this.untilReady(ready) : pressed;
   }
 
-  // A slow menu reads the input on some frames only: wait for it to read the release, then hold the keys until it reads them.
+  // A slow menu reads the input on some frames only: wait for it to read the release, then press the keys until it reads them.
   private pressUntilRead(keys: number): Outcome {
     const game = this.#run.game;
     for (const [held, read] of [

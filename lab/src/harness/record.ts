@@ -34,11 +34,9 @@ export type Usage = { promptTokens: number; cachedTokens?: number; completionTok
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
 
-export type OldDecision = Omit<Decision, "note"> & { notes: string };
-
 // answer is null when the request failed.
 export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage } & (
-  | { decision: Decision | OldDecision; error: null }
+  | { decision: Decision; error: null }
   | { decision: null; error: string }
 );
 
@@ -204,6 +202,17 @@ export function isRunRecord(value: unknown): value is RunRecord {
   if (!Array.isArray(buttons) || !Array.isArray(events)) return false;
   const holdsOk = buttons.every((hold) => Array.isArray(hold) && Number.isInteger(hold[0]) && Number.isInteger(hold[1]) && hold[1] > 0);
   return holdsOk && events.every((event, i) => isRunEvent(event) && (i === 0 || events[i - 1].frame <= event.frame));
+}
+
+/** A Run record from before the Memory tree has `notes` in its decisions, in place of `note`. */
+export function readRecord(value: unknown): RunRecord | null {
+  return isRunRecord(value) ? { ...value, events: value.events.map(oldNotes) } : null;
+}
+
+function oldNotes(event: RunEvent): RunEvent {
+  if (event.type !== "model" || event.decision === null) return event;
+  const { notes, ...decision } = event.decision as Decision & { notes?: string };
+  return notes === undefined ? event : { ...event, decision: { ...decision, note: notes } };
 }
 
 export async function replay(record: RunRecord): Promise<Replay> {

@@ -1,7 +1,9 @@
 import type { Milestone } from "../src/game";
 import type { RunEvent } from "../src/harness/record";
 import type { ModelAction } from "../src/model/decision";
-import { actionLabel } from "./replay";
+import { memoryTree } from "../src/model/memory-tree";
+import { actionText } from "../src/protocol";
+import { card, line, rows } from "./dom";
 import { dollars } from "./runs";
 
 const ACTION_LIST: Record<ModelAction["name"], true> = {
@@ -33,16 +35,18 @@ export type StatsView = {
   impossible: { frame: number; action: string; reason: string }[];
   unreadable: { frame: number; error: string }[];
   milestones: MilestoneStats[];
+  memory: { notes: number; summaryCalls: number };
   cost: number;
 };
 
 export function statsView(events: readonly RunEvent[]): StatsView {
   const types = new Map<string, number>();
   const used = new Map<string, number>();
-  const view: StatsView = { events: [], actions: [], neverUsed: [], impossible: [], unreadable: [], milestones: [], cost: 0 };
+  const view: StatsView = { events: [], actions: [], neverUsed: [], impossible: [], unreadable: [], milestones: [], memory: { notes: memoryTree(events).notes.length, summaryCalls: 0 }, cost: 0 };
   let open: MilestoneStats = { milestone: null, calls: 0, cost: 0 };
   for (const event of events) {
     increment(types, event.type);
+    if (event.type === "summary") view.memory.summaryCalls++;
     if ("usage" in event) {
       open.cost += event.usage.cost;
       view.cost += event.usage.cost;
@@ -52,7 +56,7 @@ export function statsView(events: readonly RunEvent[]): StatsView {
       if (event.decision) increment(used, actionName(event.decision.action));
       else view.unreadable.push({ frame: event.frame, error: event.error });
     } else if (event.type === "action" && event.result.status === "impossible") {
-      view.impossible.push({ frame: event.frame, action: actionLabel(event), reason: event.result.reason });
+      view.impossible.push({ frame: event.frame, action: actionText(event.action), reason: event.result.reason });
     } else if (event.type === "milestone") {
       view.milestones.push({ ...open, milestone: event.milestone });
       open = { milestone: null, calls: 0, cost: 0 };
@@ -97,33 +101,8 @@ export class StatsPanel {
       card("Actions", rows(view.actions.map((a) => [a.name, String(a.count)])), line(`never used: ${view.neverUsed.join(", ") || "–"}`)),
       card("Impossible", rows(view.impossible.map((a) => [String(a.frame), a.action, a.reason]))),
       card("Unreadable answers", rows(view.unreadable.map((a) => [String(a.frame), a.error]))),
+      card("Memory tree", line(`${view.memory.notes} notes · ${view.memory.summaryCalls} Summary calls`)),
       card("Events", rows(view.events.map((e) => [e.name, String(e.count)]))),
     );
   }
-}
-
-function card(title: string, ...content: HTMLElement[]): HTMLElement {
-  const section = document.createElement("div");
-  section.className = "stats-card";
-  const heading = document.createElement("h3");
-  heading.textContent = title;
-  section.append(heading, ...content);
-  return section;
-}
-
-function rows(cells: string[][]): HTMLElement {
-  if (cells.length === 0) return line("–");
-  const table = document.createElement("table");
-  for (const texts of cells) {
-    const row = table.insertRow();
-    for (const text of texts) row.insertCell().textContent = text;
-  }
-  return table;
-}
-
-function line(text: string): HTMLElement {
-  const div = document.createElement("div");
-  div.className = "muted";
-  div.textContent = text;
-  return div;
 }

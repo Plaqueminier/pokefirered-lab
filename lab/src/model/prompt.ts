@@ -1,9 +1,10 @@
-import { mapNamed } from "../harness/atlas";
-import { type ActionEntry, actionText, type BattleState, type NoProgress, type Observation } from "../harness/harness";
-import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { BagItem, BagPocket } from "../bag";
 import { type Milestone, MILESTONES } from "../game";
+import { mapNamed } from "../harness/atlas";
+import { type ActionEntry, type BattleState, type NoProgress, type Observation } from "../harness/harness";
+import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { PartyMon, PartyMove } from "../party";
+import { actionText } from "../protocol";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
@@ -37,7 +38,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 };
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
-const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory, then choose again. The game does not move.";
+const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Start, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
@@ -47,18 +48,18 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
-Your Memory is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
+Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
+At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it leads only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
 - "action": exactly one of the actions of the message, for example "go 2" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new fact to keep in your Memory, in one line of at most ${MAX_SENTENCE} characters, for example "A person blocks the north exit of the town". Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note only when you learn something useful, and never write a note again.
+- "note": a new fact to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters, for example "A person blocks the north exit of the town". Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note only when you learn something useful, and never write a note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -67,7 +68,7 @@ Rules of the program:
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
 
-When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often goes on in a place that you do not expect.
+When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
 Advice of a good player:
 - Talk to the people: they tell you where to go and what to do.
@@ -115,7 +116,7 @@ export function atlasMessage(asked: Asked & { kind: "walk" }): string {
 
 export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): string {
   const halves = zoomLines(tree, node);
-  const shown = halves ? [`Node ${nodeName(node)}, its two halves:`, ...halves] : [`There is no node ${nodeName(node)} with two halves: zoom a top node of your Memory, or a half that a zoom showed.`];
+  const shown = halves ? [`Node ${nodeName(node)}, its two halves:`, ...halves] : [`There is no node ${nodeName(node)} with two halves: zoom a top node of your Memory tree, or a half that a zoom showed.`];
   return [...shown, "", chooseAgain(asked)].join("\n");
 }
 
@@ -129,7 +130,7 @@ function chooseAgain(asked: Asked): string {
 
 function memoryText(tree: MemoryTree): string {
   const lines = memoryLines(tree);
-  return lines.length === 0 ? "Memory: none yet." : ["Memory, the top nodes (zoom <a-b> opens a node):", ...lines].join("\n");
+  return lines.length === 0 ? "Memory tree: none yet." : ["Memory tree, the top nodes (zoom <a-b> opens a node):", ...lines].join("\n");
 }
 
 export function missionLine(events: readonly RunEvent[]): string {
@@ -279,7 +280,7 @@ function actionLines(asked: Asked): string[] {
         `- goTo <x> <y>: walk to a cell of this map. A cell just past an edge (x -1 or ${grid.mapWidth}, y -1 or ${grid.mapHeight}) crosses that edge.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
-        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon goes into the next battle. ${POKEMON}`] : []),
+        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle. ${POKEMON}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
     }

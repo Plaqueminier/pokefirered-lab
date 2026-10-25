@@ -1,5 +1,5 @@
 import type { Memory } from "./memory";
-import { activeTask, type Choice, type Decode } from "./prompts";
+import { activeTask, type Choice, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
 const PARTY_ACTION_SWITCH = 8;
@@ -34,10 +34,10 @@ export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {
       cursor: mem.global("sMenu").field("cursorPos").int(),
     };
   }
-  if (activeTask(mem, "Task_ReturnToChooseMonAfterText")) return { kind: "refusal", text: decode(mem.global("gStringVar4").bytes()).split("\n").join(" ") };
+  if (activeTask(mem, "Task_ReturnToChooseMonAfterText")) return { kind: "refusal", text: oneLine(decode(mem.global("gStringVar4").bytes())) };
   return { kind: "busy" };
 }
 
-function menuText(mem: Memory, address: number, decode: Decode): string {
+export function menuText(mem: Memory, address: number, decode: Decode): string {
   return decode(mem.bus.read(address, MAX_MENU_TEXT));
 }

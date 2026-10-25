@@ -1,8 +1,8 @@
 import type { Memory } from "./memory";
+import { menuText } from "./menus";
 import { activeTask, type Choice, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
-const MAX_MENU_TEXT = 32;
 const BUY_QUANTITY = 1;
 const SELL_QUANTITY = 8;
 
@@ -13,7 +13,7 @@ export type BuyList = { items: ShopItem[]; row: number };
 export function shopMenu(mem: Memory, decode: Decode): Choice | null {
   if (!activeTask(mem, "Task_ShopMenu")) return null;
   const actions = mem.global("sShopMenuActions_BuySellQuit");
-  const options = Array.from({ length: actions.length }, (_, i) => decode(mem.bus.read(actions.at(i).field("text").pointer(), MAX_MENU_TEXT)));
+  const options = Array.from({ length: actions.length }, (_, i) => menuText(mem, actions.at(i).field("text").pointer(), decode));
   return { options, cursor: mem.global("sMenu").field("cursorPos").int() };
 }
 

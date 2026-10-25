@@ -556,7 +556,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     expect(harness.observe().bag[0].items[0].quantity).toBe(4);
   });
 
-  test("use POKé BALL throws a ball in a wild battle; a caught Pokémon goes into the party after NO at the nickname question", async () => {
+  test("use POKé BALL throws a ball in a wild battle; a caught Pokémon joins the party after NO at the nickname question", async () => {
     const harness = await toWildBattle();
     const enemy = harness.observe();
     if (enemy.mode !== "battle") throw new Error("not in a battle");

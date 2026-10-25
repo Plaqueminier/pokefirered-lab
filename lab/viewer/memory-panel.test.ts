@@ -33,7 +33,7 @@ beforeAll(() => {
 });
 afterAll(() => fetchSpy?.mockRestore());
 
-describe.skipIf(!ready)("the panel Memory", () => {
+describe.skipIf(!ready)("the panel Memory tree", () => {
   test("it shows the same Memory tree and Summary calls live and in the replay of the Run record, at the same frame", async () => {
     const harness = await Harness.open();
     await harness.play(modelBot({ costLimit: 7.5 * COST }, () => noteTaker())).catch(() => {});

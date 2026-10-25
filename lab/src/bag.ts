@@ -1,5 +1,5 @@
 import type { Memory } from "./memory";
-import { activeTask, type Decode } from "./prompts";
+import { activeTask, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
 const POCKET_NAMES = ["ITEMS", "KEY ITEMS", "POKé BALLS", "TM CASE", "BERRY POUCH"] as const;
@@ -10,6 +10,7 @@ const UNSUPPORTED_BATTLE_FUNCS = new Set(["BattleUseFunc_Ether", "ItemUseInBattl
 const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon" };
 const ITEM_ANIM_KEY_STATE = 12;
 export const BATTLE_POCKETS = 3;
+export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
 
 export type PocketName = (typeof POCKET_NAMES)[number];
 
@@ -100,6 +101,6 @@ function itemName(mem: Memory, item: number, decode: Decode): string {
 }
 
 function itemInfo(mem: Memory, item: number, decode: Decode, pocket: number): Omit<BagItem, "quantity"> {
-  const description = decode(mem.bus.read(mem.global("gItems").at(item).field("description").pointer(), MAX_STRING)).split("\n").join(" ");
+  const description = oneLine(decode(mem.bus.read(mem.global("gItems").at(item).field("description").pointer(), MAX_STRING)));
   return { name: itemName(mem, item, decode), description, ...itemUses(mem, item, pocket) };
 }

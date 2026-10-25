@@ -73,7 +73,7 @@ describe("openRouter", () => {
     });
   });
 
-  test("a call that goes on with a conversation sends system, user, then the last answer and the new user message of each turn", async () => {
+  test("a call that continues a conversation sends system, user, then the last answer and the new user message of each turn", async () => {
     const { calls, fetcher } = fakeFetch(200, REPLY);
     await openRouter(modelSettings({}, {}), KEY, fetcher)({ ...PROMPT, turns: [{ assistant: "viewAtlas answer", user: "the full Atlas" }] });
     expect(JSON.parse(String(calls[0].init.body)).messages).toEqual([

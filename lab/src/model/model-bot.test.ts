@@ -191,7 +191,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
     expect(choice).toContain("Objective: Get a Pokémon");
     expect(choice).toMatch(/^Mission: Get my first Pokémon \(the same for \d+ decisions\)\.$/m);
-    expect(choice).toContain("Memory: none yet.");
+    expect(choice).toContain("Memory tree: none yet.");
     expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: .*\n- press <button>/);
     expect(choice).not.toContain("goTo <x> <y>");
     const battle = first(/^The game waits for a battle action\.$/m);
@@ -204,7 +204,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(header.bot).toEqual({ name: "model", version: "2", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
-  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run goes into the rules", async () => {
+  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
     const harness = await Harness.open();
     const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
@@ -227,7 +227,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[4].prompt.turns?.map((t) => t.assistant)).toEqual(["{}", JSON.stringify({ ...JSON.parse(good), action: "dance" })]);
   });
 
-  test("viewAtlas runs no frames: the code goes on with the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {
+  test("viewAtlas runs no frames: the code continues the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {
     const harness = await Harness.open();
     const viewAtlas = reply("viewAtlas").content;
     const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(viewAtlas, viewAtlas, reply("goTo 8 6").content));
@@ -277,11 +277,11 @@ describe.skipIf(!ready)("model bot", () => {
     expect(summaries[0].answer).toBe(JSON.stringify({ summary: "summary of 1 and 2" }));
     expect(summaries[0].latencyMs).toBeGreaterThanOrEqual(0);
     expect(summaryPrompts[2].user).toContain("#1-2: summary of 1 and 2\n#3-4: summary of 3 and 4");
-    expect(calls[2].prompt.user).toContain("Memory, the top nodes (zoom <a-b> opens a node):\n#1-2: summary of 1 and 2");
-    expect(calls[4].prompt.user).toContain("Memory, the top nodes (zoom <a-b> opens a node):\n#1-4: summary of 1-2 and 3-4\n\n");
+    expect(calls[2].prompt.user).toContain("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1-2: summary of 1 and 2");
+    expect(calls[4].prompt.user).toContain("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1-4: summary of 1-2 and 3-4\n\n");
   });
 
-  test("zoom runs no frames: the code goes on with the same conversation, with the two halves of the node in a new user message", async () => {
+  test("zoom runs no frames: the code continues the same conversation, with the two halves of the node in a new user message", async () => {
     const harness = await Harness.open();
     const { client } = noteTaker("goTo 8 6", "goTo 8 6", "zoom 1-2", "zoom 5-6", "goTo 8 6");
     await harness.play(modelBot({ costLimit: 7.5 * COST }, () => client)).catch(() => {});

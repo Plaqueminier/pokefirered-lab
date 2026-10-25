@@ -1,9 +1,10 @@
-import type { Decision, ModelEvent, OldDecision, RunEvent } from "../src/harness/record";
+import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
+import { element } from "./dom";
 
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
-  [/^Memory/, "Memory"],
+  [/^Memory tree/, "Memory tree"],
   [/^The game waits/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Party/, "Party"],
@@ -20,7 +21,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Answer with JSON again/, "Request"],
 ];
 
-export type Answer = Decision | OldDecision | { error: string; raw: string | null };
+export type Answer = Decision | { error: string; raw: string | null };
 
 export type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
@@ -57,11 +58,8 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function answerFields(decision: Decision | OldDecision): Record<string, string> {
-  const fields: Record<string, string> = { Mission: decision.mission || "–", Objective: decision.objective || "–" };
-  if ("note" in decision) fields.Note = decision.note || "–";
-  else fields.Notes = decision.notes || "–";
-  return fields;
+function answerFields(decision: Decision): Record<string, string> {
+  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–" };
 }
 
 function messageBlocks(message: string): { title: string; text: string }[] {
@@ -152,11 +150,4 @@ function definitions(pairs: Record<string, string>): HTMLElement {
   const list = element("dl", "", "model-dl");
   for (const [term, text] of Object.entries(pairs)) list.append(element("dt", term), element("dd", text));
   return list;
-}
-
-function element(tag: string, text: string, className?: string): HTMLElement {
-  const node = document.createElement(tag);
-  node.textContent = text;
-  if (className) node.className = className;
-  return node;
 }

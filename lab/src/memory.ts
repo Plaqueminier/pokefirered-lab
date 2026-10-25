@@ -1,12 +1,26 @@
 // Typed reads of the game memory, from the debug info.
 // Example: mem.global("gSaveBlock1Ptr").deref().field("pos").field("x").int()
-import type { Member, Symbols, TypeId, TypeInfo } from "./symbols";
+import type { Global, Member, Symbols, TypeId, TypeInfo } from "./symbols";
 
 export interface MemoryBus {
   read(address: number, length: number): Uint8Array;
 }
 
+/** The first index where `test` is true, for an array where `test` is false and then true. */
+function firstIndex<T>(sorted: T[], test: (item: T) => boolean): number {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (test(sorted[middle])) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
+
 export class Memory {
+  #byAddress: Global[] | null = null;
+
   constructor(
     readonly bus: MemoryBus,
     readonly symbols: Symbols,
@@ -18,10 +32,13 @@ export class Memory {
     return new Ref(this, g.addr, g.type);
   }
 
+  /** The global with the highest address that is at or before `address`; of two globals at one address, the first one. */
   globalBefore(address: number): Ref | null {
-    let best: { addr: number; type: TypeId } | null = null;
-    for (const g of Object.values(this.symbols.globals)) if (g.addr <= address && (!best || g.addr > best.addr)) best = g;
-    return best && new Ref(this, best.addr, best.type);
+    const sorted = (this.#byAddress ??= Object.values(this.symbols.globals).sort((a, b) => a.addr - b.addr));
+    const after = firstIndex(sorted, (g) => g.addr > address);
+    if (after === 0) return null;
+    const best = sorted[firstIndex(sorted, (g) => g.addr >= sorted[after - 1].addr)];
+    return new Ref(this, best.addr, best.type);
   }
 
   type(id: TypeId): TypeInfo {

@@ -19,9 +19,8 @@ export function memoryTree(events: readonly RunEvent[]): MemoryTree {
   const tree: MemoryTree = { notes: [], summaries: new Map() };
   for (const event of events) {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
-    if (event.type !== "model" || !event.decision || !("note" in event.decision)) continue;
+    if (event.type !== "model" || !event.decision) continue;
     const { note } = event.decision;
-    // The answer after viewAtlas or zoom can give the same note again.
     // The answer after viewAtlas or zoom can give the same note again.
     if (note !== "" && note !== tree.notes.at(-1)) tree.notes.push(note);
   }

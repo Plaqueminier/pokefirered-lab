@@ -95,7 +95,10 @@ export class AtlasWatch {
     this.#lastAction = entry;
     const { action, result } = entry;
     const visit = this.#place && this.#visits.get(this.#place.map);
-    if (action.name !== "readText") this.#talk = visit && this.#place && action.name === "interact" && result.status === "done" ? this.talkWith(visit, action, this.#place) : null;
+    if (action.name !== "readText") {
+      const talked = action.name === "interact" && result.status === "done";
+      this.#talk = visit && this.#place && talked ? this.talkWith(visit, action, this.#place) : null;
+    }
     if (!visit || action.name !== "readText" || !("text" in result) || result.text.length === 0) return;
     if (this.#talk) told(this.#talk, result.text.join(" "));
     const interact = previous?.action.name === "interact" && previous.result.status === "done" ? previous.action : null;
@@ -115,7 +118,8 @@ export class AtlasWatch {
 
   // A person behind a counter talks across it: the cell after the counter counts too.
   private talkWith(visit: Visit, { x, y }: Cell, player: Cell): Talk | null {
-    const cells = [{ x, y }, { x: 2 * x - player.x, y: 2 * y - player.y }];
+    const behind = { x: 2 * x - player.x, y: 2 * y - player.y };
+    const cells = [{ x, y }, behind];
     const people = this.game.mapView(visit.grid.name)?.actors.people ?? [];
     const found = cells.flatMap((c) => people.filter((p) => p.loaded && p.x === c.x && p.y === c.y))[0];
     if (!found) return null;

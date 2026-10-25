@@ -1,13 +1,13 @@
 import { type BagItem, type BagPocket, battleItems, type ItemUse, walkItems } from "../bag";
 import type { BattleState, Button, Observation } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
-import type { PartyMon } from "../party";
+import { type PartyMon, sendableSlots } from "../party";
 import { Keys } from "../protocol";
 import type { ShopItem } from "../shop";
 import { atlasExtract, type AtlasView } from "./extract";
 import type { Overworld } from "./targets";
 
-// The text that the model writes comes back in each prompt: a cap keeps the prompt small.
+// The text that the model writes returns in each prompt: a cap keeps the prompt small.
 export const MAX_SENTENCE = 200;
 const MAX_QUOTED_ACTION = 80;
 
@@ -20,7 +20,7 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go 2\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    note: { type: "string", description: `A new fact to keep in your Memory, in one line of ${MAX_SENTENCE} characters at most, or an empty string. Nobody changes it later.` },
+    note: { type: "string", description: `A new fact to keep in your Memory tree, in one line of ${MAX_SENTENCE} characters at most, or an empty string. Nobody changes it later.` },
   },
   required: FIELDS,
   additionalProperties: false,
@@ -80,7 +80,7 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
 
 export function sendable(asked: Asked): PartyMon[] {
   if (!("battle" in asked)) return [];
-  return asked.party.filter((mon, slot) => mon.hp > 0 && slot !== asked.battle.player.partyIndex);
+  return sendableSlots(asked.party, asked.battle.player.partyIndex).map((slot) => asked.party[slot]);
 }
 
 const BUTTONS = Object.keys(Keys) as Button[];

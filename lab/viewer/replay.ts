@@ -1,14 +1,9 @@
 import type { RunEvent } from "../src/harness/record";
-import type { ClientMessage, ReplayModel, ShownRun } from "../src/protocol";
+import { actionText, type ClientMessage, type ReplayModel, type ShownRun } from "../src/protocol";
 import { callsStarted, modelCalls } from "./model-panel";
 import { dollars } from "./runs";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
-
-export function actionLabel({ action }: ActionEvent): string {
-  const { name, ...args } = action;
-  return `${name}(${Object.values(args).join(", ")})`;
-}
 
 function resultLabel({ result }: ActionEvent): string {
   const reason = "reason" in result ? ` (${result.reason})` : "";
@@ -112,10 +107,10 @@ export class ReplayPanel {
   private render(): void {
     const action = this.events.findLast((e): e is ActionEvent => e.type === "action");
     const done = action !== undefined && this.frame >= action.frame + action.result.frames;
-    this.ui.action.textContent = action ? actionLabel(action) : "–";
+    this.ui.action.textContent = action ? actionText(action.action) : "–";
     this.ui.detail.textContent = action ? [`from frame ${action.frame} · ${done ? resultLabel(action) : "playing"}`, ...(done ? texts(action) : [])].join("\n") : "";
     this.ui.model.textContent = modelText(this.events, this.modelCallsStarted);
-    const log = this.events.map((event) => `${String(event.frame).padStart(6)}  ${event.type === "action" ? actionLabel(event) : eventLabel(event)}`).join("\n");
+    const log = this.events.map((event) => `${String(event.frame).padStart(6)}  ${event.type === "action" ? actionText(event.action) : eventLabel(event)}`).join("\n");
     if (this.ui.events.textContent === log) return;
     this.ui.events.textContent = log;
     this.ui.events.scrollTop = this.ui.events.scrollHeight;

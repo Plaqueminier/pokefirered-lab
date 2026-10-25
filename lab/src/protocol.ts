@@ -1,7 +1,7 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
 import type { Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { Sight } from "./harness/atlas";
-import type { EndReason } from "./harness/harness";
+import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
@@ -17,6 +17,11 @@ export const Keys = {
   R: 1 << 8,
   L: 1 << 9,
 } as const;
+
+/** An action as one line, for example `goTo(6, 1)`. */
+export function actionText({ name, ...args }: MacroAction | RawInput): string {
+  return `${name}(${Object.values(args).join(", ")})`;
+}
 
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
