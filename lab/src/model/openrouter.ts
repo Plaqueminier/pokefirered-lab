@@ -28,7 +28,7 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
 
 type ChatReply = {
   choices?: { message?: { content?: string | null } }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number }; cost?: number };
+  usage?: { prompt_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number }; cost?: number };
   error?: { message?: string };
 };
 
@@ -36,7 +36,7 @@ export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROU
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set: put it in lab/.env");
   const reasoning = { effort: settings.reasoning === "off" ? "none" : settings.reasoning };
   const temperature = settings.temperature === null ? {} : { temperature: settings.temperature };
-  return async ({ system, user }) => {
+  return async ({ system, user, turns = [] }) => {
     const response = await fetcher(API_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -45,6 +45,10 @@ export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROU
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
+          ...turns.flatMap((turn) => [
+            { role: "assistant", content: turn.assistant },
+            { role: "user", content: turn.user },
+          ]),
         ],
         response_format: { type: "json_schema", json_schema: { name: "decision", strict: true, schema: DECISION_SCHEMA } },
         provider: { require_parameters: true },
@@ -62,6 +66,7 @@ export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROU
       content: reply.choices?.[0]?.message?.content ?? "",
       usage: {
         promptTokens: usage.prompt_tokens ?? 0,
+        cachedTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
         completionTokens: usage.completion_tokens ?? 0,
         reasoningTokens: usage.completion_tokens_details?.reasoning_tokens ?? 0,
         cost: usage.cost,

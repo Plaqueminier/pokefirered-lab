@@ -7,7 +7,7 @@ const KEY = "sk-or-test-key";
 const PROMPT = { system: "rules", user: "now" };
 const REPLY = {
   choices: [{ message: { content: '{"reason":"r","action":"go 1","mission":"m","objective":"o","notes":""}' } }],
-  usage: { prompt_tokens: 1200, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 0 }, cost: 0.00021 },
+  usage: { prompt_tokens: 1200, prompt_tokens_details: { cached_tokens: 1024 }, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 0 }, cost: 0.00021 },
 };
 
 function fakeFetch(status: number, body: unknown) {
@@ -65,12 +65,23 @@ describe("openRouter", () => {
     expect(JSON.parse(String(calls[1].init.body))).toMatchObject({ reasoning: { effort: "none" } });
   });
 
-  test("it gives the text of the answer, the tokens and the cost", async () => {
+  test("it gives the text of the answer, the tokens, the cached tokens and the cost", async () => {
     const { fetcher } = fakeFetch(200, REPLY);
     expect(await openRouter(modelSettings({}, {}), KEY, fetcher)(PROMPT)).toEqual({
       content: REPLY.choices[0].message.content,
-      usage: { promptTokens: 1200, completionTokens: 40, reasoningTokens: 0, cost: 0.00021 },
+      usage: { promptTokens: 1200, cachedTokens: 1024, completionTokens: 40, reasoningTokens: 0, cost: 0.00021 },
     });
+  });
+
+  test("a call that goes on with a conversation sends system, user, then the last answer and the new user message of each turn", async () => {
+    const { calls, fetcher } = fakeFetch(200, REPLY);
+    await openRouter(modelSettings({}, {}), KEY, fetcher)({ ...PROMPT, turns: [{ assistant: "viewAtlas answer", user: "the full Atlas" }] });
+    expect(JSON.parse(String(calls[0].init.body)).messages).toEqual([
+      { role: "system", content: "rules" },
+      { role: "user", content: "now" },
+      { role: "assistant", content: "viewAtlas answer" },
+      { role: "user", content: "the full Atlas" },
+    ]);
   });
 
   test("it throws an error with the message of OpenRouter, and never with the API key", async () => {

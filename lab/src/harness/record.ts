@@ -26,9 +26,14 @@ export type ModelSettings = { id: string; costLimit: number; reasoning: Reasonin
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
 export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string };
 
-export type Prompt = { system: string; user: string };
+/** The messages of a Model call: system, user, then for each turn the last answer and a new user message. A record from before the conversations has no turns. */
+export type Prompt = { system: string; user: string; turns?: Turn[] };
 
-export type Usage = { promptTokens: number; completionTokens: number; reasoningTokens: number; cost: number };
+/** A Model call at the same Decision point goes on with the conversation: its last answer, then the new facts or the error. */
+export type Turn = { assistant: string; user: string };
+
+// cachedTokens: the prompt tokens that the provider read from its cache. A record from before the cache has none.
+export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; notes: string };
 

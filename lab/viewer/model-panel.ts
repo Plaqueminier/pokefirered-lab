@@ -2,6 +2,7 @@ import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES: [RegExp, string][] = [
+  [/^Milestones/, "Progress"],
   [/^The game waits/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Party/, "Party"],
@@ -12,6 +13,8 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Battle against/, "Battle"],
   [/^The question is/, "Question"],
   [/^Actions/, "Actions"],
+  [/^Your answer could not be read/, "Error"],
+  [/^Answer with JSON again/, "Request"],
 ];
 
 export type Answer = Decision | { error: string; raw: string | null };
@@ -38,14 +41,20 @@ export function modelPanelView(events: readonly RunEvent[], callsStarted: number
 }
 
 function callView(call: ModelEvent, index: number): CallView {
-  const { promptTokens, completionTokens, reasoningTokens, cost } = call.usage;
-  const blocks = call.prompt.user.split("\n\n").map((text) => ({ title: BLOCK_TITLES.find(([start]) => start.test(text))?.[1] ?? "Other", text }));
+  const { promptTokens, cachedTokens, completionTokens, reasoningTokens, cost } = call.usage;
+  const { system, user, turns = [] } = call.prompt;
+  const turnBlocks = turns.flatMap((turn) => [{ title: "Your answer", text: turn.assistant }, ...messageBlocks(turn.user)]);
+  const cached = cachedTokens === undefined ? "" : ` (${cachedTokens} cached)`;
   return {
     title: `call ${index + 1} · frame ${call.frame} · ${call.model} · ${call.situation}`,
     answer: call.decision ?? { error: call.error, raw: call.answer },
-    usage: `${promptTokens} tokens in · ${completionTokens} out (${reasoningTokens} reasoning) · ${Number(cost.toFixed(6))} $ · ${(call.latencyMs / 1000).toFixed(1)} s`,
-    blocks: [...blocks, { title: "Rules", text: call.prompt.system }],
+    usage: `${promptTokens} tokens in${cached} · ${completionTokens} out (${reasoningTokens} reasoning) · ${Number(cost.toFixed(6))} $ · ${(call.latencyMs / 1000).toFixed(1)} s`,
+    blocks: [...messageBlocks(user), ...turnBlocks, { title: "Rules", text: system }],
   };
+}
+
+function messageBlocks(message: string): { title: string; text: string }[] {
+  return message.split("\n\n").map((text) => ({ title: BLOCK_TITLES.find(([start]) => start.test(text))?.[1] ?? "Other", text }));
 }
 
 // A Run that ended with an error can have a Model call with no model event.

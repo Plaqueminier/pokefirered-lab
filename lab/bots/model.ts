@@ -1,8 +1,8 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Starter, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Prompt, type Starter, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
 import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
-import { B_PRESSES, situation, systemPrompt, userPrompt } from "../src/model/prompt";
+import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt } from "../src/model/prompt";
 import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
 
 const GOAL = "first-rival-battle";
@@ -10,7 +10,7 @@ const GOAL_TEXT = "Get your first Pokémon from Professor Oak, then win your fir
 // The cost limit and the no-progress limit stop a model bot, not the frames.
 const FRAME_BUDGET = Number.POSITIVE_INFINITY;
 const MAX_UNREADABLE = 3;
-const NO_USAGE: Usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
+const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
   const settings = modelSettings(options);
@@ -29,10 +29,12 @@ function goalText(starter: Starter): string {
   return `${GOAL_TEXT} ${choice}`;
 }
 
+// The Model calls at one Decision point are one conversation. An action that the Bot plays ends it.
+type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean };
+
 class ModelPlay {
   readonly #system: string;
-  // The game is frozen at a Decision point (ADR 0002): while the frame stays the same, so does the Decision point.
-  #atlasViewedAt: number | null = null;
+  #conversation: Conversation | null = null;
 
   constructor(
     private readonly harness: Harness,
@@ -50,11 +52,14 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
-      const asked = askedOf(observation, this.#atlasViewedAt === this.harness.frame);
+      const asked = askedOf(observation, this.#conversation?.atlasViewed ?? false);
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
       const action = await this.harness.modelCall(() => this.answer(observation, asked));
       this.stopAtLimits();
-      if (action) await this.perform(action, asked);
+      if (action && action.name !== "viewAtlas") {
+        this.#conversation = null;
+        await this.perform(action, asked);
+      }
     }
   }
 
@@ -64,7 +69,9 @@ class ModelPlay {
   }
 
   private async answer(observation: Observation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
-    const prompt = { system: this.#system, user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress) };
+    const conversation = this.#conversation ?? { user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress), turns: [], atlasViewed: false };
+    this.#conversation = conversation;
+    const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
     const request = { model: this.settings.id, situation: situation(asked), prompt };
     let reply: ModelReply;
     try {
@@ -75,8 +82,14 @@ class ModelPlay {
     const replied = { ...request, answer: reply.content, usage: reply.usage };
     try {
       const decision = readDecision(reply.content);
-      return { answer: { ...replied, decision, error: null }, action: readAction(decision.action, asked) };
+      const action = readAction(decision.action, asked);
+      if (action.name === "viewAtlas" && asked.kind === "walk") {
+        conversation.atlasViewed = true;
+        conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
+      }
+      return { answer: { ...replied, decision, error: null }, action };
     } catch (error) {
+      conversation.turns.push({ assistant: reply.content, user: errorMessage(errorText(error), asked) });
       return { answer: { ...replied, decision: null, error: errorText(error) }, action: null };
     }
   }
@@ -92,7 +105,7 @@ class ModelPlay {
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }
 
-  private async perform(action: ModelAction, asked: Asked): Promise<void> {
+  private async perform(action: Exclude<ModelAction, { name: "viewAtlas" }>, asked: Asked): Promise<void> {
     switch (action.name) {
       case "go":
         if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
@@ -111,9 +124,6 @@ class ModelPlay {
         return;
       case "press":
         await this.harness.press(action.button);
-        return;
-      case "viewAtlas":
-        this.#atlasViewedAt = this.harness.frame;
         return;
     }
   }
