@@ -7,6 +7,7 @@ import { describe, draw, howLabel } from "./mapdraw";
 import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
 import { RunsPanel } from "./runs";
+import { StatsPanel } from "./stats-panel";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -80,6 +81,7 @@ const modelPanel = new ModelPanel({
   answer: $("model-answer"),
   blocks: $("model-blocks"),
 });
+const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats") });
 const docTab = new DocTab(
   {
     labButton: $<HTMLButtonElement>("tab-lab"),
@@ -188,6 +190,7 @@ function onMessage(message: ServerMessage): void {
     case "events":
       replayPanel.onEvents(message.events);
       modelPanel.onEvents(message.events);
+      statsPanel.onEvents(message.events);
       break;
   }
 }
