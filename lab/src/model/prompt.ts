@@ -2,8 +2,9 @@ import { mapNamed } from "../harness/atlas";
 import { type ActionEntry, actionText, type BattleState, type NoProgress, type Observation } from "../harness/harness";
 import { callTurns, type ModelEvent, modelEvents, type RunEvent } from "../harness/record";
 import type { BagItem, BagPocket } from "../bag";
+import { type Milestone, MILESTONES } from "../game";
 import type { PartyMon, PartyMove } from "../party";
-import { actionsOf, type Asked, type AskedKind, MAX_NOTES } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, MAX_NOTES } from "./decision";
 import { fullAtlas, localView } from "./extract";
 
 export const B_PRESSES = 3;
@@ -19,25 +20,39 @@ const WAITS: Record<AskedKind, string> = {
   battleMove: "a move",
   partyPick: "a Pokémon in the party menu of the battle",
 };
+// A name and a place only: the model finds the steps itself.
+const MILESTONE_TEXTS: Record<Milestone, string> = {
+  "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
+  "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
+  "has-pokedex": "Get the Pokédex from Professor Oak in Pallet Town.",
+  "badge-1": "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
+  "badge-2": "Earn the Cascade Badge from Misty, the Gym Leader of Cerulean City.",
+  "badge-3": "Earn the Thunder Badge from Lt. Surge, the Gym Leader of Vermilion City.",
+  "badge-4": "Earn the Rainbow Badge from Erika, the Gym Leader of Celadon City.",
+  "badge-5": "Earn the Soul Badge from Koga, the Gym Leader of Fuchsia City.",
+  "badge-6": "Earn the Marsh Badge from Sabrina, the Gym Leader of Saffron City.",
+  "badge-7": "Earn the Volcano Badge from Blaine, the Gym Leader of Cinnabar Island.",
+  "badge-8": "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
+};
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
 const PRESS = "- press <button>: one press of A, B, Start, Select, Up, Down, Left, Right, L or R.";
 
-export function systemPrompt(runGoal: string): string {
+export function systemPrompt(starterRule: string): string {
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
-Goal of this run: ${runGoal}
+${starterRule}
 
-At each decision, you get what the game waits for, your Mission, your objective, your notes, your last decisions with what the program played and the texts of the game, and the actions that you can choose now.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your notes, your Mission, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
-At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
+At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
 - "action": exactly one of the actions of the message, for example "go 2" or "choose NO".
-- "mission": the story step that you work on, in one short sentence, for example "Talk to Professor Oak and get my first Pokémon". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
-- "objective": what you do now for your Mission, in one short sentence, for example "Look for Professor Oak outside the lab". Change it as often as you need.
+- "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
+- "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
 - "notes": your memory, at most ${MAX_NOTES} characters. You get them back at the next decision: write them again in full each time, with the facts that you want to keep. Keep the facts about your Mission until you reach it.
 
 Rules of the program:
@@ -47,7 +62,13 @@ Rules of the program:
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
 
-When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often goes on in a place that you do not expect.`;
+When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often goes on in a place that you do not expect.
+
+Advice of a good player:
+- Talk to the people: they tell you where to go and what to do.
+- When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
+- Train your Pokémon in the tall grass before you fight a Gym Leader.
+- Buy Poké Balls and Potions at a Poké Mart.`;
 }
 
 export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], noProgress: NoProgress): string {
@@ -55,11 +76,15 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
+  // The facts that change little come first, so that the providers cache more of the prompt.
   return [
-    `The game waits for ${now}.`,
-    missionLine(events),
-    `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
+    `Milestones: ${observation.milestones.join(", ") || "none"}`,
+    `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
     `Notes: ${read.at(-1)?.notes || "none"}`,
+    missionLine(events),
+    "",
+    `The game waits for ${now}.`,
+    `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points with no progress: ${noProgress.decisions}.`,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress (a new cell or a new Milestone):", ...tried].join("\n"),
     "",
@@ -68,7 +93,6 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     partyText(observation.party),
     `Money: ${observation.money}`,
     bagText(observation.bag),
-    `Milestones: ${observation.milestones.join(", ") || "none"}`,
     "",
     ...context(asked),
     "",
@@ -78,6 +102,20 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   ].join("\n");
 }
 
+/** The new user message after viewAtlas: the full Atlas. */
+export function atlasMessage(asked: Asked & { kind: "walk" }): string {
+  return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasViewed: true })].join("\n");
+}
+
+/** The new user message after an answer that the Bot cannot read: the error. */
+export function errorMessage(error: string, asked: Asked): string {
+  return [`Your answer could not be read: ${error}.`, "", chooseAgain(asked)].join("\n");
+}
+
+function chooseAgain(asked: Asked): string {
+  return `Answer with JSON again, with one of the actions of the first message: ${alternatives(actionsOf(asked))}.`;
+}
+
 export function missionLine(events: readonly RunEvent[]): string {
   const decisions = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const mission = decisions.findLast((d) => d.mission)?.mission;
@@ -85,6 +123,12 @@ export function missionLine(events: readonly RunEvent[]): string {
   // An empty Mission keeps the last one.
   const times = decisions.length - 1 - decisions.findLastIndex((d) => d.mission && d.mission !== mission);
   return `Mission: ${mission} (the same for ${times} decision${times === 1 ? "" : "s"}).`;
+}
+
+/** The first Milestone, in the order of the story, that the Run did not reach; null when it reached all. */
+export function nextMilestone(reached: readonly Milestone[]): string | null {
+  const next = MILESTONES.find((milestone) => !reached.includes(milestone));
+  return next ? MILESTONE_TEXTS[next] : null;
 }
 
 export function situation(asked: Asked): string {
@@ -198,7 +242,7 @@ function statsText(stats: Record<string, number>): string {
 function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
-      return [...asked.view.lines, ...(asked.atlasViewed ? fullAtlas(asked.overworld) : [])];
+      return asked.view.lines;
     case "choice": {
       const place = "overworld" in asked ? localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []) : battleLines(asked.battle);
       return [...place, "", "The question is the last text of your last decisions."];

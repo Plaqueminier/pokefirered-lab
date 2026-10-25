@@ -37,6 +37,8 @@ const MILESTONE_FLAGS: [Milestone, number][] = [
   ["has-pokedex", FLAG_SYS_POKEDEX_GET],
   ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
 ];
+/** The Milestones in the order of the story. */
+export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]) => milestone);
 const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic"]);
 const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
 const MB_TALL_GRASS = 0x02;

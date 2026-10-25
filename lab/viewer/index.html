@@ -199,6 +199,12 @@
       .model-dl dd { margin: 0; }
       .model-detail h3 { margin: 10px 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
       .model-pre { margin: 0; white-space: pre; overflow: auto; max-height: 460px; padding: 6px 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .stats-panel { flex-basis: 100%; }
+      .stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; align-items: start; }
+      .stats-card { max-height: 320px; overflow: auto; font-size: 12px; }
+      .stats-card h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+      .stats-card table { border-collapse: collapse; width: 100%; }
+      .stats-card td { padding: 2px 8px 2px 0; border-top: 1px solid var(--line); vertical-align: top; }
       .tabs { display: flex; gap: 6px; padding: 16px 16px 0; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
@@ -285,7 +291,7 @@
             <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. The model, the cost limit, the reasoning and the starter are for the model bot only (leave the fields empty for a scripted Bot). Empty, they take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses.</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses.</div>
         </section>
         <section>
           <div class="panel-head">
@@ -362,6 +368,13 @@
           </div>
         </div>
       </section>
+      <section class="stats-panel">
+        <div class="panel-head">
+          <h2>Stats</h2>
+          <span class="muted" id="stats-cost"></span>
+        </div>
+        <div class="stats-cards" id="stats"></div>
+      </section>
     </main>
     <article id="doc" hidden>
       <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
@@ -379,7 +392,7 @@
             <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
             <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
-            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read. At the <code>full</code> level: all the maps</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the texts of the people. At the <code>full</code> level: all the maps</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>
@@ -416,16 +429,17 @@
           <div class="doc-steps">
             <code>has-pokemon</code>→<code>first-rival-battle</code>→<code>has-pokedex</code>→<code>badge-1 … badge-8</code>
           </div>
-          <p class="muted">Read from the game flags. The goal of a Run is a Milestone.</p>
+          <p class="muted">Read from the game flags. The goal of a scripted Bot is a Milestone. The model bot has no goal: the code gives it the next Milestone, and its Run goes on after it.</p>
         </section>
         <section class="w4">
           <h2>End of a Run</h2>
           <dl>
-            <dt><code>goal</code></dt><dd>the goal Milestone is reached</dd>
+            <dt><code>goal</code></dt><dd>the goal Milestone is reached (with no goal: <code>badge-8</code>)</dd>
             <dt><code>bot stopped</code></dt><dd>the Bot stops or throws an error</dd>
             <dt><code>user stop</code></dt><dd>"Stop the Run", after the current action</dd>
-            <dt><code>frame budget</code></dt><dd>no more frames: 30 000 (the model bot has no frame budget)</dd>
-            <dt><code>no progress</code></dt><dd>200 Decision points with no new cell and no new Milestone</dd>
+            <dt><code>cost limit</code></dt><dd>the Model calls cost more than the cost limit (model bot)</dd>
+            <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000)</dd>
+            <dt><code>no progress</code></dt><dd>N Decision points with no new cell and no new Milestone, when the Run gives N</dd>
           </dl>
         </section>
         <section class="w4">
@@ -450,17 +464,17 @@
         <section class="w7">
           <h2>Bots</h2>
           <dl>
-            <dt>scripted</dt><dd>code. Each new step of the story goes into <code>starter</code>.</dd>
             <dt>model</dt>
             <dd>
-              asks an AI model for the action (a <b>Model call</b>) at each walk, choice, battle action or move, and in the party
+              plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. Each prompt has the
+              next Milestone (a name and a place only). It asks an AI model for the action (a <b>Model call</b>) at each walk, choice, battle action or move, and in the party
               menu. The code reads the texts alone; the model sees text and gives an action, its reason, its <b>Mission</b> (the
-              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (about 2 000 characters), and it can ask for the full Atlas one
+              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (its map and the texts of its people in full, 1 500 characters for the other maps), and it can ask for the full Atlas one
               time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
-              progress. The panel "Model" shows each Model call in full.
+              progress. The panel "Model" shows each Model call in full; the panel "Stats" counts the actions, the calls and the cost for each Milestone.
             </dd>
           </dl>
-          <p id="doc-model-planned" hidden>No model bot yet: it is planned.</p>
+          <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>
           <table id="doc-bots">
             <thead><tr><th>Name</th><th>Kind</th><th>Version</th><th>Goal</th></tr></thead>
             <tbody><tr><td colspan="4" class="muted">loading…</td></tr></tbody>

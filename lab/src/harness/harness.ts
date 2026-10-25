@@ -1,6 +1,6 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { BATTLE_POCKETS, type BagPocket, battleItems } from "../bag";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
@@ -12,6 +12,7 @@ import {
   type GameState,
   type MapActors,
   type MapGrid,
+  MILESTONES,
   type Milestone,
   type PlayerPosition,
   type WaitingFor,
@@ -22,7 +23,18 @@ import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
-import { ButtonTrack, GameWatch, type ModelAnswer, type ModelEvent, type ModelOptions, type ModelSettings, type RunEvent, type RunHeader, type RunRecord } from "./record";
+import {
+  ButtonTrack,
+  GameWatch,
+  type ModelAnswer,
+  type ModelEvent,
+  type ModelOptions,
+  type ModelSettings,
+  modelTotals,
+  type RunEvent,
+  type RunHeader,
+  type RunRecord,
+} from "./record";
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
@@ -31,8 +43,6 @@ const MAX_TEXT_PRESSES = 256;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
-const FRAME_BUDGET = 30_000;
-const NO_PROGRESS_LIMIT = 200;
 const RIVAL_GRAPHICS = "BLUE";
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
@@ -67,7 +77,7 @@ export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics"> &
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState });
 
-export type EndReason = "goal" | "bot stopped" | "user stop" | "frame budget" | "no progress";
+export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress";
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
@@ -117,13 +127,17 @@ export async function botNames(): Promise<string[]> {
   return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
 }
 
-/** A module of `bots/` exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run. */
+/**
+ * `name` is a module of `bots/`, or the absolute path of a module out of `bots/` (the tests load the scripted bot so).
+ * A module exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run.
+ */
 export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
-  const module = await import(join(BOTS_DIR, `${name}.ts`));
+  const file = isAbsolute(name) ? name : `bots/${name}.ts`;
+  const module = await import(isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`));
   if (typeof module.modelBot === "function") return module.modelBot(model);
-  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`bots/${name}.ts is not a model bot: it does not export modelBot(model)`);
+  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`${file} is not a model bot: it does not export modelBot(model)`);
   const bot: Bot | undefined = module.default;
-  if (typeof bot?.play !== "function") throw new Error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
+  if (typeof bot?.play !== "function") throw new Error(`${file} must export by default a Bot: { name, version, play(harness) }`);
   return bot;
 }
 
@@ -170,7 +184,10 @@ export type HarnessOptions = {
   stopAsked?: () => boolean;
 };
 
-/** The Harness ends a Run with an error that a Macro-action or a Raw input throws: `play` must not catch it. */
+/**
+ * The Harness ends a Run with an error that a Macro-action, a Raw input or a Model call throws: `play` must not catch it.
+ * With no `goal`, the Run ends with "goal" at the last Milestone. With `model`, the Run ends with "cost limit" when the cost of its Model calls is more than the cost limit.
+ */
 export type Bot = {
   name: string;
   version: string;
@@ -190,9 +207,10 @@ class RunLimits {
   #noProgress: NoProgress = { decisions: 0, since: 0 };
 
   constructor(
-    private readonly goal: Milestone | null,
+    private readonly goal: Milestone,
     private readonly lastFrame: number,
     private readonly noProgressLimit: number,
+    private readonly costLimit: number,
     private progress: number,
   ) {}
 
@@ -205,10 +223,14 @@ class RunLimits {
   }
 
   atDecision(milestones: Milestone[], progress: number, events: number): void {
-    if (this.goal && milestones.includes(this.goal)) throw new RunEnd("goal");
+    if (milestones.includes(this.goal)) throw new RunEnd("goal");
     this.#noProgress = progress > this.progress ? { decisions: 0, since: events } : { ...this.#noProgress, decisions: this.#noProgress.decisions + 1 };
     this.progress = progress;
     if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
+  }
+
+  afterModelCall(events: readonly RunEvent[]): void {
+    if (modelTotals(events).cost > this.costLimit) throw new RunEnd("cost limit");
   }
 }
 
@@ -222,7 +244,7 @@ export class Harness {
   readonly #onModelCallStart?: ModelCallStartListener;
   readonly #onModelCall?: ModelCallListener;
   readonly #frameBudget?: number;
-  readonly #noProgressLimit: number;
+  readonly #noProgressLimit?: number;
   readonly #stopAsked: () => boolean;
   readonly #battles = new BattleWatch();
   readonly #buttons = new ButtonTrack();
@@ -239,7 +261,7 @@ export class Harness {
     this.#onModelCallStart = options.onModelCallStart;
     this.#onModelCall = options.onModelCall;
     this.#frameBudget = options.frameBudget;
-    this.#noProgressLimit = options.noProgressLimit ?? NO_PROGRESS_LIMIT;
+    this.#noProgressLimit = options.noProgressLimit;
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game);
@@ -297,8 +319,11 @@ export class Harness {
     if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
     const start = this.frame;
     const rawInputs = this.rawInputs;
-    const frameBudget = this.#frameBudget ?? bot.frameBudget ?? FRAME_BUDGET;
-    this.#phase = { kind: "playing", limits: new RunLimits(bot.goal ?? null, start + frameBudget, this.#noProgressLimit, this.#watch.progress) };
+    // The frame budget and the no-progress limit apply only when the Harness or the Bot gives them.
+    const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
+    const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
+    const limits = new RunLimits(goal, start + frameBudget, this.#noProgressLimit ?? Number.POSITIVE_INFINITY, bot.model?.costLimit ?? Number.POSITIVE_INFINITY, this.#watch.progress);
+    this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
     let result: RunResult | null = null;
     try {
@@ -321,6 +346,7 @@ export class Harness {
     const event: ModelEvent = { type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
     this.#events.push(event);
     this.#onModelCall?.(event, this);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterModelCall(this.#events);
     this.stopIfAsked();
     return action;
   }
