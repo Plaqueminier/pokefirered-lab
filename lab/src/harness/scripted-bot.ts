@@ -8,6 +8,7 @@ export default {
   name: "starter",
   version: "3",
   goal: "first-rival-battle",
+  frameBudget: 30_000,
   async play(harness) {
     must(await harness.goTo(12, 3, "PalletTown"));
     await harness.goTo(12, 1);

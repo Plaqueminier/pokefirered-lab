@@ -120,6 +120,6 @@ function quoted(text: string): string {
   return text.slice(0, MAX_QUOTED_ACTION);
 }
 
-function alternatives(names: string[]): string {
+export function alternatives(names: string[]): string {
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
 }

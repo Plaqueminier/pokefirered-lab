@@ -14,6 +14,9 @@ export type AtlasEdge = { side: Direction; to: string | null };
 
 export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null };
 
+/** A person that talked to the player: its texts, all different, in their order, and the last cell where the player saw it. */
+export type AtlasPerson = { localId: number; graphics: string; x: number; y: number; texts: string[] };
+
 export type AtlasMap = {
   name: string;
   width: number;
@@ -23,6 +26,7 @@ export type AtlasMap = {
   warps: AtlasWarp[];
   edges: AtlasEdge[];
   signs: AtlasSign[];
+  people: AtlasPerson[];
   entry: Cell | null;
 };
 
@@ -56,13 +60,19 @@ type Visit = {
   edgesTaken: Map<Direction, string>;
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
+  /** The people that talked to the player, by localId: a person keeps its texts when it moves. */
+  people: Map<number, AtlasPerson>;
 };
+
+/** The texts of one talk: all the readTexts after a done interact with a person. `index`: the place of the text in the texts of the person, null when the person said it before. */
+type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 
 export class AtlasWatch {
   readonly #visits = new Map<string, Visit>();
   readonly #grids = new Map<string, MapGrid | null>();
   #place: Place | null = null;
   #lastAction: ActionEntry | null = null;
+  #talk: Talk | null = null;
 
   constructor(private readonly game: Game) {}
 
@@ -79,16 +89,19 @@ export class AtlasWatch {
     const here = { map: map.name, x: player.x, y: player.y };
     this.#place = here;
     this.see(visit, here);
+    this.seePeople(visit, here);
     if (last && last.map !== here.map) this.crossed(last, here);
   }
 
-  /** A sign has the texts of a readText just after a done interact with it. */
+  /** A sign has the texts of a readText just after a done interact with it. A person has the texts of all the readTexts after a done interact with it. */
   onAction(entry: ActionEntry): void {
     const previous = this.#lastAction;
     this.#lastAction = entry;
     const { action, result } = entry;
     const visit = this.#place && this.#visits.get(this.#place.map);
+    if (action.name !== "readText") this.#talk = visit && this.#place && action.name === "interact" && result.status === "done" ? this.talkWith(visit, action, this.#place) : null;
     if (!visit || action.name !== "readText" || !("text" in result) || result.text.length === 0) return;
+    if (this.#talk) told(this.#talk, result.text.join(" "));
     const interact = previous?.action.name === "interact" && previous.result.status === "done" ? previous.action : null;
     if (interact && visit.grid.signs.some((s) => s.kind === "sign" && s.x === interact.x && s.y === interact.y)) visit.signTexts.set(cellKey(interact), result.text.join(" "));
   }
@@ -102,6 +115,26 @@ export class AtlasWatch {
       }),
     );
     return { maps };
+  }
+
+  // A person behind a counter talks when the player faces the counter, so the cell after it counts too.
+  private talkWith(visit: Visit, { x, y }: Cell, player: Cell): Talk | null {
+    const cells = [{ x, y }, { x: 2 * x - player.x, y: 2 * y - player.y }];
+    const people = this.game.mapView(visit.grid.name)?.actors.people ?? [];
+    const found = cells.flatMap((c) => people.filter((p) => p.loaded && p.x === c.x && p.y === c.y))[0];
+    if (!found) return null;
+    const person = visit.people.get(found.localId) ?? { localId: found.localId, graphics: found.graphics, x: found.x, y: found.y, texts: [] };
+    Object.assign(person, { x: found.x, y: found.y });
+    visit.people.set(found.localId, person);
+    return { person, text: null, index: null };
+  }
+
+  private seePeople(visit: Visit, { x, y }: Cell): void {
+    if (visit.people.size === 0) return;
+    for (const p of this.game.mapView(visit.grid.name)?.actors.people ?? []) {
+      const person = visit.people.get(p.localId);
+      if (person && p.loaded && onScreen({ x, y }, p)) Object.assign(person, { x: p.x, y: p.y });
+    }
   }
 
   sight(): Sight {
@@ -118,7 +151,7 @@ export class AtlasWatch {
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), edgesTaken: new Map(), signTexts: new Map() };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), edgesTaken: new Map(), signTexts: new Map(), people: new Map() };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -138,6 +171,18 @@ export class AtlasWatch {
     if (left) take(left, from, to.map, warpOn(left.grid, from) ?? pressWarpFrom(left.grid, from, to.map));
     if (arrived) take(arrived, to, from.map, warpOn(arrived.grid, to));
   }
+}
+
+function onScreen(player: Cell, { x, y }: Cell): boolean {
+  return x >= player.x - SCREEN_LEFT && x <= player.x + SCREEN_RIGHT && y >= player.y - SCREEN_UP && y <= player.y + SCREEN_DOWN;
+}
+
+/** A talk can have many readTexts: its text grows, and it stays once in the texts of the person. */
+function told(talk: Talk, part: string): void {
+  const { texts } = talk.person;
+  if (talk.index !== null) texts.splice(talk.index, 1);
+  talk.text = talk.text ? `${talk.text} ${part}` : part;
+  talk.index = texts.includes(talk.text) ? null : texts.push(talk.text) - 1;
 }
 
 function take(visit: Visit, cell: Cell, other: string, warp: Warp | undefined): void {
@@ -163,7 +208,7 @@ function edgesOf(grid: MapGrid): Edge[] {
   return grid.connections.filter((c): c is Edge => c.direction in DIRECTION_STEP);
 }
 
-function atlasMap({ grid, seen, entry, warpsTaken, edgesTaken, signTexts }: Visit): AtlasMap {
+function atlasMap({ grid, seen, entry, warpsTaken, edgesTaken, signTexts, people }: Visit): AtlasMap {
   const isSeen = ({ x, y }: Cell) => seen[y * grid.mapWidth + x] === 1;
   return {
     name: grid.name,
@@ -179,6 +224,7 @@ function atlasMap({ grid, seen, entry, warpsTaken, edgesTaken, signTexts }: Visi
       return to || edgeCells(grid, c.direction).some(isSeen) ? [{ side: c.direction, to }] : [];
     }),
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
+    people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
     entry,
   };
 }
@@ -192,6 +238,7 @@ function fullVisit(grid: MapGrid, visit: Visit | undefined): Visit {
     warpsTaken: new Map(grid.warps.map((w) => [cellKey(w), w.to])),
     edgesTaken: new Map(edgesOf(grid).map((c) => [c.direction, c.map])),
     signTexts: visit?.signTexts ?? new Map(),
+    people: visit?.people ?? new Map(),
   };
 }
 

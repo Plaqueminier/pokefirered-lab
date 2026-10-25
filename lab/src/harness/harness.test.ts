@@ -74,7 +74,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "1", goal: "first-rival-battle" }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "2", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -474,6 +474,23 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(await harness.interact(4, 7)).toMatchObject({ status: "done" });
     await harness.readText();
     expect(mapNamed(harness.observe().atlas, "PalletTown").signs).toContainEqual(expect.objectContaining({ x: 4, y: 7, text: "PLOK's house" }));
+  });
+
+  test("a talk to a person adds its whole text to the Atlas once, and a new text of the same person adds a second one", async () => {
+    const harness = await Harness.open();
+    const talkToMom = async () => {
+      await harness.goTo(8, 5, "PalletTown_PlayersHouse_1F");
+      expect(await harness.interact(8, 4)).toMatchObject({ status: "done" });
+      while (harness.observe().waitingFor.kind !== "walk") await harness.readText();
+    };
+    const momTexts = () => mapNamed(harness.observe().atlas, "PalletTown_PlayersHouse_1F").people.find((p) => p.graphics === "MOM")?.texts;
+    await talkToMom();
+    await talkToMom();
+    expect(momTexts()).toEqual(["MOM: …Right. All boys leave home someday. It said so on TV. Oh, yes. PROF. OAK, next door, was looking for you."]);
+    await starter.play(harness);
+    await talkToMom();
+    expect(momTexts()).toHaveLength(2);
+    expect(momTexts()?.[1]).toStartWith("MOM: PLOK! You should take a quick rest.");
   });
 
   test("goTo to a blocked cell returns impossible and runs no frames", async () => {
