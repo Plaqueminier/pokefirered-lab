@@ -1,6 +1,7 @@
 import { mapNamed } from "../harness/atlas";
 import { type ActionEntry, actionText, type BattleState, type NoProgress, type Observation } from "../harness/harness";
 import { callTurns, type ModelEvent, modelEvents, type RunEvent } from "../harness/record";
+import type { BagItem, BagPocket } from "../bag";
 import type { PartyMon, PartyMove } from "../party";
 import { actionsOf, type Asked, type AskedKind, MAX_NOTES } from "./decision";
 import { fullAtlas, localView } from "./extract";
@@ -65,6 +66,8 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
     partyText(observation.party),
+    `Money: ${observation.money}`,
+    bagText(observation.bag),
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     "",
     ...context(asked),
@@ -175,6 +178,13 @@ function partyText(party: PartyMon[]): string {
   return ["Party:", ...party.map(mon)].join("\n");
 }
 
+// The Bag is in each prompt once, with the effect of each item: the action lines only name the items.
+function bagText(bag: BagPocket[]): string {
+  if (bag.length === 0) return "Bag: empty.";
+  const pocket = ({ pocket, items }: BagPocket) => `- ${pocket}: ${items.map((i) => `${i.name} ×${i.quantity} (${i.description})`).join(", ")}`;
+  return ["Bag:", ...bag.map(pocket)].join("\n");
+}
+
 function moveText(move: PartyMove): string {
   return `${move.type}, power ${move.power ?? "---"}, accuracy ${move.accuracy ?? "---"}, PP ${move.pp}/${move.maxPp}`;
 }
@@ -189,8 +199,10 @@ function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
       return [...asked.view.lines, ...(asked.atlasViewed ? fullAtlas(asked.overworld) : [])];
-    case "choice":
-      return [...localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []), "", "The question is the last text of your last decisions."];
+    case "choice": {
+      const place = "overworld" in asked ? localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []) : battleLines(asked.battle);
+      return [...place, "", "The question is the last text of your last decisions."];
+    }
     case "partyPick":
       return [...battleLines(asked.battle), "No action covers the party menu: use press. Up and Down move the cursor, A chooses, B goes back."];
     default:
@@ -213,12 +225,18 @@ function actionLines(asked: Asked): string[] {
     case "choice":
       return asked.options.map((option) => `- choose ${option}`);
     case "battleAction":
-      return [...fights(asked.battle), `- run${asked.battle.kind === "trainer" ? ": impossible in a trainer battle" : ""}`];
+      return [...fights(asked.battle), `- run${asked.battle.kind === "trainer" ? ": impossible in a trainer battle" : ""}`, ...useLine(asked.items)];
     case "battleMove":
       return fights(asked.battle);
     case "partyPick":
       return [];
   }
+}
+
+function useLine(items: BagItem[]): string[] {
+  if (items.length === 0) return [];
+  const names = items.map((item) => (item.battle === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
+  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}.`];
 }
 
 function fights({ player }: BattleState): string[] {

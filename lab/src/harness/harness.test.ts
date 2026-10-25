@@ -1,7 +1,8 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import starter from "../../bots/starter";
-import { ROM_FILE, START_SAVE } from "../run";
+import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { cellAt, mapNamed } from "./atlas";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
 
@@ -488,5 +489,75 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const result = await harness.goTo(8, 2);
     expect(result).toMatchObject({ status: "impossible", frames: 0 });
     expect(harness.frame).toBe(frame);
+  });
+});
+
+// A test Starting save: on Route 1 in tall grass after the starter Run, with SQUIRTLE at full HP, 5 Potions, 20 Poké Balls and 3080 money. It stays local (lab/README.md).
+const TEST_BAG = join(SAVES_DIR, "test-bag.sav");
+const TAIL_WHIP = 1;
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the test Starting save with the Bag", () => {
+  async function toWildBattle(): Promise<Harness> {
+    const harness = await Harness.open({ startSave: TEST_BAG });
+    const observation = harness.observe();
+    if (observation.mode !== "overworld") throw new Error("the test Starting save is not on the overworld");
+    const { x, y } = observation.player;
+    for (let step = 0; harness.waitingFor().kind === "walk"; step++) {
+      if (step === 100) throw new Error("no wild battle in 100 steps");
+      await harness.goTo(x, step % 2 === 0 ? y - 1 : y);
+    }
+    while (harness.waitingFor().kind !== "battleAction") await harness.readText();
+    return harness;
+  }
+
+  async function toNextAction(harness: Harness): Promise<void> {
+    while (harness.observe().mode === "battle" && !["battleAction", "choice"].includes(harness.waitingFor().kind)) await harness.readText();
+  }
+
+  test("observe() gives the Bag by pocket and the money, and a battle accepts use for the items that work now", async () => {
+    const harness = await toWildBattle();
+    const observation = harness.observe();
+    expect(observation.money).toBe(3080);
+    expect(observation.bag).toEqual([
+      { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points.", battle: "pokemon" }] },
+      { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON. It is designed in a capsule style.", battle: "alone" }] },
+    ]);
+    expect(harness.availableActions()).toEqual(expect.arrayContaining([{ name: "use", item: "POTION" }, { name: "use", item: "POKé BALL" }]));
+  });
+
+  test("a Potion on a Pokémon with full HP is impossible, with the reason of the game, and the Bag keeps it", async () => {
+    const harness = await toWildBattle();
+    expect(await harness.use("POTION", 0)).toMatchObject({ status: "impossible", reason: "the game refuses the POTION: It won't have any effect." });
+    expect(harness.observe()).toMatchObject({ waitingFor: { kind: "battleAction" }, bag: [{ items: [{ name: "POTION", quantity: 5 }] }, expect.anything()] });
+  });
+
+  test("use POTION on a hurt Pokémon heals it in a battle", async () => {
+    const harness = await toWildBattle();
+    for (let turn = 0; harness.observe().party[0].hp === harness.observe().party[0].maxHp; turn++) {
+      if (turn === 10) throw new Error("SQUIRTLE is not hurt after 10 turns");
+      await harness.fight(TAIL_WHIP);
+      await toNextAction(harness);
+    }
+    const { hp, maxHp } = harness.observe().party[0];
+    const result = await harness.use("POTION", 0);
+    expect(result).toMatchObject({ status: "done" });
+    const restored = Math.min(20, maxHp - hp);
+    expect(result.text[0]).toBe(`SQUIRTLE's HP was restored by ${restored} point(s).`);
+    expect(harness.observe().bag[0].items[0].quantity).toBe(4);
+  });
+
+  test("use POKé BALL throws a ball in a wild battle; a caught Pokémon goes into the party after NO at the nickname question", async () => {
+    const harness = await toWildBattle();
+    const enemy = harness.observe();
+    if (enemy.mode !== "battle") throw new Error("not in a battle");
+    for (let ball = 0; harness.waitingFor().kind !== "choice"; ball++) {
+      if (ball === 20) throw new Error("no catch with 20 balls");
+      expect(await harness.use("POKé BALL")).toMatchObject({ status: "done" });
+      await toNextAction(harness);
+    }
+    expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["Yes", "No"] } });
+    expect(await harness.choose("No")).toMatchObject({ status: "done" });
+    while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") await harness.readText();
+    expect(harness.observe().party.map((m) => m.species)).toEqual(["SQUIRTLE", enemy.battle.enemy.species]);
   });
 });

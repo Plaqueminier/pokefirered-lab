@@ -1,6 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { BATTLE_POCKETS, type BagPocket, battleItems } from "../bag";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -39,7 +40,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   walk: ["goTo", "interact"],
   choice: ["choose"],
   text: ["readText"],
-  battleAction: ["fight", "run"],
+  battleAction: ["fight", "run", "use"],
   battleMove: ["fight"],
   partyPick: [],
   busy: ["readText"],
@@ -47,7 +48,9 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
 export const MACRO_ACTIONS: readonly MacroAction["name"][] = [...new Set(Object.values(ACCEPTS).flat())];
 const FIGHT_CURSOR = 0;
+const BAG_CURSOR = 1;
 const RUN_CURSOR = 3;
+const POKE_BALLS_POCKET = 2;
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
 export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
@@ -56,7 +59,7 @@ export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
 export type BattleState = { kind: Battle["kind"]; player: BattleMon; enemy: EnemyMon };
 
-type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[]; atlas: Atlas };
+type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
 /** The game tells the player the name of the rival at the start, so the player Knowledge level shows it. */
 export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics"> & { rival?: string };
@@ -95,9 +98,12 @@ export type MacroAction =
   | { name: "readText" }
   | { name: "choose"; option: string }
   | { name: "fight"; move: number }
-  | { name: "run" };
+  | { name: "run" }
+  /** `on`: the Pokémon of the party (its index in `observe().party`) for an item that works on a Pokémon. */
+  | { name: "use"; item: string; on?: number };
 
-export type AvailableAction = { name: "goTo" } | Exclude<MacroAction, { name: "goTo" }>;
+/** The Bot chooses the cell of goTo, and the Pokémon of use. */
+export type AvailableAction = { name: "goTo" } | { name: "use"; item: string } | Exclude<MacroAction, { name: "goTo" | "use" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -158,6 +164,8 @@ export type HarnessOptions = {
   onModelCall?: ModelCallListener;
   frameBudget?: number;
   noProgressLimit?: number;
+  /** The file of the Starting save, `saves/start.sav` by default. */
+  startSave?: string;
   /** When it gives true, the Run ends with "user stop" after the Macro-action, the Raw input or the Model call that plays. */
   stopAsked?: () => boolean;
 };
@@ -239,11 +247,12 @@ export class Harness {
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
   static async open(options: HarnessOptions = {}, run?: Run): Promise<Harness> {
-    if (!(await Bun.file(START_SAVE).exists())) {
+    const startSave = run?.startSave ?? options.startSave ?? START_SAVE;
+    if (!(await Bun.file(startSave).exists())) {
       run?.core.close();
-      throw new Error(`${START_SAVE} not found: make the Starting save first (lab/README.md)`);
+      throw new Error(`${startSave} not found: make the Starting save first (lab/README.md)`);
     }
-    const opened = run ?? (await Run.open());
+    const opened = run ?? (await Run.open(startSave));
     try {
       const harness = new Harness(opened, options);
       const interruption = harness.settle();
@@ -333,7 +342,14 @@ export class Harness {
 
   observe(): Observation {
     const game = this.#run.game;
-    const base = { waitingFor: game.waitingFor(), party: game.party(), milestones: game.milestones(), atlas: this.#atlas.atlas(this.#knowledge) };
+    const base = {
+      waitingFor: game.waitingFor(),
+      party: game.party(),
+      bag: game.bag(),
+      money: game.money(),
+      milestones: game.milestones(),
+      atlas: this.#atlas.atlas(this.#knowledge),
+    };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
@@ -356,6 +372,8 @@ export class Harness {
           return this.battle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
         case "run":
           return this.battle().kind === "wild" ? [{ name }] : [];
+        case "use":
+          return battleItems(this.#run.game.bag(), this.battle().kind).map((item) => ({ name, item: item.name }));
       }
     });
   }
@@ -470,6 +488,57 @@ export class Harness {
     }, { text: [] });
   }
 
+  /** Uses an item of the Bag in a battle: BAG, the pocket, the item, USE, then the Pokémon `on` for an item that works on a Pokémon. */
+  async use(item: string, on?: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => {
+      const game = this.#run.game;
+      const place = game.findInBag(item);
+      if (!place || place.pocket >= BATTLE_POCKETS) return { status: "impossible", reason: `there is no ${item} in the Bag of a battle` };
+      if (!place.battle) return { status: "impossible", reason: `${item} does not work in a battle` };
+      if (place.pocket === POKE_BALLS_POCKET && this.battle().kind === "trainer") return { status: "impossible", reason: "the trainer blocks a ball: there is no catching in a trainer battle" };
+      if (place.battle === "pokemon" && on === undefined) return { status: "impossible", reason: `${item} works on a Pokémon: give the Pokémon` };
+      if (place.battle === "alone" && on !== undefined) return { status: "impossible", reason: `${item} does not work on a Pokémon` };
+      const personality = on === undefined ? null : game.partyPersonalities()[on];
+      if (personality === undefined) return { status: "impossible", reason: `the party has no Pokémon ${on}` };
+      const before = game.bagQuantity(place.item);
+      const opened = this.openBag();
+      if (opened.status !== "done") return opened;
+      const list = () => {
+        const menu = game.bagMenu();
+        return menu?.screen === "list" ? menu : null;
+      };
+      const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the Bag list");
+      const pocket = this.moveCursor(place.pocket, () => list()?.pocket ?? null, (at) => (place.pocket > at ? Keys.Right : Keys.Left), inList);
+      if (pocket.status !== "done") return pocket;
+      const row = this.moveCursor(place.row, () => list()?.row ?? null, (at) => (place.row > at ? Keys.Down : Keys.Up), inList);
+      if (row.status !== "done") return row;
+      // The menu of an item that works in a battle is USE, CANCEL, with the cursor on USE.
+      const context = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "context", "the menu of the item");
+      if (context.status !== "done") return context;
+      if (personality !== null) {
+        const party = this.tapUntil(Keys.A, () => game.waitingFor().kind === "partyPick", "the party menu");
+        if (party.status !== "done") return party;
+        const slot = game.partyPersonalities().indexOf(personality);
+        const read = () => (game.waitingFor().kind === "partyPick" ? game.partyMenuSlot() : null);
+        const picked = this.moveCursor(slot, read, (at) => (slot > at ? Keys.Down : Keys.Up), (keys) => this.tapUntil(keys, () => read() !== null, "the party menu"));
+        if (picked.status !== "done") return picked;
+      }
+      const reader = new MessageReader(game);
+      const battle = this.tap(Keys.A);
+      if (battle) return { status: "interrupted", reason: battle };
+      const used = this.untilDecision(() => reader.update());
+      if (used.status !== "done") return used;
+      if (!game.battleScreen() && game.bagQuantity(place.item) === before) return this.refused(item, game.waitingTexts().join(" "));
+      // The party menu tells what the item did, then the turn goes on.
+      const effect = game.battleScreen() ? [] : game.waitingTexts();
+      if (effect.length > 0) {
+        const after = this.input(Keys.A, () => reader.update());
+        if (after.status !== "done") return after;
+      }
+      return { status: "done", text: [...effect, ...reader.textBeforeWaitingText()] };
+    }, { text: [] });
+  }
+
   async press(button: Button): Promise<ActionResult> {
     return this.act({ name: "press", button }, () => this.input(Keys[button]));
   }
@@ -491,6 +560,35 @@ export class Harness {
     if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.#events.length);
     this.stopIfAsked();
     return result;
+  }
+
+  private openBag(): Outcome {
+    const game = this.#run.game;
+    const cursor = () => (game.waitingFor().kind === "battleAction" ? game.battleCursor("battleAction") : null);
+    const moved = this.moveCursor(BAG_CURSOR, cursor, (at) => gridKey(at, BAG_CURSOR));
+    if (moved.status !== "done") return moved;
+    return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
+  }
+
+  // The game shows a message, then the Bag again: B closes the Bag, back to the battle menu.
+  private refused(item: string, message: string): Outcome {
+    const game = this.#run.game;
+    const back = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
+    if (back.status !== "done") return back;
+    const closed = this.input(Keys.B);
+    if (closed.status !== "done") return closed;
+    return { status: "impossible", reason: `the game refuses the ${item}: ${message}` };
+  }
+
+  // In the menus of a battle (the Bag, the party menu), waitingFor is busy: the Harness waits for the screen that it expects.
+  // A menu reads the keys from the frame after the frame that shows it.
+  private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
+    if (this.tap(keys)) return { status: "interrupted", reason: "battle" };
+    for (let frames = 0; !shown(); frames++) {
+      if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game does not show ${screen} after ${DECISION_FRAME_LIMIT} frames` };
+      if (this.advance(0)) return { status: "interrupted", reason: "battle" };
+    }
+    return this.advance(0) ? { status: "interrupted", reason: "battle" } : { status: "done" };
   }
 
   private stopIfAsked(): void {
@@ -522,10 +620,10 @@ export class Harness {
     return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
   }
 
-  private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number): Outcome {
+  private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number, press = (keys: number) => this.input(keys)): Outcome {
     for (let cursor = read(); cursor !== target; ) {
       if (cursor === null) return { status: "impossible", reason: "the menu closed when the cursor moved" };
-      const moved = this.input(key(cursor));
+      const moved = press(key(cursor));
       if (moved.status !== "done") return moved;
       const now = read();
       if (now === cursor) return { status: "impossible", reason: `the cursor does not move from ${cursor}` };
@@ -543,9 +641,9 @@ export class Harness {
     return { player, grid: { ...grid, signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
   }
 
-  private input(keys: number): Outcome {
+  private input(keys: number, watch?: () => void): Outcome {
     const battle = this.tap(keys);
-    return battle ? { status: "interrupted", reason: battle } : this.untilDecision();
+    return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
   }
 
   private untilDecision(watch: () => void = () => {}): Outcome {

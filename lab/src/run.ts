@@ -22,22 +22,24 @@ export class Run {
     readonly core: Core,
     readonly game: Game,
     origin: RunOrigin,
+    readonly startSave: string,
   ) {
     this.#origin = origin;
   }
 
-  static async open(): Promise<Run> {
+  /** `startSave`: the file of the Starting save, `saves/start.sav` by default. The tests also start from other Starting saves. */
+  static async open(startSave = START_SAVE): Promise<Run> {
     if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
     const core = await Core.open(ROM_FILE);
     const mem = new Memory(core, await loadSymbols(join(REPO_DIR, `${ROM_NAME}.elf`), CACHE_DIR));
-    const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null });
+    const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null }, startSave);
     await run.reset();
     return run;
   }
 
   async reset(): Promise<void> {
     this.core.reset();
-    const save = Bun.file(START_SAVE);
+    const save = Bun.file(this.startSave);
     const data = (await save.exists()) ? new Uint8Array(await save.arrayBuffer()) : null;
     if (data) this.core.loadSaveData(data);
     this.#origin = { ...this.#origin, startSave: data && sha256(data) };

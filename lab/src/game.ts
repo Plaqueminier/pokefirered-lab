@@ -1,7 +1,20 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { type Battle, type BattleMenu, battleCursor, battleMenu, enemyMovePrinted, levelUpBoxWaits, partyPick, type PrintedMove, readBattle } from "./battle";
+import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, readBag } from "./bag";
+import {
+  type Battle,
+  type BattleMenu,
+  battleCursor,
+  battleMenu,
+  dexPageWaits,
+  enemyMovePrinted,
+  levelUpBoxWaits,
+  nicknameChoice,
+  partyPick,
+  type PrintedMove,
+  readBattle,
+} from "./battle";
 import type { Memory, Ref } from "./memory";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
@@ -263,7 +276,9 @@ export class Game {
 
   private battleWaitingFor(): WaitingFor {
     if (partyPick(this.mem)) return { kind: "partyPick" };
-    if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem)) return { kind: "text" };
+    const nickname = nicknameChoice(this.mem, this.decode);
+    if (nickname) return { kind: "choice", ...nickname };
+    if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem)) return { kind: "text" };
     return { kind: battleMenu(this.mem) ?? "busy" };
   }
 
@@ -283,6 +298,38 @@ export class Game {
 
   messageText(window: number): string {
     return this.prompts.messageText(window);
+  }
+
+  /** The texts that wait for A or B now, in any window: for example a message of the Bag or of the party menu. */
+  waitingTexts(): string[] {
+    return this.prompts.waitingWindows().map((window) => this.prompts.messageText(window).split("\n").join(" ").trim());
+  }
+
+  bag(): BagPocket[] {
+    return readBag(this.mem, this.decode);
+  }
+
+  findInBag(name: string): BagPlace | null {
+    return findInBag(this.mem, name, this.decode);
+  }
+
+  bagQuantity(item: number): number {
+    return bagQuantity(this.mem, item);
+  }
+
+  bagMenu(): BagMenu | null {
+    return bagMenu(this.mem);
+  }
+
+  /** The cursor of the party menu: a slot of the party in the order of the menu. */
+  partyMenuSlot(): number {
+    return this.mem.global("gPartyMenu").field("slotId").int();
+  }
+
+  /** The personality of each Pokémon of gPlayerParty: in a battle, the party menu puts the party in the battle order. */
+  partyPersonalities(): number[] {
+    const party = this.mem.global("gPlayerParty");
+    return Array.from({ length: this.mem.global("gPlayerPartyCount").int() }, (_, i) => party.at(i).field("box").field("personality").int());
   }
 
   battleCursor(menu: BattleMenu): number {
@@ -335,16 +382,19 @@ export class Game {
   }
 
   state(): GameState {
-    const sb1 = this.saveBlock1;
     const player = this.player();
     return {
       map: this.map(),
       player: player ? { x: player.x, y: player.y } : null,
       party: this.party(),
       badges: BADGES.map((n) => this.flag(badgeFlag(n))),
-      money: (sb1.field("money").int() ^ this.mem.global("gSaveBlock2Ptr").deref().field("encryptionKey").int()) >>> 0,
+      money: this.money(),
       context: this.context(),
     };
+  }
+
+  money(): number {
+    return (this.saveBlock1.field("money").int() ^ this.mem.global("gSaveBlock2Ptr").deref().field("encryptionKey").int()) >>> 0;
   }
 
   rivalName(): string {
@@ -358,6 +408,11 @@ export class Game {
 
   mode(): GameState["context"]["mode"] {
     return this.context().mode;
+  }
+
+  /** The battle screen shows, not a menu of the battle (the Bag, the party menu). */
+  battleScreen(): boolean {
+    return this.context().callback2 === "BattleMainCB2";
   }
 
   private context(): GameState["context"] {

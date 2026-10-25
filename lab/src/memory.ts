@@ -18,6 +18,13 @@ export class Memory {
     return new Ref(this, g.addr, g.type);
   }
 
+  /** The global with the highest address at or before this address. */
+  globalBefore(address: number): Ref | null {
+    let best: { addr: number; type: TypeId } | null = null;
+    for (const g of Object.values(this.symbols.globals)) if (g.addr <= address && (!best || g.addr > best.addr)) best = g;
+    return best && new Ref(this, best.addr, best.type);
+  }
+
   type(id: TypeId): TypeInfo {
     const t = this.symbols.types[id];
     if (!t) throw new Error(`unknown type ${id}`);

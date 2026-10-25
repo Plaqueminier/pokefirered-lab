@@ -26,6 +26,8 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     mode: "overworld",
     waitingFor: { kind: "walk" },
     party: [],
+    bag: [],
+    money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },
     player: { ...player, facing: "north" },

@@ -1,5 +1,7 @@
+import { type BagItem, battleItems } from "../bag";
 import type { BattleState, Button, Observation } from "../harness/harness";
 import type { Decision } from "../harness/record";
+import type { PartyMon } from "../party";
 import { Keys } from "../protocol";
 import { atlasExtract, type AtlasView } from "./extract";
 import type { Overworld } from "./targets";
@@ -30,20 +32,22 @@ export type ModelAction =
   | { name: "choose"; option: string }
   | { name: "fight"; move: number }
   | { name: "run" }
+  | { name: "use"; item: string; on?: number }
   | { name: "press"; button: Button }
   | { name: "viewAtlas" };
 
 export type Asked =
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean }
-  | { kind: "choice"; overworld: Overworld; options: string[] }
-  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState };
+  | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
+  /** `items`: the items of the Bag that work now. */
+  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; party: PartyMon[] };
 
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   walk: ["go", "goTo", "viewAtlas", "press"],
   choice: ["choose", "press"],
-  battleAction: ["fight", "run", "press"],
+  battleAction: ["fight", "run", "use", "press"],
   battleMove: ["fight", "press"],
   partyPick: ["press"],
 };
@@ -62,7 +66,10 @@ export function askedOf(observation: Observation, atlasViewed: boolean): Asked |
     return waitingFor.kind === "choice" ? { kind: "choice", overworld: observation, options: waitingFor.options } : null;
   }
   const { kind } = waitingFor;
-  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, battle: observation.battle } : null;
+  // After a catch, the battle asks for a nickname.
+  if (kind === "choice") return { kind, battle: observation.battle, options: waitingFor.options };
+  const { battle, bag, party } = observation;
+  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, battle, items: battleItems(bag, battle.kind), party } : null;
 }
 
 export function readDecision(content: string): Decision {
@@ -85,6 +92,8 @@ export function readDecision(content: string): Decision {
 }
 
 export function readAction(text: string, asked: Asked): ModelAction {
+  const use = text.trim().match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i);
+  if (use) return readUse(use[1], use[2], asked);
   const action = parse(text.trim());
   if (!action) throw new Error(`"${quoted(text)}" is not an action`);
   const accepted = actionsOf(asked);
@@ -101,6 +110,27 @@ export function readAction(text: string, asked: Asked): ModelAction {
     return { name: "choose", option };
   }
   return action;
+}
+
+function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
+  if (!actionsOf(asked).includes("use")) throw new Error(`"use" is not an action now: use ${alternatives(actionsOf(asked))}`);
+  const { items, party } = asked.kind === "battleAction" ? asked : { items: [], party: [] };
+  const item = items.find((i) => plain(i.name) === plain(name));
+  if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
+  if (item.battle === "alone") {
+    if (on !== undefined) throw new Error(`${item.name} does not work on a Pokémon: use ${item.name}`);
+    return { name: "use", item: item.name };
+  }
+  if (on === undefined) throw new Error(`${item.name} works on a Pokémon: use ${item.name} on <Pokémon>`);
+  const nickname = party.findIndex((m) => plain(m.nickname) === plain(on));
+  const index = nickname >= 0 ? nickname : party.findIndex((m) => plain(m.species) === plain(on));
+  if (index < 0) throw new Error(`"${quoted(on)}" is not a Pokémon of your party: ${party.map((m) => m.nickname).join(", ")}`);
+  return { name: "use", item: item.name, on: index };
+}
+
+// The model can write "Poke Ball" for "POKé BALL".
+function plain(text: string): string {
+  return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
 function parse(action: string): ModelAction | null {

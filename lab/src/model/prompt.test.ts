@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { ActionEntry } from "../harness/harness";
+import type { ActionEntry, Observation } from "../harness/harness";
 import type { RunEvent } from "../harness/record";
-import { MAX_TRIES, missionLine, tries } from "./prompt";
+import { askedOf } from "./decision";
+import { MAX_TRIES, missionLine, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -70,5 +71,41 @@ describe("the Mission", () => {
     const events = [call("go 1", "Leave the house"), call("go 2", "Get my first Pokémon"), call("go 3", ""), call("go 4", "Get my first Pokémon"), call("go 5", "Get my first Pokémon")];
     expect(missionLine(events)).toBe("Mission: Get my first Pokémon (the same for 4 decisions).");
     expect(missionLine(events.slice(0, 2))).toBe("Mission: Get my first Pokémon (the same for 1 decision).");
+  });
+});
+
+describe("the Bag", () => {
+  test("each prompt shows the money and the Bag once, with the effect of each item; a battle has one use line for the items that work now", () => {
+    const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
+    const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
+    const observation = {
+      mode: "battle",
+      waitingFor: { kind: "battleAction" },
+      party: [],
+      money: 3080,
+      bag: [
+        { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon" }] },
+        { pocket: "KEY ITEMS", items: [{ name: "TOWN MAP", quantity: 1, description: "A very convenient map.", battle: null }] },
+        { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone" }] },
+      ],
+      milestones: [],
+      atlas: { maps: [] },
+      battle: {
+        kind: "wild",
+        player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", stats, moves: [], statStages: stages },
+        enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", statStages: stages, movesSeen: [] },
+      },
+    } as Observation;
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0 });
+    expect(prompt).toContain(
+      [
+        "Money: 3080",
+        "Bag:",
+        "- ITEMS: POTION ×5 (It restores the HP of one POKéMON by 20 points.)",
+        "- KEY ITEMS: TOWN MAP ×1 (A very convenient map.)",
+        "- POKé BALLS: POKé BALL ×20 (A BALL thrown to catch a wild POKéMON.)",
+      ].join("\n"),
+    );
+    expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
   });
 });

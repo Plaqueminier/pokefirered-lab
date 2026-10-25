@@ -29,6 +29,8 @@ const ONE_ARG_CODES = new Set([CHAR_DYNAMIC, CHAR_KEYPAD_ICON, CHAR_EXTRA_SYMBOL
 // The table of GetExtCtrlCodeLength (string_util.c): the length of each extended code, with the code byte.
 const EXT_CTRL_CODE_LENGTHS = [1, 2, 2, 2, 4, 2, 2, 1, 2, 1, 1, 3, 2, 2, 2, 1, 3, 2, 2, 2, 2, 1, 1, 1, 1];
 const CHARMAP_JAPANESE = "@ Hiragana";
+const ROM_START = 0x08000000;
+const MAX_ROM_TEXT = 256;
 
 export type Decode = (bytes: Uint8Array) => string;
 
@@ -87,9 +89,12 @@ export class Prompts {
 
   // Battle menus also print in windows that they make, for example Oak in the party menu of the first battle.
   anyPrinterWaits(): boolean {
+    return this.waitingWindows().length > 0;
+  }
+
+  waitingWindows(): number[] {
     const printers = this.mem.global("sTextPrinters");
-    for (let w = 0; w < printers.length; w++) if (this.printerWaits(w)) return true;
-    return false;
+    return Array.from({ length: printers.length }, (_, w) => w).filter((w) => this.printerWaits(w));
   }
 
   fieldMessages(): Messages {
@@ -111,6 +116,9 @@ export class Prompts {
       const size = length ?? buffer.size;
       if (at >= buffer.addr && at < buffer.addr + size) return this.decode(this.mem.bus.read(buffer.addr, size));
     }
+    // A constant text of the ROM, for example gText_WontHaveEffect: the printer is in the global just before its position.
+    const text = at >= ROM_START && printer.field("active").int() ? this.mem.globalBefore(at) : null;
+    if (text) return this.decode(this.mem.bus.read(text.addr, at - text.addr + MAX_ROM_TEXT));
     if (this.mem.u8(at) === CHAR_EOS || !printer.field("active").int()) return "";
     throw new Error(`window ${window} prints a string at 0x${at.toString(16)}, not from ${MESSAGE_BUFFERS.map((b) => b.name).join(" or ")}`);
   }

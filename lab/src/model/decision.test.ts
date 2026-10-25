@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { BagItem } from "../bag";
 import type { BattleState } from "../harness/harness";
+import type { PartyMon } from "../party";
 import { type Asked, MAX_NOTES, MAX_SENTENCE, readAction, readDecision } from "./decision";
 import type { Overworld, Target } from "./targets";
 
@@ -51,11 +53,23 @@ describe("readAction", () => {
   });
 
   test("in a battle: a move, run or a Raw input; in the party menu: Raw inputs only", () => {
-    expect(readAction("fight 1", { kind: "battleAction", battle })).toEqual({ name: "fight", move: 1 });
-    expect(readAction("fight 0", { kind: "battleMove", battle })).toEqual({ name: "fight", move: 0 });
-    expect(readAction("run", { kind: "battleAction", battle })).toEqual({ name: "run" });
-    expect(readAction("press A", { kind: "partyPick", battle })).toEqual({ name: "press", button: "A" });
-    expect(() => readAction("fight 1", { kind: "partyPick", battle })).toThrow('"fight" is not an action now: use press');
+    expect(readAction("fight 1", { kind: "battleAction", battle, items: [], party: [] })).toEqual({ name: "fight", move: 1 });
+    expect(readAction("fight 0", { kind: "battleMove", battle, items: [], party: [] })).toEqual({ name: "fight", move: 0 });
+    expect(readAction("run", { kind: "battleAction", battle, items: [], party: [] })).toEqual({ name: "run" });
+    expect(readAction("press A", { kind: "partyPick", battle, items: [], party: [] })).toEqual({ name: "press", button: "A" });
+    expect(() => readAction("fight 1", { kind: "partyPick", battle, items: [], party: [] })).toThrow('"fight" is not an action now: use press');
+  });
+
+  test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon" };
+    const ball: BagItem = { name: "POKé BALL", quantity: 20, description: "", battle: "alone" };
+    const party = [{ nickname: "SQUIRTLE", species: "SQUIRTLE" }, { nickname: "BIRD", species: "PIDGEY" }] as PartyMon[];
+    const asked: Asked = { kind: "battleAction", battle, items: [potion, ball], party };
+    expect(readAction("use potion on bird", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
+    expect(readAction("use Poke Ball", asked)).toEqual({ name: "use", item: "POKé BALL" });
+    expect(() => readAction("use POTION", asked)).toThrow("POTION works on a Pokémon: use POTION on <Pokémon>");
+    expect(() => readAction("use POTION on MEW", asked)).toThrow('"MEW" is not a Pokémon of your party: SQUIRTLE, BIRD');
+    expect(() => readAction("use ANTIDOTE", asked)).toThrow('"ANTIDOTE" is not an item that works now: POTION, POKé BALL');
   });
 
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {
@@ -63,7 +77,7 @@ describe("readAction", () => {
     expect(() => readAction("go 4", walk(3))).toThrow("there is no target 4: the targets are 1 to 3");
     expect(() => readAction("go 1", walk(0))).toThrow("there is no target 1: the map has no targets");
     expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo, viewAtlas or press');
-    expect(() => readAction("fight 4", { kind: "battleAction", battle })).toThrow('"fight 4" is not an action');
+    expect(() => readAction("fight 4", { kind: "battleAction", battle, items: [], party: [] })).toThrow('"fight 4" is not an action');
     expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action');
     expect(() => readAction("a".repeat(500), walk(3))).toThrow(`"${"a".repeat(80)}" is not an action`);
   });

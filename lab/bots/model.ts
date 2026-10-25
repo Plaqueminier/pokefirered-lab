@@ -109,6 +109,9 @@ class ModelPlay {
       case "run":
         await this.harness.run();
         return;
+      case "use":
+        await this.harness.use(action.item, action.on);
+        return;
       case "press":
         await this.harness.press(action.button);
         return;
