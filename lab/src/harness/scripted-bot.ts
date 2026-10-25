@@ -1,12 +1,14 @@
-import { type Bot, must } from "../src/harness/harness";
+import { type Bot, must } from "./harness";
 
 const TACKLE = 0;
 const TAIL_WHIP = 1;
 
+/** The scripted bot: a tool to test the Harness. It plays the same Run each time, to its goal `first-rival-battle`. It does not grow with the story. */
 export default {
   name: "starter",
   version: "3",
   goal: "first-rival-battle",
+  frameBudget: 30_000,
   async play(harness) {
     must(await harness.goTo(12, 3, "PalletTown"));
     await harness.goTo(12, 1);

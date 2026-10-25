@@ -11,6 +11,7 @@ import type { ModelClient } from "./openrouter";
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
+const AFTER_RIVAL = ["go 1", "go 4"];
 const DECISIONS = ["go 1", "go 2", "go 1", "go 2", "go 2", "go 7", "choose YES", "choose NO", "go 1", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
 
 function reply(action: string, objective = "Get a Pokémon") {
@@ -119,7 +120,7 @@ beforeAll(() => {
 afterAll(() => fetchSpy?.mockRestore());
 
 describe.skipIf(!ready)("model bot", () => {
-  test("with a fake model, it plays to the first rival battle: the code reads the texts, and the model chooses at each walk, choice and battle action", async () => {
+  test("with a fake model, it plays past the first rival battle: the code reads the texts, the model chooses at each walk, choice and battle action, and the next Milestone in the prompt moves with the story", async () => {
     const { client, prompts } = fakeModel();
     const seen: string[] = [];
     const harness = await Harness.open({
@@ -127,11 +128,18 @@ describe.skipIf(!ready)("model bot", () => {
       onModelCall: (event) => seen.push(`answer ${event.decision?.action}`),
       onAction: ({ action }) => seen.push(action.name),
     });
-    const result = await harness.play(modelBot({ id: "fake/model", costLimit: 1 }, () => client));
-    expect(result).toMatchObject({ endReason: "goal", milestones: ["has-pokemon", "first-rival-battle"], rawInputs: 0 });
+    const costLimit = (DECISIONS.length + 1.5) * COST;
+    const result = await harness.play(modelBot({ id: "fake/model", costLimit }, () => client));
+    expect(result).toMatchObject({ endReason: "cost limit", milestones: ["has-pokemon", "first-rival-battle"], rawInputs: 0 });
 
     const calls = modelEvents(harness);
-    expect(calls.map((e) => e.decision?.action)).toEqual(DECISIONS);
+    expect(calls.map((e) => e.decision?.action)).toEqual([...DECISIONS, ...AFTER_RIVAL]);
+    const next = prompts.map((p) => p.user.match(/^Next Milestone: (.+)$/m)?.[1]);
+    expect([...new Set(next)]).toEqual([
+      "Get your first Pokémon from Professor Oak in Pallet Town.",
+      "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
+      "Get the Pokédex from Professor Oak in Pallet Town.",
+    ]);
     expect(prompts).toHaveLength(calls.length);
     const totals = modelTotals(harness.events);
     expect(totals).toMatchObject({ calls: calls.length, promptTokens: calls.length * 1000, completionTokens: calls.length * 30, reasoningTokens: 0 });
@@ -157,6 +165,8 @@ describe.skipIf(!ready)("model bot", () => {
     expect(prompts[0].system).toContain("Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer.");
     expect(prompts[0].system).toContain("answer NO");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
+    expect(prompts[0].system).toContain("heal your Pokémon at a Pokémon Center");
+    expect(prompts[0].system).not.toMatch(/goal of this run|rival|Oak/i);
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
     expect(prompts[1].user).toMatch(/You chose: go 1\n +goTo\(10, 2\): done/);
     const pallet = first(/^Map PalletTown,/m);
@@ -177,19 +187,19 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "1", model: { id: "fake/model", costLimit: 1, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "2", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
-  test("it stops when the cost of the Run is more than the cost limit; a starter of the Run goes into the goal", async () => {
+  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run goes into the rules", async () => {
     const harness = await Harness.open();
     const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));
-    await expect(harness.play(bot)).rejects.toThrow("the cost of the Run (0.003 $) is more than the cost limit (0.0025 $)");
-    expect(harness.record().result.endReason).toBe("bot stopped");
+    expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
+    expect(harness.record().result.endReason).toBe("cost limit");
     expect(modelEvents(harness)).toHaveLength(3);
-    expect(modelEvents(harness)[0].prompt.system).toContain("win your first battle against your rival. Choose CHARMANDER as your first Pokémon.");
+    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.");
   });
 
-  test("it stops after 3 answers in a row that it cannot read, and the model sees each one", async () => {
+  test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {
     const harness = await Harness.open();
     const good = reply("goTo 8 6").content;
     const bot = modelBot({ costLimit: 1 }, () => answers("I go north", good, "{}", JSON.stringify({ ...JSON.parse(good), action: "dance" }), "not JSON either"));
@@ -197,13 +207,17 @@ describe.skipIf(!ready)("model bot", () => {
     const calls = modelEvents(harness);
     expect(calls.map((e) => e.error)).toEqual(["the answer is not JSON", null, 'the answer has no string "reason"', '"dance" is not an action', "the answer is not JSON"]);
     expect(calls.map((e) => e.decision === null)).toEqual([true, false, true, true, true]);
-    expect(calls[1].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
+    expect(calls[1].prompt).toEqual({ ...calls[0].prompt, turns: [{ assistant: "I go north", user: expect.stringContaining("Your answer could not be read: the answer is not JSON.") }] });
+    expect(calls[2].prompt.turns).toBeUndefined();
+    expect(calls[2].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
+    expect(calls[4].prompt.turns?.map((t) => t.assistant)).toEqual(["{}", JSON.stringify({ ...JSON.parse(good), action: "dance" })]);
   });
 
-  test("viewAtlas runs no frames: the code calls the model again at once with the full Atlas, and a second viewAtlas at the same Decision point is refused", async () => {
+  test("viewAtlas runs no frames: the code goes on with the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {
     const harness = await Harness.open();
-    const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(reply("viewAtlas").content, reply("viewAtlas").content, reply("goTo 8 6").content));
-    await expect(harness.play(bot)).rejects.toThrow("is more than the cost limit");
+    const viewAtlas = reply("viewAtlas").content;
+    const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(viewAtlas, viewAtlas, reply("goTo 8 6").content));
+    expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     const calls = modelEvents(harness);
     expect(calls.map((e) => e.decision?.action)).toEqual(["viewAtlas", undefined, "goTo 8 6", "goTo 8 6"]);
     expect(calls[1].error).toBe('"viewAtlas" is not an action now: use go, goTo or press');
@@ -212,8 +226,15 @@ describe.skipIf(!ready)("model bot", () => {
     const third = harness.events.indexOf(calls[2]);
     expect(harness.events.slice(harness.events.indexOf(calls[0]), third).every((e) => e.type === "model")).toBe(true);
     const fullAtlas = "Full Atlas, the other maps that you know, nearest first:";
-    expect(calls.map((e) => e.prompt.user.includes(fullAtlas))).toEqual([false, true, true, false]);
-    expect(calls.map((e) => /^- viewAtlas/m.test(e.prompt.user))).toEqual([true, false, false, true]);
+    expect(calls.map((e) => e.prompt.user.includes(fullAtlas))).toEqual([false, false, false, false]);
+    expect(calls.map((e) => /^- viewAtlas/m.test(e.prompt.user))).toEqual([true, true, true, true]);
+    expect(calls[1].prompt).toEqual({ ...calls[0].prompt, turns: [{ assistant: viewAtlas, user: expect.stringContaining(fullAtlas) }] });
+    expect(calls[2].prompt.turns).toEqual([
+      { assistant: viewAtlas, user: calls[1].prompt.turns?.[0].user },
+      { assistant: viewAtlas, user: expect.stringContaining('"viewAtlas" is not an action now: use go, goTo or press') },
+    ]);
+    expect(calls[2].prompt.user).toBe(calls[0].prompt.user);
+    expect(calls[3].prompt.turns).toBeUndefined();
   });
 
   test("the prompt lists the tries since the last progress: three talks to the same Poké Ball are one line with ×3 and the text; the rival has its name from the save", async () => {
@@ -251,9 +272,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot wit
   test("the model swaps its Pokémon on a walk, switches them in a battle, and after a faint answers YES and sends a Pokémon, by name or by place", async () => {
     const harness = await Harness.open({ startSave: PARTY_SAVE });
     const { client, prompts } = partyPlayer();
-    // The save is past the goal of the model bot: the Run goes on with no goal.
-    const bot = { ...modelBot({ costLimit: 1 }, () => client), goal: undefined };
-    await expect(harness.play(bot)).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
     const party = harness.actions.filter(({ action }) => ["swap", "switch", "send", "choose"].includes(action.name));
     expect(party.map(({ action, result }) => [action, result.status])).toEqual([
       [{ name: "swap", first: 0, second: 1 }, "done"],
