@@ -1,11 +1,12 @@
 import { mapNamed } from "../harness/atlas";
 import { type ActionEntry, actionText, type BattleState, type NoProgress, type Observation } from "../harness/harness";
-import { callTurns, type ModelEvent, modelEvents, type RunEvent } from "../harness/record";
+import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { BagItem, BagPocket } from "../bag";
 import { type Milestone, MILESTONES } from "../game";
 import type { PartyMon, PartyMove } from "../party";
-import { actionsOf, alternatives, type Asked, type AskedKind, MAX_NOTES, sendable } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, MAX_SENTENCE, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
+import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 
 export const B_PRESSES = 3;
 const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat the Elite Four.";
@@ -36,6 +37,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 };
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
+const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Start, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
@@ -45,7 +47,9 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your notes, your Mission, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+
+Your Memory is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
 At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
 
@@ -54,7 +58,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go 2" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "notes": your memory, at most ${MAX_NOTES} characters. You get them back at the next decision: write them again in full each time, with the facts that you want to keep. Keep the facts about your Mission until you reach it.
+- "note": a new fact to keep in your Memory, in one line of at most ${MAX_SENTENCE} characters, for example "A person blocks the north exit of the town". Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note only when you learn something useful, and never write a note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -81,8 +85,9 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
-    `Notes: ${read.at(-1)?.notes || "none"}`,
     missionLine(events),
+    "",
+    memoryText(memoryTree(events)),
     "",
     `The game waits for ${now}.`,
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
@@ -99,6 +104,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     "Actions:",
     ...actionLines(asked),
+    ZOOM,
     PRESS,
   ].join("\n");
 }
@@ -108,6 +114,13 @@ export function atlasMessage(asked: Asked & { kind: "walk" }): string {
   return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasViewed: true })].join("\n");
 }
 
+/** The new user message after zoom: the two halves of the node. */
+export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): string {
+  const halves = zoomLines(tree, node);
+  const shown = halves ? [`Node ${nodeName(node)}, its two halves:`, ...halves] : [`There is no node ${nodeName(node)} with two halves: zoom a top node of your Memory, or a half that a zoom showed.`];
+  return [...shown, "", chooseAgain(asked)].join("\n");
+}
+
 /** The new user message after an answer that the Bot cannot read: the error. */
 export function errorMessage(error: string, asked: Asked): string {
   return [`Your answer could not be read: ${error}.`, "", chooseAgain(asked)].join("\n");
@@ -115,6 +128,11 @@ export function errorMessage(error: string, asked: Asked): string {
 
 function chooseAgain(asked: Asked): string {
   return `Answer with JSON again, with one of the actions of the first message: ${alternatives(actionsOf(asked))}.`;
+}
+
+function memoryText(tree: MemoryTree): string {
+  const lines = memoryLines(tree);
+  return lines.length === 0 ? "Memory: none yet." : ["Memory, the top nodes (zoom <a-b> opens a node):", ...lines].join("\n");
 }
 
 export function missionLine(events: readonly RunEvent[]): string {
@@ -201,6 +219,7 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
     case "battle":
       return [event.state === "start" ? "a battle starts" : "the battle ends"];
     case "milestone":
+    case "summary":
       return [];
   }
 }

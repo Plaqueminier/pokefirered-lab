@@ -11,7 +11,7 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", notes: "" }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: "" }),
   usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
@@ -55,9 +55,9 @@ describe.skipIf(!ready)("the panel Stats", () => {
       { name: "go", count: 1 },
       { name: "viewAtlas", count: 1 },
     ]);
-    expect(view.neverUsed).toEqual(["swap", "choose", "fight", "switch", "send", "run", "use", "press"]);
+    expect(view.neverUsed).toEqual(["swap", "choose", "fight", "switch", "send", "run", "use", "press", "zoom"]);
     expect(view.impossible).toMatchObject([{ action: "goTo(0, 0)" }]);
-    expect(view.unreadable).toMatchObject([{ error: '"fight" is not an action now: use go, goTo, viewAtlas or press' }]);
+    expect(view.unreadable).toMatchObject([{ error: '"fight" is not an action now: use go, goTo, viewAtlas, zoom or press' }]);
     expect(view.events).toEqual(expect.arrayContaining([{ name: "model", count: 5 }]));
   });
 });

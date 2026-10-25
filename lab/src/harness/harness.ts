@@ -34,6 +34,8 @@ import {
   type RunEvent,
   type RunHeader,
   type RunRecord,
+  type SummaryAnswer,
+  type SummaryEvent,
 } from "./record";
 
 const STEP_FRAME_LIMIT = 60;
@@ -178,6 +180,8 @@ type ModelCallStartListener = (harness: Harness) => void;
 
 type ModelCallListener = (event: ModelEvent, harness: Harness) => void;
 
+type SummaryCallListener = (event: SummaryEvent, harness: Harness) => void;
+
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
   /** The file of the Starting save, when it is not saves/start.sav. */
@@ -186,6 +190,7 @@ export type HarnessOptions = {
   onFrame?: (harness: Harness) => void;
   onModelCallStart?: ModelCallStartListener;
   onModelCall?: ModelCallListener;
+  onSummaryCall?: SummaryCallListener;
   frameBudget?: number;
   noProgressLimit?: number;
   /** When it gives true, the Run ends with "user stop" after the Macro-action, the Raw input or the Model call that plays. */
@@ -237,7 +242,8 @@ class RunLimits {
     if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
   }
 
-  afterModelCall(events: readonly RunEvent[]): void {
+  // The cost counts the Model calls and the Summary calls.
+  afterCall(events: readonly RunEvent[]): void {
     if (modelTotals(events).cost > this.costLimit) throw new RunEnd("cost limit");
   }
 }
@@ -251,6 +257,7 @@ export class Harness {
   readonly #onFrame?: (harness: Harness) => void;
   readonly #onModelCallStart?: ModelCallStartListener;
   readonly #onModelCall?: ModelCallListener;
+  readonly #onSummaryCall?: SummaryCallListener;
   readonly #frameBudget?: number;
   readonly #noProgressLimit?: number;
   readonly #stopAsked: () => boolean;
@@ -268,6 +275,7 @@ export class Harness {
     this.#onFrame = options.onFrame;
     this.#onModelCallStart = options.onModelCallStart;
     this.#onModelCall = options.onModelCall;
+    this.#onSummaryCall = options.onSummaryCall;
     this.#frameBudget = options.frameBudget;
     this.#noProgressLimit = options.noProgressLimit;
     this.#stopAsked = options.stopAsked ?? (() => false);
@@ -354,9 +362,21 @@ export class Harness {
     const event: ModelEvent = { type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
     this.#events.push(event);
     this.#onModelCall?.(event, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.afterModelCall(this.#events);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterCall(this.#events);
     this.stopIfAsked();
     return action;
+  }
+
+  /** A model bot asks its AI model for a Summary call in `ask`, which must not throw an error. The Run record keeps it as a `summary` event. */
+  async summaryCall(ask: () => Promise<SummaryAnswer>): Promise<SummaryEvent> {
+    const start = performance.now();
+    const answer = await ask();
+    const event: SummaryEvent = { type: "summary", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
+    this.#events.push(event);
+    this.#onSummaryCall?.(event, this);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterCall(this.#events);
+    this.stopIfAsked();
+    return event;
   }
 
   record(): RunRecord {

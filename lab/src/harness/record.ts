@@ -35,18 +35,31 @@ export type Turn = { assistant: string; user: string };
 // cachedTokens: the prompt tokens that the provider read from its cache. A record from before the cache has none.
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; notes: string };
+// note: one line that goes into the Memory tree, often empty.
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
+
+/** A record from before the Memory tree has the notes that the model wrote again at each call, and no note. */
+export type OldDecision = Omit<Decision, "note"> & { notes: string };
 
 // answer is null when the request failed.
 export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage } & (
-  | { decision: Decision; error: null }
+  | { decision: Decision | OldDecision; error: null }
   | { decision: null; error: string }
 );
 
 export type ModelEvent = { type: "model"; frame: number; latencyMs: number } & ModelAnswer;
 
-export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | ModelEvent;
+/** The notes from `from` to `to` of the Memory tree, numbered from 1. */
+export type NodeRange = { from: number; to: number };
 
+/** A Summary call writes the summary of the node `from`-`to` from its two halves. summary is null when the call failed. */
+export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | null; usage: Usage } & NodeRange & ({ summary: string; error: null } | { summary: null; error: string });
+
+export type SummaryEvent = { type: "summary"; frame: number; latencyMs: number } & SummaryAnswer;
+
+export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | ModelEvent | SummaryEvent;
+
+/** calls: the Model calls. The usage and the cost count the Summary calls too. */
 export type ModelTotals = { calls: number } & Usage;
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
@@ -68,8 +81,9 @@ export function callTurns(events: readonly RunEvent[]): CallTurn[] {
 
 export function modelTotals(events: readonly RunEvent[]): ModelTotals {
   const totals: ModelTotals = { calls: 0, promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
-  for (const event of modelEvents(events)) {
-    totals.calls++;
+  for (const event of events) {
+    if (event.type !== "model" && event.type !== "summary") continue;
+    if (event.type === "model") totals.calls++;
     for (const key of ["promptTokens", "completionTokens", "reasoningTokens", "cost"] as const) totals[key] += event.usage[key];
   }
   return totals;
@@ -181,7 +195,7 @@ export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin
   return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
 }
 
-const EVENT_TYPES = new Set<unknown>(["action", "map", "battle", "milestone", "model"] satisfies RunEvent["type"][]);
+const EVENT_TYPES = new Set<unknown>(["action", "map", "battle", "milestone", "model", "summary"] satisfies RunEvent["type"][]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

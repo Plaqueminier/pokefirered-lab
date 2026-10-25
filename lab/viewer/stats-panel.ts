@@ -17,6 +17,7 @@ const ACTION_LIST: Record<ModelAction["name"], true> = {
   use: true,
   press: true,
   viewAtlas: true,
+  zoom: true,
 };
 const ACTION_NAMES = Object.keys(ACTION_LIST);
 

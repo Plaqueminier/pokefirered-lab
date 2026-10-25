@@ -1,17 +1,16 @@
 import { type BagItem, battleItems } from "../bag";
 import type { BattleState, Button, Observation } from "../harness/harness";
-import type { Decision } from "../harness/record";
+import type { Decision, NodeRange } from "../harness/record";
 import type { PartyMon } from "../party";
 import { Keys } from "../protocol";
 import { atlasExtract, type AtlasView } from "./extract";
 import type { Overworld } from "./targets";
 
-export const MAX_NOTES = 500;
-// The prompt holds the Mission, the objective and an action that the Bot cannot read: they must not make it grow.
+// The prompt holds the Mission, the objective, the notes, the summaries and an action that the Bot cannot read: they must not make it grow.
 export const MAX_SENTENCE = 200;
 const MAX_QUOTED_ACTION = 80;
 
-const FIELDS = ["reason", "action", "mission", "objective", "notes"] as const satisfies readonly (keyof Decision)[];
+const FIELDS = ["reason", "action", "mission", "objective", "note"] as const satisfies readonly (keyof Decision)[];
 
 export const DECISION_SCHEMA = {
   type: "object",
@@ -20,7 +19,7 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go 2\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    notes: { type: "string", description: `Your memory: the facts to keep, ${MAX_NOTES} characters at most.` },
+    note: { type: "string", description: `A new fact to keep in your Memory, in one line of ${MAX_SENTENCE} characters at most, or an empty string. Nobody changes it later.` },
   },
   required: FIELDS,
   additionalProperties: false,
@@ -37,7 +36,8 @@ export type ModelAction =
   | { name: "run" }
   | { name: "use"; item: string; on?: number }
   | { name: "press"; button: Button }
-  | { name: "viewAtlas" };
+  | { name: "viewAtlas" }
+  | ({ name: "zoom" } & NodeRange);
 
 /** `party`: in the order of `observe().party`, where the party actions take their Pokémon. */
 export type Asked = { party: PartyMon[] } & (
@@ -50,11 +50,11 @@ export type Asked = { party: PartyMon[] } & (
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
-  walk: ["go", "goTo", "swap", "viewAtlas", "press"],
-  choice: ["choose", "press"],
-  battleAction: ["fight", "switch", "run", "use", "press"],
-  battleMove: ["fight", "press"],
-  partyPick: ["send", "press"],
+  walk: ["go", "goTo", "swap", "viewAtlas", "zoom", "press"],
+  choice: ["choose", "zoom", "press"],
+  battleAction: ["fight", "switch", "run", "use", "zoom", "press"],
+  battleMove: ["fight", "zoom", "press"],
+  partyPick: ["send", "zoom", "press"],
 };
 
 export function actionsOf(asked: Asked): ModelAction["name"][] {
@@ -112,7 +112,7 @@ export function readDecision(content: string): Decision {
     if (typeof text !== "string") throw new Error(`the answer has no string "${field}"`);
     decision[field] = text.trim();
   }
-  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), notes: decision.notes.slice(0, MAX_NOTES) };
+  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), note: decision.note.slice(0, MAX_SENTENCE) };
 }
 
 // The party actions name their Pokémon: the parser keeps the text, and readAction finds the place in the party.
@@ -172,6 +172,7 @@ function parse(action: string): ParsedAction | null {
   if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };
   if (/^run$/i.test(action)) return { name: "run" };
   if (/^viewAtlas$/i.test(action)) return { name: "viewAtlas" };
+  if ((m = action.match(/^zoom\s+#?(\d+)(?:-(\d+))?$/i))) return { name: "zoom", from: Number(m[1]), to: Number(m[2] ?? m[1]) };
   const button = action.match(/^press\s+(\w+)$/i)?.[1].toLowerCase();
   const pressed = BUTTONS.find((b) => b.toLowerCase() === button);
   return pressed ? { name: "press", button: pressed } : null;

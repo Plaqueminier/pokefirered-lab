@@ -16,7 +16,7 @@ function call(action: string, mission = ""): RunEvent {
     prompt: { system: "", user: "" },
     answer: "",
     usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 },
-    decision: { reason: "", action, mission, objective: "", notes: "" },
+    decision: { reason: "", action, mission, objective: "", note: "" },
     error: null,
   };
 }

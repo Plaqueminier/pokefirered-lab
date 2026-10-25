@@ -1,8 +1,9 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type Prompt, type Starter, type Turn, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
-import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
-import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt } from "../src/model/prompt";
+import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
+import { type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
+import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
@@ -49,7 +50,8 @@ class ModelPlay {
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
       const action = await this.harness.modelCall(() => this.answer(observation, asked));
       this.stopAtUnreadable();
-      if (action && action.name !== "viewAtlas") {
+      await this.summarize();
+      if (action && action.name !== "viewAtlas" && action.name !== "zoom") {
         this.#conversation = null;
         await this.perform(action, asked);
       }
@@ -80,10 +82,39 @@ class ModelPlay {
         conversation.atlasViewed = true;
         conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
       }
+      if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(memoryTree(this.harness.events), action, asked) });
       return { answer: { ...replied, decision, error: null }, action };
     } catch (error) {
       conversation.turns.push({ assistant: reply.content, user: errorMessage(errorText(error), asked) });
       return { answer: { ...replied, decision: null, error: errorText(error) }, action: null };
+    }
+  }
+
+  // One Summary call for each merge that is due, at the same Decision point. A merge whose call failed stays due: the next Model call tries it again.
+  private async summarize(): Promise<void> {
+    const tried = new Set<string>();
+    for (;;) {
+      const tree = memoryTree(this.harness.events);
+      const node = dueMerges(tree).find((due) => !tried.has(nodeName(due)));
+      if (!node) return;
+      tried.add(nodeName(node));
+      await this.harness.summaryCall(() => this.summary(tree, node));
+    }
+  }
+
+  private async summary(tree: MemoryTree, node: NodeRange): Promise<SummaryAnswer> {
+    const prompt = summaryPrompt(tree, node);
+    const request = { model: this.settings.id, prompt, ...node };
+    let reply: ModelReply;
+    try {
+      reply = await this.ask(prompt, SUMMARY_FORMAT);
+    } catch (error) {
+      return { ...request, answer: null, usage: NO_USAGE, summary: null, error: `the request failed: ${errorText(error)}` };
+    }
+    try {
+      return { ...request, answer: reply.content, usage: reply.usage, summary: readSummary(reply.content), error: null };
+    } catch (error) {
+      return { ...request, answer: reply.content, usage: reply.usage, summary: null, error: errorText(error) };
     }
   }
 
@@ -93,7 +124,7 @@ class ModelPlay {
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }
 
-  private async perform(action: Exclude<ModelAction, { name: "viewAtlas" }>, asked: Asked): Promise<void> {
+  private async perform(action: Exclude<ModelAction, { name: "viewAtlas" | "zoom" }>, asked: Asked): Promise<void> {
     switch (action.name) {
       case "go":
         if (asked.kind !== "walk") throw new Error("go is an action of a walk only");

@@ -71,6 +71,7 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
           post({ type: "model-call-start" });
         },
         onModelCall: (_, h) => poster.onEvents(h.events),
+        onSummaryCall: (_, h) => poster.onEvents(h.events),
       },
       run,
     );
