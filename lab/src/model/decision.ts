@@ -1,5 +1,5 @@
 import { type BagItem, type BagPocket, battleItems, type ItemUse, walkItems } from "../bag";
-import type { BattleState, Button, Observation } from "../harness/harness";
+import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
 import { type PartyMon, sendableSlots } from "../party";
 import { Keys } from "../protocol";
@@ -26,21 +26,25 @@ export const DECISION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/** The Macro-actions and the Raw input that the model can choose, and the actions that the code of the model bot plays: go, viewAtlas and zoom. */
 export type ModelAction =
+  | Exclude<MacroAction, { name: "interact" | "readText" }>
+  | RawInput
   | { name: "go"; target: number }
-  | { name: "goTo"; x: number; y: number; map?: string }
-  | { name: "choose"; option: string }
-  | { name: "fight"; move: number }
-  | { name: "switch"; slot: number }
-  | { name: "send"; slot: number }
-  | { name: "swap"; first: number; second: number }
-  | { name: "run" }
-  | { name: "use"; item: string; on?: number }
-  | { name: "buy"; item: string; quantity: number }
-  | { name: "sell"; item: string; quantity: number }
-  | { name: "press"; button: Button }
   | { name: "viewAtlas" }
   | ({ name: "zoom" } & NodeRange);
+
+/** The actions that play in the game: viewAtlas and zoom only show more to the model. */
+export type PlayedAction = Exclude<ModelAction, { name: "viewAtlas" | "zoom" }>;
+
+export function isPlayed(action: ModelAction): action is PlayedAction {
+  return action.name !== "viewAtlas" && action.name !== "zoom";
+}
+
+const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
+
+/** All the names of the actions of the model. The type check fails when a new action is not in the list. */
+export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
 
 export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean; items: BagItem[] }
@@ -118,37 +122,48 @@ export function readDecision(content: string): Decision {
   return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), note: decision.note.slice(0, MAX_SENTENCE) };
 }
 
-type PartyAction = { name: "switch"; pokemon: string } | { name: "send"; pokemon: string } | { name: "swap"; pokemon: string };
-type ParsedAction = Exclude<ModelAction, { name: PartyAction["name"] }> | PartyAction;
+/** An action as the model writes it: the Pokémon, the item and the option are still texts. */
+type Written =
+  | { name: "switch" | "send" | "swap"; pokemon: string }
+  | { name: "use"; item: string; on?: string }
+  | { name: "buy" | "sell"; item: string; quantity: number };
+type ParsedAction = Exclude<ModelAction, { name: Written["name"] }> | Written;
 
 export function readAction(text: string, asked: Asked): ModelAction {
-  const use = text.trim().match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i);
-  if (use) return readUse(use[1], use[2], asked);
-  const trade = text.trim().match(/^(buy|sell)\s+(.+?)\s+(\d+)$/i);
-  if (trade) return readTrade(trade[1].toLowerCase() as "buy" | "sell", trade[2], Number(trade[3]), asked);
   const action = parse(text.trim());
   if (!action) throw new Error(`"${quoted(text)}" is not an action`);
   const accepted = actionsOf(asked);
   if (!accepted.includes(action.name)) throw new Error(`"${action.name}" is not an action now: use ${alternatives(accepted)}`);
-  if (action.name === "go") {
-    const targets = asked.kind === "walk" ? asked.view.targets.length : 0;
-    if (action.target < 1 || action.target > targets) {
-      throw new Error(`there is no target ${action.target}: ${targets === 0 ? "the map has no targets" : `the targets are 1 to ${targets}`}`);
+  switch (action.name) {
+    case "go": {
+      const targets = asked.kind === "walk" ? asked.view.targets.length : 0;
+      if (action.target < 1 || action.target > targets) {
+        throw new Error(`there is no target ${action.target}: ${targets === 0 ? "the map has no targets" : `the targets are 1 to ${targets}`}`);
+      }
+      return action;
     }
+    case "switch":
+    case "send":
+      return { name: action.name, slot: partySlot(action.pokemon, asked.party) };
+    case "swap":
+      return swapOf(action.pokemon, asked.party);
+    case "choose": {
+      if (asked.kind !== "choice") return action;
+      const option = asked.options.find((o) => o.toLowerCase() === action.option.toLowerCase());
+      if (!option) throw new Error(`"${quoted(action.option)}" is not an option: ${asked.options.join(", ")}`);
+      return { name: "choose", option };
+    }
+    case "use":
+      return readUse(action.item, action.on, asked);
+    case "buy":
+    case "sell":
+      return readTrade(action.name, action.item, action.quantity, asked);
+    default:
+      return action;
   }
-  if (action.name === "switch" || action.name === "send") return { name: action.name, slot: partySlot(action.pokemon, asked.party) };
-  if (action.name === "swap") return swapOf(action.pokemon, asked.party);
-  if (action.name === "choose" && asked.kind === "choice") {
-    const option = asked.options.find((o) => o.toLowerCase() === action.option.toLowerCase());
-    if (!option) throw new Error(`"${quoted(action.option)}" is not an option: ${asked.options.join(", ")}`);
-    return { name: "choose", option };
-  }
-  return action;
 }
 
 function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
-  const accepted = actionsOf(asked);
-  if (!accepted.includes("use")) throw new Error(`"use" is not an action now: use ${alternatives(accepted)}`);
   const items = "items" in asked ? asked.items : [];
   const item = items.find((i) => plain(i.name) === plain(name));
   if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
@@ -161,9 +176,7 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
 }
 
 function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: Asked): ModelAction {
-  const accepted = actionsOf(asked);
-  if (!accepted.includes(name) || asked.kind !== "buyList") throw new Error(`"${name}" is not an action now: use ${alternatives(accepted)}`);
-  const names = name === "buy" ? asked.forSale.map((i) => i.name) : asked.bag.flatMap((pocket) => pocket.items.map((i) => i.name));
+  const names = asked.kind !== "buyList" ? [] : name === "buy" ? asked.forSale.map((i) => i.name) : asked.bag.flatMap((pocket) => pocket.items.map((i) => i.name));
   const found = names.find((n) => plain(n) === plain(item));
   if (!found) throw new Error(`"${quoted(item)}" is not an item of ${name === "buy" ? "the buy list" : "your Bag"}: ${names.join(", ") || "none"}`);
   return { name, item: found, quantity };
@@ -179,6 +192,8 @@ function plain(text: string): string {
 
 function parse(action: string): ParsedAction | null {
   let m: RegExpMatchArray | null;
+  if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
+  if ((m = action.match(/^(buy|sell)\s+(.+?)\s+(\d+)$/i))) return { name: m[1].toLowerCase() as "buy" | "sell", item: m[2], quantity: Number(m[3]) };
   if ((m = action.match(/^switch\s+(.+)$/i))) return { name: "switch", pokemon: m[1] };
   if ((m = action.match(/^send\s+(.+)$/i))) return { name: "send", pokemon: m[1] };
   if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };

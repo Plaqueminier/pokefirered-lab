@@ -514,6 +514,38 @@ export class Harness {
     return this.act({ name: "swap", first, second }, () => this.#menus.swap(first, second));
   }
 
+  /** Runs a Macro-action or a Raw input from its description. */
+  async perform(action: MacroAction | RawInput): Promise<ActionResult> {
+    switch (action.name) {
+      case "goTo":
+        return this.goTo(action.x, action.y, action.map);
+      case "interact":
+        return this.interact(action.x, action.y);
+      case "readText":
+        return this.readText();
+      case "choose":
+        return this.choose(action.option);
+      case "fight":
+        return this.fight(action.move);
+      case "switch":
+        return this.switch(action.slot);
+      case "send":
+        return this.send(action.slot);
+      case "swap":
+        return this.swap(action.first, action.second);
+      case "run":
+        return this.run();
+      case "use":
+        return this.use(action.item, action.on);
+      case "buy":
+        return this.buy(action.item, action.quantity);
+      case "sell":
+        return this.sell(action.item, action.quantity);
+      case "press":
+        return this.press(action.button);
+    }
+  }
+
   async press(button: Button): Promise<ActionResult> {
     return this.act({ name: "press", button }, () => this.#menus.input(Keys[button]));
   }

@@ -1,8 +1,8 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
-import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
+import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
-import { type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
+import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
 import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
 
@@ -50,7 +50,7 @@ class ModelPlay {
       const action = await this.harness.modelCall(() => this.answer(observation, asked));
       this.stopAtUnreadable();
       await this.summarize();
-      if (action && action.name !== "viewAtlas" && action.name !== "zoom") {
+      if (action && isPlayed(action)) {
         this.#conversation = null;
         await this.perform(action, asked);
       }
@@ -67,12 +67,8 @@ class ModelPlay {
     this.#conversation = conversation;
     const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
     const request = { model: this.settings.id, situation: situation(asked), prompt };
-    let reply: ModelReply;
-    try {
-      reply = await this.ask(prompt);
-    } catch (error) {
-      return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: `the request failed: ${errorText(error)}` }, action: null };
-    }
+    const reply = await this.tryAsk(prompt);
+    if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
     const replied = { ...request, answer: reply.content, usage: reply.usage };
     try {
       const decision = readDecision(reply.content);
@@ -103,16 +99,21 @@ class ModelPlay {
   private async summary(tree: MemoryTree, node: NodeRange): Promise<SummaryAnswer> {
     const prompt = summaryPrompt(tree, node);
     const request = { model: this.settings.id, prompt, ...node };
-    let reply: ModelReply;
-    try {
-      reply = await this.ask(prompt, SUMMARY_FORMAT);
-    } catch (error) {
-      return { ...request, answer: null, usage: NO_USAGE, summary: null, error: `the request failed: ${errorText(error)}` };
-    }
+    const reply = await this.tryAsk(prompt, SUMMARY_FORMAT);
+    if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
     try {
       return { ...request, answer: reply.content, usage: reply.usage, summary: readSummary(reply.content), error: null };
     } catch (error) {
       return { ...request, answer: reply.content, usage: reply.usage, summary: null, error: errorText(error) };
+    }
+  }
+
+  /** The reply of the model, or the text of the error when the request fails. */
+  private async tryAsk(prompt: Prompt, format?: AnswerFormat): Promise<ModelReply | string> {
+    try {
+      return await this.ask(prompt, format);
+    } catch (error) {
+      return `the request failed: ${errorText(error)}`;
     }
   }
 
@@ -122,45 +123,13 @@ class ModelPlay {
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }
 
-  private async perform(action: Exclude<ModelAction, { name: "viewAtlas" | "zoom" }>, asked: Asked): Promise<void> {
-    switch (action.name) {
-      case "go":
-        if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
-        return this.go(asked.view.targets[action.target - 1], asked.overworld);
-      case "goTo":
-        await this.harness.goTo(action.x, action.y, action.map);
-        return;
-      case "choose":
-        await this.harness.choose(action.option);
-        return;
-      case "fight":
-        await this.harness.fight(action.move);
-        return;
-      case "switch":
-        await this.harness.switch(action.slot);
-        return;
-      case "send":
-        await this.harness.send(action.slot);
-        return;
-      case "swap":
-        await this.harness.swap(action.first, action.second);
-        return;
-      case "run":
-        await this.harness.run();
-        return;
-      case "use":
-        await this.harness.use(action.item, action.on);
-        return;
-      case "buy":
-        await this.harness.buy(action.item, action.quantity);
-        return;
-      case "sell":
-        await this.harness.sell(action.item, action.quantity);
-        return;
-      case "press":
-        await this.harness.press(action.button);
-        return;
+  private async perform(action: PlayedAction, asked: Asked): Promise<void> {
+    if (action.name !== "go") {
+      await this.harness.perform(action);
+      return;
     }
+    if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
+    await this.go(asked.view.targets[action.target - 1], asked.overworld);
   }
 
   private async go(target: Target, overworld: Overworld): Promise<void> {

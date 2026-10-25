@@ -1,28 +1,11 @@
 import type { Milestone } from "../src/game";
 import type { RunEvent } from "../src/harness/record";
-import type { ModelAction } from "../src/model/decision";
+import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { memoryTree } from "../src/model/memory-tree";
 import { actionText } from "../src/protocol";
 import { card, line, rows } from "./dom";
 import { dollars } from "./runs";
 
-const ACTION_LIST: Record<ModelAction["name"], true> = {
-  go: true,
-  goTo: true,
-  swap: true,
-  choose: true,
-  fight: true,
-  switch: true,
-  send: true,
-  run: true,
-  use: true,
-  buy: true,
-  sell: true,
-  press: true,
-  viewAtlas: true,
-  zoom: true,
-};
-const ACTION_NAMES = Object.keys(ACTION_LIST);
 
 export type Count = { name: string; count: number };
 
@@ -65,13 +48,13 @@ export function statsView(events: readonly RunEvent[]): StatsView {
   if (open.calls > 0 || open.cost > 0) view.milestones.push(open);
   view.events = counts(types);
   view.actions = counts(used).sort((a, b) => b.count - a.count);
-  view.neverUsed = ACTION_NAMES.filter((name) => !used.has(name));
+  view.neverUsed = MODEL_ACTION_NAMES.filter((name) => !used.has(name));
   return view;
 }
 
 function actionName(action: string): string {
   const word = action.trim().split(/\s+/)[0];
-  return ACTION_NAMES.find((name) => name.toLowerCase() === word.toLowerCase()) ?? word;
+  return MODEL_ACTION_NAMES.find((name) => name.toLowerCase() === word.toLowerCase()) ?? word;
 }
 
 function increment(map: Map<string, number>, key: string): void {
