@@ -48,25 +48,30 @@ const RIVAL_GRAPHICS = "BLUE";
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "interact"],
+  walk: ["goTo", "interact", "swap"],
   choice: ["choose"],
   text: ["readText"],
-  battleAction: ["fight", "run"],
+  battleAction: ["fight", "switch", "run"],
   battleMove: ["fight"],
-  partyPick: [],
+  partyPick: ["send"],
   busy: ["readText"],
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
 export const MACRO_ACTIONS: readonly MacroAction["name"][] = [...new Set(Object.values(ACCEPTS).flat())];
 const FIGHT_CURSOR = 0;
+const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
+const START_MENU_POKEMON = "POKéMON";
+// The first action of a Pokémon in the party menu of a battle: SEND OUT after a faint, SHIFT after the battle action POKéMON.
+const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
+const SWAP_ACTION = "SWITCH";
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
 export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { kind: Battle["kind"]; player: BattleMon; enemy: EnemyMon };
+export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enemy: EnemyMon };
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[]; atlas: Atlas };
 
@@ -107,9 +112,13 @@ export type MacroAction =
   | { name: "readText" }
   | { name: "choose"; option: string }
   | { name: "fight"; move: number }
+  | { name: "switch"; slot: number }
+  | { name: "send"; slot: number }
+  | { name: "swap"; first: number; second: number }
   | { name: "run" };
 
-export type AvailableAction = { name: "goTo" } | Exclude<MacroAction, { name: "goTo" }>;
+/** The party Macro-actions take the place of a Pokémon in `observe().party`. */
+export type AvailableAction = { name: "goTo" } | { name: "swap" } | Exclude<MacroAction, { name: "goTo" } | { name: "swap" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -170,6 +179,8 @@ type SummaryCallListener = (event: SummaryEvent, harness: Harness) => void;
 
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
+  /** The file of the Starting save, when it is not saves/start.sav. */
+  startSave?: string;
   onAction?: ActionListener;
   onFrame?: (harness: Harness) => void;
   onModelCallStart?: ModelCallStartListener;
@@ -269,11 +280,12 @@ export class Harness {
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
   static async open(options: HarnessOptions = {}, run?: Run): Promise<Harness> {
-    if (!(await Bun.file(START_SAVE).exists())) {
+    const startSave = options.startSave ?? START_SAVE;
+    if (!(await Bun.file(startSave).exists())) {
       run?.core.close();
-      throw new Error(`${START_SAVE} not found: make the Starting save first (lab/README.md)`);
+      throw new Error(`${startSave} not found: make the Starting save first (lab/README.md)`);
     }
-    const opened = run ?? (await Run.open());
+    const opened = run ?? (await Run.open(startSave));
     try {
       const harness = new Harness(opened, options);
       const interruption = harness.settle();
@@ -394,6 +406,11 @@ export class Harness {
         case "goTo":
         case "readText":
           return [{ name }];
+        case "swap":
+          return this.#run.game.party().length > 1 ? [{ name }] : [];
+        case "switch":
+        case "send":
+          return this.sendable(this.battle().player.partyIndex).map((slot) => ({ name, slot }));
         case "interact":
           return this.interactions();
         case "choose":
@@ -516,6 +533,53 @@ export class Harness {
     }, { text: [] });
   }
 
+  async switch(slot: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "switch", slot }, () => {
+      const game = this.#run.game;
+      if (!game.party()[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
+      const opened = this.select("battleAction", POKEMON_CURSOR);
+      if (opened.status !== "done") return opened;
+      if (game.waitingFor().kind !== "partyPick") return { status: "impossible", reason: "the party menu does not open" };
+      const sent = this.sendOut(game.battleMenuSlot(slot));
+      if (sent.status !== "impossible") return sent;
+      const closed = this.menuInput(Keys.B, () => game.waitingFor().kind !== "busy");
+      return closed.status === "done" ? sent : { ...closed, text: sent.text };
+    }, { text: [] });
+  }
+
+  async send(slot: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "send", slot }, () => {
+      const game = this.#run.game;
+      if (!game.party()[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
+      return this.sendOut(game.battleMenuSlot(slot));
+    }, { text: [] });
+  }
+
+  async swap(first: number, second: number): Promise<ActionResult> {
+    return this.act({ name: "swap", first, second }, () => {
+      const game = this.#run.game;
+      const party = game.party();
+      for (const slot of [first, second]) if (!party[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
+      if (first === second) return { status: "impossible", reason: "a Pokémon cannot swap with itself" };
+      const opened = this.openPartyMenu();
+      if (opened.status !== "done") return opened;
+      const actions = this.openPartyActions(first);
+      if (actions.status !== "done") return actions;
+      const pick = () => {
+        const menu = game.partyMenu();
+        return menu?.kind === "pick" ? menu : null;
+      };
+      const chosen = this.selectPartyAction((options) => options.indexOf(SWAP_ACTION), () => pick()?.swapping === true);
+      if (chosen.status !== "done") return chosen;
+      const moved = this.moveMenuCursor(second, () => pick()?.cursor ?? null);
+      if (moved.status !== "done") return moved;
+      const swapped = this.menuInput(Keys.A, () => pick()?.swapping === false);
+      if (swapped.status !== "done") return swapped;
+      const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
+      return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
+    });
+  }
+
   async press(button: Button): Promise<ActionResult> {
     return this.act({ name: "press", button }, () => this.input(Keys[button]));
   }
@@ -552,6 +616,74 @@ export class Harness {
   private battleState({ kind, player, enemy }: Battle): BattleState {
     const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => this.#run.game.moveName(move));
     return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
+  }
+
+  /** The places in `observe().party` of the Pokémon that can go into the battle: they have HP, and they are not the Pokémon `inBattle`. */
+  private sendable(inBattle: number): number[] {
+    return this.#run.game.party().flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
+  }
+
+  // At the party menu of a battle: the Pokémon of `menuSlot` goes into the battle, or the game refuses it and the menu waits again.
+  private sendOut(menuSlot: number): Outcome & Texts {
+    const game = this.#run.game;
+    const actions = this.openPartyActions(menuSlot);
+    if (actions.status !== "done") return { ...actions, text: [] };
+    const sent = this.selectPartyAction(
+      (options) => options.findIndex((o) => SEND_OUT_ACTIONS.includes(o)),
+      () => {
+        const menu = game.partyMenu();
+        return menu === null || menu.kind === "refusal";
+      },
+    );
+    if (sent.status !== "done") return { ...sent, text: [] };
+    const refusal = game.partyMenu();
+    if (refusal?.kind === "refusal") {
+      const back = this.untilReady(
+        () => game.partyMenu()?.kind === "pick",
+        () => {
+          if (game.waitingFor().kind === "text") this.pressUntilRead(Keys.A);
+        },
+      );
+      return { ...(back.status === "done" ? { status: "impossible", reason: refusal.text } : back), text: [] };
+    }
+    // The battle message windows have the same numbers as the windows of the party menu: read only after the menu.
+    const reader = new MessageReader(game);
+    return { ...this.untilDecision(() => reader.update()), text: reader.textBeforeWaitingText() };
+  }
+
+  // On a walk: the Start menu, then its item POKéMON.
+  private openPartyMenu(): Outcome {
+    const game = this.#run.game;
+    const opened = this.menuInput(Keys.Start, () => game.startMenu() !== null);
+    if (opened.status !== "done") return opened;
+    const item = game.startMenu()?.options.indexOf(START_MENU_POKEMON) ?? -1;
+    if (item < 0) return { status: "impossible", reason: `the Start menu has no ${START_MENU_POKEMON}` };
+    const moved = this.moveMenuCursor(item, () => game.startMenu()?.cursor ?? null);
+    return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "pick") : moved;
+  }
+
+  // At the party menu: moves the cursor to `menuSlot` and opens the actions of the Pokémon.
+  private openPartyActions(menuSlot: number): Outcome {
+    const game = this.#run.game;
+    const moved = this.moveMenuCursor(menuSlot, () => {
+      const menu = game.partyMenu();
+      return menu?.kind === "pick" ? menu.cursor : null;
+    });
+    return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "actions") : moved;
+  }
+
+  // At the actions of a Pokémon in the party menu: selects the action that `find` gives, then runs frames until `done`.
+  private selectPartyAction(find: (options: string[]) => number, done: () => boolean): Outcome {
+    const game = this.#run.game;
+    const menu = game.partyMenu();
+    if (menu?.kind !== "actions") throw new Error("the party menu does not show the actions of a Pokémon");
+    const target = find(menu.options);
+    if (target < 0) return { status: "impossible", reason: `the party menu has no such action: ${menu.options.join(", ")}` };
+    const moved = this.moveMenuCursor(target, () => {
+      const now = game.partyMenu();
+      return now?.kind === "actions" ? now.cursor : null;
+    });
+    return moved.status === "done" ? this.menuInput(Keys.A, done) : moved;
   }
 
   private turn(menu: BattleMenu, target: number): Outcome & Texts {
@@ -594,10 +726,49 @@ export class Harness {
     return battle ? { status: "interrupted", reason: battle } : this.untilDecision();
   }
 
+  // A menu between two Decision points: `cursor()` is null while the menu reads no input. The game can take some frames to read a press.
+  private moveMenuCursor(target: number, cursor: () => number | null): Outcome {
+    for (let at = cursor(); at !== target; ) {
+      if (at === null) return { status: "impossible", reason: "the menu reads no input" };
+      const from = at;
+      const moved = this.menuInput(target > at ? Keys.Down : Keys.Up, () => {
+        const now = cursor();
+        return now !== null && now !== from;
+      });
+      if (moved.status !== "done") return moved;
+      at = cursor();
+    }
+    return { status: "done" };
+  }
+
+  private menuInput(keys: number, ready: () => boolean): Outcome {
+    const pressed = this.pressUntilRead(keys);
+    return pressed.status === "done" ? this.untilReady(ready) : pressed;
+  }
+
+  // A slow menu reads the input only on some frames: wait until it reads the release of the last press, then hold the keys until it reads them.
+  private pressUntilRead(keys: number): Outcome {
+    const game = this.#run.game;
+    for (const [held, read] of [
+      [0, () => (game.keysRead().held & keys) === 0],
+      [keys, () => (game.keysRead().pressed & keys) === keys],
+    ] as const) {
+      for (let frames = 0; !read(); frames++) {
+        if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game does not read the input for ${DECISION_FRAME_LIMIT} frames` };
+        if (this.advance(held)) return { status: "interrupted", reason: "battle" };
+      }
+    }
+    return this.advance(0) ? { status: "interrupted", reason: "battle" } : { status: "done" };
+  }
+
   private untilDecision(watch: () => void = () => {}): Outcome {
+    return this.untilReady(() => this.#run.game.waitingFor().kind !== "busy", watch);
+  }
+
+  private untilReady(ready: () => boolean, watch: () => void = () => {}): Outcome {
     for (let frames = 0; ; frames++) {
       watch();
-      if (this.#run.game.waitingFor().kind !== "busy") return { status: "done" };
+      if (ready()) return { status: "done" };
       if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game waits for no known input for ${DECISION_FRAME_LIMIT} frames` };
       if (this.advance(0)) return { status: "interrupted", reason: "battle" };
     }

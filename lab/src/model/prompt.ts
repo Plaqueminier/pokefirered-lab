@@ -3,7 +3,7 @@ import { type ActionEntry, actionText, type BattleState, type NoProgress, type O
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import { type Milestone, MILESTONES } from "../game";
 import type { PartyMon, PartyMove } from "../party";
-import { actionsOf, alternatives, type Asked, type AskedKind, MAX_SENTENCE } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, MAX_SENTENCE, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 
@@ -38,6 +38,7 @@ const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefe
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Start, Select, Up, Down, Left, Right, L or R.";
+const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
 export function systemPrompt(starterRule: string): string {
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
@@ -252,10 +253,10 @@ function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
       return asked.view.lines;
-    case "choice":
-      return [...localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []), "", "The question is the last text of your last decisions."];
-    case "partyPick":
-      return [...battleLines(asked.battle), "No action covers the party menu: use press. Up and Down move the cursor, A chooses, B goes back."];
+    case "choice": {
+      const where = "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
+      return [...where, "", "The question is the last text of your last decisions."];
+    }
     default:
       return battleLines(asked.battle);
   }
@@ -270,18 +271,24 @@ function actionLines(asked: Asked): string[] {
         ...(asked.view.targets.length === 0 ? [] : ["- go <target number>: walk to the target. At an exit, take it. At a person or a sign, walk next to it, then talk to it or read it."]),
         `- goTo <x> <y>: walk to a cell of this map. A cell just past an edge (x -1 or ${grid.mapWidth}, y -1 or ${grid.mapHeight}) crosses that edge.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
+        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon goes into the next battle. ${POKEMON}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
     }
     case "choice":
       return asked.options.map((option) => `- choose ${option}`);
     case "battleAction":
-      return [...fights(asked.battle), `- run${asked.battle.kind === "trainer" ? ": impossible in a trainer battle" : ""}`];
+      return [...fights(asked.battle), ...partyLine(asked, "switch", "take your Pokémon out of the battle and send this one"), `- run${asked.battle.kind === "trainer" ? ": impossible in a trainer battle" : ""}`];
     case "battleMove":
       return fights(asked.battle);
     case "partyPick":
-      return [];
+      return partyLine(asked, "send", "send this Pokémon into the battle");
   }
+}
+
+function partyLine(asked: Asked, name: "switch" | "send", help: string): string[] {
+  const mons = sendable(asked);
+  return mons.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}. It can be ${mons.map((mon) => mon.nickname).join(", ")}. ${POKEMON}`];
 }
 
 function fights({ player }: BattleState): string[] {

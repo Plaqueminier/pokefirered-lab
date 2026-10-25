@@ -1,8 +1,9 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { type Battle, type BattleMenu, battleCursor, battleMenu, enemyMovePrinted, levelUpBoxWaits, partyPick, type PrintedMove, readBattle } from "./battle";
+import { type Battle, type BattleMenu, battleCursor, battleMenu, battleMenuSlot, battleYesNoCursor, enemyMovePrinted, levelUpBoxWaits, type PrintedMove, readBattle } from "./battle";
 import type { Memory, Ref } from "./memory";
+import { type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
 import { functionName } from "./symbols";
@@ -264,8 +265,10 @@ export class Game {
   }
 
   private battleWaitingFor(): WaitingFor {
-    if (partyPick(this.mem)) return { kind: "partyPick" };
+    if (this.partyMenu()?.kind === "pick") return { kind: "partyPick" };
     if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem)) return { kind: "text" };
+    const yesNo = battleYesNoCursor(this.mem);
+    if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo };
     return { kind: battleMenu(this.mem) ?? "busy" };
   }
 
@@ -327,6 +330,24 @@ export class Game {
     return enemyMovePrinted(this.mem);
   }
 
+  /** The keys that the game read the last time that it read the input: it can skip frames when it is slow. */
+  keysRead(): { held: number; pressed: number } {
+    const main = this.mem.global("gMain");
+    return { held: main.field("heldKeysRaw").int(), pressed: main.field("newKeysRaw").int() };
+  }
+
+  startMenu(): Choice | null {
+    return startMenu(this.mem, this.decode);
+  }
+
+  partyMenu(): PartyMenu | null {
+    return partyMenu(this.mem, this.decode);
+  }
+
+  battleMenuSlot(partyIndex: number): number {
+    return battleMenuSlot(this.mem, partyIndex);
+  }
+
   moveName(move: number): string {
     return nameAt(this.mem, "gMoveNames", move, this.decode);
   }
@@ -374,8 +395,12 @@ export class Game {
     return { mode, callback1, callback2 };
   }
 
+  /** In the order of the party out of a battle. */
   party(): PartyMon[] {
-    return readParty(this.mem, this.decode);
+    const party = readParty(this.mem, this.decode);
+    // While the party menu of a battle is open, gPlayerParty has the battle order (UpdatePartyToBattleOrder, party_menu.c).
+    if (this.context().mode !== "battle" || !this.partyMenu()) return party;
+    return party.map((_, i) => party[battleMenuSlot(this.mem, i)]);
   }
 
   milestones(): Milestone[] {

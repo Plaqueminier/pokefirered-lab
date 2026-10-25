@@ -406,6 +406,9 @@
               <tr><td><code>readText()</code></td><td>text, busy game</td><td>Reads the texts to the end of the box or to a choice.</td></tr>
               <tr><td><code>choose(option)</code></td><td>yes/no</td><td>Moves the cursor to the option and presses A.</td></tr>
               <tr><td><code>fight(move)</code></td><td>battle</td><td>Uses the move 0 to 3, and gives the messages of the turn.</td></tr>
+              <tr><td><code>switch(slot)</code></td><td>battle</td><td>Sends another Pokémon of the party into the battle.</td></tr>
+              <tr><td><code>send(slot)</code></td><td>party menu of a battle</td><td>Sends a Pokémon, for example after a faint.</td></tr>
+              <tr><td><code>swap(first, second)</code></td><td>walk</td><td>Changes the order of two Pokémon of the party.</td></tr>
               <tr><td><code>run()</code></td><td>wild battle</td><td>Escapes. Impossible against a trainer.</td></tr>
             </tbody>
           </table>
@@ -457,7 +460,6 @@
           <dl>
             <dt>Menus</dt><dd>Start, bag, shop, PC, multichoice: the Harness sees a busy game.</dd>
             <dt>Name screen</dt><dd>No typing: at the nickname, a Bot answers NO.</dd>
-            <dt>Pokémon in a battle</dt><dd>No Macro-action in the party menu: Raw inputs.</dd>
           </dl>
         </section>
         <section class="w7">
