@@ -1,6 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import starter from "../../bots/starter";
+import starter from "./scripted-bot";
 import { ROM_FILE, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
 import { isRunRecord, type ModelAnswer, type ModelEvent, RecordPlayer, replay, type RunRecord } from "./record";
@@ -79,7 +79,7 @@ describe("isRunRecord", () => {
 });
 
 describe.skipIf(!ready)("Run record on the Starting save", () => {
-  test("the Run record of the starter Bot has its header, its buttons at each frame and its events", async () => {
+  test("the Run record of the scripted bot has its header, its buttons at each frame and its events", async () => {
     const { harness, result } = await playStarter();
     const record = harness.record();
 
