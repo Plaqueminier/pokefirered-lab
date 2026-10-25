@@ -2,6 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import starter from "../../bots/starter";
 import { ROM_FILE, START_SAVE } from "../run";
+import { cellAt, mapNamed } from "./atlas";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -160,13 +161,11 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(first.result).toEqual({ endReason: "goal", frames: first.frame - first.start, milestones: ["has-pokemon", "first-rival-battle"], rawInputs: 0 });
     expect(first.observation).toMatchObject({ mode: "overworld", map: { name: "PalletTown_ProfessorOaksLab" }, player: { x: 7, y: 8 } });
     expect(first.observation.waitingFor).toEqual({ kind: "walk" });
-    expect(first.observation.party).toEqual([
+    expect(first.observation.party).toMatchObject([
       {
         species: "SQUIRTLE",
         nickname: "SQUIRTLE",
         level: 6,
-        hp: expect.any(Number),
-        maxHp: expect.any(Number),
         status: "none",
         moves: [
           { name: "TACKLE", pp: 35, maxPp: 35 },
@@ -174,6 +173,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
         ],
       },
     ]);
+    expect(first.observation.party).toHaveLength(1);
     expect(first.observation.party[0].hp).toBe(first.observation.party[0].maxHp);
     expect(first.observation.party[0].maxHp).toBeWithin(21, 24);
     expect(second).toEqual(first);
@@ -238,6 +238,28 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     }
   });
 
+  test("observe gives what the Summary screen shows: the types, the ability, the held item, the nature, the stats and the EXP, and for each move its type, power, accuracy, PP and description", async () => {
+    const harness = await Harness.open();
+    await toStarter(harness);
+    const [squirtle] = harness.observe().party;
+    expect(squirtle).toMatchObject({
+      species: "SQUIRTLE",
+      level: 5,
+      types: ["WATER"],
+      ability: { name: "TORRENT", description: "Ups WATER moves in a pinch." },
+      heldItem: null,
+      // Medium Slow growth: 135 EXP at level 5, 179 at level 6.
+      exp: 135,
+      expToNextLevel: 44,
+      moves: [
+        { name: "TACKLE", type: "NORMAL", power: 35, accuracy: 95, pp: 35, maxPp: 35, description: "A physical attack in which the user charges, full body, into the foe." },
+        { name: "TAIL WHIP", type: "NORMAL", power: null, accuracy: 100, pp: 30, maxPp: 30, description: "The user wags its tail cutely, making the foe lower its DEFENSE stat." },
+      ],
+    });
+    expect(squirtle.nature).toMatch(/^[A-Z]+$/);
+    expect(squirtle.stats.defense).toBeWithin(11, 14);
+  });
+
   test("at the first battle action, the player level shows the enemy HP bar but not its exact stats, and run is impossible against a trainer", async () => {
     const harness = await Harness.open();
     await toRivalBattle(harness);
@@ -256,7 +278,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(battle.player.hp).toBe(harness.observe().party[0].hp);
     expect(battle.player.stats.defense).toBeWithin(11, 14);
     expect(battle.player.statStages).toEqual(NO_STAGES);
-    expect(battle.enemy).toEqual({ species: "BULBASAUR", level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
+    expect(battle.enemy).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
     expect(harness.availableActions()).toEqual([
       { name: "fight", move: 0 },
       { name: "fight", move: 1 },
@@ -330,7 +352,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const harness = await Harness.open({ knowledge: "full" });
     await toRivalBattle(harness);
     const { exact, ...seen } = battleOf(harness).enemy;
-    expect(seen).toEqual({ species: "BULBASAUR", level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
+    expect(seen).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
     if (!exact) throw new Error("no exact values at the full level");
     expect(exact.hp).toBe(exact.maxHp);
     expect(exact.maxHp).toBeWithin(19, 22);
@@ -353,7 +375,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe().milestones).toEqual([]);
   });
 
-  test("on the overworld, observe gives the people of the map with the name of their sprite", async () => {
+  test("on the overworld, observe gives the people of the map with the name of their sprite, and the rival with its name from the save", async () => {
     const harness = await Harness.open();
     await toLab(harness);
     const observation = harness.observe();
@@ -362,7 +384,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       expect.arrayContaining([
         { x: 6, y: 3, graphics: "PROF_OAK" },
         { x: 9, y: 4, graphics: "ITEM_BALL" },
-        { x: 5, y: 4, graphics: "BLUE" },
+        { x: 5, y: 4, graphics: "BLUE", rival: "BOB" },
       ]),
     );
   });
@@ -424,6 +446,40 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const harness = await Harness.open();
     const result = await harness.play({ name: "idle", version: "1", play: async () => {} });
     expect(result).toEqual({ endReason: "bot stopped", frames: 0, milestones: [], rawInputs: 0 });
+  });
+
+  test("at the player level, the Atlas of the starter Run has only the maps and the cells that the Run saw; a door shows its destination only when the Run went through it", async () => {
+    const harness = await Harness.open();
+    await harness.play(starter);
+    const { atlas } = harness.observe();
+    expect(atlas.maps.map((m) => m.name)).toEqual(["PalletTown_PlayersHouse_2F", "PalletTown_PlayersHouse_1F", "PalletTown", "PalletTown_ProfessorOaksLab"]);
+    const pallet = mapNamed(atlas, "PalletTown");
+    expect(cellAt(pallet, { x: 6, y: 8 })).not.toBe("?");
+    expect(cellAt(pallet, { x: 0, y: 19 })).toBe("?");
+    expect(pallet.warps).toContainEqual(expect.objectContaining({ x: 6, y: 7, to: "PalletTown_PlayersHouse_1F" }));
+    expect(pallet.warps).toContainEqual(expect.objectContaining({ x: 15, y: 7, to: null }));
+  });
+
+  test("at the full level, the Atlas has all the maps of the game, with all their cells and the destinations of all their exits; a map with no warps has an entry on an edge", async () => {
+    const harness = await Harness.open({ knowledge: "full" });
+    const { atlas } = harness.observe();
+    expect(atlas.maps.map((m) => m.name)).toEqual(expect.arrayContaining(["PalletTown", "Route1", "ViridianCity", "CeruleanCity_Gym"]));
+    const pallet = mapNamed(atlas, "PalletTown");
+    expect(pallet.cells).not.toContain("?");
+    expect(pallet.warps).toContainEqual(expect.objectContaining({ x: 15, y: 7, to: "PalletTown_RivalsHouse" }));
+    expect(pallet.edges).toContainEqual({ side: "north", to: "Route1" });
+    const route3 = mapNamed(atlas, "Route3");
+    expect(route3.warps).toEqual([]);
+    expect(route3.entry).not.toBeNull();
+  });
+
+  test("a sign that the player read has its text in the Atlas", async () => {
+    const harness = await Harness.open();
+    await harness.goTo(10, 2);
+    await harness.goTo(4, 8, "PalletTown");
+    expect(await harness.interact(4, 7)).toMatchObject({ status: "done" });
+    await harness.readText();
+    expect(mapNamed(harness.observe().atlas, "PalletTown").signs).toContainEqual(expect.objectContaining({ x: 4, y: 7, text: "PLOK's house" }));
   });
 
   test("goTo to a blocked cell returns impossible and runs no frames", async () => {

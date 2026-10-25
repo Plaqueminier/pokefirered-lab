@@ -347,6 +347,10 @@ export class Game {
     };
   }
 
+  rivalName(): string {
+    return this.decode(this.saveBlock1.field("rivalName").bytes());
+  }
+
   flag(id: number): boolean {
     const byte = this.saveBlock1.field("flags").at(id >> 3).int();
     return ((byte >> (id & 7)) & 1) === 1;

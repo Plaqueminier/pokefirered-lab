@@ -1,8 +1,9 @@
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
+import { REASONING } from "../protocol";
 import { actionText, errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
-import { modelTotals, REASONING, writeRecord } from "./record";
+import { modelTotals, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name> [player|full]
        bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning ${REASONING.join("|")}] [--temperature <0 to 2>]`;
@@ -36,7 +37,7 @@ const harness = await Harness.open({
     if ("text" in result) for (const message of result.text) console.log(`  "${message}"`);
   },
   onModelCall: ({ decision, error, usage, latencyMs }) => {
-    const answer = decision ? `${decision.action}: ${decision.reason} (Objective: ${decision.objective})` : `no action: ${error}`;
+    const answer = decision ? `${decision.action}: ${decision.reason} (Mission: ${decision.mission}; Objective: ${decision.objective})` : `no action: ${error}`;
     console.log(`model ${(latencyMs / 1000).toFixed(1)} s, ${usage.cost} $  ${answer}`);
   },
 });

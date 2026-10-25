@@ -1,5 +1,6 @@
 // A Macro-action runs its frames in one synchronous block: each Run plays in a worker, so the Viewer loop never stops.
 import type { RunState } from "../run";
+import type { Sight } from "./atlas";
 import type { HarnessOptions } from "./harness";
 import type { ModelSettings, RunEvent, RunRecord } from "./record";
 
@@ -12,18 +13,18 @@ export type RunEnd = { record: RunRecord | null; error: string | null };
 
 export type WorkerStart = { spec: RunSpec; stop: Int32Array };
 
-export type RunView = { frame: number; screen: Uint8Array | null } & RunState;
+export type RunView = { frame: number; screen: Uint8Array | null; sight: Sight } & RunState;
 
 export type WorkerMessage =
   | { type: "screen"; frame: number; screen: Uint8Array }
-  | ({ type: "state" } & RunState)
+  | ({ type: "state"; sight: Sight } & RunState)
   | { type: "events"; events: RunEvent[] }
   | { type: "model-call-start" }
   | ({ type: "end" } & RunEnd);
 
 export class PoolRun {
   #end: RunEnd | null = null;
-  #view: RunView = { frame: 0, screen: null, state: null, grid: null, actors: null, camera: null };
+  #view: RunView = { frame: 0, screen: null, sight: {}, state: null, grid: null, actors: null, camera: null };
   #modelCallsStarted = 0;
   // A scripted Bot gives the event loop of its worker no turn until the end of its Run, so a message cannot stop it: the worker reads this shared flag.
   readonly #stop = new Int32Array(new SharedArrayBuffer(4));

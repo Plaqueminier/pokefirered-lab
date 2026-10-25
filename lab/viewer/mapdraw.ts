@@ -12,6 +12,7 @@ const KIND_FILL: Record<Style, Record<string, string | null>> = {
   map: { "#": "#1c1f25", "~": "#2d6cc0", '"': "#3d8a52", ".": "#4a515c", "^": "#4a515c", v: "#4a515c", "<": "#4a515c", ">": "#4a515c" },
 };
 const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
+const NEVER_SEEN = "rgba(150, 155, 165, 0.8)";
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
 
 export function kindAt(grid: MapGrid, x: number, y: number): string {
@@ -21,7 +22,7 @@ export function kindAt(grid: MapGrid, x: number, y: number): string {
   return grid.kinds[gy * grid.width + gx];
 }
 
-export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style): void {
+export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string): void {
   const { width, height } = ctx.canvas;
   const c = view.cell;
   const px = (x: number) => view.x + x * c;
@@ -53,6 +54,11 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
       if (c >= 12) {
         ctx.strokeStyle = style === "overlay" ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.25)";
         ctx.strokeRect(px(x) + 0.5, py(y) + 0.5, c - 1, c - 1);
+      }
+      const inMap = x >= 0 && y >= 0 && x < grid.mapWidth && y < grid.mapHeight;
+      if (style === "map" && inMap && seen?.[y * grid.mapWidth + x] !== "1") {
+        ctx.fillStyle = NEVER_SEEN;
+        ctx.fillRect(px(x), py(y), c, c);
       }
     }
   }
@@ -164,24 +170,18 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   ctx.restore();
 }
 
-export const DIRECTION_NAME: Record<Direction, string> = { north: "nord", south: "sud", west: "ouest", east: "est" };
-export const SIDE_NAME: Record<ConnectionSide, string> = { ...DIRECTION_NAME, dive: "plongée", emerge: "remontée" };
 const SIDE_ARROW: Record<ConnectionSide, string> = { north: "↑", south: "↓", west: "←", east: "→", dive: "", emerge: "" };
-const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: DIRECTION_NAME.south, 2: DIRECTION_NAME.north, 3: DIRECTION_NAME.west, 4: DIRECTION_NAME.east };
-const KIND_LABEL: Record<string, string> = { "#": "bloqué", "~": "eau (Surf)", '"': "hautes herbes", ".": "libre", "^": "rebord (saut vers le nord)", v: "rebord (saut vers le sud)", "<": "rebord (saut vers l'ouest)", ">": "rebord (saut vers l'est)" };
-
-const toward = (d: Direction) => (d === "west" || d === "east" ? "l'" : "le ") + DIRECTION_NAME[d];
+const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: "south", 2: "north", 3: "west", 4: "east" };
+const KIND_LABEL: Record<string, string> = { "#": "blocked", "~": "water (Surf)", '"': "tall grass", ".": "open", "^": "ledge (jump north)", v: "ledge (jump south)", "<": "ledge (jump west)", ">": "ledge (jump east)" };
 
 export function howLabel(w: Warp): string {
   switch (w.how) {
     case "step":
-      return "marcher dessus";
+      return "walk onto it";
     case "press":
-      return w.from.x === w.x && w.from.y === w.y
-        ? `se tenir dessus et pousser vers ${toward(w.direction)}`
-        : `pousser vers ${toward(w.direction)} depuis (${w.from.x}, ${w.from.y})`;
+      return w.from.x === w.x && w.from.y === w.y ? `stand on it and push ${w.direction}` : `push ${w.direction} from (${w.from.x}, ${w.from.y})`;
     case "none":
-      return "inactif : la case n'est pas une case de warp";
+      return "inactive: the cell is not a warp cell";
   }
 }
 
@@ -194,9 +194,9 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
   const block = grid.blocks[i];
   const outside = x < 0 || y < 0 || x >= grid.mapWidth || y >= grid.mapHeight;
   const lines = [
-    `case (${x}, ${y})${outside ? " · bordure (carte voisine)" : ""}`,
+    `cell (${x}, ${y})${outside ? " · border (neighbour map)" : ""}`,
     `${KIND_LABEL[grid.kinds[i]] ?? grid.kinds[i]}`,
-    `metatile ${block & 0x3ff} · collision ${(block >> 10) & 3} · hauteur ${block >> 12}`,
+    `metatile ${block & 0x3ff} · collision ${(block >> 10) & 3} · elevation ${block >> 12}`,
     grid.behaviorNames[grid.behaviors[i]] ?? "",
   ];
   for (const w of grid.warps) {
@@ -205,25 +205,25 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
   }
   grid.triggers.forEach((t, k) => {
     if (t.x !== x || t.y !== y) return;
-    if (t.weather) return lines.push("déclencheur de météo");
+    if (t.weather) return lines.push("weather trigger");
     const state = actors?.triggers[k];
-    const v = t.variable === 0 ? "toujours" : `si var 0x${t.variable.toString(16)} = ${t.value}`;
-    lines.push(`déclencheur de script (${v}) : ${state === null ? "état inconnu" : state ? "ACTIF" : "inactif"}`);
+    const v = t.variable === 0 ? "always" : `if var 0x${t.variable.toString(16)} = ${t.value}`;
+    lines.push(`script trigger (${v}): ${state === null ? "state unknown" : state ? "ACTIVE" : "inactive"}`);
   });
   grid.signs.forEach((s, k) => {
     if (s.x !== x || s.y !== y) return;
-    lines.push(s.kind === "sign" ? "panneau / objet à examiner (A)" : `objet caché ${actors?.signs[k]?.found ? "(déjà trouvé)" : "(pas encore trouvé)"}`);
+    lines.push(s.kind === "sign" ? "sign / thing to examine (A)" : `hidden item ${actors?.signs[k]?.found ? "(found)" : "(not found yet)"}`);
   });
   for (const p of actors?.people ?? []) {
     if (p.x === x && p.y === y) {
-      let text = `PNJ ${p.localId}, regarde vers ${DIRECTION_LABEL[p.facing] ?? "?"}${p.loaded ? "" : " (hors écran : position de départ)"}`;
+      let text = `person ${p.localId}, facing ${DIRECTION_LABEL[p.facing] ?? "?"}${p.loaded ? "" : " (off the screen: start position)"}`;
       if (p.trainer) {
-        text += `\ndresseur ${p.trainer.id}, vue ${p.trainer.range} cases${p.trainer.allDirections ? ", toutes directions" : ""}, ${p.trainer.defeated ? "déjà battu" : "pas encore battu"}`;
+        text += `\ntrainer ${p.trainer.id}, sight ${p.trainer.range} cells${p.trainer.allDirections ? ", all directions" : ""}, ${p.trainer.defeated ? "defeated" : "not defeated yet"}`;
       }
       lines.push(text);
     }
-    if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) lines.push(`dans la vue du dresseur ${p.trainer.id}`);
+    if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) lines.push(`in the sight of trainer ${p.trainer.id}`);
   }
-  if (actors?.player && actors.player.x === x && actors.player.y === y) lines.push("joueur");
+  if (actors?.player && actors.player.x === x && actors.player.y === y) lines.push("player");
   return lines.filter(Boolean).join("\n");
 }

@@ -1,16 +1,14 @@
-import type { BotInfo, BotKind } from "../src/protocol";
-
-const KIND_LABEL: Record<BotKind, string> = { scripted: "scripté", model: "modèle" };
+import type { BotInfo } from "../src/protocol";
 
 function botRow(bot: BotInfo): HTMLTableRowElement {
   const row = document.createElement("tr");
   row.insertCell().textContent = bot.name;
   if ("kind" in bot) {
-    for (const text of [KIND_LABEL[bot.kind], bot.version, bot.goal ?? "aucun"]) row.insertCell().textContent = text;
+    for (const text of [bot.kind, bot.version, bot.goal ?? "none"]) row.insertCell().textContent = text;
   } else {
     const cell = row.insertCell();
     cell.colSpan = 3;
-    cell.textContent = `ne se charge pas : ${bot.error}`;
+    cell.textContent = `does not load: ${bot.error}`;
   }
   return row;
 }

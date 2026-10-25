@@ -134,16 +134,32 @@ function acrossConnection(map: RouteMap, outside: Place, direction: Direction, l
   return inside(next, arrival) && free(next, arrival) ? arrival : null;
 }
 
-function inside(map: MapCells, c: Cell): boolean {
+export function inside(map: Pick<MapCells, "mapWidth" | "mapHeight">, c: Cell): boolean {
   return c.x >= 0 && c.y >= 0 && c.x < map.mapWidth && c.y < map.mapHeight;
+}
+
+export function cellKey({ x, y }: Cell): string {
+  return `${x},${y}`;
+}
+
+export function edgeCells(map: Pick<MapCells, "mapWidth" | "mapHeight">, side: Direction): Cell[] {
+  const vertical = side === "north" || side === "south";
+  return Array.from({ length: vertical ? map.mapWidth : map.mapHeight }, (_, i) => {
+    if (vertical) return { x: i, y: side === "north" ? 0 : map.mapHeight - 1 };
+    return { x: side === "west" ? 0 : map.mapWidth - 1, y: i };
+  });
 }
 
 export function kindAt(map: MapCells, c: Cell): string {
   return map.kinds[(c.y - map.y0) * map.width + (c.x - map.x0)];
 }
 
+export function walkable(map: MapCells, c: Cell): boolean {
+  return inside(map, c) && WALKABLE.has(kindAt(map, c));
+}
+
 export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {
-  return inside(map, c) && WALKABLE.has(kindAt(map, c)) && !map.people.some((p) => p.x === c.x && p.y === c.y);
+  return walkable(map, c) && !map.people.some((p) => p.x === c.x && p.y === c.y);
 }
 
 function legsTo(end: string, start: string, cameFrom: Map<string, Link>): Leg[] {

@@ -1,5 +1,5 @@
-import { type ModelOptions, type ModelSettings, type Prompt, REASONING, type Usage } from "../harness/record";
-import { DEFAULT_MODEL } from "../protocol";
+import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
+import { DEFAULT_MODEL, DEFAULT_REASONING, REASONING } from "../protocol";
 import { DECISION_SCHEMA } from "./decision";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -17,7 +17,7 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   if (!Number.isFinite(costLimit) || costLimit <= 0) {
     throw new Error(`the cost limit must be a number of dollars above 0, not "${given.costLimit ?? env.LAB_COST_LIMIT}"`);
   }
-  const reasoning = REASONING.find((level) => level === (given.reasoning ?? "off"));
+  const reasoning = REASONING.find((level) => level === (given.reasoning ?? DEFAULT_REASONING));
   if (!reasoning) throw new Error(`the reasoning must be ${REASONING.join(", ")}, not "${given.reasoning}"`);
   const temperature = given.temperature ?? null;
   if (temperature !== null && !(temperature >= 0 && temperature <= MAX_TEMPERATURE)) throw new Error(`the temperature must be from 0 to ${MAX_TEMPERATURE}`);

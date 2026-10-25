@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, safely } from "./game";
+import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
 import { isRunRecord, type ModelOptions, modelTotals, originDifferences, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
@@ -43,12 +44,20 @@ class LivePlay {
   private credit = 0;
   private fpsWindow = { start: performance.now(), frames: 0, value: 0 };
   private activeReplay: Replay | null = null;
+  private atlas: AtlasWatch;
 
-  constructor(private readonly run: Run) {}
+  constructor(private readonly run: Run) {
+    this.atlas = new AtlasWatch(run.game);
+  }
+
+  sight(): Sight {
+    return this.atlas.sight();
+  }
 
   async reset(): Promise<void> {
     this.activeReplay = null;
     await this.run.reset();
+    this.atlas = new AtlasWatch(this.run.game);
     this.resyncClock();
   }
 
@@ -116,6 +125,7 @@ class LivePlay {
       const keys = this.nextKeys();
       if (keys === null) break;
       this.run.runFrame(keys);
+      this.atlas.onFrame();
       ran++;
     }
     if (this.speed !== "max") this.credit -= ran;
@@ -144,6 +154,7 @@ type RunSource = {
   state(): RunState;
   camera(): Camera | null;
   events(): readonly RunEvent[];
+  sight(): Sight;
   summary(): ShownRun;
 };
 
@@ -153,6 +164,7 @@ const viewerRun: RunSource = {
   state: () => run.readState(),
   camera: () => safely(() => run.game.camera()),
   events: () => live.replay?.player.played() ?? [],
+  sight: () => live.sight(),
   summary: () => ({ kind: "viewer", replay: live.replay && replayStatus(live.replay) }),
 };
 
@@ -163,6 +175,7 @@ function botRun(poolRun: PoolRun): RunSource {
     state: () => poolRun.view,
     camera: () => poolRun.view.camera,
     events: () => poolRun.events,
+    sight: () => poolRun.view.sight,
     summary: () => ({ kind: "bot", run: runSummary(poolRun) }),
   };
 }
@@ -227,7 +240,7 @@ function hasCompleteSlot(save: Uint8Array): boolean {
 async function writeStartSave(): Promise<string> {
   const save = run.core.saveData();
   if (!hasCompleteSlot(save)) {
-    return "Pas de sauvegarde complète. Sauvegardez dans le jeu et attendez le message de fin, puis recommencez.";
+    return "No complete save. Save in the game, wait for the message at the end of the save, then try again.";
   }
   await mkdir(SAVES_DIR, { recursive: true });
   // Keep the previous Starting save instead of overwriting it.
@@ -236,7 +249,7 @@ async function writeStartSave(): Promise<string> {
     await rename(START_SAVE, join(SAVES_DIR, `start-${stamp}.sav`));
   }
   await Bun.write(START_SAVE, save);
-  return "Sauvegarde de départ écrite dans lab/saves/start.sav (l'ancienne est gardée à côté).";
+  return "Starting save written to lab/saves/start.sav (the old one is kept next to it).";
 }
 
 async function recordNames(): Promise<string[]> {
@@ -249,15 +262,15 @@ function replayStatus({ name, player }: Replay): ReplayStatus {
 }
 
 async function replayFile(name: string): Promise<string> {
-  if (!(await recordNames()).includes(name)) return `Pas de Run record ${name} dans lab/runs/.`;
+  if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/.`;
   const record: unknown = await Bun.file(join(RUNS_DIR, name)).json().catch(() => null);
-  if (!isRunRecord(record)) return `${name} n'est pas un Run record.`;
+  if (!isRunRecord(record)) return `${name} is not a Run record.`;
   const differences = await live.startReplay(name, record);
   show(viewerRun);
   if (differences.length > 0) {
-    return `${name} ne se rejoue pas ici (${differences.join(", ")} différent). La Run repart de la sauvegarde de départ, au clavier.`;
+    return `${name} does not replay here (different ${differences.join(", ")}). The Run starts again from the Starting save, and the keyboard plays it.`;
   }
-  return `Replay de ${name}.`;
+  return `Replay of ${name}.`;
 }
 
 function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: PoolRun): RunSummary {
@@ -268,7 +281,7 @@ function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: Poo
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
+    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
   };
 }
 
@@ -279,32 +292,33 @@ function show(next: RunSource): void {
   screenFrame = null;
   sendEvents();
   sendMap(shown.state());
+  sendSight();
 }
 
 async function startBot(name: string, given: ModelOptions): Promise<string> {
-  if (!(await botNames()).includes(name)) return `Pas de Bot ${name} dans lab/bots/.`;
-  if (pool.full) return `Pas de nouvelle Run : ${pool.limit} Runs de Bot jouent déjà (${MAX_RUNS} émulateurs au plus, avec la Run du Viewer).`;
+  if (!(await botNames()).includes(name)) return `No Bot ${name} in lab/bots/.`;
+  if (pool.full) return `No new Run: ${pool.limit} Runs of Bots play now (${MAX_RUNS} emulators at most, with the Viewer Run).`;
   let bot: Bot;
   try {
     bot = await loadBot(name, given);
   } catch (error) {
-    return `Pas de Run : ${errorText(error)}.`;
+    return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
   const started = pool.start({ bot: name, ...(model ? { model } : {}) });
   show(botRun(started));
   void started.done.then((end) => onBotEnd(started, end));
-  return `Run ${started.id} : le Bot ${name} joue${model ? ` avec le modèle ${model.id} (limite ${model.costLimit} $)` : ""}.`;
+  return `Run ${started.id}: the Bot ${name} plays${model ? ` with the model ${model.id} (limit ${model.costLimit} $)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
-  const failure = error ? ` · erreur : ${error}` : "";
+  const failure = error ? ` · error: ${error}` : "";
   try {
-    const end = record ? `fin : ${record.result.endReason}, Run record runs/${basename(await writeRecord(record))}` : "pas de Run record";
-    send({ type: "notice", text: `Run ${id} (${spec.bot}) : ${end}${failure}.` });
+    const end = record ? `end: ${record.result.endReason}, Run record runs/${basename(await writeRecord(record))}` : "no Run record";
+    send({ type: "notice", text: `Run ${id} (${spec.bot}): ${end}${failure}.` });
     send({ type: "records", names: await recordNames() });
   } catch (writeError) {
-    send({ type: "notice", text: `Run ${id} (${spec.bot}) : le Run record n'est pas écrit (${writeError})${failure}.` });
+    send({ type: "notice", text: `Run ${id} (${spec.bot}): the Run record is not written (${writeError})${failure}.` });
   }
   await sendStatus();
 }
@@ -358,21 +372,21 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       break;
     case "quick-save":
       live.quickState = run.core.saveState();
-      send({ type: "notice", text: "Savestate gardé (en mémoire)." });
+      send({ type: "notice", text: "Savestate kept (in memory)." });
       break;
     case "quick-load":
       if (live.replay) {
-        send({ type: "notice", text: "Pas de retour au savestate pendant un replay." }, ws);
+        send({ type: "notice", text: "No load of the savestate during a replay." }, ws);
       } else if (live.quickState && run.core.loadState(live.quickState)) {
         live.resyncClock();
         show(viewerRun);
-        send({ type: "notice", text: "Retour au savestate." });
+        send({ type: "notice", text: "Savestate loaded." });
       }
       break;
     case "reset":
       await live.reset();
       show(viewerRun);
-      send({ type: "notice", text: "Run relancée depuis la sauvegarde de départ." });
+      send({ type: "notice", text: "The Run starts again from the Starting save." });
       break;
     case "write-start-save":
       send({ type: "notice", text: await writeStartSave() });
@@ -383,7 +397,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "end-replay":
       if (!live.replay) break;
       live.endReplay();
-      send({ type: "notice", text: "Fin du replay : le clavier joue la Run depuis cette image." });
+      send({ type: "notice", text: "End of the replay: the keyboard plays the Run from this frame." });
       break;
     case "start-bot":
       send({ type: "notice", text: await startBot(message.name, message.model) });
@@ -392,7 +406,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       const poolRun = pool.runs.find((r) => r.id === message.runId);
       if (!poolRun || poolRun.end) break;
       poolRun.stop();
-      send({ type: "notice", text: `Run ${poolRun.id} : arrêt demandé. Le Run s'arrête après l'action ou le Model call en cours.` });
+      send({ type: "notice", text: `Run ${poolRun.id}: stop asked. The Run stops after the action or the Model call that plays.` });
       break;
     }
     case "show": {
@@ -416,19 +430,27 @@ function sendAudio(): void {
   message.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 2);
   for (const ws of audioClients) ws.send(message);
 }
+const lastSent = new Map<ServerMessage["type"], string>();
+
+/** To one client always; to all the clients only when the message changed since they got it. */
+function sendChanged(message: ServerMessage, to?: ServerWebSocket<unknown>): void {
+  const json = JSON.stringify(message);
+  if (!to && json === lastSent.get(message.type)) return;
+  if (!to) lastSent.set(message.type, json);
+  for (const ws of to ? [to] : clients) ws.send(json);
+}
+
+function sendSight(to?: ServerWebSocket<unknown>): void {
+  sendChanged({ type: "sight", maps: shown.sight() }, to);
+}
+
 let lastScreen = 0;
 /** The frame of the last screen sent; null: send the next screen. */
 let screenFrame: number | null = null;
 let lastState = 0;
-let lastGridJson = "";
-
 /** The grid only when it changed; the actors each time. */
 function sendMap({ grid, actors }: RunState, to?: ServerWebSocket<unknown>): void {
-  const json = JSON.stringify(grid);
-  if (to || json !== lastGridJson) {
-    lastGridJson = json;
-    for (const ws of to ? [to] : clients) ws.send(`{"type":"map","grid":${json}}`);
-  }
+  sendChanged({ type: "map", grid }, to);
   send({ type: "actors", actors }, to);
 }
 
@@ -451,6 +473,7 @@ function loop(): void {
     const runState = shown.state();
     if (runState.state) send({ type: "state", state: runState.state });
     sendMap(runState);
+    sendSight();
     // The whole-map view shows the screen area; the overlay gets the camera with each screen too.
     send({ type: "camera", camera: runState.camera });
     void sendStatus();
@@ -475,6 +498,7 @@ Bun.serve({
       void botInfos().then((bots) => send({ type: "bots", bots }, ws));
       sendEvents(ws);
       sendMap(shown.state(), ws);
+      sendSight(ws);
     },
     close(ws) {
       clients.delete(ws);

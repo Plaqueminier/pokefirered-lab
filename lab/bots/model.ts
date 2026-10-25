@@ -3,7 +3,7 @@ import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, m
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
 import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { B_PRESSES, situation, systemPrompt, userPrompt } from "../src/model/prompt";
-import { approaches, nextTo, type Overworld, type Target, visitedMaps } from "../src/model/targets";
+import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
 
 const GOAL = "first-rival-battle";
 const GOAL_TEXT = "Get your first Pokémon from Professor Oak, then win your first battle against your rival.";
@@ -25,6 +25,8 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
 
 class ModelPlay {
   readonly #system = systemPrompt(GOAL_TEXT);
+  // The game is frozen at a Decision point (ADR 0002): while the frame stays the same, so does the Decision point.
+  #atlasViewedAt: number | null = null;
 
   constructor(
     private readonly harness: Harness,
@@ -40,7 +42,7 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
-      const asked = askedOf(observation, visitedMaps(this.harness.events));
+      const asked = askedOf(observation, this.#atlasViewedAt === this.harness.frame);
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
       const action = await this.harness.modelCall(() => this.answer(observation, asked));
       this.stopAtLimits();
@@ -54,7 +56,7 @@ class ModelPlay {
   }
 
   private async answer(observation: Observation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
-    const prompt = { system: this.#system, user: userPrompt(observation, asked, this.harness.events) };
+    const prompt = { system: this.#system, user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress) };
     const request = { model: this.settings.id, situation: situation(asked), prompt };
     let reply: ModelReply;
     try {
@@ -86,7 +88,7 @@ class ModelPlay {
     switch (action.name) {
       case "go":
         if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
-        return this.go(asked.targets[action.target - 1], asked.overworld);
+        return this.go(asked.view.targets[action.target - 1], asked.overworld);
       case "goTo":
         await this.harness.goTo(action.x, action.y, action.map);
         return;
@@ -102,10 +104,17 @@ class ModelPlay {
       case "press":
         await this.harness.press(action.button);
         return;
+      case "viewAtlas":
+        this.#atlasViewedAt = this.harness.frame;
+        return;
     }
   }
 
   private async go(target: Target, overworld: Overworld): Promise<void> {
+    if (target.kind === "map") {
+      await this.harness.goTo(target.cell.x, target.cell.y, target.map);
+      return;
+    }
     const interactAt = target.kind === "person" || target.kind === "sign" ? target.cell : null;
     if (interactAt && nextTo(overworld.player, interactAt)) {
       await this.harness.interact(interactAt.x, interactAt.y);

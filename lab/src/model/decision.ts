@@ -1,21 +1,23 @@
 import type { BattleState, Button, Observation } from "../harness/harness";
 import type { Decision } from "../harness/record";
 import { Keys } from "../protocol";
-import { type Overworld, type Target, targetsOf } from "./targets";
+import { atlasExtract, type AtlasView } from "./extract";
+import type { Overworld } from "./targets";
 
 export const MAX_NOTES = 500;
-// The prompt holds the objective and an action that the Bot cannot read: they must not make it grow.
-export const MAX_OBJECTIVE = 200;
+// The prompt holds the Mission, the objective and an action that the Bot cannot read: they must not make it grow.
+export const MAX_SENTENCE = 200;
 const MAX_QUOTED_ACTION = 80;
 
-const FIELDS = ["reason", "action", "objective", "notes"] as const satisfies readonly (keyof Decision)[];
+const FIELDS = ["reason", "action", "mission", "objective", "notes"] as const satisfies readonly (keyof Decision)[];
 
 export const DECISION_SCHEMA = {
   type: "object",
   properties: {
     reason: { type: "string", description: "Why you choose this action, in one or two short sentences." },
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go 2\"." },
-    objective: { type: "string", description: "What you do now, in one short sentence." },
+    mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
+    objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
     notes: { type: "string", description: `Your memory: the facts to keep, ${MAX_NOTES} characters at most.` },
   },
   required: FIELDS,
@@ -28,31 +30,35 @@ export type ModelAction =
   | { name: "choose"; option: string }
   | { name: "fight"; move: number }
   | { name: "run" }
-  | { name: "press"; button: Button };
+  | { name: "press"; button: Button }
+  | { name: "viewAtlas" };
 
-/** What the game asks the model: the overworld at a walk or a choice, the battle at a battle menu or the party menu. */
 export type Asked =
-  | { kind: "walk"; overworld: Overworld; targets: Target[] }
+  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean }
   | { kind: "choice"; overworld: Overworld; options: string[] }
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState };
 
 export type AskedKind = Asked["kind"];
 
-export const MODEL_ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
-  walk: ["go", "goTo", "press"],
+const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
+  walk: ["go", "goTo", "viewAtlas", "press"],
   choice: ["choose", "press"],
   battleAction: ["fight", "run", "press"],
   battleMove: ["fight", "press"],
   partyPick: ["press"],
 };
 
+export function actionsOf(asked: Asked): ModelAction["name"][] {
+  return asked.kind === "walk" && asked.atlasViewed ? ACTIONS.walk.filter((name) => name !== "viewAtlas") : ACTIONS[asked.kind];
+}
+
 const BUTTONS = Object.keys(Keys) as Button[];
 
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
-export function askedOf(observation: Observation, visited: ReadonlySet<string>): Asked | null {
+export function askedOf(observation: Observation, atlasViewed: boolean): Asked | null {
   const { waitingFor } = observation;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", overworld: observation, targets: targetsOf(observation, visited) };
+    if (waitingFor.kind === "walk") return { kind: "walk", overworld: observation, view: atlasExtract(observation), atlasViewed };
     return waitingFor.kind === "choice" ? { kind: "choice", overworld: observation, options: waitingFor.options } : null;
   }
   const { kind } = waitingFor;
@@ -75,16 +81,16 @@ export function readDecision(content: string): Decision {
     if (typeof text !== "string") throw new Error(`the answer has no string "${field}"`);
     decision[field] = text.trim();
   }
-  return { ...decision, objective: decision.objective.slice(0, MAX_OBJECTIVE), notes: decision.notes.slice(0, MAX_NOTES) };
+  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), notes: decision.notes.slice(0, MAX_NOTES) };
 }
 
 export function readAction(text: string, asked: Asked): ModelAction {
   const action = parse(text.trim());
   if (!action) throw new Error(`"${quoted(text)}" is not an action`);
-  const accepted = MODEL_ACTIONS[asked.kind];
+  const accepted = actionsOf(asked);
   if (!accepted.includes(action.name)) throw new Error(`"${action.name}" is not an action now: use ${alternatives(accepted)}`);
   if (action.name === "go") {
-    const targets = asked.kind === "walk" ? asked.targets.length : 0;
+    const targets = asked.kind === "walk" ? asked.view.targets.length : 0;
     if (action.target < 1 || action.target > targets) {
       throw new Error(`there is no target ${action.target}: ${targets === 0 ? "the map has no targets" : `the targets are 1 to ${targets}`}`);
     }
@@ -104,6 +110,7 @@ function parse(action: string): ModelAction | null {
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
   if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };
   if (/^run$/i.test(action)) return { name: "run" };
+  if (/^viewAtlas$/i.test(action)) return { name: "viewAtlas" };
   const button = action.match(/^press\s+(\w+)$/i)?.[1].toLowerCase();
   const pressed = BUTTONS.find((b) => b.toLowerCase() === button);
   return pressed ? { name: "press", button: pressed } : null;

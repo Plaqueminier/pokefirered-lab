@@ -19,6 +19,7 @@ import type { PartyMon } from "../party";
 import type { Messages } from "../prompts";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
+import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
 import { ButtonTrack, GameWatch, type ModelAnswer, type ModelEvent, type ModelOptions, type ModelSettings, type RunEvent, type RunHeader, type RunRecord } from "./record";
 
@@ -31,6 +32,7 @@ const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
 const FRAME_BUDGET = 30_000;
 const NO_PROGRESS_LIMIT = 200;
+const RIVAL_GRAPHICS = "BLUE";
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
@@ -54,9 +56,10 @@ export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
 export type BattleState = { kind: Battle["kind"]; player: BattleMon; enemy: EnemyMon };
 
-type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[] };
+type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; milestones: Milestone[]; atlas: Atlas };
 
-export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics">;
+/** The game tells the player the name of the rival at the start, so the player Knowledge level shows it. */
+export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics"> & { rival?: string };
 
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState });
@@ -64,6 +67,9 @@ export type Observation = ObservationBase &
 export type EndReason = "goal" | "bot stopped" | "user stop" | "frame budget" | "no progress";
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
+
+/** `since`: the number of events of the Run at the last progress. */
+export type NoProgress = { decisions: number; since: number };
 
 export type Interruption = GameInterruption | "map";
 
@@ -147,7 +153,7 @@ type ModelCallListener = (event: ModelEvent, harness: Harness) => void;
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
   onAction?: ActionListener;
-  onFrame?: () => void;
+  onFrame?: (harness: Harness) => void;
   onModelCallStart?: ModelCallStartListener;
   onModelCall?: ModelCallListener;
   frameBudget?: number;
@@ -173,7 +179,7 @@ class RunEnd extends Error {
 }
 
 class RunLimits {
-  #decisionsWithNoProgress = 0;
+  #noProgress: NoProgress = { decisions: 0, since: 0 };
 
   constructor(
     private readonly goal: Milestone | null,
@@ -186,11 +192,15 @@ class RunLimits {
     if (frame >= this.lastFrame) throw new RunEnd("frame budget");
   }
 
-  atDecision(milestones: Milestone[], progress: number): void {
+  get noProgress(): NoProgress {
+    return this.#noProgress;
+  }
+
+  atDecision(milestones: Milestone[], progress: number, events: number): void {
     if (this.goal && milestones.includes(this.goal)) throw new RunEnd("goal");
-    this.#decisionsWithNoProgress = progress > this.progress ? 0 : this.#decisionsWithNoProgress + 1;
+    this.#noProgress = progress > this.progress ? { decisions: 0, since: events } : { ...this.#noProgress, decisions: this.#noProgress.decisions + 1 };
     this.progress = progress;
-    if (this.#decisionsWithNoProgress >= this.noProgressLimit) throw new RunEnd("no progress");
+    if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
   }
 }
 
@@ -200,7 +210,7 @@ export class Harness {
   readonly #run: Run;
   readonly #knowledge: KnowledgeLevel;
   readonly #onAction?: ActionListener;
-  readonly #onFrame?: () => void;
+  readonly #onFrame?: (harness: Harness) => void;
   readonly #onModelCallStart?: ModelCallStartListener;
   readonly #onModelCall?: ModelCallListener;
   readonly #frameBudget?: number;
@@ -209,6 +219,7 @@ export class Harness {
   readonly #battles = new BattleWatch();
   readonly #buttons = new ButtonTrack();
   readonly #watch: GameWatch;
+  readonly #atlas: AtlasWatch;
   readonly #events: RunEvent[] = [];
   #phase: Phase = { kind: "ready" };
 
@@ -223,6 +234,7 @@ export class Harness {
     this.#noProgressLimit = options.noProgressLimit ?? NO_PROGRESS_LIMIT;
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#watch = new GameWatch(run.game);
+    this.#atlas = new AtlasWatch(run.game);
   }
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
@@ -249,6 +261,11 @@ export class Harness {
 
   get events(): readonly RunEvent[] {
     return this.#events;
+  }
+
+  get noProgress(): NoProgress {
+    if (this.#phase.kind !== "playing") throw new Error("noProgress exists only while a Bot plays");
+    return this.#phase.limits.noProgress;
   }
 
   get rawInputs(): number {
@@ -310,13 +327,17 @@ export class Harness {
     return this.#run.game.waitingFor();
   }
 
+  sight(): Sight {
+    return this.#atlas.sight();
+  }
+
   observe(): Observation {
     const game = this.#run.game;
-    const base = { waitingFor: game.waitingFor(), party: game.party(), milestones: game.milestones() };
+    const base = { waitingFor: game.waitingFor(), party: game.party(), milestones: game.milestones(), atlas: this.#atlas.atlas(this.#knowledge) };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
-    const people = actors.people.map(({ x, y, graphics }) => ({ x, y, graphics }));
+    const people = actors.people.map(({ x, y, graphics }): Person => (graphics === RIVAL_GRAPHICS ? { x, y, graphics, rival: game.rivalName() } : { x, y, graphics }));
     return { ...base, mode: "overworld", map: game.map(), player, grid, people };
   }
 
@@ -465,8 +486,9 @@ export class Harness {
     const entry = { action, result };
     // The action event goes before the game events of its frames.
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
+    this.#atlas.onAction(entry);
     this.#onAction?.(entry, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress);
+    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.#events.length);
     this.stopIfAsked();
     return result;
   }
@@ -547,9 +569,10 @@ export class Harness {
     this.#buttons.push(keys);
     const events = this.#watch.onFrame(this.frame);
     this.#events.push(...events);
+    this.#atlas.onFrame();
     const started = events.some((e) => e.type === "battle" && e.state === "start");
     this.#battles.onFrame(started, this.#run.game.enemyMovePrinted());
-    this.#onFrame?.();
+    this.#onFrame?.(this);
     return started;
   }
 

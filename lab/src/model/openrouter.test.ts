@@ -6,7 +6,7 @@ import { modelSettings, openRouter } from "./openrouter";
 const KEY = "sk-or-test-key";
 const PROMPT = { system: "rules", user: "now" };
 const REPLY = {
-  choices: [{ message: { content: '{"reason":"r","action":"go 1","objective":"o","notes":""}' } }],
+  choices: [{ message: { content: '{"reason":"r","action":"go 1","mission":"m","objective":"o","notes":""}' } }],
   usage: { prompt_tokens: 1200, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 0 }, cost: 0.00021 },
 };
 
@@ -20,10 +20,10 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("modelSettings", () => {
-  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, no reasoning and the temperature of the model", () => {
-    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "off", temperature: null });
+  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning and the temperature of the model", () => {
+    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null });
     expect(modelSettings({}, { LAB_COST_LIMIT: "0.2" }).costLimit).toBe(0.2);
-    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "low", temperature: 0.3 }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "low", temperature: 0.3 });
+    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3 }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3 });
   });
 
   test("it refuses a cost limit, a reasoning or a temperature that is not valid", () => {
@@ -35,7 +35,7 @@ describe("modelSettings", () => {
 });
 
 describe("openRouter", () => {
-  test("it asks for the strict JSON schema of the answer, only from the providers that apply it, with the reasoning off and no temperature by default", async () => {
+  test("it asks for the strict JSON schema of the answer, only from the providers that apply it, with a low reasoning and no temperature by default", async () => {
     const { calls, fetcher } = fakeFetch(200, REPLY);
     await openRouter(modelSettings({ id: "a/b" }, {}), KEY, fetcher)(PROMPT);
     expect(calls).toHaveLength(1);
@@ -52,7 +52,7 @@ describe("openRouter", () => {
       response_format: { type: "json_schema", json_schema: { name: "decision", strict: true, schema: DECISION_SCHEMA } },
       provider: { require_parameters: true },
       max_tokens: 4000,
-      reasoning: { effort: "none" },
+      reasoning: { effort: "low" },
     });
   });
 
@@ -60,6 +60,8 @@ describe("openRouter", () => {
     const { calls, fetcher } = fakeFetch(200, REPLY);
     await openRouter(modelSettings({ reasoning: "high", temperature: 0 }, {}), KEY, fetcher)(PROMPT);
     expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ reasoning: { effort: "high" }, temperature: 0, max_tokens: 4000 });
+    await openRouter(modelSettings({ reasoning: "off" }, {}), KEY, fetcher)(PROMPT);
+    expect(JSON.parse(String(calls[1].init.body))).toMatchObject({ reasoning: { effort: "none" } });
   });
 
   test("it gives the text of the answer, the tokens and the cost", async () => {

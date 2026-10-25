@@ -21,8 +21,8 @@ const ANSWER: ModelAnswer = {
   model: "a/b",
   situation: "a walk on PalletTown (6, 1)",
   prompt: { system: "rules", user: "now" },
-  answer: '{"reason":"I go north.","action":"goTo 6 0","objective":"","notes":""}',
-  decision: { reason: "I go north.", action: "goTo 6 0", objective: "", notes: "" },
+  answer: '{"reason":"I go north.","action":"goTo 6 0","mission":"","objective":"","notes":""}',
+  decision: { reason: "I go north.", action: "goTo 6 0", mission: "", objective: "", notes: "" },
   error: null,
   usage: { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: 0.0001 },
 };

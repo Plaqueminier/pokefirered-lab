@@ -1,4 +1,4 @@
-import type { Memory } from "./memory";
+import type { Memory, Ref } from "./memory";
 import type { Decode } from "./prompts";
 
 // SUBSTRUCT_CASE rows of GetSubstruct (pokemon.c): growth, attacks, EVs, misc positions per personality % 24.
@@ -7,8 +7,20 @@ const SUBSTRUCT_SIZE = 12;
 const MAX_MON_MOVES = 4;
 export const MOVE_NONE = 0;
 const PARTY_SIZE = 6;
+const GROWTH_HELD_ITEM = 2;
+const GROWTH_EXPERIENCE = 4;
 const GROWTH_PP_BONUSES = 8;
 const ATTACKS_PP = 8;
+// PokemonSubstruct3 (pokemon.h): abilityNum is bit 31 of the u32 that holds the IVs.
+const MISC_IV_WORD = 4;
+const ABILITY_NUM_BIT = 31;
+const NUM_NATURES = 25;
+const MAX_LEVEL = 100;
+const ITEM_NONE = 0;
+// The Summary screen shows "---" for a power below 2 and for an accuracy of 0 (pokemon_summary_screen.c).
+const MIN_SHOWN_POWER = 2;
+const MAX_STRING = 256;
+export const STAT_NAMES = ["attack", "defense", "speed", "spAttack", "spDefense"] as const;
 // STATUS1_* (constants/battle.h); the game shows PSN for STATUS1_POISON and STATUS1_TOXIC_POISON.
 const STATUS_BITS: [number, Status][] = [
   [0x07, "sleep"],
@@ -20,9 +32,26 @@ const STATUS_BITS: [number, Status][] = [
 
 export type Status = "none" | "sleep" | "poison" | "burn" | "freeze" | "paralysis";
 
-export type PartyMove = { name: string; pp: number; maxPp: number };
+export type Stats = Record<(typeof STAT_NAMES)[number], number>;
 
-export type PartyMon = { species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: PartyMove[] };
+export type PartyMove = { name: string; type: string; power: number | null; accuracy: number | null; pp: number; maxPp: number; description: string };
+
+export type PartyMon = {
+  species: string;
+  nickname: string;
+  types: string[];
+  ability: { name: string; description: string };
+  heldItem: string | null;
+  nature: string;
+  level: number;
+  exp: number;
+  expToNextLevel: number;
+  hp: number;
+  maxHp: number;
+  status: Status;
+  stats: Stats;
+  moves: PartyMove[];
+};
 
 export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   const count = Math.min(mem.global("gPlayerPartyCount").int(), PARTY_SIZE);
@@ -35,15 +64,30 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     const positions = SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length];
     const growth = Number(positions[0]) * SUBSTRUCT_SIZE;
     const attacks = Number(positions[1]) * SUBSTRUCT_SIZE;
+    const misc = Number(positions[3]) * SUBSTRUCT_SIZE;
     const ppBonuses = substructs.getUint8(growth + GROWTH_PP_BONUSES);
     const moves = readMoves(mem, decode, ppBonuses, (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
+    const species = substructs.getUint16(growth, true);
+    const info = mem.global("gSpeciesInfo").at(species);
+    const ability = info.field("abilities").at((substructs.getUint32(misc + MISC_IV_WORD, true) >>> ABILITY_NUM_BIT) & 1).int();
+    const item = substructs.getUint16(growth + GROWTH_HELD_ITEM, true);
+    const level = mon.field("level").int();
+    const exp = substructs.getUint32(growth + GROWTH_EXPERIENCE, true);
+    const nextLevel = level < MAX_LEVEL ? mem.global("gExperienceTables").at(info.field("growthRate").int()).at(level + 1).int() : exp;
     return {
-      species: nameAt(mem, "gSpeciesNames", substructs.getUint16(growth, true), decode),
+      species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(box.field("nickname").bytes()),
-      level: mon.field("level").int(),
+      types: speciesTypes(mem, species, decode),
+      ability: { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) },
+      heldItem: item === ITEM_NONE ? null : decode(mem.global("gItems").at(item).field("name").bytes()),
+      nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
+      level,
+      exp,
+      expToNextLevel: nextLevel - exp,
       hp: mon.field("hp").int(),
       maxHp: mon.field("maxHP").int(),
       status: statusOf(mon.field("status").int()),
+      stats: readStats(mon),
       moves,
     };
   });
@@ -53,7 +97,19 @@ export function readMoves(mem: Memory, decode: Decode, ppBonuses: number, slot: 
   const moves: PartyMove[] = [];
   for (let i = 0; i < MAX_MON_MOVES; i++) {
     const { move, pp } = slot(i);
-    if (move !== MOVE_NONE) moves.push({ name: nameAt(mem, "gMoveNames", move, decode), pp, maxPp: maxPp(mem, move, ppBonuses, i) });
+    if (move === MOVE_NONE) continue;
+    const data = mem.global("gBattleMoves").at(move);
+    const power = data.field("power").int();
+    const accuracy = data.field("accuracy").int();
+    moves.push({
+      name: nameAt(mem, "gMoveNames", move, decode),
+      type: typeName(mem, data.field("type").int(), decode),
+      power: power >= MIN_SHOWN_POWER ? power : null,
+      accuracy: accuracy === 0 ? null : accuracy,
+      pp,
+      maxPp: maxPp(mem, move, ppBonuses, i),
+      description: textAt(mem, mem.global("gMoveDescriptionPointers").at(move - 1).pointer(), decode),
+    });
   }
   return moves;
 }
@@ -74,8 +130,29 @@ function maxPp(mem: Memory, move: number, ppBonuses: number, slot: number): numb
   return basePp + Math.floor((basePp * 20 * ppUps) / 100);
 }
 
+/** The name tables of the game have no name at id 0. */
 export function nameAt(mem: Memory, table: string, id: number, decode: Decode): string {
   const names = mem.global(table);
-  if (id <= 0 || id >= names.length) return `#${id}`;
+  if (id < 1 || id >= names.length) return `#${id}`;
   return decode(names.at(id).bytes());
+}
+
+/** gTypeNames has a name at id 0: TYPE_NORMAL. */
+function typeName(mem: Memory, type: number, decode: Decode): string {
+  const names = mem.global("gTypeNames");
+  return type < names.length ? decode(names.at(type).bytes()) : `#${type}`;
+}
+
+export function speciesTypes(mem: Memory, species: number, decode: Decode): string[] {
+  const types = mem.global("gSpeciesInfo").at(species).field("types");
+  return [...new Set([0, 1].map((i) => types.at(i).int()))].map((type) => typeName(mem, type, decode));
+}
+
+/** The stats of a party Pokémon or of a battle Pokémon: the two structs have the same field names. */
+export function readStats(mon: Ref): Stats {
+  return Object.fromEntries(STAT_NAMES.map((name) => [name, mon.field(name).int()])) as Stats;
+}
+
+function textAt(mem: Memory, address: number, decode: Decode): string {
+  return decode(mem.bus.read(address, MAX_STRING)).split("\n").join(" ");
 }

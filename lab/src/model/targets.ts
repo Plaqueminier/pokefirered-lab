@@ -1,14 +1,15 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../game";
+import { type AtlasEdge, type AtlasMap, type AtlasWarp, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
-import { type Cell, free } from "../harness/path";
-import type { RunEvent } from "../harness/record";
+import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
 
 export type Overworld = Extract<Observation, { mode: "overworld" }>;
 
 export type Target = { label: string } & (
-  | { kind: "exit" | "person"; cell: Cell }
+  | { kind: "exit" | "person" | "frontier"; cell: Cell }
   | { kind: "sign"; cell: Cell; facing: Direction | "any" }
   | { kind: "edge"; side: Direction }
+  | { kind: "map"; map: string; cell: Cell }
 );
 
 const EXIT_NAMES: [RegExp, string][] = [
@@ -20,42 +21,67 @@ const EXIT_NAMES: [RegExp, string][] = [
 const OPPOSITE: Record<Direction, Direction> = { north: "south", south: "north", west: "east", east: "west" };
 const EDGE_TRIES = 3;
 
-export function visitedMaps(events: readonly RunEvent[]): Set<string> {
-  return new Set(events.flatMap((e) => (e.type === "map" ? [e.map] : [])));
+function exitName(behavior: string): string {
+  return EXIT_NAMES.find(([pattern]) => pattern.test(behavior))?.[1] ?? "warp";
 }
 
-// A player knows where an exit goes only when it has been on that map.
-export function targetsOf({ grid, people }: Overworld, visited: ReadonlySet<string>): Target[] {
-  const to = (map: string) => (visited.has(map) ? `to ${map}` : "to a map that you have not visited");
-  const exits = grid.warps.flatMap((w): Target[] => {
-    if (w.how === "none") return [];
-    const name = EXIT_NAMES.find(([pattern]) => pattern.test(w.behavior))?.[1] ?? "warp";
-    return [{ kind: "exit", label: `${name} at (${w.x}, ${w.y}), ${to(w.to)}`, cell: { x: w.x, y: w.y } }];
+function destination(to: string | null): string {
+  return to ? `to ${to}` : "not taken";
+}
+
+export function warpLabel(w: AtlasWarp): string {
+  return `${exitName(w.behavior)} at (${w.x}, ${w.y}), ${destination(w.to)}`;
+}
+
+export function edgeLabel(e: AtlasEdge): string {
+  return `${e.side} edge, ${destination(e.to)}`;
+}
+
+export function localTargets(overworld: Overworld, here: AtlasMap): Target[] {
+  const { people } = overworld;
+  const seen = seenIn(here);
+  const exits = here.warps.map((w): Target => ({ kind: "exit", label: warpLabel(w), cell: { x: w.x, y: w.y } }));
+  const edges = here.edges.map((e): Target => ({ kind: "edge", label: edgeLabel(e), side: e.side }));
+  const persons = people.filter(seen).map((p): Target => {
+    const name = p.rival ? `${p.rival} (your rival)` : p.graphics.replaceAll("_", " ");
+    return { kind: "person", label: `${name} at (${p.x}, ${p.y})`, cell: { x: p.x, y: p.y } };
   });
-  const edges = grid.connections.flatMap((c): Target[] =>
-    c.direction in DIRECTION_STEP ? [{ kind: "edge", label: `${c.direction} edge of the map, ${to(c.map)}`, side: c.direction as Direction }] : [],
-  );
-  const persons = people.map((p): Target => ({ kind: "person", label: `${p.graphics.replaceAll("_", " ")} at (${p.x}, ${p.y})`, cell: { x: p.x, y: p.y } }));
-  const signs = grid.signs.flatMap((s): Target[] => (s.kind === "sign" ? [{ kind: "sign", label: `sign at (${s.x}, ${s.y})`, cell: { x: s.x, y: s.y }, facing: s.playerFacing }] : []));
-  return [...exits, ...edges, ...persons, ...signs];
+  const signs = here.signs.map((s): Target => ({ kind: "sign", label: `sign at (${s.x}, ${s.y})${s.text ? `: "${s.text}"` : ""}`, cell: { x: s.x, y: s.y }, facing: s.facing }));
+  return [...exits, ...edges, ...frontier(overworld, seen), ...persons, ...signs];
 }
 
-/** The cells where `goTo` goes for the target, the best first. */
-export function approaches(target: Target, { grid, player, people }: Overworld): Cell[] {
+function frontier({ grid, player }: Overworld, seen: (cell: Cell) => boolean): Target[] {
+  const found = new Map<Direction, Cell>();
+  const visited = new Set([cellKey(player)]);
+  const queue: Cell[] = [{ x: player.x, y: player.y }];
+  for (let cell = queue.shift(); cell; cell = queue.shift()) {
+    for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
+      const next = { x: cell.x + dx, y: cell.y + dy };
+      if (inside(grid, next) && !seen(next) && !found.has(direction)) found.set(direction, cell);
+      const key = cellKey(next);
+      if (visited.has(key) || !seen(next) || !walkable(grid, next)) continue;
+      visited.add(key);
+      queue.push(next);
+    }
+  }
+  return DIRECTION_STEPS.flatMap(([direction]): Target[] => {
+    const cell = found.get(direction);
+    return cell ? [{ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y})`, cell }] : [];
+  });
+}
+
+export function approaches(target: Exclude<Target, { kind: "map" }>, { grid, player, people }: Overworld): Cell[] {
   const isFree = (c: Cell) => free({ ...grid, people }, c);
   const nearest = (cells: Cell[]) => cells.filter(isFree).toSorted((a, b) => distance(a, player) - distance(b, player));
   switch (target.kind) {
     case "exit":
+    case "frontier":
       return [target.cell];
     case "edge": {
       const [dx, dy] = DIRECTION_STEP[target.side];
-      const along = dx === 0 ? grid.mapWidth : grid.mapHeight;
-      const inside = Array.from({ length: along }, (_, i): Cell => {
-        if (dx === 0) return { x: i, y: dy < 0 ? 0 : grid.mapHeight - 1 };
-        return { x: dx < 0 ? 0 : grid.mapWidth - 1, y: i };
-      });
-      const cells = nearest(inside).slice(0, EDGE_TRIES);
-      const tries = cells.length > 0 ? cells : [dx === 0 ? { x: player.x, y: inside[0].y } : { x: inside[0].x, y: player.y }];
+      const edge = edgeCells(grid, target.side);
+      const cells = nearest(edge).slice(0, EDGE_TRIES);
+      const tries = cells.length > 0 ? cells : [dx === 0 ? { x: player.x, y: edge[0].y } : { x: edge[0].x, y: player.y }];
       return tries.map((c) => ({ x: c.x + dx, y: c.y + dy }));
     }
     case "person":

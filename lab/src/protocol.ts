@@ -1,5 +1,6 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
 import type { Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
+import type { Sight } from "./harness/atlas";
 import type { EndReason } from "./harness/harness";
 import type { ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
@@ -19,6 +20,10 @@ export const Keys = {
 
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
+
+export const REASONING = ["off", "low", "medium", "high"] as const;
+
+export const DEFAULT_REASONING: (typeof REASONING)[number] = "low";
 
 /** The Viewer shows the screen and the state of a Run at most at these rates. */
 export const SCREEN_INTERVAL_MS = 1000 / 60;
@@ -45,7 +50,7 @@ export type RunSummary = {
   endReason: EndReason | null;
   error: string | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
-  model: (Pick<ModelSettings, "id" | "costLimit"> & { cost: number; callsStarted: number }) | null;
+  model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning"> & { cost: number; callsStarted: number }) | null;
 };
 
 /** The Run that the Viewer shows: its own Run (keyboard or replay), or a Run of a Bot. */
@@ -57,6 +62,7 @@ export type ServerMessage =
   /** Sent when the map grid changes (new map, or a cell changed). */
   | { type: "map"; grid: MapGrid | null }
   | { type: "actors"; actors: MapActors | null }
+  | { type: "sight"; maps: Sight }
   /** All map names, by group then number. Sent once. */
   | { type: "maps"; names: string[][] }
   /** Another map, read from ROM, as asked with "view-map". The player does not move. */

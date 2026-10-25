@@ -1,5 +1,6 @@
-import type { ModelEvent, RunEvent } from "../src/harness/record";
+import type { RunEvent } from "../src/harness/record";
 import type { ClientMessage, ShownRun } from "../src/protocol";
+import { callsStarted, modelCalls } from "./model-panel";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
 
@@ -10,7 +11,7 @@ function actionLabel({ action }: ActionEvent): string {
 
 function resultLabel({ result }: ActionEvent): string {
   const reason = "reason" in result ? ` (${result.reason})` : "";
-  return `${result.status}${reason} en ${result.frames} images`;
+  return `${result.status}${reason} in ${result.frames} frames`;
 }
 
 function texts({ result }: ActionEvent): string[] {
@@ -20,35 +21,35 @@ function texts({ result }: ActionEvent): string[] {
 function eventLabel(event: Exclude<RunEvent, ActionEvent>): string {
   switch (event.type) {
     case "map":
-      return `carte ${event.map}`;
+      return `map ${event.map}`;
     case "battle":
-      return event.state === "start" ? "début du combat" : "fin du combat";
+      return event.state === "start" ? "battle start" : "battle end";
     case "milestone":
-      return `étape ${event.milestone}`;
+      return `Milestone ${event.milestone}`;
     case "model":
-      return `modèle : ${event.decision?.action ?? "pas d'action"}`;
+      return `model: ${event.decision?.action ?? "no action"}`;
   }
 }
 
 function modelText(events: RunEvent[], callsStarted: number): string {
-  const calls = events.filter((e): e is ModelEvent => e.type === "model");
-  const thinking = callsStarted > calls.length;
+  const { calls, thinking } = modelCalls(events);
+  const mission = calls.findLast((e) => e.decision?.mission)?.decision?.mission;
   const objective = calls.findLast((e) => e.decision?.objective)?.decision?.objective;
   const last = calls.at(-1);
   const answer =
-    thinking ? "le modèle réfléchit…"
+    thinking(callsStarted) ? "the model thinks…"
     : !last ? null
     : last.decision ? `${last.decision.reason} → ${last.decision.action}`
-    : `pas d'action : ${last.error}`;
-  return [objective ? `Objectif : ${objective}` : null, answer].filter((line) => line !== null).join("\n");
+    : `no action: ${last.error}`;
+  return [mission ? `Mission: ${mission}` : null, objective ? `Objective: ${objective}` : null, answer].filter((line) => line !== null).join("\n");
 }
 
 function statusText(frame: number, shown: ShownRun): string {
-  if (shown.kind === "bot") return `Run ${shown.run.id} · image ${frame}`;
+  if (shown.kind === "bot") return `Run ${shown.run.id} · frame ${frame}`;
   const { replay } = shown;
-  if (!replay) return "pas de replay : le clavier joue la Run";
-  if (replay.ended) return `${replay.name} · fin du replay à l'image ${replay.frames} · ${replay.endReason}`;
-  return `${replay.name} · image ${frame} / ${replay.frames}`;
+  if (!replay) return "no replay: the keyboard plays the Run";
+  if (replay.ended) return `${replay.name} · end of the replay at frame ${replay.frames} · ${replay.endReason}`;
+  return `${replay.name} · frame ${frame} / ${replay.frames}`;
 }
 
 export type ReplayElements = {
@@ -82,7 +83,7 @@ export class ReplayPanel {
   setRecords(names: string[]): void {
     this.ui.records.replaceChildren(...names.map((name) => new Option(name, name)));
     this.ui.start.disabled = names.length === 0;
-    if (names.length === 0) this.ui.records.append(new Option("aucun Run record dans lab/runs/", ""));
+    if (names.length === 0) this.ui.records.append(new Option("no Run record in lab/runs/", ""));
   }
 
   onEvents(events: RunEvent[]): void {
@@ -92,8 +93,7 @@ export class ReplayPanel {
 
   onStatus(frame: number, shown: ShownRun): void {
     this.frame = frame;
-    // A Run that ended with an error can have a Model call with no model event.
-    this.modelCallsStarted = shown.kind === "bot" && shown.run.playing ? (shown.run.model?.callsStarted ?? 0) : 0;
+    this.modelCallsStarted = callsStarted(shown);
     const keyboard = shown.kind === "viewer" && !shown.replay;
     if (keyboard) this.events = [];
     this.ui.end.hidden = shown.kind === "bot" || keyboard;
@@ -105,7 +105,7 @@ export class ReplayPanel {
     const action = this.events.findLast((e): e is ActionEvent => e.type === "action");
     const done = action !== undefined && this.frame >= action.frame + action.result.frames;
     this.ui.action.textContent = action ? actionLabel(action) : "–";
-    this.ui.detail.textContent = action ? [`depuis l'image ${action.frame} · ${done ? resultLabel(action) : "en cours"}`, ...(done ? texts(action) : [])].join("\n") : "";
+    this.ui.detail.textContent = action ? [`from frame ${action.frame} · ${done ? resultLabel(action) : "playing"}`, ...(done ? texts(action) : [])].join("\n") : "";
     this.ui.model.textContent = modelText(this.events, this.modelCallsStarted);
     const log = this.events.map((event) => `${String(event.frame).padStart(6)}  ${event.type === "action" ? actionLabel(event) : eventLabel(event)}`).join("\n");
     if (this.ui.events.textContent === log) return;

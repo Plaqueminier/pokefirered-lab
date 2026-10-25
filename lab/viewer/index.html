@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -17,8 +17,14 @@
         --code: #f0b58f;
         --warn: #e0a85a;
         --warn-line: #7a5a2a;
+        --scroll: #3d4450;
+        --code-bg: #15171b;
       }
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--scroll); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+      ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
       [hidden] { display: none !important; }
       body {
         margin: 0;
@@ -177,6 +183,21 @@
         border-radius: 4px;
         padding: 0 4px;
       }
+      .model-panel { flex-basis: 100%; }
+      .model-columns { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr); gap: 12px; }
+      .model-calls, .model-detail { max-height: 720px; overflow: auto; }
+      .model-calls { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+      .model-call { padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+      .model-call:hover { background: var(--code-bg); }
+      .model-call.on { background: var(--line); }
+      .model-answer { position: sticky; top: 0; background: var(--panel); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+      .model-action { font-size: 18px; font-weight: 600; color: var(--accent); }
+      .model-error { color: var(--bad); }
+      .model-dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 6px 0; }
+      .model-dl dt { color: var(--muted); }
+      .model-dl dd { margin: 0; }
+      .model-detail h3 { margin: 10px 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+      .model-pre { margin: 0; white-space: pre; overflow: auto; max-height: 460px; padding: 6px 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
       .tabs { display: flex; gap: 6px; padding: 16px 16px 0; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
@@ -222,52 +243,54 @@
           <button data-speed="1" data-viewer-run>×1</button>
           <button data-speed="4" data-viewer-run>×4</button>
           <button data-speed="max" data-viewer-run>Max</button>
-          <button id="overlay-toggle">Calque (G)</button>
-          <button id="sound" class="on">Son (M)</button>
-          <button id="quick-save" data-viewer-run>Garder l'état (K)</button>
-          <button id="quick-load" data-viewer-run>Revenir (L)</button>
-          <button id="reset" data-viewer-run>Relancer</button>
-          <button id="start-save" data-viewer-run>Écrire la sauvegarde de départ</button>
+          <button id="overlay-toggle">Overlay (G)</button>
+          <button id="sound" class="on">Sound (M)</button>
+          <button id="quick-save" data-viewer-run>Save state (K)</button>
+          <button id="quick-load" data-viewer-run>Load state (L)</button>
+          <button id="reset" data-viewer-run>Restart</button>
+          <button id="start-save" data-viewer-run>Write the Starting save</button>
         </div>
         <div class="legend" id="legend">
-          <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>bloqué</span>
-          <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>eau</span>
-          <span><span class="swatch" style="background: rgba(80, 200, 110, 0.35)"></span>hautes herbes</span>
-          <span>➜ rebord</span>
-          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp (contour : inactif)</span>
-          <span><span class="swatch" style="border-radius: 50%; background: rgba(240, 200, 40, 0.8)"></span>PNJ (creux : hors écran)</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)"></span>dresseur</span>
-          <span><span class="swatch" style="background: rgba(255, 60, 60, 0.35)"></span>vue d'un dresseur</span>
-          <span><span class="swatch" style="border: 2px solid rgba(255, 110, 30, 0.95)"></span>déclencheur actif (!)</span>
-          <span><span class="swatch" style="border: 2px dashed rgba(200, 200, 200, 0.6)"></span>déclencheur inactif</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 170, 60, 0.85)"></span>panneau</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(80, 230, 230, 0.9)"></span>objet caché</span>
+          <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>blocked</span>
+          <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>water</span>
+          <span><span class="swatch" style="background: rgba(80, 200, 110, 0.35)"></span>tall grass</span>
+          <span>➜ ledge</span>
+          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp (outline: inactive)</span>
+          <span><span class="swatch" style="border-radius: 50%; background: rgba(240, 200, 40, 0.8)"></span>person (hollow: off the screen)</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)"></span>trainer</span>
+          <span><span class="swatch" style="background: rgba(255, 60, 60, 0.35)"></span>trainer sight</span>
+          <span><span class="swatch" style="border: 2px solid rgba(255, 110, 30, 0.95)"></span>active trigger (!)</span>
+          <span><span class="swatch" style="border: 2px dashed rgba(200, 200, 200, 0.6)"></span>inactive trigger</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 170, 60, 0.85)"></span>sign</span>
+          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(80, 230, 230, 0.9)"></span>hidden item</span>
+          <span><span class="swatch" style="background: rgba(150, 155, 165, 0.8)"></span>never seen (whole map)</span>
         </div>
         <div class="muted">
-          Clavier : flèches, <kbd>X</kbd> = A, <kbd>W</kbd> ou <kbd>Z</kbd> = B, <kbd>Entrée</kbd> = Start,
-          <kbd>⌫</kbd> = Select, <kbd>Q</kbd> = L, <kbd>S</kbd> = R, <kbd>G</kbd> = calque, <kbd>M</kbd> = son.
-          Survolez une case avec le calque pour voir ses données.
+          Keys: arrows, <kbd>X</kbd> = A, <kbd>W</kbd> or <kbd>Z</kbd> = B, <kbd>Enter</kbd> = Start,
+          <kbd>⌫</kbd> = Select, <kbd>Q</kbd> = L, <kbd>S</kbd> = R, <kbd>G</kbd> = overlay, <kbd>M</kbd> = sound.
+          With the overlay, point at a cell to see its data.
         </div>
         <div id="notice"></div>
         <section>
           <div class="panel-head">
             <h2>Runs</h2>
             <select id="runs"></select>
-            <button id="run-stop" disabled title="Arrête le Run montré après l'action ou le Model call en cours, et écrit son Run record">Arrêter le Run</button>
+            <button id="run-stop" disabled title="Stops the shown Run after the action or the Model call that plays, and writes its Run record">Stop the Run</button>
             <select id="bots"></select>
-            <input id="model-id" autocomplete="off" title="Modèle OpenRouter du bot modèle" />
-            <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limite en $" title="Limite de coût du bot modèle, en $" />
-            <button id="bot-start">Lancer le Bot</button>
+            <input id="model-id" autocomplete="off" title="OpenRouter model of the model bot" />
+            <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
+            <select id="reasoning" title="Reasoning effort of the model bot"></select>
+            <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">Les Runs de Bot jouent en même temps, à pleine vitesse et sans son. Changer de Run ne les arrête pas : « Arrêter le Run » arrête le Run montré, avec la fin <code>user stop</code> et un Run record. Le modèle et la limite de coût servent seulement au bot modèle (videz-les pour un bot scripté) : vides, ils prennent le modèle par défaut et <code>LAB_COST_LIMIT</code> (ou 0,50 $).</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. The model, the cost limit and the reasoning are for the model bot only (leave the fields empty for a scripted Bot). Empty, they take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes.</div>
         </section>
         <section>
           <div class="panel-head">
             <h2>Replay</h2>
             <select id="records"></select>
-            <button id="replay-start">Rejouer</button>
-            <button id="replay-end" hidden>Reprendre au clavier</button>
+            <button id="replay-start">Replay</button>
+            <button id="replay-end" hidden>Back to the keyboard</button>
           </div>
           <div class="mono muted" id="replay-status"></div>
           <div class="big" id="action">–</div>
@@ -277,95 +300,112 @@
         </section>
         <div class="cards">
           <section>
-            <h2>Carte</h2>
+            <h2>Map</h2>
             <div class="big" id="map-name">–</div>
             <div class="mono muted" id="map-pos"></div>
           </section>
           <section>
-            <h2>Contexte</h2>
+            <h2>Context</h2>
             <div class="big" id="mode">–</div>
             <div class="mono muted" id="callbacks"></div>
           </section>
           <section>
-            <h2>Équipe</h2>
+            <h2>Party</h2>
             <div id="party" class="muted">–</div>
           </section>
           <section>
-            <h2>Badges et argent</h2>
+            <h2>Badges and money</h2>
             <div class="badges" id="badges"></div>
             <div style="margin-top: 6px" id="money"></div>
           </section>
           <section>
             <h2>Run</h2>
-            <div class="mono" id="status">connexion…</div>
+            <div class="mono" id="status">connecting…</div>
           </section>
         </div>
       </div>
       <section class="map-column">
         <div class="map-head">
-          <h2 id="map-title">Carte entière</h2>
-          <input id="map-search" list="map-names" placeholder="Aller à une carte…" autocomplete="off" />
+          <h2 id="map-title">Whole map</h2>
+          <input id="map-search" list="map-names" placeholder="Go to a map…" autocomplete="off" />
           <datalist id="map-names"></datalist>
-          <button id="map-back" hidden>← Précédente</button>
-          <button id="follow" class="on">Suivre le joueur</button>
+          <button id="map-back" hidden>← Back</button>
+          <button id="follow" class="on">Follow the player</button>
         </div>
         <canvas id="map"></canvas>
-        <div class="muted">Molette : zoom. Glisser : déplacer. Clic sur un warp ou au-delà d'un bord : voir l'autre carte (le joueur ne bouge pas). Double-clic : revenir au joueur. Le cadre blanc est l'écran du jeu.</div>
+        <div class="muted">Wheel: zoom. Drag: move. Click on a warp or past an edge: see the other map (the player does not move). Double-click: back to the player. The white frame is the game screen. Grey: cells that the player never saw.</div>
         <div class="lists">
           <section>
-            <h2>Sorties</h2>
+            <h2>Exits</h2>
             <div class="list" id="exits">–</div>
           </section>
           <section>
-            <h2>Ce qui peut vous arrêter</h2>
+            <h2>What can stop you</h2>
             <pre class="list" id="stops">–</pre>
           </section>
+        </div>
+      </section>
+      <!-- Issue #11: the user chose this layout from three prototypes. The list of all the calls and the full prompt of one call show the state at each call. The losers were a band with columns and a panel with tabs. -->
+      <section class="model-panel">
+        <div class="panel-head">
+          <h2>Model</h2>
+          <span class="muted" id="model-title"></span>
+          <button id="model-follow" class="on">Follow the last call</button>
+        </div>
+        <div class="model-columns">
+          <div class="model-calls" id="model-calls"></div>
+          <div class="model-detail">
+            <div class="model-answer" id="model-answer"></div>
+            <div id="model-blocks"></div>
+          </div>
         </div>
       </section>
     </main>
     <article id="doc" hidden>
       <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
       <div class="doc-head">
-        <h1>Ce que le lab sait faire</h1>
-        <span class="muted">Référence complète : <code>lab/README.md</code> · changer d'onglet n'arrête aucun Run</span>
+        <h1>What the lab can do</h1>
+        <span class="muted">Full reference: <code>lab/README.md</code> · a change of tab stops no Run</span>
       </div>
       <div class="doc-grid">
         <section class="w4">
-          <h2>Principe</h2>
+          <h2>Principle</h2>
           <dl>
-            <dt>Run</dt><dd>un émulateur qui joue depuis la sauvegarde de départ</dd>
-            <dt>Bot</dt><dd>décide quoi faire, et agit seulement par le Harness</dd>
-            <dt>Harness</dt><dd>joue les actions du Bot dans le jeu ; ne décide rien</dd>
-            <dt>Decision point</dt><dd>le jeu attend une entrée : marche, texte, choix, action de combat…</dd>
-            <dt>Jeu figé</dt><dd>dans un Run de Bot, le jeu tourne seulement pendant une action (ADR 0002) : même Run, quelle que soit la vitesse du Bot</dd>
-            <dt>Knowledge level</dt><dd><code>player</code> : ce qu'un joueur attentif sait · <code>full</code> : en plus, les PV et stats exactes de l'ennemi</dd>
-            <dt>Run du Viewer</dt><dd>pas de Bot : le clavier ou un replay le joue, en temps réel</dd>
+            <dt>Run</dt><dd>an emulator that plays from the Starting save</dd>
+            <dt>Bot</dt><dd>decides what to do, and acts only through the Harness</dd>
+            <dt>Harness</dt><dd>plays the actions of the Bot in the game; decides nothing</dd>
+            <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
+            <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
+            <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read. At the <code>full</code> level: all the maps</dd>
+            <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>
         <section class="w8">
           <h2>Macro-actions</h2>
           <table id="doc-macro-actions">
-            <thead><tr><th>Macro-action</th><th>Quand</th><th>Effet</th></tr></thead>
+            <thead><tr><th>Macro-action</th><th>When</th><th>Effect</th></tr></thead>
             <tbody>
-              <tr><td><code>goTo(x, y, map?)</code></td><td>marche</td><td>Va à une case, aussi sur une autre carte : portes, escaliers, bords, rebords. Avec une sortie comme cible, il la prend.</td></tr>
-              <tr><td><code>interact(x, y)</code></td><td>marche</td><td>Se tourne vers la case voisine et appuie sur A : personne, panneau, objet.</td></tr>
-              <tr><td><code>readText()</code></td><td>texte, jeu occupé</td><td>Lit les textes jusqu'à la fin de la boîte ou un choix.</td></tr>
-              <tr><td><code>choose(option)</code></td><td>oui/non</td><td>Met le curseur sur l'option et appuie sur A.</td></tr>
-              <tr><td><code>fight(move)</code></td><td>combat</td><td>Utilise l'attaque 0 à 3, et donne les messages du tour.</td></tr>
-              <tr><td><code>run()</code></td><td>combat sauvage</td><td>Fuit. Impossible contre un dresseur.</td></tr>
+              <tr><td><code>goTo(x, y, map?)</code></td><td>walk</td><td>Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell, it takes the exit.</td></tr>
+              <tr><td><code>interact(x, y)</code></td><td>walk</td><td>Turns to the next cell and presses A: a person, a sign, an item.</td></tr>
+              <tr><td><code>readText()</code></td><td>text, busy game</td><td>Reads the texts to the end of the box or to a choice.</td></tr>
+              <tr><td><code>choose(option)</code></td><td>yes/no</td><td>Moves the cursor to the option and presses A.</td></tr>
+              <tr><td><code>fight(move)</code></td><td>battle</td><td>Uses the move 0 to 3, and gives the messages of the turn.</td></tr>
+              <tr><td><code>run()</code></td><td>wild battle</td><td>Escapes. Impossible against a trainer.</td></tr>
             </tbody>
           </table>
           <div class="doc-chips">
-            <span><code>done</code> finie</span>
-            <span><code>impossible</code> ne peut ni commencer ni continuer</span>
-            <span><code>blocked</code> une personne reste sur le chemin</span>
-            <span><code>interrupted</code> déclencheur, dresseur, script, combat ou carte hors du trajet</span>
+            <span><code>done</code> complete</span>
+            <span><code>impossible</code> cannot start or continue</span>
+            <span><code>blocked</code> a person stays in the way</span>
+            <span><code>interrupted</code> trigger, trainer, script, battle or a map off the route</span>
           </div>
-          <p><code>press(button)</code> : un Raw input, un appui quand aucune Macro-action ne convient. Le Harness les compte.</p>
+          <p><code>press(button)</code>: a Raw input, one press when no Macro-action fits. The Harness counts them.</p>
           <p>
-            <code>observe()</code> : ce que le jeu attend, l'équipe, les Milestones ; sur la carte, la grille et les personnes ; en
-            combat, le Pokémon du joueur et l'ennemi comme le joueur le voit. <code>availableActions()</code> : les Macro-actions
-            acceptées maintenant.
+            <code>observe()</code>: what the game waits for, the Milestones, the Atlas, and the party as the Summary screen shows it
+            (types, ability, held item, nature, stats, EXP; for each move its type, power, accuracy, PP and description). On the
+            map: the grid and the people, the rival with its name from the save. In a battle: the player's Pokémon, and the enemy
+            as the player sees it, with its types. <code>availableActions()</code>: the Macro-actions accepted now.
           </p>
         </section>
         <section class="w4">
@@ -373,53 +413,54 @@
           <div class="doc-steps">
             <code>has-pokemon</code>→<code>first-rival-battle</code>→<code>has-pokedex</code>→<code>badge-1 … badge-8</code>
           </div>
-          <p class="muted">Lues dans les flags du jeu. Le but d'un Run est une Milestone.</p>
+          <p class="muted">Read from the game flags. The goal of a Run is a Milestone.</p>
         </section>
         <section class="w4">
-          <h2>Fins d'un Run</h2>
+          <h2>End of a Run</h2>
           <dl>
-            <dt><code>goal</code></dt><dd>la Milestone but est atteinte</dd>
-            <dt><code>bot stopped</code></dt><dd>le Bot s'arrête ou lance une erreur</dd>
-            <dt><code>user stop</code></dt><dd>« Arrêter le Run », après l'action en cours</dd>
-            <dt><code>frame budget</code></dt><dd>plus d'images : 30 000, ou 200 000 pour le bot modèle</dd>
-            <dt><code>no progress</code></dt><dd>200 Decision points sans nouvelle case ni Milestone</dd>
+            <dt><code>goal</code></dt><dd>the goal Milestone is reached</dd>
+            <dt><code>bot stopped</code></dt><dd>the Bot stops or throws an error</dd>
+            <dt><code>user stop</code></dt><dd>"Stop the Run", after the current action</dd>
+            <dt><code>frame budget</code></dt><dd>no more frames: 30 000, or 200 000 for the model bot</dd>
+            <dt><code>no progress</code></dt><dd>200 Decision points with no new cell and no new Milestone</dd>
           </dl>
         </section>
         <section class="w4">
-          <h2>Run record et Runs en parallèle</h2>
+          <h2>Run record and parallel Runs</h2>
           <p>
-            Un Run de Bot a un Run record : origine (ROM, graine, sauvegarde), Bot, touches à chaque image, événements et
-            résultat. Il est écrit dans <code>lab/runs/</code> à la fin du Run. Les touches seules rejouent le Run : panneau
-            « Replay ».
+            A Run of a Bot has a Run record: origin (ROM, seed, save), Bot, keys at each frame, events and result. It goes to
+            <code>lab/runs/</code> at the end of the Run. The keys alone replay the Run: panel "Replay".
           </p>
           <p>
-            Le Harness joue 4 Runs au plus : le Run du Viewer, et 3 Runs de Bot dans des workers, à pleine vitesse et sans son.
-            Un Run de Bot donne le même Run record que seul.
+            The Harness plays 4 Runs at most: the Viewer Run, and 3 Runs of Bots in workers, at full speed and with no sound.
+            A Run of a Bot gives the same Run record as alone.
           </p>
         </section>
         <section class="w5 doc-warn">
-          <h2>Pas encore</h2>
+          <h2>Not yet</h2>
           <dl>
-            <dt>Menus</dt><dd>Start, sac, boutique, PC, choix multiples : le Harness y voit un jeu occupé.</dd>
-            <dt>Écran des noms</dt><dd>Pas de saisie : au surnom, un Bot répond NO.</dd>
-            <dt>Pokémon en combat</dt><dd>Pas de Macro-action dans le menu de l'équipe : des Raw inputs.</dd>
+            <dt>Menus</dt><dd>Start, bag, shop, PC, multichoice: the Harness sees a busy game.</dd>
+            <dt>Name screen</dt><dd>No typing: at the nickname, a Bot answers NO.</dd>
+            <dt>Pokémon in a battle</dt><dd>No Macro-action in the party menu: Raw inputs.</dd>
           </dl>
         </section>
         <section class="w7">
           <h2>Bots</h2>
           <dl>
-            <dt>scripté</dt><dd>du code. Chaque nouvelle étape de l'histoire va dans <code>starter</code>.</dd>
-            <dt>modèle</dt>
+            <dt>scripted</dt><dd>code. Each new step of the story goes into <code>starter</code>.</dd>
+            <dt>model</dt>
             <dd>
-              demande l'action à un modèle d'IA (un <b>Model call</b>) à chaque marche, choix, action ou attaque de combat, et dans
-              le menu de l'équipe. Le code lit les textes seul ; le modèle voit du texte et donne une action, sa raison et son
-              <b>Objective</b> (ADR 0003).
+              asks an AI model for the action (a <b>Model call</b>) at each walk, choice, battle action or move, and in the party
+              menu. The code reads the texts alone; the model sees text and gives an action, its reason, its <b>Mission</b> (the
+              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (about 2 000 characters), and it can ask for the full Atlas one
+              time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
+              progress. The panel "Model" shows each Model call in full.
             </dd>
           </dl>
-          <p id="doc-model-planned" hidden>Pas encore de bot modèle : il est prévu.</p>
+          <p id="doc-model-planned" hidden>No model bot yet: it is planned.</p>
           <table id="doc-bots">
-            <thead><tr><th>Nom</th><th>Type</th><th>Version</th><th>But</th></tr></thead>
-            <tbody><tr><td colspan="4" class="muted">chargement…</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Kind</th><th>Version</th><th>Goal</th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">loading…</td></tr></tbody>
           </table>
         </section>
       </div>

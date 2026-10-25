@@ -36,12 +36,16 @@ _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step
 
+**Mission**:
+A short sentence that a model bot sets itself: the story step that it works on, for example "talk to Professor Oak and get my first Pokémon". The AI model keeps it until the game shows that it reached it, over many **Objectives**. It is not the goal of the **Run**: that goal is a **Milestone**.
+_Avoid_: goal (the **Milestone** that ends a **Run**), quest, long-term objective
+
 **Objective**:
-A short sentence that a model bot sets itself: what it does now, for example "take the parcel to Professor Oak". The AI model changes it when the texts of the game give it a new task. It is not the goal of the **Run**: that goal is a **Milestone**.
+A short sentence that a model bot sets itself: what it does now for its **Mission**, for example "look for Professor Oak outside the lab". The AI model changes it as often as it needs.
 _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 
 **Model call**:
-One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. A model bot makes a model call only when the game waits for a walk, a choice or a battle action. Thus a **Run** has fewer model calls than **Decision points**.
+One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The action `viewAtlas` plays neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice or a battle action. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
 **Knowledge level**:
@@ -49,7 +53,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took with its destination, the exits that the player saw but did not take, and the text of each sign that the player read. It grows only with what the player saw in the **Run**.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, and the text of each sign that the player read. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Raw input**:

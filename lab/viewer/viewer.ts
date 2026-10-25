@@ -1,8 +1,10 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
+import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { DocTab } from "./doc";
-import { describe, draw, howLabel, SIDE_NAME } from "./mapdraw";
+import { describe, draw, howLabel } from "./mapdraw";
+import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
 import { RunsPanel } from "./runs";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
@@ -38,6 +40,7 @@ let paused = false;
 let grid: MapGrid | null = null;
 let actors: MapActors | null = null;
 let camera: Camera | null = null;
+let sight: Sight = {};
 let soundOn = true;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
@@ -61,6 +64,7 @@ const runsPanel = new RunsPanel(
     bots: $<HTMLSelectElement>("bots"),
     model: $<HTMLInputElement>("model-id"),
     costLimit: $<HTMLInputElement>("cost-limit"),
+    reasoning: $<HTMLSelectElement>("reasoning"),
     start: $<HTMLButtonElement>("bot-start"),
     stop: $<HTMLButtonElement>("run-stop"),
     shownModel: $("shown-model"),
@@ -68,6 +72,13 @@ const runsPanel = new RunsPanel(
   send,
 );
 let shownRunId: number | null = null;
+const modelPanel = new ModelPanel({
+  title: $("model-title"),
+  follow: $<HTMLButtonElement>("model-follow"),
+  calls: $("model-calls"),
+  answer: $("model-answer"),
+  blocks: $("model-blocks"),
+});
 const docTab = new DocTab(
   {
     labButton: $<HTMLButtonElement>("tab-lab"),
@@ -105,7 +116,7 @@ function connect(): void {
     if (soundOn && audio.running) send({ type: "audio", enabled: true });
   };
   ws.onclose = () => {
-    $("status").textContent = "déconnecté, nouvelle tentative…";
+    $("status").textContent = "disconnected, trying again…";
     setTimeout(connect, 1000);
   };
 }
@@ -124,10 +135,11 @@ function onMessage(message: ServerMessage): void {
       if (!message.hasQuickState) $<HTMLButtonElement>("quick-load").disabled = true;
       $("sound").classList.toggle("on", soundOn);
       $("status").textContent =
-        `${message.rom} · image ${message.frame} · ` +
-        (run ? `Run ${run.id} du Bot ${run.bot}, pas de son` : `${message.fps} img/s · ${soundText(message.audio)}`) +
-        (message.hasStartSave ? "" : " · pas encore de sauvegarde de départ");
+        `${message.rom} · frame ${message.frame} · ` +
+        (run ? `Run ${run.id} of the Bot ${run.bot}, no sound` : `${message.fps} frames/s · ${soundText(message.audio)}`) +
+        (message.hasStartSave ? "" : " · no Starting save yet");
       replayPanel.onStatus(message.frame, message.shown);
+      modelPanel.onStatus(message.shown);
       runsPanel.onStatus(message.runs, message.shown);
       break;
     }
@@ -146,6 +158,10 @@ function onMessage(message: ServerMessage): void {
       renderMapLists();
       if (follow) centerOnPlayer();
       redraw();
+      break;
+    case "sight":
+      sight = message.maps;
+      drawMap();
       break;
     case "camera":
       camera = message.camera;
@@ -170,38 +186,39 @@ function onMessage(message: ServerMessage): void {
       break;
     case "events":
       replayPanel.onEvents(message.events);
+      modelPanel.onEvents(message.events);
       break;
   }
 }
 
 function soundText(playing: boolean): string {
-  if (!soundOn) return "son coupé";
-  if (!audio.running) return "son : cliquez ou appuyez sur une touche";
-  if (playing) return `son ${Math.round(audioLevel)} ms`;
-  return "son seulement à ×1";
+  if (!soundOn) return "sound off";
+  if (!audio.running) return "sound: click or press a key";
+  if (playing) return `sound ${Math.round(audioLevel)} ms`;
+  return "sound only at ×1";
 }
 
-const MODE_LABEL = { overworld: "Sur la carte", battle: "En combat", other: "Menu / transition" };
+const MODE_LABEL = { overworld: "On the map", battle: "In a battle", other: "Menu / transition" };
 
 function renderState(state: GameState): void {
   // Before the player is on a map, the location fields are not set yet.
   $("map-name").textContent = state.player ? state.map.name : "–";
   $("map-pos").textContent = state.player
-    ? `groupe ${state.map.group}, carte ${state.map.num} · x ${state.player.x}, y ${state.player.y}`
+    ? `group ${state.map.group}, map ${state.map.num} · x ${state.player.x}, y ${state.player.y}`
     : "";
   $("mode").textContent = MODE_LABEL[state.context.mode];
   $("callbacks").textContent = `callback2 ${state.context.callback2}\ncallback1 ${state.context.callback1}`;
   $("callbacks").style.whiteSpace = "pre";
   const party = $("party");
   party.classList.toggle("muted", state.party.length === 0);
-  party.innerHTML = state.party.length === 0 ? "aucun Pokémon" : "";
+  party.innerHTML = state.party.length === 0 ? "no Pokémon" : "";
   for (const mon of state.party) {
     const row = document.createElement("div");
     row.className = "mon";
     const pct = mon.maxHp > 0 ? Math.round((100 * mon.hp) / mon.maxHp) : 0;
     row.innerHTML = `<span></span><span class="mono"></span><div class="hp"><div style="width:${pct}%"></div></div>`;
     row.children[0].textContent = mon.nickname === mon.species ? mon.species : `${mon.nickname} (${mon.species})`;
-    row.children[1].textContent = `N.${mon.level}  ${mon.hp}/${mon.maxHp} PV`;
+    row.children[1].textContent = `Lv.${mon.level}  ${mon.hp}/${mon.maxHp} HP`;
     party.append(row);
   }
   $("badges").innerHTML = state.badges.map((got) => `<div class="badge${got ? " got" : ""}"></div>`).join("");
@@ -288,10 +305,10 @@ function drawMap(): void {
   if (!g) {
     mapCtx.fillStyle = "#8b929c";
     mapCtx.font = `${14 * (window.devicePixelRatio || 1)}px ui-sans-serif, system-ui`;
-    mapCtx.fillText("Pas de carte (menu, combat ou transition).", 16, 28);
+    mapCtx.fillText("No map (menu, battle or transition).", 16, 28);
     return;
   }
-  draw(mapCtx, g, a, mapView, "map");
+  draw(mapCtx, g, a, mapView, "map", sight[g.name]);
   // The part of the map that the game screen shows now.
   if (camera && !preview) {
     mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
@@ -382,8 +399,8 @@ mapCanvas.addEventListener("pointermove", (event) => {
   const [x, y] = mapCellAt(event);
   const link = linkAt(g, x, y);
   mapCanvas.style.cursor = link ? "pointer" : "";
-  const text = describe(g, a, x, y) ?? (link ? `bord de la carte` : null);
-  showTooltip(text && link ? `${text}\nclic : voir ${link.name}` : text, event.clientX, event.clientY);
+  const text = describe(g, a, x, y) ?? (link ? `edge of the map` : null);
+  showTooltip(text && link ? `${text}\nclick: see ${link.name}` : text, event.clientX, event.clientY);
 });
 mapCanvas.addEventListener("pointerup", (event) => {
   const clicked = drag && !drag.moved;
@@ -445,31 +462,31 @@ function renderMapLists(): void {
   const exits = $("exits");
   const stops = $("stops");
   const { grid: g, actors: a } = shown();
-  $("follow").textContent = preview ? "Revenir au joueur" : "Suivre le joueur";
+  $("follow").textContent = preview ? "Back to the player" : "Follow the player";
   $("follow").classList.toggle("on", follow && !preview);
   $<HTMLButtonElement>("map-back").hidden = !preview;
   if (!g) {
     exits.textContent = "–";
     stops.textContent = "–";
-    $("map-title").textContent = "Carte entière";
+    $("map-title").textContent = "Whole map";
     return;
   }
-  $("map-title").textContent = `${preview ? "Aperçu" : "Carte du joueur"} · ${g.name} (${g.mapWidth}×${g.mapHeight})`;
+  $("map-title").textContent = `${preview ? "Preview" : "Map of the player"} · ${g.name} (${g.mapWidth}×${g.mapHeight})`;
   exits.replaceChildren(
-    ...g.connections.map((c) => linkButton(`bord ${SIDE_NAME[c.direction]} → ${c.map}`, c.group, c.num)),
+    ...g.connections.map((c) => linkButton(`${c.direction} edge → ${c.map}`, c.group, c.num)),
     ...g.warps.map((w) => linkButton(`warp (${w.x}, ${w.y}) → ${w.to} · ${howLabel(w)}`, w.group, w.num)),
   );
-  if (!exits.childElementCount) exits.textContent = "aucune";
+  if (!exits.childElementCount) exits.textContent = "none";
   const stopLines: string[] = [];
   g.triggers.forEach((t, i) => {
     if (t.weather) return;
     const state = a?.triggers[i];
-    stopLines.push(`déclencheur (${t.x}, ${t.y}) · ${state === null ? "état inconnu" : state ? "ACTIF" : "inactif"}`);
+    stopLines.push(`trigger (${t.x}, ${t.y}) · ${state === null ? "state unknown" : state ? "ACTIVE" : "inactive"}`);
   });
   for (const p of a?.people ?? []) {
-    if (p.trainer) stopLines.push(`dresseur ${p.trainer.id} en (${p.x}, ${p.y}) · vue ${p.trainer.range} · ${p.trainer.defeated ? "battu" : "pas battu"}`);
+    if (p.trainer) stopLines.push(`trainer ${p.trainer.id} at (${p.x}, ${p.y}) · sight ${p.trainer.range} · ${p.trainer.defeated ? "defeated" : "not defeated"}`);
   }
-  stops.textContent = stopLines.length ? stopLines.join("\n") : "aucun";
+  stops.textContent = stopLines.length ? stopLines.join("\n") : "none";
 }
 
 function setOverlay(on: boolean): void {
@@ -558,7 +575,7 @@ $("quick-save").addEventListener("click", () => send({ type: "quick-save" }));
 $("quick-load").addEventListener("click", () => send({ type: "quick-load" }));
 $("reset").addEventListener("click", () => send({ type: "reset" }));
 $("start-save").addEventListener("click", () => {
-  if (confirm("Écrire l'état de la sauvegarde du jeu comme sauvegarde de départ ?\n(Sauvegardez d'abord dans le jeu. L'ancienne est gardée.)")) {
+  if (confirm("Write the save of the game as the Starting save?\n(Save in the game first. The old Starting save is kept.)")) {
     send({ type: "write-start-save" });
   }
 });

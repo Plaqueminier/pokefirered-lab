@@ -17,10 +17,10 @@ class ViewPoster {
 
   constructor(private readonly run: Run) {}
 
-  onFrame(): void {
+  onFrame(harness: Harness): void {
     const now = performance.now();
     if (now - this.#lastScreen >= SCREEN_INTERVAL_MS) this.postScreen(now);
-    if (now - this.#lastState >= STATE_INTERVAL_MS) this.postState(now);
+    if (now - this.#lastState >= STATE_INTERVAL_MS) this.postState(now, harness);
   }
 
   // A Macro-action inserts its event before the game events of its frames: post only after it ends, or at a Model call.
@@ -30,15 +30,15 @@ class ViewPoster {
   }
 
   // Frames run faster than the posts, so the worker has not posted the last frames of a Macro-action yet.
-  postNow(): void {
+  postNow(harness: Harness): void {
     const now = performance.now();
     this.postScreen(now);
-    this.postState(now);
+    this.postState(now, harness);
   }
 
-  postFinal(events: readonly RunEvent[]): void {
-    this.postNow();
-    this.onEvents(events);
+  postFinal(harness: Harness): void {
+    this.postNow(harness);
+    this.onEvents(harness.events);
   }
 
   private postScreen(now: number): void {
@@ -46,9 +46,9 @@ class ViewPoster {
     post({ type: "screen", frame: this.run.frame, screen: this.run.core.screen().slice() });
   }
 
-  private postState(now: number): void {
+  private postState(now: number, harness: Harness): void {
     this.#lastState = now;
-    post({ type: "state", ...this.run.readState() });
+    post({ type: "state", ...this.run.readState(), sight: harness.sight() });
   }
 }
 
@@ -64,10 +64,10 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
       {
         ...options,
         stopAsked: () => Atomics.load(stop, 0) === 1,
-        onFrame: () => poster.onFrame(),
+        onFrame: (h) => poster.onFrame(h),
         onAction: (_, h) => poster.onEvents(h.events),
-        onModelCallStart: () => {
-          poster.postNow();
+        onModelCallStart: (h) => {
+          poster.postNow(h);
           post({ type: "model-call-start" });
         },
         onModelCall: (_, h) => poster.onEvents(h.events),
@@ -79,7 +79,7 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
   } catch (e) {
     error = String(e);
   }
-  opened?.poster.postFinal(opened.harness.events);
+  opened?.poster.postFinal(opened.harness);
   post({ type: "end", record: opened?.harness.record() ?? null, error });
   opened?.harness.close();
   process.exit(0);

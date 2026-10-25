@@ -4,20 +4,24 @@ import { modelBot } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, modelTotals, type Prompt } from "../harness/record";
 import { ROM_FILE, START_SAVE } from "../run";
+import { modelPanelView } from "../../viewer/model-panel";
 import type { ModelClient } from "./openrouter";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
+const DECISIONS = ["go 1", "go 2", "go 1", "go 2", "go 2", "go 7", "choose YES", "choose NO", "go 1", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
 
 function reply(action: string, objective = "Get a Pokémon") {
-  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, objective, notes: "Oak is in his lab." }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
+  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, notes: "Oak is in his lab." }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
 }
 
-function target(prompt: Prompt, label: string): string {
-  const n = prompt.user.match(new RegExp(`^(\\d+)\\. ${label}`, "m"))?.[1];
-  if (!n) throw new Error(`no target "${label}" in the prompt:\n${prompt.user}`);
-  return `go ${n}`;
+function target(prompt: Prompt, ...labels: string[]): string {
+  for (const label of labels) {
+    const n = prompt.user.match(new RegExp(`^(\\d+)\\. ${label}`, "m"))?.[1];
+    if (n) return `go ${n}`;
+  }
+  throw new Error(`no target "${labels.join('" or "')}" in the prompt:\n${prompt.user}`);
 }
 
 function fakeModel(): { client: ModelClient; prompts: Prompt[] } {
@@ -34,13 +38,37 @@ function fakeModel(): { client: ModelClient; prompts: Prompt[] } {
       case "PalletTown_PlayersHouse_2F":
         return reply(target(prompt, "stairs"));
       case "PalletTown_PlayersHouse_1F":
-        return reply(target(prompt, "exit mat"));
+        return reply(target(prompt, "exit mat", "unseen cells south"));
       case "PalletTown":
-        return reply(target(prompt, "north edge"));
+        return reply(target(prompt, "north edge", "unseen cells north"));
       case "PalletTown_ProfessorOaksLab":
-        return reply(prompt.user.includes("Party: none") ? target(prompt, "ITEM BALL at \\(9, 4\\)") : target(prompt, "exit mat"));
+        return reply(prompt.user.includes("Party: none") ? target(prompt, "ITEM BALL at \\(9, 4\\)") : target(prompt, "exit mat", "unseen cells south"));
     }
     throw new Error(`the fake model does not know this prompt:\n${prompt.user}`);
+  };
+  return { client, prompts };
+}
+
+function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
+  const prompts: Prompt[] = [];
+  let talks = 0;
+  const client: ModelClient = async (prompt) => {
+    prompts.push(prompt);
+    switch (prompt.user.match(/^Map (\w+)/m)?.[1]) {
+      case "PalletTown_PlayersHouse_2F":
+        return reply(target(prompt, "stairs"));
+      case "PalletTown_PlayersHouse_1F":
+        return reply(target(prompt, "exit mat", "unseen cells south"));
+      case "PalletTown":
+        return reply(target(prompt, "door at \\(16, 13\\)", "unseen cells east", "unseen cells south"));
+      case "PalletTown_ProfessorOaksLab": {
+        const ball = prompt.user.match(/^(\d+)\. ITEM BALL at \(9, 4\)$/m)?.[1];
+        if (!ball) return reply(target(prompt, "unseen cells north"));
+        if (talks++ >= 3) break;
+        return reply(`go ${ball}`);
+      }
+    }
+    return { ...reply("go 1"), content: "I stop here." };
   };
   return { client, prompts };
 }
@@ -75,11 +103,11 @@ describe.skipIf(!ready)("model bot", () => {
     expect(result).toMatchObject({ endReason: "goal", milestones: ["has-pokemon", "first-rival-battle"], rawInputs: 0 });
 
     const calls = modelEvents(harness);
-    expect(calls.map((e) => e.decision?.action)).toEqual(["go 1", "go 1", "go 4", "go 7", "choose YES", "choose NO", "go 1", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0"]);
+    expect(calls.map((e) => e.decision?.action)).toEqual(DECISIONS);
     expect(prompts).toHaveLength(calls.length);
     const totals = modelTotals(harness.events);
-    expect(totals).toMatchObject({ calls: 12, promptTokens: 12_000, completionTokens: 360, reasoningTokens: 0 });
-    expect(totals.cost).toBeCloseTo(12 * COST, 10);
+    expect(totals).toMatchObject({ calls: calls.length, promptTokens: calls.length * 1000, completionTokens: calls.length * 30, reasoningTokens: 0 });
+    expect(totals.cost).toBeCloseTo(calls.length * COST, 10);
     for (const [i, call] of calls.entries()) {
       expect(call).toMatchObject({ model: "fake/model", prompt: prompts[i], error: null, usage: { cost: COST } });
       expect(call.answer).toBe(reply(call.decision?.action ?? "").content);
@@ -88,26 +116,39 @@ describe.skipIf(!ready)("model bot", () => {
     expect(seen.slice(0, 4)).toEqual(["thinks", "answer go 1", "goTo", "thinks"]);
     expect(seen.filter((s) => s === "thinks")).toHaveLength(calls.length);
     expect(harness.actions.filter((e) => e.action.name === "readText").length).toBeGreaterThan(10);
+    const titles = calls.flatMap((_, i) => modelPanelView(harness.events, 0, i).call?.blocks.map((b) => b.title) ?? []);
+    expect(titles).not.toContain("Other");
+    expect(titles).toEqual(expect.arrayContaining(["Local view", "Question", "Battle", "Actions", "Rules"]));
 
+    const first = (pattern: RegExp) => {
+      const prompt = prompts.find((p) => pattern.test(p.user));
+      if (!prompt) throw new Error(`no prompt matches ${pattern}`);
+      return prompt.user;
+    };
     expect(prompts[0].system).toContain("Become the Champion: earn the 8 gym badges, then beat the Elite Four");
     expect(prompts[0].system).toContain("answer NO");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
     expect(prompts[1].user).toMatch(/You chose: go 1\n +goTo\(10, 2\): done/);
-    expect(prompts[2].user).toMatch(/^\d+\. door at \(6, 7\), to PalletTown_PlayersHouse_1F$/m);
-    expect(prompts[2].user).toMatch(/^\d+\. door at \(15, 7\), to a map that you have not visited$/m);
-    expect(prompts[2].user).toMatch(/^\d+\. north edge of the map, to a map that you have not visited$/m);
-    expect(prompts[4].user).toContain('"Hm! SQUIRTLE is your choice.');
-    expect(prompts[4].user).toContain("Objective: Get a Pokémon");
-    expect(prompts[4].user).toContain("Notes: Oak is in his lab.");
-    expect(prompts[4].user).toMatch(/^The game waits for a choice: YES, NO\.$/m);
-    expect(prompts[4].user).toMatch(/Actions:\n- choose YES\n- choose NO\n- press <button>/);
-    expect(prompts[4].user).not.toContain("goTo <x> <y>");
-    expect(prompts[7].user).toContain("fight 1: TAIL WHIP (PP 30/30)");
-    expect(prompts[7].user).toContain("Foe BULBASAUR: level 5, HP 100%");
+    const pallet = first(/^Map PalletTown,/m);
+    expect(pallet).toMatch(/^\d+\. door at \(6, 7\), to PalletTown_PlayersHouse_1F$/m);
+    expect(pallet).toMatch(/^\d+\. unseen cells north of \(\d+, \d+\)$/m);
+    expect(pallet).toMatch(/^- PalletTown_PlayersHouse_1F: /m);
+    const choice = first(/^The game waits for a choice: YES, NO\.$/m);
+    expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
+    expect(choice).toContain("Objective: Get a Pokémon");
+    expect(choice).toMatch(/^Mission: Get my first Pokémon \(the same for \d+ decisions\)\.$/m);
+    expect(choice).toContain("Notes: Oak is in his lab.");
+    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- press <button>/);
+    expect(choice).not.toContain("goTo <x> <y>");
+    const battle = first(/^The game waits for a battle action\.$/m);
+    expect(battle).toContain("- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)");
+    expect(battle).toContain("Foe BULBASAUR (GRASS, POISON): level 5, HP 100%");
+    expect(battle).toMatch(/^- SQUIRTLE: level 5, HP \d+\/\d+, status none\. Type WATER\. Ability TORRENT: Ups WATER moves in a pinch\. Held item none\. Nature [A-Z]+\. Stats: attack \d+, defense \d+, speed \d+, special attack \d+, special defense \d+\. EXP 135, 44 to the next level\.$/m);
+    expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "1", model: { id: "fake/model", costLimit: 1, reasoning: "off", temperature: null } });
+    expect(header.bot).toEqual({ name: "model", version: "1", model: { id: "fake/model", costLimit: 1, reasoning: "low", temperature: null } });
   });
 
   test("it stops when the cost of the Run is more than the cost limit", async () => {
@@ -127,6 +168,34 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls.map((e) => e.error)).toEqual(["the answer is not JSON", null, 'the answer has no string "reason"', '"dance" is not an action', "the answer is not JSON"]);
     expect(calls.map((e) => e.decision === null)).toEqual([true, false, true, true, true]);
     expect(calls[1].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
+  });
+
+  test("viewAtlas runs no frames: the code calls the model again at once with the full Atlas, and a second viewAtlas at the same Decision point is refused", async () => {
+    const harness = await Harness.open();
+    const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(reply("viewAtlas").content, reply("viewAtlas").content, reply("goTo 8 6").content));
+    await expect(harness.play(bot)).rejects.toThrow("is more than the cost limit");
+    const calls = modelEvents(harness);
+    expect(calls.map((e) => e.decision?.action)).toEqual(["viewAtlas", undefined, "goTo 8 6", "goTo 8 6"]);
+    expect(calls[1].error).toBe('"viewAtlas" is not an action now: use go, goTo or press');
+    expect(calls.slice(0, 3).map((e) => e.frame)).toEqual([calls[0].frame, calls[0].frame, calls[0].frame]);
+    expect(calls[3].frame).toBeGreaterThan(calls[0].frame);
+    const third = harness.events.indexOf(calls[2]);
+    expect(harness.events.slice(harness.events.indexOf(calls[0]), third).every((e) => e.type === "model")).toBe(true);
+    const fullAtlas = "Full Atlas, the other maps that you know, nearest first:";
+    expect(calls.map((e) => e.prompt.user.includes(fullAtlas))).toEqual([false, true, true, false]);
+    expect(calls.map((e) => /^- viewAtlas/m.test(e.prompt.user))).toEqual([true, false, false, true]);
+  });
+
+  test("the prompt lists the tries since the last progress: three talks to the same Poké Ball are one line with ×3 and the text; the rival has its name from the save", async () => {
+    const harness = await Harness.open();
+    const { client, prompts } = ballTalker();
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const lab = prompts.filter((p) => /^Map PalletTown_ProfessorOaksLab,/m.test(p.user)).map((p) => p.user);
+    expect(lab.filter((user) => /^\d+\. BOB \(your rival\) at \(5, 4\)$/m.test(user)).length).toBeGreaterThan(0);
+    expect(lab.filter((user) => user.includes("BLUE"))).toEqual([]);
+    const afterTalks = lab.findLast((user) => /^- interact\(9, 4\)/m.test(user)) ?? "";
+    expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×3: ".+"$/)]);
+    expect(afterTalks).toMatch(/^Decision points with no progress: [1-9]\d*\.$/m);
   });
 
   test("on a screen that no Macro-action covers, the code presses B three times and tells the model", async () => {

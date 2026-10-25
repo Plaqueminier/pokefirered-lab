@@ -1,21 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import type { BattleState } from "../harness/harness";
-import { type Asked, MAX_NOTES, MAX_OBJECTIVE, readAction, readDecision } from "./decision";
+import { type Asked, MAX_NOTES, MAX_SENTENCE, readAction, readDecision } from "./decision";
 import type { Overworld, Target } from "./targets";
 
-const answer = (fields: Record<string, unknown>) => JSON.stringify({ reason: "r", action: "go 1", objective: "o", notes: "n", ...fields });
+const answer = (fields: Record<string, unknown>) => JSON.stringify({ reason: "r", action: "go 1", mission: "m", objective: "o", notes: "n", ...fields });
 
 describe("readDecision", () => {
-  test("it reads the four fields of the answer, and cuts the objective and the notes to their limits", () => {
-    expect(readDecision(answer({ reason: " I go north. ", objective: "Find Oak" }))).toEqual({ reason: "I go north.", action: "go 1", objective: "Find Oak", notes: "n" });
+  test("it reads the five fields of the answer, and cuts the Mission, the objective and the notes to their limits", () => {
+    expect(readDecision(answer({ reason: " I go north. ", mission: "Get my first Pokémon", objective: "Find Oak" }))).toEqual({
+      reason: "I go north.",
+      action: "go 1",
+      mission: "Get my first Pokémon",
+      objective: "Find Oak",
+      notes: "n",
+    });
+    expect(readDecision(answer({ mission: "x".repeat(MAX_SENTENCE + 10) })).mission).toHaveLength(MAX_SENTENCE);
     expect(readDecision(answer({ notes: "x".repeat(MAX_NOTES + 10) })).notes).toHaveLength(MAX_NOTES);
-    expect(readDecision(answer({ objective: "x".repeat(MAX_OBJECTIVE + 10) })).objective).toHaveLength(MAX_OBJECTIVE);
+    expect(readDecision(answer({ objective: "x".repeat(MAX_SENTENCE + 10) })).objective).toHaveLength(MAX_SENTENCE);
   });
 
   test("it refuses an answer that is not JSON, or that has a field missing or not a string", () => {
     expect(() => readDecision("I go north")).toThrow("the answer is not JSON");
     expect(() => readDecision(" ")).toThrow("the answer is empty");
-    expect(() => readDecision(JSON.stringify({ reason: "r", action: "go 1", objective: "o" }))).toThrow('the answer has no string "notes"');
+    expect(() => readDecision(JSON.stringify({ reason: "r", action: "go 1", mission: "m", objective: "o" }))).toThrow('the answer has no string "notes"');
+    expect(() => readDecision(JSON.stringify({ reason: "r", action: "go 1", objective: "o", notes: "n" }))).toThrow('the answer has no string "mission"');
     expect(() => readDecision(answer({ action: 3 }))).toThrow('the answer has no string "action"');
     expect(() => readDecision("[]")).toThrow("the answer is not a JSON object");
   });
@@ -25,7 +33,7 @@ describe("readAction", () => {
   const overworld = {} as Overworld;
   const battle = {} as BattleState;
   const edge: Target = { kind: "edge", label: "north edge of the map", side: "north" };
-  const walk = (targets: number): Asked => ({ kind: "walk", overworld, targets: Array.from({ length: targets }, () => edge) });
+  const walk = (targets: number): Asked => ({ kind: "walk", overworld, view: { lines: [], targets: Array.from({ length: targets }, () => edge) }, atlasViewed: false });
   const choice: Asked = { kind: "choice", overworld, options: ["YES", "NO"] };
 
   test("at a walk: a target, a cell of the map or of another map, or a Raw input", () => {
@@ -54,7 +62,7 @@ describe("readAction", () => {
     expect(() => readAction("walk north", walk(3))).toThrow('"walk north" is not an action');
     expect(() => readAction("go 4", walk(3))).toThrow("there is no target 4: the targets are 1 to 3");
     expect(() => readAction("go 1", walk(0))).toThrow("there is no target 1: the map has no targets");
-    expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo or press');
+    expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo, viewAtlas or press');
     expect(() => readAction("fight 4", { kind: "battleAction", battle })).toThrow('"fight 4" is not an action');
     expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action');
     expect(() => readAction("a".repeat(500), walk(3))).toThrow(`"${"a".repeat(80)}" is not an action`);

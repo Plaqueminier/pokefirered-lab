@@ -2,6 +2,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
+import type { REASONING } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import type { ActionEntry, Bot, KnowledgeLevel, RunResult } from "./harness";
 
@@ -15,8 +16,6 @@ export type GameEvent = { frame: number } & (
   | { type: "milestone"; milestone: Milestone }
 );
 
-export const REASONING = ["off", "low", "medium", "high"] as const;
-
 export type Reasoning = (typeof REASONING)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
@@ -29,7 +28,7 @@ export type Prompt = { system: string; user: string };
 
 export type Usage = { promptTokens: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; objective: string; notes: string };
+export type Decision = { reason: string; action: string; mission: string; objective: string; notes: string };
 
 // answer is null when the request failed.
 export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage } & (
@@ -45,6 +44,19 @@ export type ModelTotals = { calls: number } & Usage;
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
   return events.filter((e): e is ModelEvent => e.type === "model");
+}
+
+export type CallTurn = { call: ModelEvent | null; events: Exclude<RunEvent, ModelEvent>[] };
+
+/** The events after each Model call, up to the next one. The first turn has no call when the events do not start with one. */
+export function callTurns(events: readonly RunEvent[]): CallTurn[] {
+  const turns: CallTurn[] = [];
+  for (const event of events) {
+    if (event.type === "model") turns.push({ call: event, events: [] });
+    else if (turns.length === 0) turns.push({ call: null, events: [event] });
+    else turns[turns.length - 1].events.push(event);
+  }
+  return turns;
 }
 
 export function modelTotals(events: readonly RunEvent[]): ModelTotals {
