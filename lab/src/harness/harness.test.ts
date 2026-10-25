@@ -1,6 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import starter from "../../bots/starter";
+import starter from "./scripted-bot";
 import { ROM_FILE, START_SAVE } from "../run";
 import { cellAt, mapNamed } from "./atlas";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
@@ -73,21 +73,15 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
 }
 
-test("the list of the Bots gives the kind, the version and the goal of each Bot of bots/", async () => {
-  expect(await botInfos()).toEqual([
-    { name: "model", kind: "model", version: "1", goal: "first-rival-battle" },
-    { name: "starter", kind: "scripted", version: "3", goal: "first-rival-battle" },
-  ]);
+test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "1", goal: "first-rival-battle" }]);
 });
 
-test("a Bot that does not load gives its error in the list of the Bots, and the other Bots stay in it", async () => {
+test("a Bot that does not load gives its error in the list of the Bots", async () => {
   const costLimit = process.env.LAB_COST_LIMIT;
   process.env.LAB_COST_LIMIT = "abc";
   try {
-    expect(await botInfos()).toEqual([
-      { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' },
-      { name: "starter", kind: "scripted", version: "3", goal: "first-rival-battle" },
-    ]);
+    expect(await botInfos()).toEqual([{ name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' }]);
   } finally {
     if (costLimit === undefined) delete process.env.LAB_COST_LIMIT;
     else process.env.LAB_COST_LIMIT = costLimit;
@@ -113,7 +107,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.rawInputs).toBe(0);
   });
 
-  test("the starter Bot follows Oak to his lab, takes SQUIRTLE and wins the rival battle with no Raw input, and the Run ends at its goal, with the same frames on each start", async () => {
+  test("the scripted bot follows Oak to his lab, takes SQUIRTLE and wins the rival battle with no Raw input, and the Run ends at its goal, with the same frames on each start", async () => {
     const first = await play(starter);
     const second = await play(starter);
     expect(first.actions.map((e) => [e.action, e.result.status, "reason" in e.result ? e.result.reason : null, "text" in e.result ? e.result.text : null])).toEqual([
@@ -219,7 +213,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       [goTo],
     ]);
     harness.actions.forEach(({ action }, i) => {
-      if (action.name === "press") throw new Error("the starter Bot uses a Raw input");
+      if (action.name === "press") throw new Error("the scripted bot uses a Raw input");
       expect(seen[i]).toContainEqual(action.name === "goTo" ? goTo : action);
     });
   });
