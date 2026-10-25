@@ -81,8 +81,11 @@ export class Prompts {
   choice(): Choice | null {
     const task = activeTask(this.mem, "Task_YesNoMenu_HandleInput");
     if (!task || task.field("data").at(YES_NO_TIMER).int() < YES_NO_INPUT_DELAY) return null;
-    const options = ["gText_Yes", "gText_No"].map((name) => this.decode(this.mem.global(name).bytes()));
-    return { options, cursor: this.mem.global("sMenu").field("cursorPos").int() };
+    return { options: this.yesNo(), cursor: this.mem.global("sMenu").field("cursorPos").int() };
+  }
+
+  yesNo(): string[] {
+    return ["gText_Yes", "gText_No"].map((name) => this.decode(this.mem.global(name).bytes()));
   }
 
   // Battle menus also print in windows that they make, for example Oak in the party menu of the first battle.
