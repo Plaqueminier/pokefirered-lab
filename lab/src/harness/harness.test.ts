@@ -1,8 +1,8 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import starter from "./scripted-bot";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
+import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
 
@@ -282,7 +282,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(await harness.readText()).toMatchObject({ status: "impossible", frames: 0 });
   });
 
-  test("fight moves the cursors of the battle menus, also from the move menu; in the party menu, the game waits for a partyPick that no Macro-action accepts", async () => {
+  test("fight moves the cursors of the battle menus, also from the move menu; in the party menu with one Pokémon, the game waits for a partyPick with no available action", async () => {
     const harness = await Harness.open();
     await toRivalBattle(harness);
     await harness.press("Down");
@@ -566,9 +566,67 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
       expect(await harness.use("POKé BALL")).toMatchObject({ status: "done" });
       await toNextAction(harness);
     }
-    expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["Yes", "No"] } });
-    expect(await harness.choose("No")).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["YES", "NO"] } });
+    expect(await harness.choose("NO")).toMatchObject({ status: "done" });
     while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") await harness.readText();
     expect(harness.observe().party.map((m) => m.species)).toEqual(["SQUIRTLE", enemy.battle.enemy.species]);
+  });
+});
+
+// A test Starting save in Pallet Town after the rival battle: SQUIRTLE, then SHELL, a SQUIRTLE with 1 HP.
+const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("Harness on the test Starting save with 2 Pokémon", () => {
+  async function toWildBattle(harness: Harness) {
+    for (let leg = 0; (await harness.goTo(12, leg % 2 ? 2 : 30, "Route1")).status !== "interrupted"; leg++) {
+      if (leg === 8) throw new Error("no wild battle");
+    }
+    while (harness.observe().waitingFor.kind !== "battleAction") await harness.readText();
+  }
+
+  test("switch changes the Pokémon in a battle", async () => {
+    const harness = await Harness.open({ startSave: PARTY_SAVE });
+    await toWildBattle(harness);
+    expect(battleOf(harness).player.nickname).toBe("SQUIRTLE");
+    expect(harness.availableActions()).toContainEqual({ name: "switch", slot: 1 });
+    expect(await harness.switch(1)).toMatchObject({ status: "done", text: expect.arrayContaining(["Go! SHELL!"]) });
+    expect(battleOf(harness).player.nickname).toBe("SHELL");
+    expect(harness.rawInputs).toBe(0);
+  });
+
+  test("a switch that the game refuses is impossible, with the text of the game as its reason, and the battle waits again for an action", async () => {
+    const harness = await Harness.open({ startSave: PARTY_SAVE });
+    await toWildBattle(harness);
+    expect(harness.availableActions()).not.toContainEqual({ name: "switch", slot: 0 });
+    expect(await harness.switch(0)).toMatchObject({ status: "impossible", reason: "SQUIRTLE is already in battle!" });
+    expect(harness.observe().waitingFor).toEqual({ kind: "battleAction" });
+    expect(await harness.switch(2)).toMatchObject({ status: "impossible", reason: "the party has no Pokémon 2", frames: 0 });
+  });
+
+  test("after a faint in a wild battle, YES at the choice opens the party menu, and send sends the chosen Pokémon", async () => {
+    const harness = await Harness.open({ startSave: PARTY_SAVE });
+    await toWildBattle(harness);
+    await harness.switch(1);
+    for (let turn = 0; harness.observe().waitingFor.kind !== "choice"; turn++) {
+      if (turn === 20) throw new Error("SHELL does not faint");
+      await (harness.observe().waitingFor.kind === "battleAction" ? harness.fight(0) : harness.readText());
+    }
+    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0 });
+    expect(await harness.choose("YES")).toMatchObject({ status: "done" });
+    expect(harness.observe().waitingFor).toEqual({ kind: "partyPick" });
+    const squirtle = harness.observe().party.findIndex((mon) => mon.nickname === "SQUIRTLE");
+    expect(harness.availableActions()).toEqual([{ name: "send", slot: squirtle }]);
+    expect(await harness.send(squirtle)).toMatchObject({ status: "done", text: expect.arrayContaining(["Go! SQUIRTLE!"]) });
+    expect(battleOf(harness).player.nickname).toBe("SQUIRTLE");
+    expect(harness.rawInputs).toBe(0);
+  });
+
+  test("swap changes the order of the party on a walk", async () => {
+    const harness = await Harness.open({ startSave: PARTY_SAVE });
+    expect(harness.availableActions()).toContainEqual({ name: "swap" });
+    expect(await harness.swap(0, 1)).toMatchObject({ status: "done" });
+    expect(harness.observe().party.map((mon) => mon.nickname)).toEqual(["SHELL", "SQUIRTLE"]);
+    expect(harness.observe().waitingFor).toEqual({ kind: "walk" });
+    expect(harness.rawInputs).toBe(0);
   });
 });

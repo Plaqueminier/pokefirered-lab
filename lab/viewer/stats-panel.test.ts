@@ -55,7 +55,7 @@ describe.skipIf(!ready)("the panel Stats", () => {
       { name: "go", count: 1 },
       { name: "viewAtlas", count: 1 },
     ]);
-    expect(view.neverUsed).toEqual(["choose", "fight", "run", "use", "press"]);
+    expect(view.neverUsed).toEqual(["swap", "choose", "fight", "switch", "send", "run", "use", "press"]);
     expect(view.impossible).toMatchObject([{ action: "goTo(0, 0)" }]);
     expect(view.unreadable).toMatchObject([{ error: '"fight" is not an action now: use go, goTo, viewAtlas or press' }]);
     expect(view.events).toEqual(expect.arrayContaining([{ name: "model", count: 5 }]));

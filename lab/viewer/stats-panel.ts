@@ -5,7 +5,19 @@ import { actionLabel } from "./replay";
 import { dollars } from "./runs";
 
 // A Record and not a list: the type check fails when a new action of the model bot is not here.
-const ACTION_LIST: Record<ModelAction["name"], true> = { go: true, goTo: true, choose: true, fight: true, run: true, use: true, press: true, viewAtlas: true };
+const ACTION_LIST: Record<ModelAction["name"], true> = {
+  go: true,
+  goTo: true,
+  swap: true,
+  choose: true,
+  fight: true,
+  switch: true,
+  send: true,
+  run: true,
+  use: true,
+  press: true,
+  viewAtlas: true,
+};
 const ACTION_NAMES = Object.keys(ACTION_LIST);
 
 export type Count = { name: string; count: number };

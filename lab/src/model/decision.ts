@@ -31,45 +31,69 @@ export type ModelAction =
   | { name: "goTo"; x: number; y: number; map?: string }
   | { name: "choose"; option: string }
   | { name: "fight"; move: number }
+  | { name: "switch"; slot: number }
+  | { name: "send"; slot: number }
+  | { name: "swap"; first: number; second: number }
   | { name: "run" }
   | { name: "use"; item: string; on?: number }
   | { name: "press"; button: Button }
   | { name: "viewAtlas" };
 
-export type Asked =
+/** `party`: in the order of `observe().party`, where the party actions take their Pokémon. */
+export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   /** `items`: the items of the Bag that work now. */
-  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; party: PartyMon[] };
+  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
+);
 
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
-  walk: ["go", "goTo", "viewAtlas", "press"],
+  walk: ["go", "goTo", "swap", "viewAtlas", "press"],
   choice: ["choose", "press"],
-  battleAction: ["fight", "run", "use", "press"],
+  battleAction: ["fight", "switch", "run", "use", "press"],
   battleMove: ["fight", "press"],
-  partyPick: ["press"],
+  partyPick: ["send", "press"],
 };
 
 export function actionsOf(asked: Asked): ModelAction["name"][] {
-  return asked.kind === "walk" && asked.atlasViewed ? ACTIONS.walk.filter((name) => name !== "viewAtlas") : ACTIONS[asked.kind];
+  return ACTIONS[asked.kind].filter((name) => {
+    switch (name) {
+      case "viewAtlas":
+        return !(asked.kind === "walk" && asked.atlasViewed);
+      case "swap":
+        return asked.party.length > 1;
+      case "switch":
+      case "send":
+        return sendable(asked).length > 0;
+      case "use":
+        return "items" in asked && asked.items.length > 0;
+      default:
+        return true;
+    }
+  });
+}
+
+/** The Pokémon that can go into the battle: they have HP, and they are not in the battle. */
+export function sendable(asked: Asked): PartyMon[] {
+  if (!("battle" in asked)) return [];
+  return asked.party.filter((mon, slot) => mon.hp > 0 && slot !== asked.battle.player.partyIndex);
 }
 
 const BUTTONS = Object.keys(Keys) as Button[];
 
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
 export function askedOf(observation: Observation, atlasViewed: boolean): Asked | null {
-  const { waitingFor } = observation;
+  const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", overworld: observation, view: atlasExtract(observation), atlasViewed };
-    return waitingFor.kind === "choice" ? { kind: "choice", overworld: observation, options: waitingFor.options } : null;
+    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasViewed };
+    return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
+  const { battle } = observation;
+  if (waitingFor.kind === "choice") return { kind: "choice", party, battle, options: waitingFor.options };
   const { kind } = waitingFor;
-  // After a catch, the battle asks for a nickname.
-  if (kind === "choice") return { kind, battle: observation.battle, options: waitingFor.options };
-  const { battle, bag, party } = observation;
-  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, battle, items: battleItems(bag, battle.kind), party } : null;
+  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, party, battle, items: battleItems(observation.bag, battle.kind) } : null;
 }
 
 export function readDecision(content: string): Decision {
@@ -91,6 +115,10 @@ export function readDecision(content: string): Decision {
   return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), notes: decision.notes.slice(0, MAX_NOTES) };
 }
 
+// The party actions name their Pokémon: the parser keeps the text, and readAction finds the place in the party.
+type PartyAction = { name: "switch"; pokemon: string } | { name: "send"; pokemon: string } | { name: "swap"; pokemon: string };
+type ParsedAction = Exclude<ModelAction, { name: PartyAction["name"] }> | PartyAction;
+
 export function readAction(text: string, asked: Asked): ModelAction {
   const use = text.trim().match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i);
   if (use) return readUse(use[1], use[2], asked);
@@ -104,6 +132,8 @@ export function readAction(text: string, asked: Asked): ModelAction {
       throw new Error(`there is no target ${action.target}: ${targets === 0 ? "the map has no targets" : `the targets are 1 to ${targets}`}`);
     }
   }
+  if (action.name === "switch" || action.name === "send") return { name: action.name, slot: partySlot(action.pokemon, asked.party) };
+  if (action.name === "swap") return swapOf(action.pokemon, asked.party);
   if (action.name === "choose" && asked.kind === "choice") {
     const option = asked.options.find((o) => o.toLowerCase() === action.option.toLowerCase());
     if (!option) throw new Error(`"${quoted(action.option)}" is not an option: ${asked.options.join(", ")}`);
@@ -113,8 +143,9 @@ export function readAction(text: string, asked: Asked): ModelAction {
 }
 
 function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
-  if (!actionsOf(asked).includes("use")) throw new Error(`"use" is not an action now: use ${alternatives(actionsOf(asked))}`);
-  const { items, party } = asked.kind === "battleAction" ? asked : { items: [], party: [] };
+  const accepted = actionsOf(asked);
+  if (!accepted.includes("use")) throw new Error(`"use" is not an action now: use ${alternatives(accepted)}`);
+  const items = "items" in asked ? asked.items : [];
   const item = items.find((i) => plain(i.name) === plain(name));
   if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
   if (item.battle === "alone") {
@@ -122,10 +153,7 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
     return { name: "use", item: item.name };
   }
   if (on === undefined) throw new Error(`${item.name} works on a Pokémon: use ${item.name} on <Pokémon>`);
-  const nickname = party.findIndex((m) => plain(m.nickname) === plain(on));
-  const index = nickname >= 0 ? nickname : party.findIndex((m) => plain(m.species) === plain(on));
-  if (index < 0) throw new Error(`"${quoted(on)}" is not a Pokémon of your party: ${party.map((m) => m.nickname).join(", ")}`);
-  return { name: "use", item: item.name, on: index };
+  return { name: "use", item: item.name, on: partySlot(on, asked.party) };
 }
 
 // The model can write "Poke Ball" for "POKé BALL".
@@ -133,8 +161,11 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
-function parse(action: string): ModelAction | null {
+function parse(action: string): ParsedAction | null {
   let m: RegExpMatchArray | null;
+  if ((m = action.match(/^switch\s+(.+)$/i))) return { name: "switch", pokemon: m[1] };
+  if ((m = action.match(/^send\s+(.+)$/i))) return { name: "send", pokemon: m[1] };
+  if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };
   if ((m = action.match(/^go\s+(\d+)$/i))) return { name: "go", target: Number(m[1]) };
   if ((m = action.match(/^goto\s+(-?\d+)\s+(-?\d+)(?:\s+(\S+))?$/i))) return { name: "goTo", x: Number(m[1]), y: Number(m[2]), ...(m[3] ? { map: m[3] } : {}) };
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
@@ -144,6 +175,33 @@ function parse(action: string): ModelAction | null {
   const button = action.match(/^press\s+(\w+)$/i)?.[1].toLowerCase();
   const pressed = BUTTONS.find((b) => b.toLowerCase() === button);
   return pressed ? { name: "press", button: pressed } : null;
+}
+
+/** A Pokémon by its nickname, in any case, or by its place in the party: 1 is the first. */
+function partySlot(pokemon: string, party: PartyMon[]): number {
+  if (/^\d+$/.test(pokemon)) {
+    const place = Number(pokemon);
+    if (place < 1 || place > party.length) throw new Error(`there is no Pokémon ${place}: the places in the party are 1 to ${party.length}`);
+    return place - 1;
+  }
+  const slots = party.flatMap((mon, slot) => (mon.nickname.toLowerCase() === pokemon.toLowerCase() ? [slot] : []));
+  if (slots.length === 1) return slots[0];
+  if (slots.length === 0) throw new Error(`"${quoted(pokemon)}" is not a Pokémon of your party: ${party.map((mon) => mon.nickname).join(", ")}`);
+  throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
+}
+
+// A nickname can have a space: try each space as the end of the first Pokémon.
+function swapOf(pokemons: string, party: PartyMon[]): ModelAction {
+  let error: unknown = new Error(`"${quoted(pokemons)}" is not two Pokémon of your party`);
+  for (const [i, c] of [...pokemons].entries()) {
+    if (c !== " ") continue;
+    try {
+      return { name: "swap", first: partySlot(pokemons.slice(0, i).trim(), party), second: partySlot(pokemons.slice(i + 1).trim(), party) };
+    } catch (e) {
+      error = e;
+    }
+  }
+  throw error;
 }
 
 function quoted(text: string): string {

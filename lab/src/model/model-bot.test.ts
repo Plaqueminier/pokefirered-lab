@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { modelBot } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, modelTotals, type Prompt } from "../harness/record";
-import { ROM_FILE, START_SAVE } from "../run";
+import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-panel";
 import type { ModelClient } from "./openrouter";
 
@@ -70,6 +71,33 @@ function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
       }
     }
     return { ...reply("go 1"), content: "I stop here." };
+  };
+  return { client, prompts };
+}
+
+// On the test Starting save with SQUIRTLE and SHELL (1 HP): swap them, walk in the grass, switch two times, then send SQUIRTLE after the faint of SHELL.
+function partyPlayer(): { client: ModelClient; prompts: Prompt[] } {
+  const prompts: Prompt[] = [];
+  const battleActions = ["switch squirtle", "switch 1"];
+  let swapped = false;
+  let walks = 0;
+  let sent = false;
+  const client: ModelClient = async (prompt) => {
+    prompts.push(prompt);
+    const now = prompt.user.match(/^The game waits for (.+)$/m)?.[1] ?? "";
+    if (sent) return { ...reply("go 1"), content: "I stop here." };
+    if (now.startsWith("a walk")) {
+      if (swapped) return reply(walks++ % 2 ? "goTo 12 2 Route1" : "goTo 12 30 Route1");
+      swapped = true;
+      return reply("swap SQUIRTLE SHELL");
+    }
+    if (now.startsWith("a battle action")) return reply(battleActions.shift() ?? "fight 0");
+    if (now.startsWith("a choice")) return reply("choose YES");
+    if (now.startsWith("a Pokémon in the party menu")) {
+      sent = true;
+      return reply("send SQUIRTLE");
+    }
+    throw new Error(`the fake model does not know this prompt:\n${prompt.user}`);
   };
   return { client, prompts };
 }
@@ -234,5 +262,30 @@ describe.skipIf(!ready)("model bot", () => {
       { name: "press", button: "B" },
       { name: "press", button: "B" },
     ]);
+  });
+});
+
+// A test Starting save in Pallet Town after the rival battle: SQUIRTLE, then SHELL, a SQUIRTLE with 1 HP.
+const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot with 2 Pokémon", () => {
+  test("the model swaps its Pokémon on a walk, switches them in a battle, and after a faint answers YES and sends a Pokémon, by name or by place", async () => {
+    const harness = await Harness.open({ startSave: PARTY_SAVE });
+    const { client, prompts } = partyPlayer();
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const party = harness.actions.filter(({ action }) => ["swap", "switch", "send", "choose"].includes(action.name));
+    expect(party.map(({ action, result }) => [action, result.status])).toEqual([
+      [{ name: "swap", first: 0, second: 1 }, "done"],
+      [{ name: "switch", slot: 1 }, "done"],
+      [{ name: "switch", slot: 0 }, "done"],
+      [{ name: "choose", option: "YES" }, "done"],
+      [{ name: "send", slot: 1 }, "done"],
+    ]);
+    expect(harness.rawInputs).toBe(0);
+    const users = prompts.map((p) => p.user);
+    expect(users[0]).toContain("- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party.");
+    expect(users.find((user) => user.includes("The game waits for a battle action."))).toContain("- switch <Pokémon>: take your Pokémon out of the battle and send this one. It can be SQUIRTLE.");
+    expect(users.find((user) => user.includes("The game waits for a choice: YES, NO."))).toMatch(/^Battle against a wild Pokémon\.$/m);
+    expect(users.find((user) => user.includes("The game waits for a Pokémon in the party menu"))).toContain("- send <Pokémon>: send this Pokémon into the battle. It can be SQUIRTLE.");
   });
 });

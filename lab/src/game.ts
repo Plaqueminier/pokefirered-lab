@@ -7,15 +7,16 @@ import {
   type BattleMenu,
   battleCursor,
   battleMenu,
+  battleMenuSlot,
+  battleYesNoCursor,
   dexPageWaits,
   enemyMovePrinted,
   levelUpBoxWaits,
-  nicknameChoice,
-  partyPick,
   type PrintedMove,
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
+import { type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
 import { functionName } from "./symbols";
@@ -277,10 +278,10 @@ export class Game {
   }
 
   private battleWaitingFor(): WaitingFor {
-    if (partyPick(this.mem)) return { kind: "partyPick" };
-    const nickname = nicknameChoice(this.mem, this.decode);
-    if (nickname) return { kind: "choice", ...nickname };
+    if (this.partyMenu()?.kind === "pick") return { kind: "partyPick" };
     if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem)) return { kind: "text" };
+    const yesNo = battleYesNoCursor(this.mem);
+    if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo };
     return { kind: battleMenu(this.mem) ?? "busy" };
   }
 
@@ -323,17 +324,6 @@ export class Game {
     return bagMenu(this.mem);
   }
 
-  /** The cursor of the party menu: a slot of the party in the order of the menu. */
-  partyMenuSlot(): number {
-    return this.mem.global("gPartyMenu").field("slotId").int();
-  }
-
-  /** The personality of each Pokémon of gPlayerParty: in a battle, the party menu puts the party in the battle order. */
-  partyPersonalities(): number[] {
-    const party = this.mem.global("gPlayerParty");
-    return Array.from({ length: this.mem.global("gPlayerPartyCount").int() }, (_, i) => party.at(i).field("box").field("personality").int());
-  }
-
   battleCursor(menu: BattleMenu): number {
     return battleCursor(this.mem, menu);
   }
@@ -372,6 +362,24 @@ export class Game {
   // Read also outside a battle, so that BattleWatch sees the old value before the battle intro clears it.
   enemyMovePrinted(): PrintedMove | null {
     return enemyMovePrinted(this.mem);
+  }
+
+  /** The keys that the game read the last time that it read the input: it can skip frames when it is slow. */
+  keysRead(): { held: number; pressed: number } {
+    const main = this.mem.global("gMain");
+    return { held: main.field("heldKeysRaw").int(), pressed: main.field("newKeysRaw").int() };
+  }
+
+  startMenu(): Choice | null {
+    return startMenu(this.mem, this.decode);
+  }
+
+  partyMenu(): PartyMenu | null {
+    return partyMenu(this.mem, this.decode);
+  }
+
+  battleMenuSlot(partyIndex: number): number {
+    return battleMenuSlot(this.mem, partyIndex);
   }
 
   moveName(move: number): string {
@@ -429,8 +437,12 @@ export class Game {
     return { mode, callback1, callback2 };
   }
 
+  /** In the order of the party out of a battle. */
   party(): PartyMon[] {
-    return readParty(this.mem, this.decode);
+    const party = readParty(this.mem, this.decode);
+    // While the party menu of a battle is open, gPlayerParty has the battle order (UpdatePartyToBattleOrder, party_menu.c).
+    if (this.context().mode !== "battle" || !this.partyMenu()) return party;
+    return party.map((_, i) => party[battleMenuSlot(this.mem, i)]);
   }
 
   milestones(): Milestone[] {

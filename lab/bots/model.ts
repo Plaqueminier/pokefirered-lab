@@ -107,6 +107,15 @@ class ModelPlay {
       case "fight":
         await this.harness.fight(action.move);
         return;
+      case "switch":
+        await this.harness.switch(action.slot);
+        return;
+      case "send":
+        await this.harness.send(action.slot);
+        return;
+      case "swap":
+        await this.harness.swap(action.first, action.second);
+        return;
       case "run":
         await this.harness.run();
         return;
