@@ -19,6 +19,7 @@ import type { Memory, Ref } from "./memory";
 import { type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, Prompts } from "./prompts";
+import { type BuyList, buyList, type ShopItem, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
 
 const REPO_DIR = join(import.meta.dir, "..", "..");
@@ -40,7 +41,8 @@ const MILESTONE_FLAGS: [Milestone, number][] = [
 ];
 /** The Milestones in the order of the story. */
 export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]) => milestone);
-const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic"]);
+// The buy list of a Poké Mart draws the map and its people behind the list (BuyMenuDrawMapView, shop.c): the map stays the same.
+const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic", "CB2_BuyMenu"]);
 const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
 const MB_TALL_GRASS = 0x02;
 export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
@@ -102,6 +104,8 @@ export type WaitingFor =
   | { kind: "battleAction" }
   | { kind: "battleMove" }
   | { kind: "partyPick" }
+  /** The buy list of a Poké Mart, with the items for sale and their prices. */
+  | { kind: "buyList"; items: ShopItem[] }
   | { kind: "busy" };
 
 export type Direction = "south" | "north" | "west" | "east";
@@ -234,8 +238,10 @@ export class Game {
   waitingFor(): WaitingFor {
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
+    const list = this.buyList();
+    if (list) return { kind: "buyList", items: list.items };
     if (mode !== "overworld") return { kind: "busy" };
-    const choice = this.prompts.choice();
+    const choice = this.prompts.choice() ?? this.shopMenu();
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
@@ -322,6 +328,31 @@ export class Game {
 
   bagMenu(): BagMenu | null {
     return bagMenu(this.mem);
+  }
+
+  shopMenu(): Choice | null {
+    return shopMenu(this.mem, this.decode);
+  }
+
+  buyList(): BuyList | null {
+    return buyList(this.mem, this.decode);
+  }
+
+  tradeQuantity(): number | null {
+    return tradeQuantity(this.mem);
+  }
+
+  tradeYesNo(): number | null {
+    return tradeYesNo(this.mem);
+  }
+
+  tradeDone(): boolean {
+    return tradeDone(this.mem);
+  }
+
+  /** The text of the last message of a menu that prints with DisplayMessageAndContinueTask or DisplayItemMessageInBag. */
+  menuMessage(): string {
+    return this.decode(this.mem.global("gStringVar4").bytes()).split("\n").join(" ");
   }
 
   battleCursor(menu: BattleMenu): number {

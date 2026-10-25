@@ -121,3 +121,27 @@ describe("the Bag", () => {
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
   });
 });
+
+describe("the Poké Mart", () => {
+  test("at the buy list, the prompt shows the items with their prices and the money, and the action lines buy and sell", () => {
+    const observation = {
+      mode: "overworld",
+      waitingFor: { kind: "buyList", items: [{ name: "POKé BALL", price: 200 }, { name: "POTION", price: 300 }] },
+      party: [],
+      money: 3080,
+      bag: [{ pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon" }] }],
+      milestones: [],
+      atlas: { maps: [] },
+    } as unknown as Observation;
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0 });
+    expect(prompt).toContain("The game waits for the buy list of a Poké Mart.");
+    expect(prompt).toContain("Money: 3080");
+    expect(prompt).toContain(["The Poké Mart sells (the price of one item):", "- POKé BALL: 200", "- POTION: 300"].join("\n"));
+    expect(prompt).toContain(
+      [
+        "- buy <item> <quantity>: buy items of the list, for example buy POTION 2. Your money must pay the price of all the items.",
+        "- sell <item> <quantity>: sell items of your Bag. The shop pays half of the price of each item. It does not buy the KEY ITEMS.",
+      ].join("\n"),
+    );
+  });
+});

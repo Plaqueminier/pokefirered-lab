@@ -411,6 +411,8 @@
               <tr><td><code>swap(first, second)</code></td><td>walk</td><td>Changes the order of two Pokémon of the party.</td></tr>
               <tr><td><code>run()</code></td><td>wild battle</td><td>Escapes. Impossible against a trainer.</td></tr>
               <tr><td><code>use(item, on?)</code></td><td>battle</td><td>Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. Impossible, with the reason of the game, when the item does nothing.</td></tr>
+              <tr><td><code>buy(item, quantity)</code></td><td>Poké Mart</td><td>Buys items of the buy list. Impossible when the money does not pay them.</td></tr>
+              <tr><td><code>sell(item, quantity)</code></td><td>Poké Mart</td><td>Sells items of the Bag for half of their price, then goes back to the buy list.</td></tr>
             </tbody>
           </table>
           <div class="doc-chips">
@@ -459,7 +461,7 @@
         <section class="w5 doc-warn">
           <h2>Not yet</h2>
           <dl>
-            <dt>Menus</dt><dd>Start, the Bag on a walk, shop, PC, multichoice: the Harness sees a busy game.</dd>
+            <dt>Menus</dt><dd>Start, the Bag on a walk, PC, multichoice: the Harness sees a busy game.</dd>
             <dt>Name screen</dt><dd>No typing: at the nickname, a Bot answers NO.</dd>
           </dl>
         </section>

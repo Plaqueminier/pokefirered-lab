@@ -81,6 +81,15 @@ describe("readAction", () => {
     expect(() => readAction("use ANTIDOTE", asked)).toThrow('"ANTIDOTE" is not an item that works now: POTION, POKé BALL');
   });
 
+  test("at the buy list of a Poké Mart: buy an item of the list, or sell an item of the Bag, with a quantity", () => {
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon" };
+    const asked: Asked = { kind: "buyList", forSale: [{ name: "POKé BALL", price: 200 }], bag: [{ pocket: "ITEMS", items: [potion] }], party: [] };
+    expect(readAction("buy Poke Ball 5", asked)).toEqual({ name: "buy", item: "POKé BALL", quantity: 5 });
+    expect(readAction("sell potion 2", asked)).toEqual({ name: "sell", item: "POTION", quantity: 2 });
+    expect(() => readAction("buy POTION 1", asked)).toThrow('"POTION" is not an item of the buy list: POKé BALL');
+    expect(() => readAction("sell ANTIDOTE 1", asked)).toThrow('"ANTIDOTE" is not an item of your Bag: POTION');
+  });
+
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {
     expect(() => readAction("walk north", walk(3))).toThrow('"walk north" is not an action');
     expect(() => readAction("go 4", walk(3))).toThrow("there is no target 4: the targets are 1 to 3");

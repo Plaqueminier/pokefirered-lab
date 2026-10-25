@@ -153,6 +153,12 @@ class ModelPlay {
       case "use":
         await this.harness.use(action.item, action.on);
         return;
+      case "buy":
+        await this.harness.buy(action.item, action.quantity);
+        return;
+      case "sell":
+        await this.harness.sell(action.item, action.quantity);
+        return;
       case "press":
         await this.harness.press(action.button);
         return;

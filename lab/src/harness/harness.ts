@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { BATTLE_POCKETS, type BagPocket, battleItems } from "../bag";
+import { BATTLE_POCKETS, type BagPlace, type BagPocket, battleItems } from "../bag";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -55,6 +55,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   battleAction: ["fight", "switch", "run", "use"],
   battleMove: ["fight"],
   partyPick: ["send"],
+  buyList: ["buy", "sell"],
   busy: ["readText"],
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
@@ -64,6 +65,11 @@ const BAG_CURSOR = 1;
 const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
 const POKE_BALLS_POCKET = 2;
+// sShopMenuActions_BuySellQuit (shop.c): BUY, SELL, SEE YA!
+const SHOP_BUY = 0;
+const SHOP_SELL = 1;
+// The quantity box of a buy or a sale goes to 99 at most (shop.c, item_menu.c).
+const MAX_TRADE = 99;
 const START_MENU_POKEMON = "POKéMON";
 // The first action of a Pokémon in the party menu of a battle: SEND OUT after a faint, SHIFT after the battle action POKéMON.
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
@@ -120,10 +126,16 @@ export type MacroAction =
   | { name: "swap"; first: number; second: number }
   | { name: "run" }
   /** `on`: the Pokémon of the party (its place in `observe().party`) for an item that works on a Pokémon. */
-  | { name: "use"; item: string; on?: number };
+  | { name: "use"; item: string; on?: number }
+  | { name: "buy"; item: string; quantity: number }
+  | { name: "sell"; item: string; quantity: number };
 
-/** The party Macro-actions take the place of a Pokémon in `observe().party`. The Bot chooses the cell of goTo, the Pokémon of swap and the Pokémon of use. */
-export type AvailableAction = { name: "goTo" } | { name: "swap" } | { name: "use"; item: string } | Exclude<MacroAction, { name: "goTo" | "swap" | "use" }>;
+/** The party Macro-actions take the place of a Pokémon in `observe().party`. The Bot chooses the cell of goTo, the Pokémon of swap and of use, and the quantity of buy and sell. */
+export type AvailableAction =
+  | { name: "goTo" }
+  | { name: "swap" }
+  | { name: "use" | "buy" | "sell"; item: string }
+  | Exclude<MacroAction, { name: "goTo" | "swap" | "use" | "buy" | "sell" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -433,6 +445,10 @@ export class Harness {
           return this.battle().kind === "wild" ? [{ name }] : [];
         case "use":
           return battleItems(this.#run.game.bag(), this.battle().kind).map((item) => ({ name, item: item.name }));
+        case "buy":
+          return waiting.kind === "buyList" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
+        case "sell":
+          return this.#run.game.bag().flatMap(({ items }) => items.flatMap((item) => (saleRefusal(item.name, this.#run.game.findInBag(item.name)) === null ? [{ name, item: item.name }] : [])));
       }
     });
   }
@@ -561,14 +577,7 @@ export class Harness {
       const before = game.bagQuantity(place.item);
       const opened = this.openBag();
       if (opened.status !== "done") return opened;
-      const list = () => {
-        const menu = game.bagMenu();
-        return menu?.screen === "list" ? menu : null;
-      };
-      const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the Bag list");
-      const pocket = this.moveCursor(place.pocket, () => list()?.pocket ?? null, (at) => (place.pocket > at ? Keys.Right : Keys.Left), inList);
-      if (pocket.status !== "done") return pocket;
-      const row = this.moveCursor(place.row, () => list()?.row ?? null, (at) => (place.row > at ? Keys.Down : Keys.Up), inList);
+      const row = this.toBagItem(place);
       if (row.status !== "done") return row;
       // The menu of an item that works in a battle is USE, CANCEL, with the cursor on USE.
       const context = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "context", "the menu of the item");
@@ -597,6 +606,46 @@ export class Harness {
       }
       return { status: "done", text: [...effect, ...reader.textBeforeWaitingText()] };
     }, { text: [] });
+  }
+
+  /** At the buy list of a Poké Mart: the item, the quantity, YES, and the buy list again. */
+  async buy(item: string, quantity: number): Promise<ActionResult> {
+    return this.act({ name: "buy", item, quantity }, () => {
+      const game = this.#run.game;
+      const list = () => game.buyList();
+      const items = list()?.items ?? [];
+      const row = items.findIndex((i) => i.name === item);
+      if (row < 0) return { status: "impossible", reason: `the shop does not sell ${item}` };
+      // The quantity box stops at the quantity that the money pays: check the money first.
+      const cost = items[row].price * quantity;
+      if (cost > game.money()) return { status: "impossible", reason: `${quantity} ${item} cost ${cost} and the money is ${game.money()}` };
+      if (quantity < 1 || quantity > MAX_TRADE) return { status: "impossible", reason: `the quantity of ${item} to buy is 1 to ${MAX_TRADE}` };
+      const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the buy list");
+      const moved = this.moveCursor(row, () => list()?.row ?? null, (at) => (row > at ? Keys.Down : Keys.Up), inList);
+      return moved.status === "done" ? this.trade(quantity) : moved;
+    });
+  }
+
+  /** At the buy list of a Poké Mart: the menu SELL, the item in the Bag, the quantity, YES, then the buy list again. */
+  async sell(item: string, quantity: number): Promise<ActionResult> {
+    return this.act({ name: "sell", item, quantity }, () => {
+      const game = this.#run.game;
+      const place = game.findInBag(item);
+      const refusal = saleRefusal(item, place);
+      if (!place || refusal) return { status: "impossible", reason: refusal ?? `there is no ${item} in the Bag` };
+      const most = Math.min(game.bagQuantity(place.item), MAX_TRADE);
+      if (quantity < 1 || quantity > most) return { status: "impossible", reason: `the quantity of ${item} to sell is 1 to ${most}` };
+      const menu = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
+      if (menu.status !== "done") return menu;
+      const opened = this.shopOption(SHOP_SELL, () => game.bagMenu()?.screen === "list", "the Bag");
+      if (opened.status !== "done") return opened;
+      const row = this.toBagItem(place);
+      if (row.status !== "done") return row;
+      const sold = this.trade(quantity);
+      if (sold.status !== "done") return sold;
+      const back = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
+      return back.status === "done" ? this.shopOption(SHOP_BUY, () => game.buyList() !== null, "the buy list") : back;
+    });
   }
 
   async switch(slot: number): Promise<TextResult> {
@@ -675,6 +724,49 @@ export class Harness {
     const moved = this.moveCursor(BAG_CURSOR, cursor, (at) => gridKey(at, BAG_CURSOR));
     if (moved.status !== "done") return moved;
     return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
+  }
+
+  // At the menu BUY / SELL / SEE YA: the option, then A until the game shows the screen of the option.
+  private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
+    const game = this.#run.game;
+    const cursor = () => game.shopMenu()?.cursor ?? null;
+    const inMenu = (keys: number) => this.tapUntil(keys, () => cursor() !== null, "the shop menu");
+    const moved = this.moveCursor(option, cursor, (at) => (option > at ? Keys.Down : Keys.Up), inMenu);
+    return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
+  }
+
+  // At the list of the Bag: the pocket, then the row of the item.
+  private toBagItem(place: BagPlace): Outcome {
+    const game = this.#run.game;
+    const list = () => {
+      const menu = game.bagMenu();
+      return menu?.screen === "list" ? menu : null;
+    };
+    const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the Bag list");
+    const pocket = this.moveCursor(place.pocket, () => list()?.pocket ?? null, (at) => (place.pocket > at ? Keys.Right : Keys.Left), inList);
+    if (pocket.status !== "done") return pocket;
+    return this.moveCursor(place.row, () => list()?.row ?? null, (at) => (place.row > at ? Keys.Down : Keys.Up), inList);
+  }
+
+  // At the item of a buy or a sale: A, the quantity, YES, then A after the message of the clerk, back to the list.
+  private trade(quantity: number): Outcome {
+    const game = this.#run.game;
+    const box = this.tapUntil(Keys.A, () => game.tradeQuantity() !== null || game.tradeYesNo() !== null, "the quantity box");
+    if (box.status !== "done") return box;
+    const count = () => game.tradeQuantity();
+    const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
+    if (count() !== null) {
+      const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
+      if (moved.status !== "done") return moved;
+      const asked = this.tapUntil(Keys.A, () => game.tradeYesNo() !== null, "the yes/no");
+      if (asked.status !== "done") return asked;
+    }
+    // A refusal (for example a full Bag) waits for A, then the list comes back.
+    const yes = this.tapUntil(Keys.A, () => game.tradeDone() || game.waitingTexts().length > 0, "the end of the trade");
+    if (yes.status !== "done") return yes;
+    const refusal = game.tradeDone() ? null : game.menuMessage();
+    const back = this.tapUntil(Keys.A, () => game.buyList() !== null || game.bagMenu()?.screen === "list", "the list");
+    return back.status !== "done" || refusal === null ? back : { status: "impossible", reason: `the game refuses: ${refusal}` };
   }
 
   // The game shows a message, then the Bag again: B closes the Bag, back to the battle menu.
@@ -1041,6 +1133,21 @@ function neighbours(cell: { x: number; y: number }): { direction: Direction; x: 
 
 function at(place: Place): string {
   return `${place.map} (${place.x}, ${place.y})`;
+}
+
+/** Null when a Poké Mart buys the item, else the reason. */
+function saleRefusal(item: string, place: BagPlace | null): string | null {
+  if (!place) return `there is no ${item} in the Bag`;
+  // The Bag of a Poké Mart opens the TM Case and the Berry Pouch on their own screens.
+  if (place.pocket >= BATTLE_POCKETS) return "the sale of the TM Case and of the Berry Pouch is not covered yet";
+  return place.price > 0 ? null : `the shop does not buy ${item}`;
+}
+
+// The quantity box: Up and Down change it by 1, Right and Left by 10 (AdjustQuantityAccordingToDPadInput, menu_helpers.c).
+function quantityKey(at: number, target: number): number {
+  if (target - at >= 10) return Keys.Right;
+  if (at - target >= 10) return Keys.Left;
+  return target > at ? Keys.Up : Keys.Down;
 }
 
 // The battle menus are 2x2 grids. The game does not move the cursor to an empty move slot, and the moves fill

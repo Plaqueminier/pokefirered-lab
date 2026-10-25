@@ -15,6 +15,8 @@ const ACTION_LIST: Record<ModelAction["name"], true> = {
   send: true,
   run: true,
   use: true,
+  buy: true,
+  sell: true,
   press: true,
   viewAtlas: true,
   zoom: true,

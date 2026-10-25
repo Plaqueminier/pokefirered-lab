@@ -23,8 +23,8 @@ export type BagItem = { name: string; quantity: number; description: string; bat
 
 export type BagPocket = { pocket: PocketName; items: BagItem[] };
 
-/** Where an item is in the Bag: its pocket and its row in the list of the Bag menu. */
-export type BagPlace = { item: number; pocket: number; row: number; battle: BattleUse | null };
+/** Where an item is in the Bag: its pocket and its row in the list of the Bag menu. `price`: the price in a Poké Mart, 0 when the shop does not buy it. */
+export type BagPlace = { item: number; pocket: number; row: number; battle: BattleUse | null; price: number };
 
 /** The Bag menu waits for a key: at the list of a pocket, or at the menu USE / CANCEL of an item. */
 export type BagMenu = { screen: "list" | "context"; pocket: number; row: number; menuCursor: number };
@@ -40,7 +40,9 @@ export function readBag(mem: Memory, decode: Decode): BagPocket[] {
 export function findInBag(mem: Memory, name: string, decode: Decode): BagPlace | null {
   for (const [pocket, slots] of pocketSlots(mem).entries()) {
     const row = slots.findIndex(({ item }) => itemName(mem, item, decode) === name);
-    if (row >= 0) return { item: slots[row].item, pocket, row, battle: pocket < BATTLE_POCKETS ? itemBattleUse(mem, slots[row].item) : null };
+    if (row < 0) continue;
+    const { item } = slots[row];
+    return { item, pocket, row, battle: pocket < BATTLE_POCKETS ? itemBattleUse(mem, item) : null, price: mem.global("gItems").at(item).field("price").int() };
   }
   return null;
 }

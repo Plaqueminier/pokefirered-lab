@@ -20,6 +20,7 @@ const WAITS: Record<AskedKind, string> = {
   battleAction: "a battle action",
   battleMove: "a move",
   partyPick: "a Pokémon in the party menu of the battle",
+  buyList: "the buy list of a Poké Mart",
 };
 // A name and a place only: the model finds the steps itself.
 const MILESTONE_TEXTS: Record<Milestone, string> = {
@@ -267,6 +268,8 @@ function context(asked: Asked): string[] {
       const where = "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
       return [...where, "", "The question is the last text of your last decisions."];
     }
+    case "buyList":
+      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", "To leave the shop: press B, then choose SEE YA!."];
     default:
       return battleLines(asked.battle);
   }
@@ -298,6 +301,11 @@ function actionLines(asked: Asked): string[] {
       return fights(asked.battle);
     case "partyPick":
       return partyLine(asked, "send", "send this Pokémon into the battle");
+    case "buyList":
+      return [
+        `- buy <item> <quantity>: buy items of the list, for example buy POTION 2. Your money must pay the price of all the items.`,
+        "- sell <item> <quantity>: sell items of your Bag. The shop pays half of the price of each item. It does not buy the KEY ITEMS.",
+      ];
   }
 }
 

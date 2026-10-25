@@ -630,3 +630,50 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("Harness on th
     expect(harness.rawInputs).toBe(0);
   });
 });
+
+// A test Starting save: test-bag.sav, then the counter of the Viridian City Mart, at (4, 3) with the clerk at (2, 3). It stays local (lab/README.md).
+const MART_SAVE = join(SAVES_DIR, "test-mart.sav");
+const MART_COUNTER = { x: 3, y: 3 };
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at a Poké Mart", () => {
+  async function toBuyList(): Promise<Harness> {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    await harness.interact(MART_COUNTER.x, MART_COUNTER.y);
+    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["BUY", "SELL", "SEE YA!"], cursor: 0 });
+    expect(await harness.choose("BUY")).toMatchObject({ status: "done" });
+    return harness;
+  }
+
+  test("buy POKé BALL 5 puts 5 Poké Balls in the Bag and takes their price from the money", async () => {
+    const harness = await toBuyList();
+    expect(harness.observe()).toMatchObject({
+      money: 3080,
+      waitingFor: {
+        kind: "buyList",
+        items: [
+          { name: "POKé BALL", price: 200 },
+          { name: "POTION", price: 300 },
+          { name: "ANTIDOTE", price: 100 },
+          { name: "PARLYZ HEAL", price: 200 },
+        ],
+      },
+    });
+    expect(await harness.buy("POKé BALL", 5)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ money: 2080, waitingFor: { kind: "buyList" }, bag: [expect.anything(), { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 25 }] }] });
+    expect(harness.rawInputs).toBe(0);
+  });
+
+  test("sell gives money for an item of the Bag: half of its price for each one", async () => {
+    const harness = await toBuyList();
+    expect(harness.availableActions()).toContainEqual({ name: "sell", item: "POTION" });
+    expect(await harness.sell("POTION", 2)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ money: 3380, waitingFor: { kind: "buyList" }, bag: [{ pocket: "ITEMS", items: [{ name: "POTION", quantity: 3 }] }, expect.anything()] });
+    expect(harness.rawInputs).toBe(0);
+  });
+
+  test("a buy with not enough money is impossible, with a reason, and runs no frames", async () => {
+    const harness = await toBuyList();
+    expect(await harness.buy("POKé BALL", 20)).toEqual({ status: "impossible", reason: "20 POKé BALL cost 4000 and the money is 3080", frames: 0 });
+    expect(harness.observe()).toMatchObject({ money: 3080, waitingFor: { kind: "buyList" } });
+  });
+});
