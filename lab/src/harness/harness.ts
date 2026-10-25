@@ -1,13 +1,12 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { BATTLE_POCKETS, type BagPlace, type BagPocket, battleItems, walkItems } from "../bag";
-import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
+import { type BagPocket, battleItems, walkItems } from "../bag";
+import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
   DIRECTION_STEPS,
   type Direction,
-  type Game,
   type GameInterruption,
   type GameState,
   type MapActors,
@@ -18,10 +17,10 @@ import {
   type WaitingFor,
 } from "../game";
 import { type PartyMon, sendableSlots } from "../party";
-import type { Messages } from "../prompts";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
+import { MenuDriver, MessageReader, type Outcome, sellableItems, type Texts } from "./menu-driver";
 import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
@@ -40,7 +39,6 @@ import {
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
-const DECISION_FRAME_LIMIT = 3600;
 const MAX_TEXT_PRESSES = 256;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
@@ -60,20 +58,6 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
 export const MACRO_ACTIONS: readonly MacroAction["name"][] = [...new Set(Object.values(ACCEPTS).flat())];
-const FIGHT_CURSOR = 0;
-const BAG_CURSOR = 1;
-const POKEMON_CURSOR = 2;
-const RUN_CURSOR = 3;
-const POKE_BALLS_POCKET = 2;
-const SHOP_BUY = 0;
-const SHOP_SELL = 1;
-const MAX_TRADE = 99;
-const START_MENU_POKEMON = "POKéMON";
-const START_MENU_BAG = "BAG";
-const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
-const SWAP_ACTION = "SWITCH";
-const CURSOR_COLUMN = 1;
-const CURSOR_ROW = 2;
 export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
@@ -99,17 +83,9 @@ export type Interruption = GameInterruption | "map";
 
 type LegResult = "done" | "stuck" | "no move" | "no warp" | Interruption;
 
-type Outcome =
-  | { status: "done" }
-  | { status: "impossible"; reason: string }
-  | { status: "blocked"; reason: string }
-  | { status: "interrupted"; reason: Interruption };
-
 export type ActionResult = Outcome & {
   frames: number;
 };
-
-type Texts = { text: string[] };
 
 export type TextResult = ActionResult & Texts;
 
@@ -261,6 +237,7 @@ export class Harness {
   readonly #watch: GameWatch;
   readonly #atlas: AtlasWatch;
   readonly #events: RunEvent[] = [];
+  readonly #menus: MenuDriver;
   #phase: Phase = { kind: "ready" };
 
   private constructor(run: Run, options: HarnessOptions) {
@@ -276,6 +253,7 @@ export class Harness {
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game);
+    this.#menus = new MenuDriver(run.game, { advance: (keys) => this.advance(keys) });
   }
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
@@ -353,23 +331,14 @@ export class Harness {
     this.#onModelCallStart?.(this);
     const start = performance.now();
     const { answer, action } = await ask();
-    const event: ModelEvent = { type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
-    this.#events.push(event);
-    this.#onModelCall?.(event, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.afterCall(this.#events);
-    this.stopIfAsked();
+    this.callEnded({ type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onModelCall);
     return action;
   }
 
   async summaryCall(ask: () => Promise<SummaryAnswer>): Promise<SummaryEvent> {
     const start = performance.now();
     const answer = await ask();
-    const event: SummaryEvent = { type: "summary", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer };
-    this.#events.push(event);
-    this.#onSummaryCall?.(event, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.afterCall(this.#events);
-    this.stopIfAsked();
-    return event;
+    return this.callEnded({ type: "summary", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onSummaryCall);
   }
 
   record(): RunRecord {
@@ -405,33 +374,34 @@ export class Harness {
   }
 
   availableActions(): AvailableAction[] {
-    const waiting = this.#run.game.waitingFor();
+    const game = this.#run.game;
+    const waiting = game.waitingFor();
     return ACCEPTS[waiting.kind].flatMap((name): AvailableAction[] => {
       switch (name) {
         case "goTo":
         case "readText":
           return [{ name }];
         case "swap":
-          return this.#run.game.party().length > 1 ? [{ name }] : [];
+          return game.party().length > 1 ? [{ name }] : [];
         case "switch":
         case "send":
-          return sendableSlots(this.#run.game.partyOnScreen(), this.battle().player.partyIndex).map((slot) => ({ name, slot }));
+          return sendableSlots(game.partyOnScreen(), game.requireBattle().player.partyIndex).map((slot) => ({ name, slot }));
         case "interact":
           return this.interactions();
         case "choose":
           return waiting.kind === "choice" ? waiting.options.map((option) => ({ name, option })) : [];
         case "fight":
-          return this.battle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
+          return game.requireBattle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
         case "run":
-          return this.battle().kind === "wild" ? [{ name }] : [];
+          return game.requireBattle().kind === "wild" ? [{ name }] : [];
         case "use": {
-          const bag = this.#run.game.bag();
-          return (waiting.kind === "walk" ? walkItems(bag) : battleItems(bag, this.battle().kind)).map((item) => ({ name, item: item.name }));
+          const bag = game.bag();
+          return (waiting.kind === "walk" ? walkItems(bag) : battleItems(bag, game.requireBattle().kind)).map((item) => ({ name, item: item.name }));
         }
         case "buy":
           return waiting.kind === "buyList" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
         case "sell":
-          return this.#run.game.bag().flatMap(({ items }) => items.flatMap((item) => (saleRefusal(item.name, this.#run.game.findInBag(item.name)) === null ? [{ name, item: item.name }] : [])));
+          return sellableItems(game).map((item) => ({ name, item }));
       }
     });
   }
@@ -484,11 +454,11 @@ export class Harness {
       if (!direction) return { status: "impossible", reason: `(${x}, ${y}) is not next to the player at ${at(here)}` };
       const turned = this.face(direction);
       if (turned.status !== "done") return turned;
-      const battle = this.tap(Keys.A);
+      const battle = this.#menus.tap(Keys.A);
       if (battle) return { status: "interrupted", reason: battle };
       // ScriptContext_SetupScript locks the field controls, so an unlocked field means A started no script.
       if (!game.fieldLocked()) return { status: "impossible", reason: `nothing at (${x}, ${y}) starts a script` };
-      return this.untilDecision();
+      return this.#menus.untilDecision();
     });
   }
 
@@ -497,10 +467,10 @@ export class Harness {
       const game = this.#run.game;
       const reader = new MessageReader(game);
       for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
-        const outcome = this.untilDecision(() => reader.update());
+        const outcome = this.#menus.untilDecision(() => reader.update());
         if (outcome.status !== "done" || game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
         if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
-        const battle = this.tap(Keys.A);
+        const battle = this.#menus.tap(Keys.A);
         if (battle) return { status: "interrupted", reason: battle, text: reader.text };
         reader.pressed();
       }
@@ -509,173 +479,43 @@ export class Harness {
   }
 
   async choose(option: string): Promise<ActionResult> {
-    return this.act({ name: "choose", option }, () => {
-      const game = this.#run.game;
-      const choice = game.waitingFor();
-      if (choice.kind !== "choice") throw new Error("choose is available only at a choice");
-      const target = choice.options.indexOf(option);
-      if (target < 0) return { status: "impossible", reason: `no option "${option}" in ${choice.options.join(", ")}` };
-      const cursor = () => {
-        const now = game.waitingFor();
-        return now.kind === "choice" ? now.cursor : null;
-      };
-      const moved = this.moveCursor(target, cursor, (at) => (target > at ? Keys.Down : Keys.Up));
-      return moved.status === "done" ? this.input(Keys.A) : moved;
-    });
+    return this.act({ name: "choose", option }, () => this.#menus.choose(option));
   }
 
   async fight(move: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "fight", move }, () => {
-      const game = this.#run.game;
-      const chosen = this.battle().player.moves[move];
-      if (!chosen) return { status: "impossible", reason: `the Pokémon has no move ${move}` };
-      if (chosen.pp === 0) return { status: "impossible", reason: `${chosen.name} has no PP` };
-      if (game.waitingFor().kind === "battleAction") {
-        const opened = this.select("battleAction", FIGHT_CURSOR);
-        if (opened.status !== "done") return opened;
-        if (game.waitingFor().kind !== "battleMove") return { status: "impossible", reason: "the move menu does not open" };
-      }
-      return this.turn("battleMove", move);
-    }, { text: [] });
+    return this.act<Texts>({ name: "fight", move }, () => this.#menus.fight(move), { text: [] });
   }
 
   async run(): Promise<TextResult> {
-    return this.act<Texts>({ name: "run" }, () => {
-      if (this.battle().kind === "trainer") return { status: "impossible", reason: "there is no running from a trainer battle" };
-      return this.turn("battleAction", RUN_CURSOR);
-    }, { text: [] });
+    return this.act<Texts>({ name: "run" }, () => this.#menus.run(), { text: [] });
   }
 
   async use(item: string, on?: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => {
-      const game = this.#run.game;
-      const walk = game.waitingFor().kind === "walk";
-      const place = game.findInBag(item);
-      if (!place || place.pocket >= BATTLE_POCKETS) return { status: "impossible", reason: `there is no ${item} in the Bag${walk ? "" : " of a battle"}` };
-      const use = walk ? place.walk : place.battle;
-      if (!use) return { status: "impossible", reason: `${item} does not work ${walk ? "outside" : "in"} a battle` };
-      if (!walk && place.pocket === POKE_BALLS_POCKET && this.battle().kind === "trainer") return { status: "impossible", reason: "the trainer blocks a ball: there is no catching in a trainer battle" };
-      if (use === "pokemon" && on === undefined) return { status: "impossible", reason: `${item} works on a Pokémon: give the Pokémon` };
-      if (use === "alone" && on !== undefined) return { status: "impossible", reason: `${item} does not work on a Pokémon` };
-      if (on !== undefined && !game.party()[on]) return { status: "impossible", reason: `the party has no Pokémon ${on}` };
-      const before = game.bagQuantity(place.item);
-      const opened = walk ? this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list") : this.openBag();
-      if (opened.status !== "done") return opened;
-      const row = this.toBagItem(place);
-      if (row.status !== "done") return row;
-      const context = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "context", "the menu of the item");
-      if (context.status !== "done") return context;
-      const pick = () => {
-        const menu = game.partyMenu();
-        return menu?.kind === "pick" ? menu.cursor : null;
-      };
-      if (on !== undefined) {
-        const party = this.tapUntil(Keys.A, () => pick() !== null, "the party menu");
-        if (party.status !== "done") return party;
-        const picked = this.moveMenuCursor(walk ? on : game.battleMenuSlot(on), pick);
-        if (picked.status !== "done") return picked;
-      }
-      if (walk) return this.useOnWalk(item, place.item, before);
-      const reader = new MessageReader(game);
-      const pressed = this.pressUntilRead(Keys.A);
-      if (pressed.status !== "done") return pressed;
-      const used = this.untilDecision(() => reader.update());
-      if (used.status !== "done") return used;
-      if (!game.battleScreen() && game.bagQuantity(place.item) === before) return this.refused(item, game.waitingTexts().join(" "));
-      const effect = game.battleScreen() ? [] : game.waitingTexts();
-      if (effect.length > 0) {
-        const after = this.input(Keys.A, () => reader.update());
-        if (after.status !== "done") return after;
-      }
-      return { status: "done", text: [...effect, ...reader.textBeforeWaitingText()] };
-    }, { text: [] });
+    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => this.#menus.use(item, on), { text: [] });
   }
 
   async buy(item: string, quantity: number): Promise<ActionResult> {
-    return this.act({ name: "buy", item, quantity }, () => {
-      const game = this.#run.game;
-      const list = () => game.buyList();
-      const items = list()?.items ?? [];
-      const row = items.findIndex((i) => i.name === item);
-      if (row < 0) return { status: "impossible", reason: `the shop does not sell ${item}` };
-      // The quantity box stops without error at the quantity that the money pays: check the money first.
-      const cost = items[row].price * quantity;
-      if (cost > game.money()) return { status: "impossible", reason: `${quantity} ${item} cost ${cost} and the money is ${game.money()}` };
-      if (quantity < 1 || quantity > MAX_TRADE) return { status: "impossible", reason: `the quantity of ${item} to buy is 1 to ${MAX_TRADE}` };
-      const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the buy list");
-      const moved = this.moveCursor(row, () => list()?.row ?? null, (at) => (row > at ? Keys.Down : Keys.Up), inList);
-      return moved.status === "done" ? this.trade(quantity) : moved;
-    });
+    return this.act({ name: "buy", item, quantity }, () => this.#menus.buy(item, quantity));
   }
 
   async sell(item: string, quantity: number): Promise<ActionResult> {
-    return this.act({ name: "sell", item, quantity }, () => {
-      const game = this.#run.game;
-      const place = game.findInBag(item);
-      const refusal = saleRefusal(item, place);
-      if (!place || refusal) return { status: "impossible", reason: refusal ?? `there is no ${item} in the Bag` };
-      const most = Math.min(game.bagQuantity(place.item), MAX_TRADE);
-      if (quantity < 1 || quantity > most) return { status: "impossible", reason: `the quantity of ${item} to sell is 1 to ${most}` };
-      const menu = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
-      if (menu.status !== "done") return menu;
-      const opened = this.shopOption(SHOP_SELL, () => game.bagMenu()?.screen === "list", "the Bag");
-      if (opened.status !== "done") return opened;
-      const row = this.toBagItem(place);
-      if (row.status !== "done") return row;
-      const sold = this.trade(quantity);
-      if (sold.status !== "done") return sold;
-      const back = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
-      return back.status === "done" ? this.shopOption(SHOP_BUY, () => game.buyList() !== null, "the buy list") : back;
-    });
+    return this.act({ name: "sell", item, quantity }, () => this.#menus.sell(item, quantity));
   }
 
   async switch(slot: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "switch", slot }, () => {
-      const game = this.#run.game;
-      if (!game.party()[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
-      const opened = this.select("battleAction", POKEMON_CURSOR);
-      if (opened.status !== "done") return opened;
-      if (game.waitingFor().kind !== "partyPick") return { status: "impossible", reason: "the party menu does not open" };
-      const sent = this.sendOut(game.battleMenuSlot(slot));
-      if (sent.status !== "impossible") return sent;
-      const closed = this.menuInput(Keys.B, () => game.waitingFor().kind !== "busy");
-      return closed.status === "done" ? sent : { ...closed, text: sent.text };
-    }, { text: [] });
+    return this.act<Texts>({ name: "switch", slot }, () => this.#menus.switch(slot), { text: [] });
   }
 
   async send(slot: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "send", slot }, () => {
-      const game = this.#run.game;
-      if (!game.party()[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
-      return this.sendOut(game.battleMenuSlot(slot));
-    }, { text: [] });
+    return this.act<Texts>({ name: "send", slot }, () => this.#menus.send(slot), { text: [] });
   }
 
   async swap(first: number, second: number): Promise<ActionResult> {
-    return this.act({ name: "swap", first, second }, () => {
-      const game = this.#run.game;
-      const party = game.party();
-      for (const slot of [first, second]) if (!party[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
-      if (first === second) return { status: "impossible", reason: "a Pokémon cannot swap with itself" };
-      const opened = this.openStartMenu(START_MENU_POKEMON, () => game.partyMenu()?.kind === "pick");
-      if (opened.status !== "done") return opened;
-      const actions = this.openPartyActions(first);
-      if (actions.status !== "done") return actions;
-      const pick = () => {
-        const menu = game.partyMenu();
-        return menu?.kind === "pick" ? menu : null;
-      };
-      const chosen = this.selectPartyAction((options) => options.indexOf(SWAP_ACTION), () => pick()?.swapping === true);
-      if (chosen.status !== "done") return chosen;
-      const moved = this.moveMenuCursor(second, () => pick()?.cursor ?? null);
-      if (moved.status !== "done") return moved;
-      const swapped = this.menuInput(Keys.A, () => pick()?.swapping === false);
-      return swapped.status === "done" ? this.closeStartMenu() : swapped;
-    });
+    return this.act({ name: "swap", first, second }, () => this.#menus.swap(first, second));
   }
 
   async press(button: Button): Promise<ActionResult> {
-    return this.act({ name: "press", button }, () => this.input(Keys[button]));
+    return this.act({ name: "press", button }, () => this.#menus.input(Keys[button]));
   }
 
   private act(action: MacroAction | RawInput, body: () => Outcome): ActionResult;
@@ -697,194 +537,21 @@ export class Harness {
     return result;
   }
 
-  private openBag(): Outcome {
-    const game = this.#run.game;
-    const cursor = () => (game.waitingFor().kind === "battleAction" ? game.battleCursor("battleAction") : null);
-    const moved = this.moveCursor(BAG_CURSOR, cursor, (at) => gridKey(at, BAG_CURSOR));
-    if (moved.status !== "done") return moved;
-    return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
-  }
-
-  private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
-    const game = this.#run.game;
-    const cursor = () => game.shopMenu()?.cursor ?? null;
-    const inMenu = (keys: number) => this.tapUntil(keys, () => cursor() !== null, "the shop menu");
-    const moved = this.moveCursor(option, cursor, (at) => (option > at ? Keys.Down : Keys.Up), inMenu);
-    return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
-  }
-
-  private toBagItem(place: BagPlace): Outcome {
-    const game = this.#run.game;
-    const list = () => {
-      const menu = game.bagMenu();
-      return menu?.screen === "list" ? menu : null;
-    };
-    const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the Bag list");
-    const pocket = this.moveCursor(place.pocket, () => list()?.pocket ?? null, (at) => (place.pocket > at ? Keys.Right : Keys.Left), inList);
-    if (pocket.status !== "done") return pocket;
-    return this.moveCursor(place.row, () => list()?.row ?? null, (at) => (place.row > at ? Keys.Down : Keys.Up), inList);
-  }
-
-  private trade(quantity: number): Outcome {
-    const game = this.#run.game;
-    const box = this.tapUntil(Keys.A, () => game.tradeQuantity() !== null || game.tradeYesNo() !== null, "the quantity box");
-    if (box.status !== "done") return box;
-    const count = () => game.tradeQuantity();
-    const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
-    if (count() !== null) {
-      const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
-      if (moved.status !== "done") return moved;
-      const asked = this.tapUntil(Keys.A, () => game.tradeYesNo() !== null, "the yes/no");
-      if (asked.status !== "done") return asked;
-    }
-    const yes = this.tapUntil(Keys.A, () => game.tradeDone() || game.waitingTexts().length > 0, "the end of the trade");
-    if (yes.status !== "done") return yes;
-    const refusal = game.tradeDone() ? null : game.menuMessage();
-    const back = this.tapUntil(Keys.A, () => game.buyList() !== null || game.bagMenu()?.screen === "list", "the list");
-    return back.status !== "done" || refusal === null ? back : { status: "impossible", reason: `the game refuses: ${refusal}` };
-  }
-
-  private useOnWalk(item: string, id: number, before: number): Outcome & Texts {
-    const game = this.#run.game;
-    const pressed = this.pressUntilRead(Keys.A);
-    if (pressed.status !== "done") return { ...pressed, text: [] };
-    const told = this.untilReady(() => game.waitingTexts().length > 0 || game.itemAnimWaits());
-    if (told.status !== "done") return { ...told, text: [] };
-    if (game.itemAnimWaits()) {
-      const effect = this.menuInput(Keys.A, () => game.waitingTexts().length > 0);
-      if (effect.status !== "done") return { ...effect, text: [] };
-    }
-    const text = game.waitingTexts();
-    const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
-    if (back.status !== "done") return { ...back, text };
-    const closed = this.closeStartMenu();
-    if (closed.status !== "done") return { ...closed, text };
-    return game.bagQuantity(id) === before ? { status: "impossible", reason: `the game refuses the ${item}: ${text.join(" ")}`, text: [] } : { status: "done", text };
-  }
-
-  private refused(item: string, message: string): Outcome {
-    const game = this.#run.game;
-    const back = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
-    if (back.status !== "done") return back;
-    const closed = this.input(Keys.B);
-    if (closed.status !== "done") return closed;
-    return { status: "impossible", reason: `the game refuses the ${item}: ${message}` };
-  }
-
-  // A menu reads the keys from the frame after the frame that shows it.
-  private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
-    if (this.tap(keys)) return { status: "interrupted", reason: "battle" };
-    for (let frames = 0; !shown(); frames++) {
-      if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game does not show ${screen} after ${DECISION_FRAME_LIMIT} frames` };
-      if (this.advance(0)) return { status: "interrupted", reason: "battle" };
-    }
-    return this.advance(0) ? { status: "interrupted", reason: "battle" } : { status: "done" };
+  private callEnded<E extends ModelEvent | SummaryEvent>(event: E, listener?: (event: E, harness: Harness) => void): E {
+    this.#events.push(event);
+    listener?.(event, this);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterCall(this.#events);
+    this.stopIfAsked();
+    return event;
   }
 
   private stopIfAsked(): void {
     if (this.#phase.kind === "playing" && this.#stopAsked()) throw new RunEnd("user stop");
   }
 
-  private battle(): Battle {
-    const battle = this.#run.game.battle();
-    if (!battle) throw new Error("the game is not in a battle");
-    return battle;
-  }
-
   private battleState({ kind, player, enemy }: Battle): BattleState {
     const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => this.#run.game.moveName(move));
     return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
-  }
-
-  private sendOut(menuSlot: number): Outcome & Texts {
-    const game = this.#run.game;
-    const actions = this.openPartyActions(menuSlot);
-    if (actions.status !== "done") return { ...actions, text: [] };
-    const sent = this.selectPartyAction(
-      (options) => options.findIndex((o) => SEND_OUT_ACTIONS.includes(o)),
-      () => {
-        const menu = game.partyMenu();
-        return menu === null || menu.kind === "refusal";
-      },
-    );
-    if (sent.status !== "done") return { ...sent, text: [] };
-    const refusal = game.partyMenu();
-    if (refusal?.kind === "refusal") {
-      const back = this.untilReady(
-        () => game.partyMenu()?.kind === "pick",
-        () => {
-          if (game.waitingFor().kind === "text") this.pressUntilRead(Keys.A);
-        },
-      );
-      return { ...(back.status === "done" ? { status: "impossible", reason: refusal.text } : back), text: [] };
-    }
-    // The battle message windows share their numbers with the party menu windows: read only after the menu.
-    const reader = new MessageReader(game);
-    return { ...this.untilDecision(() => reader.update()), text: reader.textBeforeWaitingText() };
-  }
-
-  private openStartMenu(option: string, shown: () => boolean): Outcome {
-    const game = this.#run.game;
-    const opened = this.menuInput(Keys.Start, () => game.startMenu() !== null);
-    if (opened.status !== "done") return opened;
-    const item = game.startMenu()?.options.indexOf(option) ?? -1;
-    if (item < 0) return { status: "impossible", reason: `the Start menu has no ${option}` };
-    const moved = this.moveMenuCursor(item, () => game.startMenu()?.cursor ?? null);
-    return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
-  }
-
-  private closeStartMenu(): Outcome {
-    const game = this.#run.game;
-    const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
-    return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
-  }
-
-  private openPartyActions(menuSlot: number): Outcome {
-    const game = this.#run.game;
-    const moved = this.moveMenuCursor(menuSlot, () => {
-      const menu = game.partyMenu();
-      return menu?.kind === "pick" ? menu.cursor : null;
-    });
-    return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "actions") : moved;
-  }
-
-  private selectPartyAction(find: (options: string[]) => number, done: () => boolean): Outcome {
-    const game = this.#run.game;
-    const menu = game.partyMenu();
-    if (menu?.kind !== "actions") throw new Error("the party menu does not show the actions of a Pokémon");
-    const target = find(menu.options);
-    if (target < 0) return { status: "impossible", reason: `the party menu has no such action: ${menu.options.join(", ")}` };
-    const moved = this.moveMenuCursor(target, () => {
-      const now = game.partyMenu();
-      return now?.kind === "actions" ? now.cursor : null;
-    });
-    return moved.status === "done" ? this.menuInput(Keys.A, done) : moved;
-  }
-
-  private turn(menu: BattleMenu, target: number): Outcome & Texts {
-    const reader = new MessageReader(this.#run.game);
-    return { ...this.select(menu, target, () => reader.update()), text: reader.textBeforeWaitingText() };
-  }
-
-  private select(menu: BattleMenu, target: number, watch?: () => void): Outcome {
-    const game = this.#run.game;
-    const cursor = () => (game.waitingFor().kind === menu ? game.battleCursor(menu) : null);
-    const moved = this.moveCursor(target, cursor, (at) => gridKey(at, target));
-    if (moved.status !== "done") return moved;
-    const battle = this.tap(Keys.A);
-    return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
-  }
-
-  private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number, press = (keys: number) => this.input(keys)): Outcome {
-    for (let cursor = read(); cursor !== target; ) {
-      if (cursor === null) return { status: "impossible", reason: "the menu closed when the cursor moved" };
-      const moved = press(key(cursor));
-      if (moved.status !== "done") return moved;
-      const now = read();
-      if (now === cursor) return { status: "impossible", reason: `the cursor does not move from ${cursor}` };
-      cursor = now;
-    }
-    return { status: "done" };
   }
 
   private overworld(): { player: PlayerPosition; grid: MapGrid; actors: MapActors } {
@@ -894,63 +561,6 @@ export class Harness {
     const actors = grid && game.actors(grid);
     if (!player || !grid || !actors) throw new Error("the player is not on the overworld");
     return { player, grid: { ...grid, signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
-  }
-
-  private input(keys: number, watch?: () => void): Outcome {
-    const battle = this.tap(keys);
-    return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
-  }
-
-  private moveMenuCursor(target: number, cursor: () => number | null): Outcome {
-    for (let at = cursor(); at !== target; ) {
-      if (at === null) return { status: "impossible", reason: "the menu reads no input" };
-      const from = at;
-      const moved = this.menuInput(target > at ? Keys.Down : Keys.Up, () => {
-        const now = cursor();
-        return now !== null && now !== from;
-      });
-      if (moved.status !== "done") return moved;
-      at = cursor();
-    }
-    return { status: "done" };
-  }
-
-  private menuInput(keys: number, ready: () => boolean): Outcome {
-    const pressed = this.pressUntilRead(keys);
-    return pressed.status === "done" ? this.untilReady(ready) : pressed;
-  }
-
-  // A slow menu reads the input on some frames only: wait for it to read the release, then press the keys until it reads them.
-  private pressUntilRead(keys: number): Outcome {
-    const game = this.#run.game;
-    for (const [held, read] of [
-      [0, () => (game.keysRead().held & keys) === 0],
-      [keys, () => (game.keysRead().pressed & keys) === keys],
-    ] as const) {
-      for (let frames = 0; !read(); frames++) {
-        if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game does not read the input for ${DECISION_FRAME_LIMIT} frames` };
-        if (this.advance(held)) return { status: "interrupted", reason: "battle" };
-      }
-    }
-    return this.advance(0) ? { status: "interrupted", reason: "battle" } : { status: "done" };
-  }
-
-  private untilDecision(watch: () => void = () => {}): Outcome {
-    return this.untilReady(() => this.#run.game.waitingFor().kind !== "busy", watch);
-  }
-
-  private untilReady(ready: () => boolean, watch: () => void = () => {}): Outcome {
-    for (let frames = 0; ; frames++) {
-      watch();
-      if (ready()) return { status: "done" };
-      if (frames === DECISION_FRAME_LIMIT) return { status: "impossible", reason: `the game waits for no known input for ${DECISION_FRAME_LIMIT} frames` };
-      if (this.advance(0)) return { status: "interrupted", reason: "battle" };
-    }
-  }
-
-  // JOY_NEW sees a press only after a frame with the button up.
-  private tap(keys: number): "battle" | null {
-    return this.advance(keys) || this.advance(0) ? "battle" : null;
   }
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
@@ -1070,48 +680,8 @@ export class Harness {
   }
 }
 
-class MessageReader {
-  readonly text: string[] = [];
-  private messages: Messages;
-  private pressedOnce = false;
-  private lastWindow: number | null = null;
-  closedAfterPress = false;
-
-  constructor(private readonly game: Game) {
-    this.messages = game.messages();
-    for (const window of this.messages.onScreen) this.push(window);
-  }
-
-  pressed(): void {
-    this.pressedOnce = true;
-  }
-
-  update(): void {
-    const before = this.messages.printing;
-    this.messages = this.game.messages();
-    for (const window of this.messages.printing) if (!before.includes(window)) this.push(window);
-    if (this.pressedOnce && this.messages.boxClosed) this.closedAfterPress = true;
-  }
-
-  textBeforeWaitingText(): string[] {
-    const waits = this.game.waitingFor().kind === "text" && this.lastWindow !== null && this.game.messages().onScreen.includes(this.lastWindow);
-    return waits ? this.text.slice(0, -1) : this.text;
-  }
-
-  private push(window: number): void {
-    const text = plain(this.game.messageText(window));
-    if (!text) return;
-    this.text.push(text);
-    this.lastWindow = window;
-  }
-}
-
 function withoutPeople(map: RouteMap | null): RouteMap | null {
   return map && { ...map, people: [] };
-}
-
-function plain(text: string): string {
-  return text.split("\n").join(" ").trim();
 }
 
 function neighbours(cell: { x: number; y: number }): { direction: Direction; x: number; y: number }[] {
@@ -1120,24 +690,4 @@ function neighbours(cell: { x: number; y: number }): { direction: Direction; x: 
 
 function at(place: Place): string {
   return `${place.map} (${place.x}, ${place.y})`;
-}
-
-function saleRefusal(item: string, place: BagPlace | null): string | null {
-  if (!place) return `there is no ${item} in the Bag`;
-  if (place.pocket >= BATTLE_POCKETS) return "the sale of the TM Case and of the Berry Pouch is not covered yet";
-  return place.price > 0 ? null : `the shop does not buy ${item}`;
-}
-
-function quantityKey(at: number, target: number): number {
-  if (target - at >= 10) return Keys.Right;
-  if (at - target >= 10) return Keys.Left;
-  return target > at ? Keys.Up : Keys.Down;
-}
-
-// The battle menus are 2x2 grids. The game does not move the cursor to an empty move slot, and the moves fill
-// the slots in order: so the cursor goes left and up first, and passes only on cells before the target.
-function gridKey(cursor: number, target: number): number {
-  if (cursor & CURSOR_COLUMN & ~target) return Keys.Left;
-  if (cursor & CURSOR_ROW & ~target) return Keys.Up;
-  return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
 }
