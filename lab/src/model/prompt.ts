@@ -3,7 +3,7 @@ import { type ActionEntry, actionText, type BattleState, type NoProgress, type O
 import { callTurns, type ModelEvent, modelEvents, type RunEvent } from "../harness/record";
 import { type Milestone, MILESTONES } from "../game";
 import type { PartyMon, PartyMove } from "../party";
-import { actionsOf, type Asked, type AskedKind, MAX_NOTES } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, MAX_NOTES } from "./decision";
 import { fullAtlas, localView } from "./extract";
 
 export const B_PRESSES = 3;
@@ -43,9 +43,9 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get what the game waits for, the next Milestone (the next big step of the story, with its name and place only), your Mission, your objective, your notes, your last decisions with what the program played and the texts of the game, and the actions that you can choose now.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your notes, your Mission, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
-At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
+At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -75,19 +75,21 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
+  // The facts that change little come first, so that the providers cache more of the prompt.
   return [
-    `The game waits for ${now}.`,
+    `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
-    missionLine(events),
-    `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Notes: ${read.at(-1)?.notes || "none"}`,
+    missionLine(events),
+    "",
+    `The game waits for ${now}.`,
+    `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points with no progress: ${noProgress.decisions}.`,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress (a new cell or a new Milestone):", ...tried].join("\n"),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
     partyText(observation.party),
-    `Milestones: ${observation.milestones.join(", ") || "none"}`,
     "",
     ...context(asked),
     "",
@@ -95,6 +97,20 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     ...actionLines(asked),
     PRESS,
   ].join("\n");
+}
+
+/** The new user message after viewAtlas: the full Atlas. */
+export function atlasMessage(asked: Asked & { kind: "walk" }): string {
+  return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasViewed: true })].join("\n");
+}
+
+/** The new user message after an answer that the Bot cannot read: the error. */
+export function errorMessage(error: string, asked: Asked): string {
+  return [`Your answer could not be read: ${error}.`, "", chooseAgain(asked)].join("\n");
+}
+
+function chooseAgain(asked: Asked): string {
+  return `Answer with JSON again, with one of the actions of the first message: ${alternatives(actionsOf(asked))}.`;
 }
 
 export function missionLine(events: readonly RunEvent[]): string {
@@ -216,7 +232,7 @@ function statsText(stats: Record<string, number>): string {
 function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
-      return [...asked.view.lines, ...(asked.atlasViewed ? fullAtlas(asked.overworld) : [])];
+      return asked.view.lines;
     case "choice":
       return [...localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []), "", "The question is the last text of your last decisions."];
     case "partyPick":

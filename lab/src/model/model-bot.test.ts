@@ -171,7 +171,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.");
   });
 
-  test("it stops after 3 answers in a row that it cannot read, and the model sees each one", async () => {
+  test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {
     const harness = await Harness.open();
     const good = reply("goTo 8 6").content;
     const bot = modelBot({ costLimit: 1 }, () => answers("I go north", good, "{}", JSON.stringify({ ...JSON.parse(good), action: "dance" }), "not JSON either"));
@@ -179,12 +179,16 @@ describe.skipIf(!ready)("model bot", () => {
     const calls = modelEvents(harness);
     expect(calls.map((e) => e.error)).toEqual(["the answer is not JSON", null, 'the answer has no string "reason"', '"dance" is not an action', "the answer is not JSON"]);
     expect(calls.map((e) => e.decision === null)).toEqual([true, false, true, true, true]);
-    expect(calls[1].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
+    expect(calls[1].prompt).toEqual({ ...calls[0].prompt, turns: [{ assistant: "I go north", user: expect.stringContaining("Your answer could not be read: the answer is not JSON.") }] });
+    expect(calls[2].prompt.turns).toBeUndefined();
+    expect(calls[2].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
+    expect(calls[4].prompt.turns?.map((t) => t.assistant)).toEqual(["{}", JSON.stringify({ ...JSON.parse(good), action: "dance" })]);
   });
 
-  test("viewAtlas runs no frames: the code calls the model again at once with the full Atlas, and a second viewAtlas at the same Decision point is refused", async () => {
+  test("viewAtlas runs no frames: the code goes on with the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {
     const harness = await Harness.open();
-    const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(reply("viewAtlas").content, reply("viewAtlas").content, reply("goTo 8 6").content));
+    const viewAtlas = reply("viewAtlas").content;
+    const bot = modelBot({ costLimit: 3.5 * COST }, () => answers(viewAtlas, viewAtlas, reply("goTo 8 6").content));
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     const calls = modelEvents(harness);
     expect(calls.map((e) => e.decision?.action)).toEqual(["viewAtlas", undefined, "goTo 8 6", "goTo 8 6"]);
@@ -194,8 +198,15 @@ describe.skipIf(!ready)("model bot", () => {
     const third = harness.events.indexOf(calls[2]);
     expect(harness.events.slice(harness.events.indexOf(calls[0]), third).every((e) => e.type === "model")).toBe(true);
     const fullAtlas = "Full Atlas, the other maps that you know, nearest first:";
-    expect(calls.map((e) => e.prompt.user.includes(fullAtlas))).toEqual([false, true, true, false]);
-    expect(calls.map((e) => /^- viewAtlas/m.test(e.prompt.user))).toEqual([true, false, false, true]);
+    expect(calls.map((e) => e.prompt.user.includes(fullAtlas))).toEqual([false, false, false, false]);
+    expect(calls.map((e) => /^- viewAtlas/m.test(e.prompt.user))).toEqual([true, true, true, true]);
+    expect(calls[1].prompt).toEqual({ ...calls[0].prompt, turns: [{ assistant: viewAtlas, user: expect.stringContaining(fullAtlas) }] });
+    expect(calls[2].prompt.turns).toEqual([
+      { assistant: viewAtlas, user: calls[1].prompt.turns?.[0].user },
+      { assistant: viewAtlas, user: expect.stringContaining('"viewAtlas" is not an action now: use go, goTo or press') },
+    ]);
+    expect(calls[2].prompt.user).toBe(calls[0].prompt.user);
+    expect(calls[3].prompt.turns).toBeUndefined();
   });
 
   test("the prompt lists the tries since the last progress: three talks to the same Poké Ball are one line with ×3 and the text; the rival has its name from the save", async () => {
