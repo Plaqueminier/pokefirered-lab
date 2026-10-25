@@ -19,7 +19,6 @@ export type DocElements = {
   lab: HTMLElement;
   doc: HTMLElement;
   bots: HTMLTableSectionElement;
-  modelPlanned: HTMLElement;
 };
 
 export class DocTab {
@@ -44,6 +43,5 @@ export class DocTab {
 
   setBots(bots: BotInfo[]): void {
     this.ui.bots.replaceChildren(...bots.map(botRow));
-    this.ui.modelPlanned.hidden = !bots.every((bot) => "kind" in bot && bot.kind === "scripted");
   }
 }

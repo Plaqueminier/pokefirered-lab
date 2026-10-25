@@ -1,6 +1,6 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -111,13 +111,17 @@ export async function botNames(): Promise<string[]> {
   return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
 }
 
-/** A module of `bots/` exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run. */
+/**
+ * `name` is a module of `bots/`, or the absolute path of a module out of `bots/` (the tests load the scripted bot so).
+ * A module exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run.
+ */
 export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
-  const module = await import(join(BOTS_DIR, `${name}.ts`));
+  const file = isAbsolute(name) ? name : `bots/${name}.ts`;
+  const module = await import(isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`));
   if (typeof module.modelBot === "function") return module.modelBot(model);
-  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`bots/${name}.ts is not a model bot: it does not export modelBot(model)`);
+  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`${file} is not a model bot: it does not export modelBot(model)`);
   const bot: Bot | undefined = module.default;
-  if (typeof bot?.play !== "function") throw new Error(`bots/${name}.ts must export by default a Bot: { name, version, play(harness) }`);
+  if (typeof bot?.play !== "function") throw new Error(`${file} must export by default a Bot: { name, version, play(harness) }`);
   return bot;
 }
 
