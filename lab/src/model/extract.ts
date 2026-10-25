@@ -1,29 +1,30 @@
-import { type Atlas, type AtlasMap, cellAt, mapNamed, seenIn } from "../harness/atlas";
+import { type Atlas, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
 import { edgeLabel, localTargets, type Overworld, type Target, warpLabel } from "./targets";
 
-export const EXTRACT_BUDGET = 2000;
-export const FULL_ATLAS_BUDGET = 15_000;
+export const OTHER_MAPS_BUDGET = 1500;
+export const FULL_ATLAS_BUDGET = 100_000;
 const MARKS = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export type AtlasView = { lines: string[]; targets: Target[] };
 
 type MapDistance = { map: AtlasMap; distance: number };
 
-/** Past the budget only the far maps lose their line, by the choice in issue #11: the map of the player and its targets stay. */
+/** The local part (grid, targets, texts of the people and signs) is never cut and is out of the budget. The other maps have their own budget: past it, the far maps lose their line. */
 export function atlasExtract(overworld: Overworld): AtlasView {
   const here = mapNamed(overworld.atlas, overworld.map.name);
   const local = localTargets(overworld, here);
-  const view = localView(overworld, here, local);
+  const view = [...localView(overworld, here, local), ...peopleLines(here)];
   let neighbours: string[] = [];
   let targets = [...local];
+  const localSize = extractLines(view, [], local).join("\n").length;
   for (const { map, distance } of byDistance(overworld.atlas, here.name)) {
     const next =
       distance === 1 ? { neighbours: [...neighbours, `- ${map.name}: ${exitsText(map)}`], targets }
       : map.entry ? { neighbours, targets: [...targets, mapTarget(map, map.entry, distance)] }
       : null;
     if (!next) continue;
-    if (extractLines(view, next.neighbours, next.targets).join("\n").length > EXTRACT_BUDGET) break;
+    if (extractLines(view, next.neighbours, next.targets).join("\n").length - localSize > OTHER_MAPS_BUDGET) break;
     ({ neighbours, targets } = next);
   }
   return { lines: extractLines(view, neighbours, targets), targets };
@@ -52,12 +53,13 @@ function mapTarget(map: AtlasMap, cell: Cell, distance: number): Target {
   return { kind: "map", label: `go to ${map.name} (${away(distance)})`, map: map.name, cell };
 }
 
+/** The near maps in detail up to the budget, then one line for each far map, so that the full Atlas loses no map. */
 export function fullAtlas(overworld: Overworld): string[] {
   const lines = ["", "Full Atlas, the other maps that you know, nearest first:"];
   let size = lines.join("\n").length;
   let detailed = true;
   for (const { map, distance } of byDistance(overworld.atlas, overworld.map.name)) {
-    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}`;
+    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}${map.people.length === 0 ? "" : ` People: ${map.people.map(personText).join("; ")}.`}`;
     const block = [`Map ${map.name}, ${map.width} × ${map.height} cells, ${about}`, ...gridLines(map, (c) => cellAt(map, c))];
     const blockSize = block.join("\n").length + 1;
     if (detailed && size + blockSize <= FULL_ATLAS_BUDGET) {
@@ -66,10 +68,7 @@ export function fullAtlas(overworld: Overworld): string[] {
       continue;
     }
     detailed = false;
-    const line = `- ${map.name}, ${about}`;
-    if (size + line.length + 1 > FULL_ATLAS_BUDGET) break;
-    lines.push(line);
-    size += line.length + 1;
+    lines.push(`- ${map.name}, ${about}`);
   }
   return lines;
 }
@@ -101,6 +100,14 @@ function exitsText(map: AtlasMap): string {
 function signsText(map: AtlasMap): string {
   const read = map.signs.flatMap((s) => (s.text ? [`sign at (${s.x}, ${s.y}): "${s.text}"`] : []));
   return read.length === 0 ? "" : ` Signs: ${read.join("; ")}.`;
+}
+
+function peopleLines(map: AtlasMap): string[] {
+  return map.people.length === 0 ? [] : ["", "What the people of this map said to you:", ...map.people.map((p) => `- ${personText(p)}`)];
+}
+
+function personText({ graphics, x, y, texts }: AtlasPerson): string {
+  return `${graphics.replaceAll("_", " ")}, last seen at (${x}, ${y}): ${texts.map((t) => `"${t}"`).join("; ")}`;
 }
 
 function away(distance: number): string {

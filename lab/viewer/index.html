@@ -379,7 +379,7 @@
             <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
             <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
-            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read. At the <code>full</code> level: all the maps</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the texts of the people. At the <code>full</code> level: all the maps</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>
@@ -453,7 +453,7 @@
             <dd>
               asks an AI model for the action (a <b>Model call</b>) at each walk, choice, battle action or move, and in the party
               menu. The code reads the texts alone; the model sees text and gives an action, its reason, its <b>Mission</b> (the
-              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (about 2 000 characters), and it can ask for the full Atlas one
+              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (its map and the texts of its people in full, 1 500 characters for the other maps), and it can ask for the full Atlas one
               time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
               progress. The panel "Model" shows each Model call in full.
             </dd>
