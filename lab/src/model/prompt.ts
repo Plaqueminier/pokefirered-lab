@@ -30,7 +30,7 @@ Goal of this run: ${runGoal}
 
 At each decision, you get what the game waits for, your Mission, your objective, your notes, your last decisions with what the program played and the texts of the game, and the actions that you can choose now.
 
-At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
+At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it goes only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
