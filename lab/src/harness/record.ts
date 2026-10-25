@@ -2,7 +2,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import type { REASONING } from "../protocol";
+import type { REASONING, STARTERS } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import type { ActionEntry, Bot, KnowledgeLevel, RunResult } from "./harness";
 
@@ -18,11 +18,13 @@ export type GameEvent = { frame: number } & (
 
 export type Reasoning = (typeof REASONING)[number];
 
+export type Starter = (typeof STARTERS)[number];
+
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
-export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null };
+export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null; starter: Starter };
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null };
+export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string };
 
 export type Prompt = { system: string; user: string };
 
@@ -150,6 +152,15 @@ export class RecordPlayer {
 
   get result(): RunResult {
     return this.#record.result;
+  }
+
+  get header(): RunHeader {
+    return this.#record.header;
+  }
+
+  /** The Model calls of the whole record. */
+  get modelTotals(): ModelTotals {
+    return modelTotals(this.#record.events);
   }
 
   played(): RunEvent[] {

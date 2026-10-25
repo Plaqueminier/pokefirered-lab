@@ -20,17 +20,18 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("modelSettings", () => {
-  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning and the temperature of the model", () => {
-    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null });
+  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning, the temperature of the model and a free starter", () => {
+    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null, starter: "free" });
     expect(modelSettings({}, { LAB_COST_LIMIT: "0.2" }).costLimit).toBe(0.2);
-    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3 }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3 });
+    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER" }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER" });
   });
 
-  test("it refuses a cost limit, a reasoning or a temperature that is not valid", () => {
+  test("it refuses a cost limit, a reasoning, a temperature or a starter that is not valid", () => {
     expect(() => modelSettings({}, { LAB_COST_LIMIT: "free" })).toThrow('the cost limit must be a number of dollars above 0, not "free"');
     expect(() => modelSettings({ costLimit: 0 }, {})).toThrow("the cost limit must be a number of dollars above 0");
     expect(() => modelSettings({ reasoning: "max" }, {})).toThrow('the reasoning must be off, low, medium, high, not "max"');
     expect(() => modelSettings({ temperature: 3 }, {})).toThrow("the temperature must be from 0 to 2");
+    expect(() => modelSettings({ starter: "PIKACHU" }, {})).toThrow('the starter must be free, BULBASAUR, CHARMANDER, SQUIRTLE, not "PIKACHU"');
   });
 });
 

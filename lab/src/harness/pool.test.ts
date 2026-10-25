@@ -49,7 +49,7 @@ describe.skipIf(!ready)("RunPool", () => {
     expect(record).toBeNull();
     expect(error).toContain("bots/nobody.ts");
     expect((await pool.start({ bot: "starter", frameBudget: 10 }).done).record?.result.endReason).toBe("frame budget");
-    const notModel = await pool.start({ bot: "starter", model: { id: "a/b", costLimit: 0.5, reasoning: "off", temperature: null } }).done;
+    const notModel = await pool.start({ bot: "starter", model: { id: "a/b", costLimit: 0.5, reasoning: "off", temperature: null, starter: "free" } }).done;
     expect(notModel).toEqual({ record: null, error: "Error: bots/starter.ts is not a model bot: it does not export modelBot(model)" });
   });
 

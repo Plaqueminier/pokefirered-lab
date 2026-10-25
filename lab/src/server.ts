@@ -11,6 +11,8 @@ import { isRunRecord, type ModelOptions, modelTotals, originDifferences, RecordP
 import {
   BinaryKind,
   type ClientMessage,
+  DEFAULT_STARTER,
+  type ReplayModel,
   type ReplayStatus,
   type RunSummary,
   SCREEN_INTERVAL_MS,
@@ -258,7 +260,17 @@ async function recordNames(): Promise<string[]> {
 }
 
 function replayStatus({ name, player }: Replay): ReplayStatus {
-  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended };
+  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended, model: replayModel(player) };
+}
+
+function replayModel(player: RecordPlayer): ReplayModel | null {
+  const settings = player.header.bot.model;
+  if (!settings) return null;
+  const played = modelTotals(player.played());
+  const total = player.modelTotals;
+  // A Run record from before the starter option has none: its model chose freely.
+  const starter = settings.starter ?? DEFAULT_STARTER;
+  return { id: settings.id, costLimit: settings.costLimit, reasoning: settings.reasoning, starter, calls: played.calls, cost: played.cost, totalCalls: total.calls, totalCost: total.cost };
 }
 
 async function replayFile(name: string): Promise<string> {
@@ -281,7 +293,7 @@ function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: Poo
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
+    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, starter: spec.model.starter, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
   };
 }
 

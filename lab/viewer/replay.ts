@@ -1,6 +1,7 @@
 import type { RunEvent } from "../src/harness/record";
-import type { ClientMessage, ShownRun } from "../src/protocol";
+import type { ClientMessage, ReplayModel, ShownRun } from "../src/protocol";
 import { callsStarted, modelCalls } from "./model-panel";
+import { dollars } from "./runs";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
 
@@ -48,8 +49,13 @@ function statusText(frame: number, shown: ShownRun): string {
   if (shown.kind === "bot") return `Run ${shown.run.id} · frame ${frame}`;
   const { replay } = shown;
   if (!replay) return "no replay: the keyboard plays the Run";
-  if (replay.ended) return `${replay.name} · end of the replay at frame ${replay.frames} · ${replay.endReason}`;
-  return `${replay.name} · frame ${frame} / ${replay.frames}`;
+  const status = replay.ended ? `${replay.name} · end of the replay at frame ${replay.frames} · ${replay.endReason}` : `${replay.name} · frame ${frame} / ${replay.frames}`;
+  return replay.model ? `${status}\n${modelStatus(replay.model)}` : status;
+}
+
+function modelStatus(model: ReplayModel): string {
+  const settings = `model ${model.id}, reasoning ${model.reasoning}, starter ${model.starter}`;
+  return `${settings} · ${model.calls} of ${model.totalCalls} Model calls · cost ${dollars(model.cost)} of ${dollars(model.totalCost)} (limit ${dollars(model.costLimit)})`;
 }
 
 export type ReplayElements = {

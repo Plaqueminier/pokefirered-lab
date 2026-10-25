@@ -1,5 +1,5 @@
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { DEFAULT_MODEL, DEFAULT_REASONING, REASONING } from "../protocol";
+import { DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, STARTERS } from "../protocol";
 import { DECISION_SCHEMA } from "./decision";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -21,7 +21,9 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   if (!reasoning) throw new Error(`the reasoning must be ${REASONING.join(", ")}, not "${given.reasoning}"`);
   const temperature = given.temperature ?? null;
   if (temperature !== null && !(temperature >= 0 && temperature <= MAX_TEMPERATURE)) throw new Error(`the temperature must be from 0 to ${MAX_TEMPERATURE}`);
-  return { id: given.id || DEFAULT_MODEL, costLimit, reasoning, temperature };
+  const starter = STARTERS.find((name) => name === (given.starter ?? DEFAULT_STARTER));
+  if (!starter) throw new Error(`the starter must be ${STARTERS.join(", ")}, not "${given.starter}"`);
+  return { id: given.id || DEFAULT_MODEL, costLimit, reasoning, temperature, starter };
 }
 
 type ChatReply = {

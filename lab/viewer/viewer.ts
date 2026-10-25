@@ -65,6 +65,7 @@ const runsPanel = new RunsPanel(
     model: $<HTMLInputElement>("model-id"),
     costLimit: $<HTMLInputElement>("cost-limit"),
     reasoning: $<HTMLSelectElement>("reasoning"),
+    starter: $<HTMLSelectElement>("starter"),
     start: $<HTMLButtonElement>("bot-start"),
     stop: $<HTMLButtonElement>("run-stop"),
     shownModel: $("shown-model"),

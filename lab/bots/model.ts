@@ -1,5 +1,5 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Starter, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
 import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { B_PRESSES, situation, systemPrompt, userPrompt } from "../src/model/prompt";
@@ -7,7 +7,8 @@ import { approaches, nextTo, type Overworld, type Target } from "../src/model/ta
 
 const GOAL = "first-rival-battle";
 const GOAL_TEXT = "Get your first Pokémon from Professor Oak, then win your first battle against your rival.";
-const FRAME_BUDGET = 200_000;
+// The cost limit and the no-progress limit stop a model bot, not the frames.
+const FRAME_BUDGET = Number.POSITIVE_INFINITY;
 const MAX_UNREADABLE = 3;
 const NO_USAGE: Usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
@@ -23,8 +24,13 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   };
 }
 
+function goalText(starter: Starter): string {
+  const choice = starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
+  return `${GOAL_TEXT} ${choice}`;
+}
+
 class ModelPlay {
-  readonly #system = systemPrompt(GOAL_TEXT);
+  readonly #system: string;
   // The game is frozen at a Decision point (ADR 0002): while the frame stays the same, so does the Decision point.
   #atlasViewedAt: number | null = null;
 
@@ -32,7 +38,9 @@ class ModelPlay {
     private readonly harness: Harness,
     private readonly settings: ModelSettings,
     private readonly ask: ModelClient,
-  ) {}
+  ) {
+    this.#system = systemPrompt(goalText(settings.starter));
+  }
 
   async play(): Promise<void> {
     for (;;) {

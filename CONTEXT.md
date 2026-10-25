@@ -48,12 +48,20 @@ _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The action `viewAtlas` plays neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice or a battle action. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
+**Memory tree**:
+The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something, and that nobody changes later. Two neighbour nodes of the same size get a parent node: a short summary of the two. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
+_Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
+
+**Summary call**:
+One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost counts in the cost of the **Run**.
+_Avoid_: Model call (a **Model call** gives an action)
+
 **Knowledge level**:
 The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more, for example hidden items and exact enemy stats.
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, and the text of each sign that the player read. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Raw input**:
@@ -72,7 +80,7 @@ One emulator instance that plays the game from a **Starting save**. The **Harnes
 _Avoid_: game, instance, session
 
 **Milestone**:
-A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is the unit of progress of a **Run**, and the goal of a **Run** is a **Milestone**.
+A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is the unit of progress of a **Run**. The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** goes on after it.
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:
@@ -80,7 +88,7 @@ The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal`, `bot stopped`, `user stop` (a person stopped the **Run**), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**).
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**). A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Viewer**:
@@ -93,7 +101,8 @@ _Avoid_: emulator, web player
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, its goal is reached, its frame budget is used, or its **Bot** makes no progress.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used or its **Bot** makes no progress; the **Run** of a model bot also ends at its cost limit.
+- The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
 

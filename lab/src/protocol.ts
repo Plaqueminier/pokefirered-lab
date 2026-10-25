@@ -25,6 +25,11 @@ export const REASONING = ["off", "low", "medium", "high"] as const;
 
 export const DEFAULT_REASONING: (typeof REASONING)[number] = "low";
 
+/** The first Pokémon that the model bot must choose, or "free": it chooses. */
+export const STARTERS = ["free", "BULBASAUR", "CHARMANDER", "SQUIRTLE"] as const;
+
+export const DEFAULT_STARTER: (typeof STARTERS)[number] = "free";
+
 /** The Viewer shows the screen and the state of a Run at most at these rates. */
 export const SCREEN_INTERVAL_MS = 1000 / 60;
 export const STATE_INTERVAL_MS = 100;
@@ -39,7 +44,10 @@ export type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null } | { error: string });
 
-export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason };
+/** The Model calls of a replay: `calls` and `cost` up to the frame of the replay, the totals for the whole record. */
+export type ReplayModel = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { calls: number; cost: number; totalCalls: number; totalCost: number };
+
+export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason; model: ReplayModel | null };
 
 export type RunSummary = {
   id: number;
@@ -50,7 +58,7 @@ export type RunSummary = {
   endReason: EndReason | null;
   error: string | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
-  model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning"> & { cost: number; callsStarted: number }) | null;
+  model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { cost: number; callsStarted: number }) | null;
 };
 
 /** The Run that the Viewer shows: its own Run (keyboard or replay), or a Run of a Bot. */

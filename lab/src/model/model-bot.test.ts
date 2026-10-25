@@ -126,6 +126,7 @@ describe.skipIf(!ready)("model bot", () => {
       return prompt.user;
     };
     expect(prompts[0].system).toContain("Become the Champion: earn the 8 gym badges, then beat the Elite Four");
+    expect(prompts[0].system).toContain("Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer.");
     expect(prompts[0].system).toContain("answer NO");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
@@ -148,15 +149,16 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "1", model: { id: "fake/model", costLimit: 1, reasoning: "low", temperature: null } });
+    expect(header.bot).toEqual({ name: "model", version: "1", model: { id: "fake/model", costLimit: 1, reasoning: "low", temperature: null, starter: "free" } });
   });
 
-  test("it stops when the cost of the Run is more than the cost limit", async () => {
+  test("it stops when the cost of the Run is more than the cost limit; a starter of the Run goes into the goal", async () => {
     const harness = await Harness.open();
-    const bot = modelBot({ costLimit: 2.5 * COST }, () => answers(reply("goTo 8 6").content));
+    const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));
     await expect(harness.play(bot)).rejects.toThrow("the cost of the Run (0.003 $) is more than the cost limit (0.0025 $)");
     expect(harness.record().result.endReason).toBe("bot stopped");
     expect(modelEvents(harness)).toHaveLength(3);
+    expect(modelEvents(harness)[0].prompt.system).toContain("win your first battle against your rival. Choose CHARMANDER as your first Pokémon.");
   });
 
   test("it stops after 3 answers in a row that it cannot read, and the model sees each one", async () => {

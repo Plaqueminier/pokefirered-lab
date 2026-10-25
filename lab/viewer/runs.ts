@@ -1,8 +1,8 @@
-import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, REASONING, type RunSummary, type ShownRun } from "../src/protocol";
+import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
 
 const VIEWER_RUN = "";
 
-function dollars(cost: number): string {
+export function dollars(cost: number): string {
   return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
 }
 
@@ -16,9 +16,14 @@ function runLabel(run: RunSummary): string {
   return `Run ${run.id} · ${run.bot} · ${runState(run)}`;
 }
 
-// A scripted Bot refuses any model option: the default reasoning goes as no option.
-function reasoningOption(level: string): string | undefined {
-  return level === DEFAULT_REASONING ? undefined : level;
+// A scripted Bot refuses any model option: a default value goes as no option.
+function option(value: string, byDefault: string): string | undefined {
+  return value === byDefault ? undefined : value;
+}
+
+function selectOptions(select: HTMLSelectElement, values: readonly string[], byDefault: string, label: (value: string) => string): void {
+  select.replaceChildren(...values.map((value) => new Option(label(value), value, value === byDefault, value === byDefault)));
+  select.addEventListener("change", () => select.blur());
 }
 
 export type RunsElements = {
@@ -27,6 +32,7 @@ export type RunsElements = {
   model: HTMLInputElement;
   costLimit: HTMLInputElement;
   reasoning: HTMLSelectElement;
+  starter: HTMLSelectElement;
   start: HTMLButtonElement;
   stop: HTMLButtonElement;
   shownModel: HTMLElement;
@@ -40,8 +46,8 @@ export class RunsPanel {
     send: (message: ClientMessage) => void,
   ) {
     ui.model.placeholder = DEFAULT_MODEL;
-    ui.reasoning.replaceChildren(...REASONING.map((level) => new Option(`reasoning ${level}`, level, level === DEFAULT_REASONING, level === DEFAULT_REASONING)));
-    ui.reasoning.addEventListener("change", () => ui.reasoning.blur());
+    selectOptions(ui.reasoning, REASONING, DEFAULT_REASONING, (level) => `reasoning ${level}`);
+    selectOptions(ui.starter, STARTERS, DEFAULT_STARTER, (starter) => (starter === "free" ? "starter free" : starter));
     ui.runs.addEventListener("change", () => {
       send({ type: "show", runId: ui.runs.value === VIEWER_RUN ? null : Number(ui.runs.value) });
       ui.runs.blur();
@@ -53,7 +59,13 @@ export class RunsPanel {
     ui.start.addEventListener("click", () => {
       if (!ui.bots.value) return;
       const costLimit = ui.costLimit.value.trim();
-      send({ type: "start-bot", name: ui.bots.value, model: { id: ui.model.value.trim() || undefined, costLimit: costLimit ? Number(costLimit) : undefined, reasoning: reasoningOption(ui.reasoning.value) } });
+      const model = {
+        id: ui.model.value.trim() || undefined,
+        costLimit: costLimit ? Number(costLimit) : undefined,
+        reasoning: option(ui.reasoning.value, DEFAULT_REASONING),
+        starter: option(ui.starter.value, DEFAULT_STARTER),
+      };
+      send({ type: "start-bot", name: ui.bots.value, model });
     });
   }
 
@@ -73,6 +85,6 @@ export class RunsPanel {
     const run = shown.kind === "bot" ? shown.run : null;
     this.#shownRun = run?.id ?? null;
     this.ui.stop.disabled = !run?.playing || run.stopAsked;
-    this.ui.shownModel.textContent = run?.model ? `Run ${run.id}: model ${run.model.id}, reasoning ${run.model.reasoning}, cost ${dollars(run.model.cost)} of ${dollars(run.model.costLimit)}` : "";
+    this.ui.shownModel.textContent = run?.model ? `Run ${run.id}: model ${run.model.id}, reasoning ${run.model.reasoning}, starter ${run.model.starter}, cost ${dollars(run.model.cost)} of ${dollars(run.model.costLimit)}` : "";
   }
 }
