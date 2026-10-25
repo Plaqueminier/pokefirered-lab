@@ -14,7 +14,6 @@ export type AtlasEdge = { side: Direction; to: string | null };
 
 export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null };
 
-/** A person that talked to the player: its texts, all different, in their order, and the last cell where the player saw it. */
 export type AtlasPerson = { localId: number; graphics: string; x: number; y: number; texts: string[] };
 
 export type AtlasMap = {
@@ -60,11 +59,9 @@ type Visit = {
   edgesTaken: Map<Direction, string>;
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
-  /** The people that talked to the player, by localId: a person keeps its texts when it moves. */
   people: Map<number, AtlasPerson>;
 };
 
-/** The texts of one talk: all the readTexts after a done interact with a person. `index`: the place of the text in the texts of the person, null when the person said it before. */
 type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 
 export class AtlasWatch {
@@ -93,7 +90,6 @@ export class AtlasWatch {
     if (last && last.map !== here.map) this.crossed(last, here);
   }
 
-  /** A sign has the texts of a readText just after a done interact with it. A person has the texts of all the readTexts after a done interact with it. */
   onAction(entry: ActionEntry): void {
     const previous = this.#lastAction;
     this.#lastAction = entry;
@@ -117,7 +113,7 @@ export class AtlasWatch {
     return { maps };
   }
 
-  // A person behind a counter talks when the player faces the counter, so the cell after it counts too.
+  // A person behind a counter talks across it: the cell after the counter counts too.
   private talkWith(visit: Visit, { x, y }: Cell, player: Cell): Talk | null {
     const cells = [{ x, y }, { x: 2 * x - player.x, y: 2 * y - player.y }];
     const people = this.game.mapView(visit.grid.name)?.actors.people ?? [];
@@ -177,7 +173,6 @@ function onScreen(player: Cell, { x, y }: Cell): boolean {
   return x >= player.x - SCREEN_LEFT && x <= player.x + SCREEN_RIGHT && y >= player.y - SCREEN_UP && y <= player.y + SCREEN_DOWN;
 }
 
-/** A talk can have many readTexts: its text grows, and it stays once in the texts of the person. */
 function told(talk: Talk, part: string): void {
   const { texts } = talk.person;
   if (talk.index !== null) texts.splice(talk.index, 1);

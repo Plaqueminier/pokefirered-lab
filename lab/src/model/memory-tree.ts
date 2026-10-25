@@ -1,9 +1,7 @@
-// The Memory tree follows OptMem (https://github.com/rafmyr/OptMem): pair summaries in a binary tree, and a zoom that opens a node.
-// Its state comes from the events of the Run only, so the Viewer and a replay build it again.
+// Follows OptMem: https://github.com/rafmyr/OptMem
 import type { NodeRange, Prompt, RunEvent } from "../harness/record";
 import { MAX_SENTENCE } from "./decision";
 
-/** notes: the notes in their order (the note n is notes[n - 1]). summaries: the summary of each node, by its range "a-b". */
 export type MemoryTree = { notes: string[]; summaries: Map<string, string> };
 
 export type MemoryNode = NodeRange & { text: string };
@@ -24,6 +22,7 @@ export function memoryTree(events: readonly RunEvent[]): MemoryTree {
     if (event.type !== "model" || !event.decision || !("note" in event.decision)) continue;
     const { note } = event.decision;
     // The answer after viewAtlas or zoom can give the same note again.
+    // The answer after viewAtlas or zoom can give the same note again.
     if (note !== "" && note !== tree.notes.at(-1)) tree.notes.push(note);
   }
   return tree;
@@ -33,7 +32,6 @@ export function nodeName({ from, to }: NodeRange): string {
   return from === to ? `#${from}` : `#${from}-${to}`;
 }
 
-/** The nodes that need a summary, in the order of a binary counter: each one has a text for its two halves. */
 export function dueMerges(tree: MemoryTree): NodeRange[] {
   const due: NodeRange[] = [];
   for (let to = 2; to <= tree.notes.length; to++) {
@@ -45,12 +43,10 @@ export function dueMerges(tree: MemoryTree): NodeRange[] {
   return due;
 }
 
-/** The top nodes as the prompt shows them. A node with no summary shows its two halves in its place. */
 export function topNodes(tree: MemoryTree): MemoryNode[] {
   return tops(tree.notes.length).flatMap((node) => shown(tree, node));
 }
 
-/** The two halves of a node, as zoom shows them; null when the range is a note or not a node of the tree. */
 export function zoomNodes(tree: MemoryTree, node: NodeRange): MemoryNode[] | null {
   if (!isNode(tree, node) || node.from === node.to) return null;
   return halves(node).flatMap((half) => shown(tree, half));
@@ -64,7 +60,6 @@ export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
   return zoomNodes(tree, node)?.map(nodeLine) ?? null;
 }
 
-/** The prompt of the Summary call of a due node. */
 export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   const parts = halves(node).flatMap((half) => shown(tree, half)).map(nodeLine);
   return {
@@ -116,13 +111,11 @@ function halves({ from, to }: NodeRange): [NodeRange, NodeRange] {
   ];
 }
 
-// A node covers 2^k notes and starts after a multiple of 2^k notes.
 function isNode(tree: MemoryTree, { from, to }: NodeRange): boolean {
   const size = to - from + 1;
   return Number.isInteger(from) && Number.isInteger(to) && from >= 1 && to <= tree.notes.length && size >= 1 && (size & (size - 1)) === 0 && (from - 1) % size === 0;
 }
 
-// The top nodes of n notes: one node for each bit of n, the largest first.
 function tops(count: number): NodeRange[] {
   const nodes: NodeRange[] = [];
   let from = 1;

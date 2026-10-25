@@ -12,7 +12,6 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 const USAGE = { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: COST };
 
-/** A model that adds the note n at its call n, and writes the summary of a node from the names of its two halves. */
 const noteTaker = (): ModelClient => {
   let calls = 0;
   return async (prompt, format) => {
@@ -37,7 +36,6 @@ afterAll(() => fetchSpy?.mockRestore());
 describe.skipIf(!ready)("the panel Memory", () => {
   test("it shows the same Memory tree and Summary calls live and in the replay of the Run record, at the same frame", async () => {
     const harness = await Harness.open();
-    // 5 Model calls and 3 Summary calls (#1-2, #3-4, #1-4): the cost limit stops the Run after the fifth Model call.
     await harness.play(modelBot({ costLimit: 7.5 * COST }, () => noteTaker())).catch(() => {});
     const record: RunRecord = JSON.parse(JSON.stringify(harness.record()));
     const calls = record.events.filter((e): e is ModelEvent => e.type === "model");

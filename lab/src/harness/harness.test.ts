@@ -503,7 +503,6 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
   });
 });
 
-// A test Starting save: on Route 1 in tall grass after the starter Run, with SQUIRTLE at full HP, 5 Potions, 20 Poké Balls and 3080 money. It stays local (lab/README.md).
 const TEST_BAG = join(SAVES_DIR, "test-bag.sav");
 const TAIL_WHIP = 1;
 
@@ -599,7 +598,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
   });
 });
 
-// A test Starting save in Pallet Town after the rival battle: SQUIRTLE, then SHELL, a SQUIRTLE with 1 HP.
 const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("Harness on the test Starting save with 2 Pokémon", () => {
@@ -657,7 +655,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("Harness on th
   });
 });
 
-// A test Starting save: test-bag.sav, then the counter of the Viridian City Mart, at (4, 3) with the clerk at (2, 3). It stays local (lab/README.md).
 const MART_SAVE = join(SAVES_DIR, "test-mart.sav");
 const MART_COUNTER = { x: 3, y: 3 };
 

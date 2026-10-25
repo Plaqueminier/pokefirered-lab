@@ -65,14 +65,11 @@ const BAG_CURSOR = 1;
 const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
 const POKE_BALLS_POCKET = 2;
-// sShopMenuActions_BuySellQuit (shop.c): BUY, SELL, SEE YA!
 const SHOP_BUY = 0;
 const SHOP_SELL = 1;
-// The quantity box of a buy or a sale goes to 99 at most (shop.c, item_menu.c).
 const MAX_TRADE = 99;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
-// The first action of a Pokémon in the party menu of a battle: SEND OUT after a faint, SHIFT after the battle action POKéMON.
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const CURSOR_COLUMN = 1;
@@ -126,12 +123,10 @@ export type MacroAction =
   | { name: "send"; slot: number }
   | { name: "swap"; first: number; second: number }
   | { name: "run" }
-  /** `on`: the Pokémon of the party (its place in `observe().party`) for an item that works on a Pokémon. */
   | { name: "use"; item: string; on?: number }
   | { name: "buy"; item: string; quantity: number }
   | { name: "sell"; item: string; quantity: number };
 
-/** The party Macro-actions take the place of a Pokémon in `observe().party`. The Bot chooses the cell of goTo, the Pokémon of swap and of use, and the quantity of buy and sell. */
 export type AvailableAction =
   | { name: "goTo" }
   | { name: "swap" }
@@ -150,10 +145,6 @@ export async function botNames(): Promise<string[]> {
   return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
 }
 
-/**
- * `name` is a module of `bots/`, or the absolute path of a module out of `bots/` (the tests load the scripted bot so).
- * A module exports by default a Bot, or exports `modelBot(model)`: the model bot that asks the AI model of the Run.
- */
 export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
   const file = isAbsolute(name) ? name : `bots/${name}.ts`;
   const module = await import(isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`));
@@ -197,7 +188,6 @@ type SummaryCallListener = (event: SummaryEvent, harness: Harness) => void;
 
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
-  /** The file of the Starting save, when it is not saves/start.sav. */
   startSave?: string;
   onAction?: ActionListener;
   onFrame?: (harness: Harness) => void;
@@ -210,10 +200,6 @@ export type HarnessOptions = {
   stopAsked?: () => boolean;
 };
 
-/**
- * The Harness ends a Run with an error that a Macro-action, a Raw input or a Model call throws: `play` must not catch it.
- * With no `goal`, the Run ends with "goal" at the last Milestone. With `model`, the Run ends with "cost limit" when the cost of its Model calls is more than the cost limit.
- */
 export type Bot = {
   name: string;
   version: string;
@@ -255,7 +241,6 @@ class RunLimits {
     if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
   }
 
-  // The cost counts the Model calls and the Summary calls.
   afterCall(events: readonly RunEvent[]): void {
     if (modelTotals(events).cost > this.costLimit) throw new RunEnd("cost limit");
   }
@@ -348,7 +333,6 @@ export class Harness {
     if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
     const start = this.frame;
     const rawInputs = this.rawInputs;
-    // The frame budget and the no-progress limit apply only when the Harness or the Bot gives them.
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const limits = new RunLimits(goal, start + frameBudget, this.#noProgressLimit ?? Number.POSITIVE_INFINITY, bot.model?.costLimit ?? Number.POSITIVE_INFINITY, this.#watch.progress);
@@ -380,7 +364,6 @@ export class Harness {
     return action;
   }
 
-  /** A model bot asks its AI model for a Summary call in `ask`, which must not throw an error. The Run record keeps it as a `summary` event. */
   async summaryCall(ask: () => Promise<SummaryAnswer>): Promise<SummaryEvent> {
     const start = performance.now();
     const answer = await ask();
@@ -566,10 +549,6 @@ export class Harness {
     }, { text: [] });
   }
 
-  /**
-   * Uses an item of the Bag: BAG in the battle menu or in the Start menu, the pocket, the item, USE, then the Pokémon `on` for an item that works on a Pokémon.
-   * On a walk, the Bag and the Start menu close after the item.
-   */
   async use(item: string, on?: number): Promise<TextResult> {
     return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => {
       const game = this.#run.game;
@@ -587,7 +566,6 @@ export class Harness {
       if (opened.status !== "done") return opened;
       const row = this.toBagItem(place);
       if (row.status !== "done") return row;
-      // The menu of an item that works in a battle is USE, CANCEL, with the cursor on USE.
       const context = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "context", "the menu of the item");
       if (context.status !== "done") return context;
       const pick = () => {
@@ -597,7 +575,6 @@ export class Harness {
       if (on !== undefined) {
         const party = this.tapUntil(Keys.A, () => pick() !== null, "the party menu");
         if (party.status !== "done") return party;
-        // On a walk, the party menu shows the party in its order.
         const picked = this.moveMenuCursor(walk ? on : game.battleMenuSlot(on), pick);
         if (picked.status !== "done") return picked;
       }
@@ -608,7 +585,6 @@ export class Harness {
       const used = this.untilDecision(() => reader.update());
       if (used.status !== "done") return used;
       if (!game.battleScreen() && game.bagQuantity(place.item) === before) return this.refused(item, game.waitingTexts().join(" "));
-      // The party menu tells what the item did, then the turn goes on.
       const effect = game.battleScreen() ? [] : game.waitingTexts();
       if (effect.length > 0) {
         const after = this.input(Keys.A, () => reader.update());
@@ -618,7 +594,6 @@ export class Harness {
     }, { text: [] });
   }
 
-  /** At the buy list of a Poké Mart: the item, the quantity, YES, and the buy list again. */
   async buy(item: string, quantity: number): Promise<ActionResult> {
     return this.act({ name: "buy", item, quantity }, () => {
       const game = this.#run.game;
@@ -626,7 +601,7 @@ export class Harness {
       const items = list()?.items ?? [];
       const row = items.findIndex((i) => i.name === item);
       if (row < 0) return { status: "impossible", reason: `the shop does not sell ${item}` };
-      // The quantity box stops at the quantity that the money pays: check the money first.
+      // The quantity box stops without error at the quantity that the money pays: check the money first.
       const cost = items[row].price * quantity;
       if (cost > game.money()) return { status: "impossible", reason: `${quantity} ${item} cost ${cost} and the money is ${game.money()}` };
       if (quantity < 1 || quantity > MAX_TRADE) return { status: "impossible", reason: `the quantity of ${item} to buy is 1 to ${MAX_TRADE}` };
@@ -636,7 +611,6 @@ export class Harness {
     });
   }
 
-  /** At the buy list of a Poké Mart: the menu SELL, the item in the Bag, the quantity, YES, then the buy list again. */
   async sell(item: string, quantity: number): Promise<ActionResult> {
     return this.act({ name: "sell", item, quantity }, () => {
       const game = this.#run.game;
@@ -734,7 +708,6 @@ export class Harness {
     return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
   }
 
-  // At the menu BUY / SELL / SEE YA: the option, then A until the game shows the screen of the option.
   private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
     const game = this.#run.game;
     const cursor = () => game.shopMenu()?.cursor ?? null;
@@ -743,7 +716,6 @@ export class Harness {
     return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
   }
 
-  // At the list of the Bag: the pocket, then the row of the item.
   private toBagItem(place: BagPlace): Outcome {
     const game = this.#run.game;
     const list = () => {
@@ -756,7 +728,6 @@ export class Harness {
     return this.moveCursor(place.row, () => list()?.row ?? null, (at) => (place.row > at ? Keys.Down : Keys.Up), inList);
   }
 
-  // At the item of a buy or a sale: A, the quantity, YES, then A after the message of the clerk, back to the list.
   private trade(quantity: number): Outcome {
     const game = this.#run.game;
     const box = this.tapUntil(Keys.A, () => game.tradeQuantity() !== null || game.tradeYesNo() !== null, "the quantity box");
@@ -769,7 +740,6 @@ export class Harness {
       const asked = this.tapUntil(Keys.A, () => game.tradeYesNo() !== null, "the yes/no");
       if (asked.status !== "done") return asked;
     }
-    // A refusal (for example a full Bag) waits for A, then the list comes back.
     const yes = this.tapUntil(Keys.A, () => game.tradeDone() || game.waitingTexts().length > 0, "the end of the trade");
     if (yes.status !== "done") return yes;
     const refusal = game.tradeDone() ? null : game.menuMessage();
@@ -777,12 +747,10 @@ export class Harness {
     return back.status !== "done" || refusal === null ? back : { status: "impossible", reason: `the game refuses: ${refusal}` };
   }
 
-  // At the party menu of the item: the game tells what the item did, or that it has no effect, then shows the Bag again.
   private useOnWalk(item: string, id: number, before: number): Outcome & Texts {
     const game = this.#run.game;
     const pressed = this.pressUntilRead(Keys.A);
     if (pressed.status !== "done") return { ...pressed, text: [] };
-    // An item that works shows its animation on the Pokémon first, then the party menu tells its effect.
     const told = this.untilReady(() => game.waitingTexts().length > 0 || game.itemAnimWaits());
     if (told.status !== "done") return { ...told, text: [] };
     if (game.itemAnimWaits()) {
@@ -797,7 +765,6 @@ export class Harness {
     return game.bagQuantity(id) === before ? { status: "impossible", reason: `the game refuses the ${item}: ${text.join(" ")}`, text: [] } : { status: "done", text };
   }
 
-  // The game shows a message, then the Bag again: B closes the Bag, back to the battle menu.
   private refused(item: string, message: string): Outcome {
     const game = this.#run.game;
     const back = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
@@ -807,7 +774,7 @@ export class Harness {
     return { status: "impossible", reason: `the game refuses the ${item}: ${message}` };
   }
 
-  // In the menus of a battle (the Bag, the party menu), waitingFor is busy: the Harness waits for the screen that it expects.
+  // A menu reads the keys from the frame after the frame that shows it.
   // A menu reads the keys from the frame after the frame that shows it.
   private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
     if (this.tap(keys)) return { status: "interrupted", reason: "battle" };
@@ -833,12 +800,10 @@ export class Harness {
     return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
   }
 
-  /** The places in `observe().party` of the Pokémon that can go into the battle: they have HP, and they are not the Pokémon `inBattle`. */
   private sendable(inBattle: number): number[] {
     return this.#run.game.party().flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
   }
 
-  // At the party menu of a battle: the Pokémon of `menuSlot` goes into the battle, or the game refuses it and the menu waits again.
   private sendOut(menuSlot: number): Outcome & Texts {
     const game = this.#run.game;
     const actions = this.openPartyActions(menuSlot);
@@ -861,12 +826,11 @@ export class Harness {
       );
       return { ...(back.status === "done" ? { status: "impossible", reason: refusal.text } : back), text: [] };
     }
-    // The battle message windows have the same numbers as the windows of the party menu: read only after the menu.
+    // The battle message windows share their numbers with the party menu windows: read only after the menu.
     const reader = new MessageReader(game);
     return { ...this.untilDecision(() => reader.update()), text: reader.textBeforeWaitingText() };
   }
 
-  // On a walk: the Start menu, then its item `option`, until the screen of the item reads the input.
   private openStartMenu(option: string, shown: () => boolean): Outcome {
     const game = this.#run.game;
     const opened = this.menuInput(Keys.Start, () => game.startMenu() !== null);
@@ -877,14 +841,12 @@ export class Harness {
     return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
   }
 
-  // From a screen of the Start menu (the party menu, the Bag): B goes back to the Start menu, and B again to the walk.
   private closeStartMenu(): Outcome {
     const game = this.#run.game;
     const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
     return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
   }
 
-  // At the party menu: moves the cursor to `menuSlot` and opens the actions of the Pokémon.
   private openPartyActions(menuSlot: number): Outcome {
     const game = this.#run.game;
     const moved = this.moveMenuCursor(menuSlot, () => {
@@ -894,7 +856,6 @@ export class Harness {
     return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "actions") : moved;
   }
 
-  // At the actions of a Pokémon in the party menu: selects the action that `find` gives, then runs frames until `done`.
   private selectPartyAction(find: (options: string[]) => number, done: () => boolean): Outcome {
     const game = this.#run.game;
     const menu = game.partyMenu();
@@ -948,7 +909,6 @@ export class Harness {
     return battle ? { status: "interrupted", reason: battle } : this.untilDecision(watch);
   }
 
-  // A menu between two Decision points: `cursor()` is null while the menu reads no input. The game can take some frames to read a press.
   private moveMenuCursor(target: number, cursor: () => number | null): Outcome {
     for (let at = cursor(); at !== target; ) {
       if (at === null) return { status: "impossible", reason: "the menu reads no input" };
@@ -968,7 +928,7 @@ export class Harness {
     return pressed.status === "done" ? this.untilReady(ready) : pressed;
   }
 
-  // A slow menu reads the input only on some frames: wait until it reads the release of the last press, then hold the keys until it reads them.
+  // A slow menu reads the input on some frames only: wait for it to read the release, then hold the keys until it reads them.
   private pressUntilRead(keys: number): Outcome {
     const game = this.#run.game;
     for (const [held, read] of [
@@ -1170,15 +1130,12 @@ function at(place: Place): string {
   return `${place.map} (${place.x}, ${place.y})`;
 }
 
-/** Null when a Poké Mart buys the item, else the reason. */
 function saleRefusal(item: string, place: BagPlace | null): string | null {
   if (!place) return `there is no ${item} in the Bag`;
-  // The Bag of a Poké Mart opens the TM Case and the Berry Pouch on their own screens.
   if (place.pocket >= BATTLE_POCKETS) return "the sale of the TM Case and of the Berry Pouch is not covered yet";
   return place.price > 0 ? null : `the shop does not buy ${item}`;
 }
 
-// The quantity box: Up and Down change it by 1, Right and Left by 10 (AdjustQuantityAccordingToDPadInput, menu_helpers.c).
 function quantityKey(at: number, target: number): number {
   if (target - at >= 10) return Keys.Right;
   if (at - target >= 10) return Keys.Left;

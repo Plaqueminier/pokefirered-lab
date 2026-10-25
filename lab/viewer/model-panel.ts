@@ -22,7 +22,6 @@ const BLOCK_TITLES: [RegExp, string][] = [
 
 export type Answer = Decision | OldDecision | { error: string; raw: string | null };
 
-/** fields: the Mission, the objective and the note of a readable answer; a record from before the Memory tree has its notes. */
 export type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
 export type ModelPanelView = { rows: { frame: number; situation: string; action: string | null }[]; selected: number | null; thinking: boolean; call: CallView | null };

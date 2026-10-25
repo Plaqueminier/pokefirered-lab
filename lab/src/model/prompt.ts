@@ -22,7 +22,6 @@ const WAITS: Record<AskedKind, string> = {
   partyPick: "a Pokémon in the party menu of the battle",
   buyList: "the buy list of a Poké Mart",
 };
-// A name and a place only: the model finds the steps itself.
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
@@ -110,19 +109,16 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   ].join("\n");
 }
 
-/** The new user message after viewAtlas: the full Atlas. */
 export function atlasMessage(asked: Asked & { kind: "walk" }): string {
   return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasViewed: true })].join("\n");
 }
 
-/** The new user message after zoom: the two halves of the node. */
 export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): string {
   const halves = zoomLines(tree, node);
   const shown = halves ? [`Node ${nodeName(node)}, its two halves:`, ...halves] : [`There is no node ${nodeName(node)} with two halves: zoom a top node of your Memory, or a half that a zoom showed.`];
   return [...shown, "", chooseAgain(asked)].join("\n");
 }
 
-/** The new user message after an answer that the Bot cannot read: the error. */
 export function errorMessage(error: string, asked: Asked): string {
   return [`Your answer could not be read: ${error}.`, "", chooseAgain(asked)].join("\n");
 }
@@ -145,7 +141,6 @@ export function missionLine(events: readonly RunEvent[]): string {
   return `Mission: ${mission} (the same for ${times} decision${times === 1 ? "" : "s"}).`;
 }
 
-/** The first Milestone, in the order of the story, that the Run did not reach; null when it reached all. */
 export function nextMilestone(reached: readonly Milestone[]): string | null {
   const next = MILESTONES.find((milestone) => !reached.includes(milestone));
   return next ? MILESTONE_TEXTS[next] : null;
@@ -243,7 +238,6 @@ function partyText(party: PartyMon[]): string {
   return ["Party:", ...party.map(mon)].join("\n");
 }
 
-// The Bag is in each prompt once, with the effect of each item: the action lines only name the items.
 function bagText(bag: BagPocket[]): string {
   if (bag.length === 0) return "Bag: empty.";
   const pocket = ({ pocket, items }: BagPocket) => `- ${pocket}: ${items.map((i) => `${i.name} ×${i.quantity} (${i.description})`).join(", ")}`;

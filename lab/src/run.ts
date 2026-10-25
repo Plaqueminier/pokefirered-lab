@@ -27,7 +27,6 @@ export class Run {
     this.#origin = origin;
   }
 
-  /** `startSave`: the file of the Starting save, `saves/start.sav` by default. The tests also start from other Starting saves. */
   static async open(startSave = START_SAVE): Promise<Run> {
     if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
     const core = await Core.open(ROM_FILE);

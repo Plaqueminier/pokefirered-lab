@@ -39,9 +39,8 @@ const MILESTONE_FLAGS: [Milestone, number][] = [
   ["has-pokedex", FLAG_SYS_POKEDEX_GET],
   ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
 ];
-/** The Milestones in the order of the story. */
 export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]) => milestone);
-// The buy list of a Poké Mart draws the map and its people behind the list (BuyMenuDrawMapView, shop.c): the map stays the same.
+// CB2_BuyMenu draws the map behind the buy list, so the map stays the same.
 const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic", "CB2_BuyMenu"]);
 const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
 const MB_TALL_GRASS = 0x02;
@@ -104,7 +103,6 @@ export type WaitingFor =
   | { kind: "battleAction" }
   | { kind: "battleMove" }
   | { kind: "partyPick" }
-  /** The buy list of a Poké Mart, with the items for sale and their prices. */
   | { kind: "buyList"; items: ShopItem[] }
   | { kind: "busy" };
 
@@ -309,7 +307,6 @@ export class Game {
     return this.prompts.messageText(window);
   }
 
-  /** The texts that wait for A or B now, in any window: for example a message of the Bag or of the party menu. */
   waitingTexts(): string[] {
     return this.prompts.waitingWindows().map((window) => this.prompts.messageText(window).split("\n").join(" ").trim());
   }
@@ -350,7 +347,6 @@ export class Game {
     return tradeDone(this.mem);
   }
 
-  /** The text of the last message of a menu that prints with DisplayMessageAndContinueTask or DisplayItemMessageInBag. */
   menuMessage(): string {
     return this.decode(this.mem.global("gStringVar4").bytes()).split("\n").join(" ");
   }
@@ -399,7 +395,6 @@ export class Game {
     return enemyMovePrinted(this.mem);
   }
 
-  /** The keys that the game read the last time that it read the input: it can skip frames when it is slow. */
   keysRead(): { held: number; pressed: number } {
     const main = this.mem.global("gMain");
     return { held: main.field("heldKeysRaw").int(), pressed: main.field("newKeysRaw").int() };
@@ -455,7 +450,6 @@ export class Game {
     return this.context().mode;
   }
 
-  /** The battle screen shows, not a menu of the battle (the Bag, the party menu). */
   battleScreen(): boolean {
     return this.context().callback2 === "BattleMainCB2";
   }
@@ -472,10 +466,8 @@ export class Game {
     return { mode, callback1, callback2 };
   }
 
-  /** In the order of the party out of a battle. */
   party(): PartyMon[] {
     const party = readParty(this.mem, this.decode);
-    // While the party menu of a battle is open, gPlayerParty has the battle order (UpdatePartyToBattleOrder, party_menu.c).
     if (this.context().mode !== "battle" || !this.partyMenu()) return party;
     return party.map((_, i) => party[battleMenuSlot(this.mem, i)]);
   }

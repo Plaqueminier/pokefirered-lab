@@ -15,7 +15,6 @@ const reply = (action: string) => ({
   usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
-// "fight 2" is not an action of a walk: the Bot cannot read it. The cell (0, 0) of the bedroom is a wall.
 const ANSWERS = ["go 1", "fight 2", "goTo 0 0", "viewAtlas", "goTo 8 6"];
 
 async function modelRecord(): Promise<RunRecord> {

@@ -4,7 +4,6 @@ import type { ModelAction } from "../src/model/decision";
 import { actionLabel } from "./replay";
 import { dollars } from "./runs";
 
-// A Record and not a list: the type check fails when a new action of the model bot is not here.
 const ACTION_LIST: Record<ModelAction["name"], true> = {
   go: true,
   goTo: true,
@@ -25,7 +24,6 @@ const ACTION_NAMES = Object.keys(ACTION_LIST);
 
 export type Count = { name: string; count: number };
 
-/** The calls and the cost from the Milestone before to this one. `milestone` is null for the calls after the last Milestone. */
 export type MilestoneStats = { milestone: Milestone | null; calls: number; cost: number };
 
 export type StatsView = {
@@ -38,7 +36,6 @@ export type StatsView = {
   cost: number;
 };
 
-/** The stats read only the events, so a new event type shows with no change. An event with a usage (a Model call or another call) counts in the cost. */
 export function statsView(events: readonly RunEvent[]): StatsView {
   const types = new Map<string, number>();
   const used = new Map<string, number>();

@@ -7,7 +7,7 @@ import type { ShopItem } from "../shop";
 import { atlasExtract, type AtlasView } from "./extract";
 import type { Overworld } from "./targets";
 
-// The prompt holds the Mission, the objective, the notes, the summaries and an action that the Bot cannot read: they must not make it grow.
+// The text that the model writes comes back in each prompt: a cap keeps the prompt small.
 export const MAX_SENTENCE = 200;
 const MAX_QUOTED_ACTION = 80;
 
@@ -42,12 +42,10 @@ export type ModelAction =
   | { name: "viewAtlas" }
   | ({ name: "zoom" } & NodeRange);
 
-/** `party`: in the order of `observe().party`, where the party actions take their Pokémon. `items`: the items of the Bag that work now. */
 export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean; items: BagItem[] }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
-  /** `forSale`: the items of the buy list. `bag`: the items to sell. */
   | { kind: "buyList"; forSale: ShopItem[]; bag: BagPocket[] }
 );
 
@@ -80,7 +78,6 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
   });
 }
 
-/** The Pokémon that can go into the battle: they have HP, and they are not in the battle. */
 export function sendable(asked: Asked): PartyMon[] {
   if (!("battle" in asked)) return [];
   return asked.party.filter((mon, slot) => mon.hp > 0 && slot !== asked.battle.player.partyIndex);
@@ -121,7 +118,6 @@ export function readDecision(content: string): Decision {
   return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), note: decision.note.slice(0, MAX_SENTENCE) };
 }
 
-// The party actions name their Pokémon: the parser keeps the text, and readAction finds the place in the party.
 type PartyAction = { name: "switch"; pokemon: string } | { name: "send"; pokemon: string } | { name: "swap"; pokemon: string };
 type ParsedAction = Exclude<ModelAction, { name: PartyAction["name"] }> | PartyAction;
 
@@ -173,12 +169,10 @@ function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: 
   return { name, item: found, quantity };
 }
 
-/** How the item works at this Decision point: in a battle or on a walk. */
 export function itemUse(item: BagItem, asked: Asked): ItemUse | null {
   return asked.kind === "walk" ? item.walk : item.battle;
 }
 
-// The model can write "Poke Ball" for "POKé BALL".
 function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
@@ -200,7 +194,6 @@ function parse(action: string): ParsedAction | null {
   return pressed ? { name: "press", button: pressed } : null;
 }
 
-/** A Pokémon by its nickname, in any case, or by its place in the party: 1 is the first. */
 function partySlot(pokemon: string, party: PartyMon[]): number {
   if (/^\d+$/.test(pokemon)) {
     const place = Number(pokemon);
@@ -213,7 +206,6 @@ function partySlot(pokemon: string, party: PartyMon[]): number {
   throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
 }
 
-// A nickname can have a space: try each space as the end of the first Pokémon.
 function swapOf(pokemons: string, party: PartyMon[]): ModelAction {
   let error: unknown = new Error(`"${quoted(pokemons)}" is not two Pokémon of your party`);
   for (const [i, c] of [...pokemons].entries()) {

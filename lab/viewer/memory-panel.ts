@@ -2,12 +2,10 @@ import type { RunEvent, SummaryEvent } from "../src/harness/record";
 import { type MemoryNode, type MemoryTree, memoryTree, nodeLine, nodeName, topNodes, zoomNodes } from "../src/model/memory-tree";
 import { dollars } from "./runs";
 
-/** A node as the prompt shows it, with the halves that zoom opens, down to the notes. */
 export type OutlineNode = { name: string; line: string; halves: OutlineNode[] };
 
 export type SummaryCallRow = { id: number; frame: number; node: string; result: string; failed: boolean; cost: string; time: string; prompt: string; answer: string };
 
-/** tops: the Memory lines of the prompt. calls: the Summary calls, the newest first. */
 export type MemoryPanelView = { notes: number; tops: OutlineNode[]; calls: SummaryCallRow[]; cost: number };
 
 export function memoryPanelView(events: readonly RunEvent[]): MemoryPanelView {
@@ -44,7 +42,6 @@ export type MemoryPanelElements = { title: HTMLElement; outline: HTMLElement; ca
 export class MemoryPanel {
   #shown = "";
   #count = 0;
-  // The open nodes and calls stay open when a new event comes.
   readonly #open = new Set<string>();
 
   constructor(private readonly ui: MemoryPanelElements) {}

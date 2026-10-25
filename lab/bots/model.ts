@@ -23,7 +23,6 @@ function starterRule(starter: Starter): string {
   return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
 }
 
-// The Model calls at one Decision point are one conversation. An action that the Bot plays ends it.
 type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean };
 
 class ModelPlay {
@@ -90,7 +89,6 @@ class ModelPlay {
     }
   }
 
-  // One Summary call for each merge that is due, at the same Decision point. A merge whose call failed stays due: the next Model call tries it again.
   private async summarize(): Promise<void> {
     const tried = new Set<string>();
     for (;;) {

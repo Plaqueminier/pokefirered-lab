@@ -23,7 +23,6 @@ if (!name || ids.length > 1) {
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, temperature: number(values.temperature), starter: values.starter };
-// A path of a .ts file loads a Bot out of bots/, for example the scripted bot of the tests.
 const bot = await loadBot(name.endsWith(".ts") ? resolve(name) : name, model).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);

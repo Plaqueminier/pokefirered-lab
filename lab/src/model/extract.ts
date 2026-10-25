@@ -10,7 +10,6 @@ export type AtlasView = { lines: string[]; targets: Target[] };
 
 type MapDistance = { map: AtlasMap; distance: number };
 
-/** The local part (grid, targets, texts of the people and signs) is never cut and is out of the budget. The other maps have their own budget: past it, the far maps lose their line. */
 export function atlasExtract(overworld: Overworld): AtlasView {
   const here = mapNamed(overworld.atlas, overworld.map.name);
   const local = localTargets(overworld, here);
@@ -53,7 +52,6 @@ function mapTarget(map: AtlasMap, cell: Cell, distance: number): Target {
   return { kind: "map", label: `go to ${map.name} (${away(distance)})`, map: map.name, cell };
 }
 
-/** The near maps in detail up to the budget, then one line for each far map, so that the full Atlas loses no map. */
 export function fullAtlas(overworld: Overworld): string[] {
   const lines = ["", "Full Atlas, the other maps that you know, nearest first:"];
   let size = lines.join("\n").length;

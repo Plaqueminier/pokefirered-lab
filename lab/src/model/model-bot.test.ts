@@ -75,7 +75,6 @@ function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
   return { client, prompts };
 }
 
-/** A model that adds the note n at its call n, and writes the summary of a node from the texts of its two halves. */
 function noteTaker(...actions: string[]): { client: ModelClient; summaryPrompts: Prompt[] } {
   const summaryPrompts: Prompt[] = [];
   let calls = 0;
@@ -91,7 +90,6 @@ function noteTaker(...actions: string[]): { client: ModelClient; summaryPrompts:
   return { client, summaryPrompts };
 }
 
-// On the test Starting save with SQUIRTLE and SHELL (1 HP): swap them, walk in the grass, switch two times, then send SQUIRTLE after the faint of SHELL.
 function partyPlayer(): { client: ModelClient; prompts: Prompt[] } {
   const prompts: Prompt[] = [];
   const battleActions = ["switch squirtle", "switch 1"];
@@ -268,7 +266,6 @@ describe.skipIf(!ready)("model bot", () => {
   test("each merge of the Memory tree makes one Summary call at the same Decision point, a summary event whose cost counts against the cost limit; the prompt shows the top nodes", async () => {
     const harness = await Harness.open();
     const { client, summaryPrompts } = noteTaker("goTo 8 6");
-    // 5 Model calls and 3 Summary calls (#1-2, #3-4, #1-4) cost 8 calls: more than the limit after the fifth Model call, not before.
     await harness.play(modelBot({ costLimit: 7.5 * COST }, () => client)).catch(() => {});
     const calls = modelEvents(harness);
     const summaries = harness.events.filter((e): e is SummaryEvent => e.type === "summary");
@@ -311,7 +308,6 @@ describe.skipIf(!ready)("model bot", () => {
   });
 });
 
-// A test Starting save in Pallet Town after the rival battle: SQUIRTLE, then SHELL, a SQUIRTLE with 1 HP.
 const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot with 2 Pokémon", () => {

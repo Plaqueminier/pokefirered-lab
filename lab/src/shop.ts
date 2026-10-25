@@ -1,19 +1,15 @@
-// The Poké Mart: the menu BUY / SELL / SEE YA, the buy list (shop.c), and the quantity box and the yes/no of a buy or a sale (shop.c, item_menu.c).
 import type { Memory } from "./memory";
 import { activeTask, type Choice, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
 const MAX_MENU_TEXT = 32;
-// tItemCount (data[1]) of the buy menu task, and data[8] of the Bag task for a sale.
 const BUY_QUANTITY = 1;
 const SELL_QUANTITY = 8;
 
 export type ShopItem = { name: string; price: number };
 
-/** The buy list when it reads the input: the items for sale and the row of the cursor. */
 export type BuyList = { items: ShopItem[]; row: number };
 
-/** The menu BUY / SELL / SEE YA of a Poké Mart, when it reads the input. */
 export function shopMenu(mem: Memory, decode: Decode): Choice | null {
   if (!activeTask(mem, "Task_ShopMenu")) return null;
   const actions = mem.global("sShopMenuActions_BuySellQuit");
@@ -33,7 +29,6 @@ export function buyList(mem: Memory, decode: Decode): BuyList | null {
   return { items, row: shop.field("scrollOffset").int() + shop.field("selectedRow").int() };
 }
 
-/** The quantity of the quantity box of a buy or a sale, when the box reads the input. */
 export function tradeQuantity(mem: Memory): number | null {
   const buy = activeTask(mem, "Task_BuyHowManyDialogueHandleInput");
   if (buy) return buy.field("data").at(BUY_QUANTITY).int();
@@ -41,12 +36,10 @@ export function tradeQuantity(mem: Memory): number | null {
   return sell ? sell.field("data").at(SELL_QUANTITY).int() : null;
 }
 
-/** The cursor of the yes/no of a buy or a sale. */
 export function tradeYesNo(mem: Memory): number | null {
   return activeTask(mem, "Task_CallYesOrNoCallback") ? mem.global("sMenu").field("cursorPos").int() : null;
 }
 
-/** After a buy or a sale, the game waits for A. */
 export function tradeDone(mem: Memory): boolean {
   return activeTask(mem, "Task_ReturnToItemListAfterItemPurchase") !== null || activeTask(mem, "Task_WaitPressAB_AfterSell") !== null;
 }

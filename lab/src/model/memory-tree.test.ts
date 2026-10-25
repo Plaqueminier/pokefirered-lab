@@ -22,7 +22,6 @@ function summary(from: number, to: number, text: string | null): RunEvent {
   return { type: "summary", frame: 0, latencyMs: 1, model: "a/b", from, to, prompt: { system: "", user: "" }, answer: text, usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 }, ...answer };
 }
 
-/** The events of a Run that adds the notes 1 to `count`, each one with the Summary calls that it makes due. */
 function notes(count: number): { events: RunEvent[]; merges: string[] } {
   const events: RunEvent[] = [];
   const merges: string[] = [];

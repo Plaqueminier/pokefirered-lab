@@ -11,7 +11,6 @@ const MAX_TOKENS = 4000;
 
 export type ModelReply = { content: string; usage: Usage };
 
-/** The JSON schema of the answer: a decision of a Model call, or the summary of a Summary call. */
 export type AnswerFormat = { name: "decision" | "summary"; schema: object };
 
 export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };

@@ -26,19 +26,14 @@ export type ModelSettings = { id: string; costLimit: number; reasoning: Reasonin
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
 export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string };
 
-/** The messages of a Model call: system, user, then for each turn the last answer and a new user message. A record from before the conversations has no turns. */
 export type Prompt = { system: string; user: string; turns?: Turn[] };
 
-/** A Model call at the same Decision point goes on with the conversation: its last answer, then the new facts or the error. */
 export type Turn = { assistant: string; user: string };
 
-// cachedTokens: the prompt tokens that the provider read from its cache. A record from before the cache has none.
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-// note: one line that goes into the Memory tree, often empty.
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
 
-/** A record from before the Memory tree has the notes that the model wrote again at each call, and no note. */
 export type OldDecision = Omit<Decision, "note"> & { notes: string };
 
 // answer is null when the request failed.
@@ -49,17 +44,14 @@ export type ModelAnswer = { model: string; situation: string; prompt: Prompt; an
 
 export type ModelEvent = { type: "model"; frame: number; latencyMs: number } & ModelAnswer;
 
-/** The notes from `from` to `to` of the Memory tree, numbered from 1. */
 export type NodeRange = { from: number; to: number };
 
-/** A Summary call writes the summary of the node `from`-`to` from its two halves. summary is null when the call failed. */
 export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | null; usage: Usage } & NodeRange & ({ summary: string; error: null } | { summary: null; error: string });
 
 export type SummaryEvent = { type: "summary"; frame: number; latencyMs: number } & SummaryAnswer;
 
 export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | ModelEvent | SummaryEvent;
 
-/** calls: the Model calls. The usage and the cost count the Summary calls too. */
 export type ModelTotals = { calls: number } & Usage;
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {

@@ -7,7 +7,6 @@ import { Harness, type HarnessOptions } from "./harness";
 import { RunPool } from "./pool";
 import { RecordPlayer } from "./record";
 
-// The worker loads the scripted bot from its file: it is not in bots/.
 const STARTER = join(import.meta.dir, "scripted-bot.ts");
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(120_000);

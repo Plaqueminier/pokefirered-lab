@@ -119,7 +119,6 @@ export class Prompts {
       const size = length ?? buffer.size;
       if (at >= buffer.addr && at < buffer.addr + size) return this.decode(this.mem.bus.read(buffer.addr, size));
     }
-    // A constant text of the ROM, for example gText_WontHaveEffect: the printer is in the global just before its position.
     const text = at >= ROM_START && printer.field("active").int() ? this.mem.globalBefore(at) : null;
     if (text) return this.decode(this.mem.bus.read(text.addr, at - text.addr + MAX_ROM_TEXT));
     if (this.mem.u8(at) === CHAR_EOS || !printer.field("active").int()) return "";
