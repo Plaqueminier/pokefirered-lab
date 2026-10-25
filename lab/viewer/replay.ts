@@ -29,6 +29,8 @@ function eventLabel(event: Exclude<RunEvent, ActionEvent>): string {
       return `Milestone ${event.milestone}`;
     case "model":
       return `model: ${event.decision?.action ?? "no action"}`;
+    case "summary":
+      return `summary #${event.from}-${event.to}${event.summary === null ? `: ${event.error}` : ""}`;
   }
 }
 

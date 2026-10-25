@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test }
 import { existsSync } from "node:fs";
 import { modelBot } from "../bots/model";
 import { Harness } from "../src/harness/harness";
-import { type ModelEvent, RecordPlayer, type RunRecord } from "../src/harness/record";
+import { isRunRecord, type ModelEvent, RecordPlayer, type RunRecord } from "../src/harness/record";
 import { ROM_FILE, START_SAVE } from "../src/run";
 import { modelPanelView } from "./model-panel";
 
@@ -11,7 +11,7 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", notes: "Mom is downstairs." }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go 1" ? "Mom is downstairs." : "" }),
   usage: { promptTokens: 1000, cachedTokens: 600, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
@@ -52,12 +52,37 @@ describe.skipIf(!ready)("the panel Model", () => {
     expect(view.thinking).toBe(true);
     expect(view.rows.map((r) => r.action)).toEqual(["go 1", "viewAtlas", "goTo 8 6"]);
     expect(view.selected).toBe(1);
-    expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", notes: "Mom is downstairs." });
+    expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", note: "" });
+    expect(view.call?.fields).toEqual({ Mission: "Get my first Pokémon", Objective: "Leave the house", Note: "–" });
     expect(view.call?.usage).toMatch(/^1000 tokens in \(600 cached\) · 30 out \(0 reasoning\) · 0\.001 \$ · \d+\.\d s$/);
-    expect(view.call?.blocks.map((b) => b.title)).toEqual(["Progress", "Situation", "History", "Party", "Local view", "Atlas", "Targets", "Actions", "Rules"]);
+    expect(view.call?.blocks.map((b) => b.title)).toEqual(["Progress", "Memory", "Situation", "History", "Party", "Local view", "Atlas", "Targets", "Actions", "Rules"]);
     const afterAtlas = modelPanelView(record.events, 3, 2).call?.blocks ?? [];
-    expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Situation", "History", "Party", "Local view", "Atlas", "Targets", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
-    expect(afterAtlas[8].text).toBe(reply("viewAtlas").content);
+    expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Memory", "Situation", "History", "Party", "Local view", "Atlas", "Targets", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
+    expect(afterAtlas[1].text).toBe("Memory, the top nodes (zoom <a-b> opens a node):\n#1: Mom is downstairs.");
+    expect(afterAtlas[9].text).toBe(reply("viewAtlas").content);
     expect(modelPanelView(record.events, 3, null)).toMatchObject({ thinking: false, selected: 2 });
+  });
+});
+
+describe("the panel Model and an old Run record", () => {
+  test("it opens a Run record from before the Memory tree: its answers have notes and no note", () => {
+    const old = {
+      type: "model",
+      frame: 120,
+      latencyMs: 900,
+      model: "a/b",
+      situation: "a walk on PalletTown (5, 6)",
+      prompt: { system: "rules", user: "Milestones: none\nNotes: none\nMission: none yet.\n\nThe game waits for a walk." },
+      answer: "{}",
+      usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST },
+      decision: { reason: "r", action: "go 1", mission: "m", objective: "o", notes: "Oak is in his lab." },
+      error: null,
+    };
+    const record = { header: {}, buttons: [[0, 200]], events: [old], result: {} };
+    expect(isRunRecord(record)).toBe(true);
+    const view = modelPanelView([old as ModelEvent], 0, null);
+    expect(view.rows).toEqual([{ frame: 120, situation: "a walk on PalletTown (5, 6)", action: "go 1" }]);
+    expect(view.call?.fields).toEqual({ Mission: "m", Objective: "o", Notes: "Oak is in his lab." });
+    expect(view.call?.usage).toMatch(/^1000 tokens in · 30 out/);
   });
 });

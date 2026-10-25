@@ -6,7 +6,7 @@ import { modelSettings, openRouter } from "./openrouter";
 const KEY = "sk-or-test-key";
 const PROMPT = { system: "rules", user: "now" };
 const REPLY = {
-  choices: [{ message: { content: '{"reason":"r","action":"go 1","mission":"m","objective":"o","notes":""}' } }],
+  choices: [{ message: { content: '{"reason":"r","action":"go 1","mission":"m","objective":"o","note":""}' } }],
   usage: { prompt_tokens: 1200, prompt_tokens_details: { cached_tokens: 1024 }, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 0 }, cost: 0.00021 },
 };
 

@@ -1,6 +1,7 @@
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
 import { DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, STARTERS } from "../protocol";
 import { DECISION_SCHEMA } from "./decision";
+import { SUMMARY_SCHEMA } from "./memory-tree";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_COST_LIMIT = 0.5;
@@ -10,7 +11,14 @@ const MAX_TOKENS = 4000;
 
 export type ModelReply = { content: string; usage: Usage };
 
-export type ModelClient = (prompt: Prompt) => Promise<ModelReply>;
+/** The JSON schema of the answer: a decision of a Model call, or the summary of a Summary call. */
+export type AnswerFormat = { name: "decision" | "summary"; schema: object };
+
+export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
+
+export const SUMMARY_FORMAT: AnswerFormat = { name: "summary", schema: SUMMARY_SCHEMA };
+
+export type ModelClient = (prompt: Prompt, format?: AnswerFormat) => Promise<ModelReply>;
 
 export function modelSettings(given: ModelOptions, env: Record<string, string | undefined> = process.env): ModelSettings {
   const costLimit = given.costLimit ?? (env.LAB_COST_LIMIT === undefined ? DEFAULT_COST_LIMIT : Number(env.LAB_COST_LIMIT));
@@ -36,7 +44,7 @@ export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROU
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set: put it in lab/.env");
   const reasoning = { effort: settings.reasoning === "off" ? "none" : settings.reasoning };
   const temperature = settings.temperature === null ? {} : { temperature: settings.temperature };
-  return async ({ system, user, turns = [] }) => {
+  return async ({ system, user, turns = [] }, format = DECISION_FORMAT) => {
     const response = await fetcher(API_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -50,7 +58,7 @@ export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROU
             { role: "user", content: turn.user },
           ]),
         ],
-        response_format: { type: "json_schema", json_schema: { name: "decision", strict: true, schema: DECISION_SCHEMA } },
+        response_format: { type: "json_schema", json_schema: { name: format.name, strict: true, schema: format.schema } },
         provider: { require_parameters: true },
         max_tokens: MAX_TOKENS,
         reasoning,

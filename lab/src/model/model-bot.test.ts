@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test }
 import { existsSync } from "node:fs";
 import { modelBot } from "../../bots/model";
 import { Harness } from "../harness/harness";
-import { type ModelEvent, modelTotals, type Prompt } from "../harness/record";
+import { type ModelEvent, modelTotals, type Prompt, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-panel";
 import type { ModelClient } from "./openrouter";
@@ -12,8 +12,8 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 const DECISIONS = ["go 1", "go 2", "go 1", "go 2", "go 2", "go 7", "choose YES", "choose NO", "go 1", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
 
-function reply(action: string, objective = "Get a Pokémon") {
-  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, notes: "Oak is in his lab." }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
+function reply(action: string, objective = "Get a Pokémon", note = "") {
+  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
 }
 
 function target(prompt: Prompt, ...labels: string[]): string {
@@ -71,6 +71,22 @@ function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
     return { ...reply("go 1"), content: "I stop here." };
   };
   return { client, prompts };
+}
+
+/** A model that adds the note n at its call n, and writes the summary of a node from the texts of its two halves. */
+function noteTaker(...actions: string[]): { client: ModelClient; summaryPrompts: Prompt[] } {
+  const summaryPrompts: Prompt[] = [];
+  let calls = 0;
+  const client: ModelClient = async (prompt, format) => {
+    if (format?.name === "summary") {
+      summaryPrompts.push(prompt);
+      const parts = [...prompt.user.matchAll(/^#([\d-]+): /gm)].map((m) => m[1]);
+      return { content: JSON.stringify({ summary: `summary of ${parts.join(" and ")}` }), usage: { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: COST } };
+    }
+    calls++;
+    return reply(actions[Math.min(calls - 1, actions.length - 1)], "Leave the house", `fact ${calls}`);
+  };
+  return { client, summaryPrompts };
 }
 
 function answers(...contents: string[]): ModelClient {
@@ -139,8 +155,8 @@ describe.skipIf(!ready)("model bot", () => {
     expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
     expect(choice).toContain("Objective: Get a Pokémon");
     expect(choice).toMatch(/^Mission: Get my first Pokémon \(the same for \d+ decisions\)\.$/m);
-    expect(choice).toContain("Notes: Oak is in his lab.");
-    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- press <button>/);
+    expect(choice).toContain("Memory: none yet.");
+    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: .*\n- press <button>/);
     expect(choice).not.toContain("goTo <x> <y>");
     const battle = first(/^The game waits for a battle action\.$/m);
     expect(battle).toContain("- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)");
@@ -182,7 +198,7 @@ describe.skipIf(!ready)("model bot", () => {
     await expect(harness.play(bot)).rejects.toThrow("is more than the cost limit");
     const calls = modelEvents(harness);
     expect(calls.map((e) => e.decision?.action)).toEqual(["viewAtlas", undefined, "goTo 8 6", "goTo 8 6"]);
-    expect(calls[1].error).toBe('"viewAtlas" is not an action now: use go, goTo or press');
+    expect(calls[1].error).toBe('"viewAtlas" is not an action now: use go, goTo, zoom or press');
     expect(calls.slice(0, 3).map((e) => e.frame)).toEqual([calls[0].frame, calls[0].frame, calls[0].frame]);
     expect(calls[3].frame).toBeGreaterThan(calls[0].frame);
     const third = harness.events.indexOf(calls[2]);
@@ -193,7 +209,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[1].prompt).toEqual({ ...calls[0].prompt, turns: [{ assistant: viewAtlas, user: expect.stringContaining(fullAtlas) }] });
     expect(calls[2].prompt.turns).toEqual([
       { assistant: viewAtlas, user: calls[1].prompt.turns?.[0].user },
-      { assistant: viewAtlas, user: expect.stringContaining('"viewAtlas" is not an action now: use go, goTo or press') },
+      { assistant: viewAtlas, user: expect.stringContaining('"viewAtlas" is not an action now: use go, goTo, zoom or press') },
     ]);
     expect(calls[2].prompt.user).toBe(calls[0].prompt.user);
     expect(calls[3].prompt.turns).toBeUndefined();
@@ -209,6 +225,36 @@ describe.skipIf(!ready)("model bot", () => {
     const afterTalks = lab.findLast((user) => /^- interact\(9, 4\)/m.test(user)) ?? "";
     expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×3: ".+"$/)]);
     expect(afterTalks).toMatch(/^Decision points with no progress: [1-9]\d*\.$/m);
+  });
+
+  test("each merge of the Memory tree makes one Summary call at the same Decision point, a summary event whose cost counts against the cost limit; the prompt shows the top nodes", async () => {
+    const harness = await Harness.open();
+    const { client, summaryPrompts } = noteTaker("goTo 8 6");
+    // 5 Model calls and 3 Summary calls (#1-2, #3-4, #1-4) cost 8 calls: more than the limit after the fifth Model call, not before.
+    await harness.play(modelBot({ costLimit: 7.5 * COST }, () => client)).catch(() => {});
+    const calls = modelEvents(harness);
+    const summaries = harness.events.filter((e): e is SummaryEvent => e.type === "summary");
+    expect(calls).toHaveLength(5);
+    expect(summaries.map((e) => `${e.from}-${e.to}: ${e.summary}`)).toEqual(["1-2: summary of 1 and 2", "3-4: summary of 3 and 4", "1-4: summary of 1-2 and 3-4"]);
+    expect(modelTotals(harness.events).cost).toBeCloseTo(8 * COST, 10);
+    const second = harness.events.indexOf(calls[1]);
+    expect(harness.events[second + 1]).toMatchObject({ type: "summary", frame: calls[1].frame, model: calls[1].model, prompt: summaryPrompts[0], error: null, usage: { cost: COST } });
+    expect(summaries[0].answer).toBe(JSON.stringify({ summary: "summary of 1 and 2" }));
+    expect(summaries[0].latencyMs).toBeGreaterThanOrEqual(0);
+    expect(summaryPrompts[2].user).toContain("#1-2: summary of 1 and 2\n#3-4: summary of 3 and 4");
+    expect(calls[2].prompt.user).toContain("Memory, the top nodes (zoom <a-b> opens a node):\n#1-2: summary of 1 and 2");
+    expect(calls[4].prompt.user).toContain("Memory, the top nodes (zoom <a-b> opens a node):\n#1-4: summary of 1-2 and 3-4\n\n");
+  });
+
+  test("zoom runs no frames: the code goes on with the same conversation, with the two halves of the node in a new user message", async () => {
+    const harness = await Harness.open();
+    const { client } = noteTaker("goTo 8 6", "goTo 8 6", "zoom 1-2", "zoom 5-6", "goTo 8 6");
+    await harness.play(modelBot({ costLimit: 7.5 * COST }, () => client)).catch(() => {});
+    const calls = modelEvents(harness);
+    expect(calls.map((e) => e.decision?.action)).toEqual(["goTo 8 6", "goTo 8 6", "zoom 1-2", "zoom 5-6", "goTo 8 6"]);
+    expect(calls.slice(2).map((e) => e.frame)).toEqual([calls[2].frame, calls[2].frame, calls[2].frame]);
+    expect(calls[3].prompt).toEqual({ ...calls[2].prompt, turns: [{ assistant: calls[2].answer ?? "", user: expect.stringContaining("Node #1-2, its two halves:\n#1: fact 1\n#2: fact 2") }] });
+    expect(calls[4].prompt.turns?.[1].user).toContain("There is no node #5-6 with two halves");
   });
 
   test("on a screen that no Macro-action covers, the code presses B three times and tells the model", async () => {

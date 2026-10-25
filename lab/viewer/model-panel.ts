@@ -1,8 +1,9 @@
-import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
+import type { Decision, ModelEvent, OldDecision, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
+  [/^Memory/, "Memory"],
   [/^The game waits/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Party/, "Party"],
@@ -11,6 +12,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Maps one exit away/, "Atlas"],
   [/^Targets/, "Targets"],
   [/^Full Atlas/, "Full Atlas"],
+  [/^Node #|^There is no node/, "Zoom"],
   [/^Battle against/, "Battle"],
   [/^The question is/, "Question"],
   [/^Actions/, "Actions"],
@@ -18,9 +20,10 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Answer with JSON again/, "Request"],
 ];
 
-export type Answer = Decision | { error: string; raw: string | null };
+export type Answer = Decision | OldDecision | { error: string; raw: string | null };
 
-export type CallView = { title: string; answer: Answer; usage: string; blocks: { title: string; text: string }[] };
+/** fields: the Mission, the objective and the note of a readable answer; a record from before the Memory tree has its notes. */
+export type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
 export type ModelPanelView = { rows: { frame: number; situation: string; action: string | null }[]; selected: number | null; thinking: boolean; call: CallView | null };
 
@@ -49,9 +52,17 @@ function callView(call: ModelEvent, index: number): CallView {
   return {
     title: `call ${index + 1} · frame ${call.frame} · ${call.model} · ${call.situation}`,
     answer: call.decision ?? { error: call.error, raw: call.answer },
+    fields: call.decision ? answerFields(call.decision) : {},
     usage: `${promptTokens} tokens in${cached} · ${completionTokens} out (${reasoningTokens} reasoning) · ${Number(cost.toFixed(6))} $ · ${(call.latencyMs / 1000).toFixed(1)} s`,
     blocks: [...messageBlocks(user), ...turnBlocks, { title: "Rules", text: system }],
   };
+}
+
+function answerFields(decision: Decision | OldDecision): Record<string, string> {
+  const fields: Record<string, string> = { Mission: decision.mission || "–", Objective: decision.objective || "–" };
+  if ("note" in decision) fields.Note = decision.note || "–";
+  else fields.Notes = decision.notes || "–";
+  return fields;
 }
 
 function messageBlocks(message: string): { title: string; text: string }[] {
@@ -130,11 +141,11 @@ export class ModelPanel {
   }
 }
 
-function answerNodes({ answer, usage }: CallView): HTMLElement[] {
+function answerNodes({ answer, fields, usage }: CallView): HTMLElement[] {
   const nodes =
     "error" in answer
       ? [element("div", `Unreadable answer: ${answer.error}`, "model-error"), element("pre", answer.raw ?? "(no answer: the request failed)", "model-pre")]
-      : [element("div", `→ ${answer.action}`, "model-action"), element("div", answer.reason), definitions({ Mission: answer.mission || "–", Objective: answer.objective || "–", Notes: answer.notes || "–" })];
+      : [element("div", `→ ${answer.action}`, "model-action"), element("div", answer.reason), definitions(fields)];
   return [...nodes, element("div", usage, "mono muted")];
 }
 

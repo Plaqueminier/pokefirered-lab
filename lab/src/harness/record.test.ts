@@ -113,7 +113,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     const { harness } = await playStarter();
     const record = harness.record();
     const replayed = await replay(record);
-    expect(replayed.events).toEqual(record.events.filter((e) => e.type !== "action" && e.type !== "model"));
+    expect(replayed.events).toEqual(record.events.filter((e) => e.type === "map" || e.type === "battle" || e.type === "milestone"));
     expect(replayed.events.length).toBeGreaterThan(0);
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());
