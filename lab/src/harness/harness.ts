@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { BATTLE_POCKETS, type BagPocket, battleItems } from "../bag";
+import { BATTLE_POCKETS, type BagPocket, battleItems, walkItems } from "../bag";
 import { type Battle, type BattleMenu, type BattleMon, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -49,7 +49,7 @@ const RIVAL_GRAPHICS = "BLUE";
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "interact", "swap"],
+  walk: ["goTo", "interact", "swap", "use"],
   choice: ["choose"],
   text: ["readText"],
   battleAction: ["fight", "switch", "run", "use"],
@@ -65,6 +65,7 @@ const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
 const POKE_BALLS_POCKET = 2;
 const START_MENU_POKEMON = "POKéMON";
+const START_MENU_BAG = "BAG";
 // The first action of a Pokémon in the party menu of a battle: SEND OUT after a faint, SHIFT after the battle action POKéMON.
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
@@ -431,8 +432,10 @@ export class Harness {
           return this.battle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
         case "run":
           return this.battle().kind === "wild" ? [{ name }] : [];
-        case "use":
-          return battleItems(this.#run.game.bag(), this.battle().kind).map((item) => ({ name, item: item.name }));
+        case "use": {
+          const bag = this.#run.game.bag();
+          return (waiting.kind === "walk" ? walkItems(bag) : battleItems(bag, this.battle().kind)).map((item) => ({ name, item: item.name }));
+        }
       }
     });
   }
@@ -547,19 +550,24 @@ export class Harness {
     }, { text: [] });
   }
 
-  /** Uses an item of the Bag in a battle: BAG, the pocket, the item, USE, then the Pokémon `on` for an item that works on a Pokémon. */
+  /**
+   * Uses an item of the Bag: BAG in the battle menu or in the Start menu, the pocket, the item, USE, then the Pokémon `on` for an item that works on a Pokémon.
+   * On a walk, the Bag and the Start menu close after the item.
+   */
   async use(item: string, on?: number): Promise<TextResult> {
     return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => {
       const game = this.#run.game;
+      const walk = game.waitingFor().kind === "walk";
       const place = game.findInBag(item);
-      if (!place || place.pocket >= BATTLE_POCKETS) return { status: "impossible", reason: `there is no ${item} in the Bag of a battle` };
-      if (!place.battle) return { status: "impossible", reason: `${item} does not work in a battle` };
-      if (place.pocket === POKE_BALLS_POCKET && this.battle().kind === "trainer") return { status: "impossible", reason: "the trainer blocks a ball: there is no catching in a trainer battle" };
-      if (place.battle === "pokemon" && on === undefined) return { status: "impossible", reason: `${item} works on a Pokémon: give the Pokémon` };
-      if (place.battle === "alone" && on !== undefined) return { status: "impossible", reason: `${item} does not work on a Pokémon` };
+      if (!place || place.pocket >= BATTLE_POCKETS) return { status: "impossible", reason: `there is no ${item} in the Bag${walk ? "" : " of a battle"}` };
+      const use = walk ? place.walk : place.battle;
+      if (!use) return { status: "impossible", reason: `${item} does not work ${walk ? "outside" : "in"} a battle` };
+      if (!walk && place.pocket === POKE_BALLS_POCKET && this.battle().kind === "trainer") return { status: "impossible", reason: "the trainer blocks a ball: there is no catching in a trainer battle" };
+      if (use === "pokemon" && on === undefined) return { status: "impossible", reason: `${item} works on a Pokémon: give the Pokémon` };
+      if (use === "alone" && on !== undefined) return { status: "impossible", reason: `${item} does not work on a Pokémon` };
       if (on !== undefined && !game.party()[on]) return { status: "impossible", reason: `the party has no Pokémon ${on}` };
       const before = game.bagQuantity(place.item);
-      const opened = this.openBag();
+      const opened = walk ? this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list") : this.openBag();
       if (opened.status !== "done") return opened;
       const list = () => {
         const menu = game.bagMenu();
@@ -580,9 +588,11 @@ export class Harness {
       if (on !== undefined) {
         const party = this.tapUntil(Keys.A, () => pick() !== null, "the party menu");
         if (party.status !== "done") return party;
-        const picked = this.moveMenuCursor(game.battleMenuSlot(on), pick);
+        // On a walk, the party menu shows the party in its order.
+        const picked = this.moveMenuCursor(walk ? on : game.battleMenuSlot(on), pick);
         if (picked.status !== "done") return picked;
       }
+      if (walk) return this.useOnWalk(item, place.item, before);
       const reader = new MessageReader(game);
       const pressed = this.pressUntilRead(Keys.A);
       if (pressed.status !== "done") return pressed;
@@ -627,7 +637,7 @@ export class Harness {
       const party = game.party();
       for (const slot of [first, second]) if (!party[slot]) return { status: "impossible", reason: `the party has no Pokémon ${slot}` };
       if (first === second) return { status: "impossible", reason: "a Pokémon cannot swap with itself" };
-      const opened = this.openPartyMenu();
+      const opened = this.openStartMenu(START_MENU_POKEMON, () => game.partyMenu()?.kind === "pick");
       if (opened.status !== "done") return opened;
       const actions = this.openPartyActions(first);
       if (actions.status !== "done") return actions;
@@ -640,9 +650,7 @@ export class Harness {
       const moved = this.moveMenuCursor(second, () => pick()?.cursor ?? null);
       if (moved.status !== "done") return moved;
       const swapped = this.menuInput(Keys.A, () => pick()?.swapping === false);
-      if (swapped.status !== "done") return swapped;
-      const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
-      return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
+      return swapped.status === "done" ? this.closeStartMenu() : swapped;
     });
   }
 
@@ -675,6 +683,26 @@ export class Harness {
     const moved = this.moveCursor(BAG_CURSOR, cursor, (at) => gridKey(at, BAG_CURSOR));
     if (moved.status !== "done") return moved;
     return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
+  }
+
+  // At the party menu of the item: the game tells what the item did, or that it has no effect, then shows the Bag again.
+  private useOnWalk(item: string, id: number, before: number): Outcome & Texts {
+    const game = this.#run.game;
+    const pressed = this.pressUntilRead(Keys.A);
+    if (pressed.status !== "done") return { ...pressed, text: [] };
+    // An item that works shows its animation on the Pokémon first, then the party menu tells its effect.
+    const told = this.untilReady(() => game.waitingTexts().length > 0 || game.itemAnimWaits());
+    if (told.status !== "done") return { ...told, text: [] };
+    if (game.itemAnimWaits()) {
+      const effect = this.menuInput(Keys.A, () => game.waitingTexts().length > 0);
+      if (effect.status !== "done") return { ...effect, text: [] };
+    }
+    const text = game.waitingTexts();
+    const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
+    if (back.status !== "done") return { ...back, text };
+    const closed = this.closeStartMenu();
+    if (closed.status !== "done") return { ...closed, text };
+    return game.bagQuantity(id) === before ? { status: "impossible", reason: `the game refuses the ${item}: ${text.join(" ")}`, text: [] } : { status: "done", text };
   }
 
   // The game shows a message, then the Bag again: B closes the Bag, back to the battle menu.
@@ -746,15 +774,22 @@ export class Harness {
     return { ...this.untilDecision(() => reader.update()), text: reader.textBeforeWaitingText() };
   }
 
-  // On a walk: the Start menu, then its item POKéMON.
-  private openPartyMenu(): Outcome {
+  // On a walk: the Start menu, then its item `option`, until the screen of the item reads the input.
+  private openStartMenu(option: string, shown: () => boolean): Outcome {
     const game = this.#run.game;
     const opened = this.menuInput(Keys.Start, () => game.startMenu() !== null);
     if (opened.status !== "done") return opened;
-    const item = game.startMenu()?.options.indexOf(START_MENU_POKEMON) ?? -1;
-    if (item < 0) return { status: "impossible", reason: `the Start menu has no ${START_MENU_POKEMON}` };
+    const item = game.startMenu()?.options.indexOf(option) ?? -1;
+    if (item < 0) return { status: "impossible", reason: `the Start menu has no ${option}` };
     const moved = this.moveMenuCursor(item, () => game.startMenu()?.cursor ?? null);
-    return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "pick") : moved;
+    return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
+  }
+
+  // From a screen of the Start menu (the party menu, the Bag): B goes back to the Start menu, and B again to the walk.
+  private closeStartMenu(): Outcome {
+    const game = this.#run.game;
+    const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
+    return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
   }
 
   // At the party menu: moves the cursor to `menuSlot` and opens the actions of the Pokémon.

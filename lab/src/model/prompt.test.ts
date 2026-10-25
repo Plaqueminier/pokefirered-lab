@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { RunEvent } from "../harness/record";
-import { askedOf } from "./decision";
+import { askedOf, readAction } from "./decision";
 import { MAX_TRIES, missionLine, nextMilestone, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
@@ -96,9 +96,9 @@ describe("the Bag", () => {
       party: [],
       money: 3080,
       bag: [
-        { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon" }] },
-        { pocket: "KEY ITEMS", items: [{ name: "TOWN MAP", quantity: 1, description: "A very convenient map.", battle: null }] },
-        { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone" }] },
+        { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" }] },
+        { pocket: "KEY ITEMS", items: [{ name: "TOWN MAP", quantity: 1, description: "A very convenient map.", battle: null, walk: null }] },
+        { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone", walk: null }] },
       ],
       milestones: [],
       atlas: { maps: [] },
@@ -119,5 +119,30 @@ describe("the Bag", () => {
       ].join("\n"),
     );
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
+  });
+
+  test("on a walk, the use line lists only the items that work outside a battle, and the model uses them on a Pokémon of the party", () => {
+    const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
+    const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], signs: [], people: [], entry: null };
+    const observation = {
+      mode: "overworld",
+      waitingFor: { kind: "walk" },
+      party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp: 10, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 }],
+      money: 3080,
+      bag: [
+        { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" }] },
+        { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone", walk: null }] },
+      ],
+      milestones: [],
+      map: { group: 0, num: 0, name: "Route1" },
+      player: { x: 1, y: 1, facing: "north" },
+      grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, signs: [] },
+      people: [],
+      atlas: { maps: [map] },
+    } as unknown as Observation;
+    const asked = askedOf(observation, false)!;
+    expect(userPrompt(observation, asked, [], { decisions: 0, since: 0 })).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon).");
+    expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
+    expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION');
   });
 });
