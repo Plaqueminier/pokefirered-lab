@@ -285,7 +285,7 @@
             <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. The model, the cost limit, the reasoning and the starter are for the model bot only (leave the fields empty for a scripted Bot). Empty, they take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses.</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses.</div>
         </section>
         <section>
           <div class="panel-head">
@@ -424,7 +424,7 @@
             <dt><code>bot stopped</code></dt><dd>the Bot stops or throws an error</dd>
             <dt><code>user stop</code></dt><dd>"Stop the Run", after the current action</dd>
             <dt><code>cost limit</code></dt><dd>the Model calls cost more than the cost limit (model bot)</dd>
-            <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (<code>starter</code>: 30 000)</dd>
+            <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000)</dd>
             <dt><code>no progress</code></dt><dd>N Decision points with no new cell and no new Milestone, when the Run gives N</dd>
           </dl>
         </section>
@@ -450,7 +450,6 @@
         <section class="w7">
           <h2>Bots</h2>
           <dl>
-            <dt>scripted</dt><dd>code. Each new step of the story goes into <code>starter</code>.</dd>
             <dt>model</dt>
             <dd>
               plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. Each prompt has the
@@ -461,7 +460,7 @@
               progress. The panel "Model" shows each Model call in full.
             </dd>
           </dl>
-          <p id="doc-model-planned" hidden>No model bot yet: it is planned.</p>
+          <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>
           <table id="doc-bots">
             <thead><tr><th>Name</th><th>Kind</th><th>Version</th><th>Goal</th></tr></thead>
             <tbody><tr><td colspan="4" class="muted">loading…</td></tr></tbody>

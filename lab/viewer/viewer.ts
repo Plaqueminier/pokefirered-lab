@@ -87,7 +87,6 @@ const docTab = new DocTab(
     lab: $("lab"),
     doc: $("doc"),
     bots: $<HTMLTableElement>("doc-bots").tBodies[0],
-    modelPlanned: $("doc-model-planned"),
   },
   releaseKeys,
 );
