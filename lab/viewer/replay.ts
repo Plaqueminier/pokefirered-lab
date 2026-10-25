@@ -5,7 +5,7 @@ import { dollars } from "./runs";
 
 type ActionEvent = Extract<RunEvent, { type: "action" }>;
 
-function actionLabel({ action }: ActionEvent): string {
+export function actionLabel({ action }: ActionEvent): string {
   const { name, ...args } = action;
   return `${name}(${Object.values(args).join(", ")})`;
 }
