@@ -1,14 +1,10 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, modelTotals, type Starter, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type Starter, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, type ModelAction, readAction, readDecision } from "../src/model/decision";
 import { type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { B_PRESSES, situation, systemPrompt, userPrompt } from "../src/model/prompt";
 import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
 
-const GOAL = "first-rival-battle";
-const GOAL_TEXT = "Get your first Pokémon from Professor Oak, then win your first battle against your rival.";
-// The cost limit and the no-progress limit stop a model bot, not the frames.
-const FRAME_BUDGET = Number.POSITIVE_INFINITY;
 const MAX_UNREADABLE = 3;
 const NO_USAGE: Usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
@@ -16,17 +12,14 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "1",
-    goal: GOAL,
+    version: "2",
     model: settings,
-    frameBudget: FRAME_BUDGET,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
 }
 
-function goalText(starter: Starter): string {
-  const choice = starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
-  return `${GOAL_TEXT} ${choice}`;
+function starterRule(starter: Starter): string {
+  return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
 }
 
 class ModelPlay {
@@ -39,7 +32,7 @@ class ModelPlay {
     private readonly settings: ModelSettings,
     private readonly ask: ModelClient,
   ) {
-    this.#system = systemPrompt(goalText(settings.starter));
+    this.#system = systemPrompt(starterRule(settings.starter));
   }
 
   async play(): Promise<void> {
@@ -53,7 +46,7 @@ class ModelPlay {
       const asked = askedOf(observation, this.#atlasViewedAt === this.harness.frame);
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
       const action = await this.harness.modelCall(() => this.answer(observation, asked));
-      this.stopAtLimits();
+      this.stopAtUnreadable();
       if (action) await this.perform(action, asked);
     }
   }
@@ -81,13 +74,8 @@ class ModelPlay {
     }
   }
 
-  private stopAtLimits(): void {
-    const { events } = this.harness;
-    const { cost } = modelTotals(events);
-    if (cost > this.settings.costLimit) {
-      throw new Error(`the cost of the Run (${dollars(cost)} $) is more than the cost limit (${dollars(this.settings.costLimit)} $)`);
-    }
-    const calls = modelEvents(events);
+  private stopAtUnreadable(): void {
+    const calls = modelEvents(this.harness.events);
     const unreadable = calls.length - 1 - calls.findLastIndex((e) => e.decision !== null);
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }
@@ -135,8 +123,4 @@ class ModelPlay {
     }
     if (interactAt && status === "done") await this.harness.interact(interactAt.x, interactAt.y);
   }
-}
-
-function dollars(cost: number): string {
-  return String(Number(cost.toFixed(6)));
 }

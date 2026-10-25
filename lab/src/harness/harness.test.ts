@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 
 test("the list of the Bots gives the kind, the version and the goal of each Bot of bots/", async () => {
   expect(await botInfos()).toEqual([
-    { name: "model", kind: "model", version: "1", goal: "first-rival-battle" },
+    { name: "model", kind: "model", version: "2", goal: null },
     { name: "starter", kind: "scripted", version: "3", goal: "first-rival-battle" },
   ]);
 });
