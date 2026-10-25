@@ -1,7 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, readBag } from "./bag";
+import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag } from "./bag";
 import {
   type Battle,
   type BattleMenu,
@@ -353,6 +353,10 @@ export class Game {
   /** The text of the last message of a menu that prints with DisplayMessageAndContinueTask or DisplayItemMessageInBag. */
   menuMessage(): string {
     return this.decode(this.mem.global("gStringVar4").bytes()).split("\n").join(" ");
+  }
+
+  itemAnimWaits(): boolean {
+    return itemAnimWaits(this.mem);
   }
 
   battleCursor(menu: BattleMenu): number {

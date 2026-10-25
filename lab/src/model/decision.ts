@@ -1,4 +1,4 @@
-import { type BagItem, type BagPocket, battleItems } from "../bag";
+import { type BagItem, type BagPocket, battleItems, type ItemUse, walkItems } from "../bag";
 import type { BattleState, Button, Observation } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
 import type { PartyMon } from "../party";
@@ -42,11 +42,10 @@ export type ModelAction =
   | { name: "viewAtlas" }
   | ({ name: "zoom" } & NodeRange);
 
-/** `party`: in the order of `observe().party`, where the party actions take their Pokémon. */
+/** `party`: in the order of `observe().party`, where the party actions take their Pokémon. `items`: the items of the Bag that work now. */
 export type Asked = { party: PartyMon[] } & (
-  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean }
+  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean; items: BagItem[] }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
-  /** `items`: the items of the Bag that work now. */
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
   /** `forSale`: the items of the buy list. `bag`: the items to sell. */
   | { kind: "buyList"; forSale: ShopItem[]; bag: BagPocket[] }
@@ -55,7 +54,7 @@ export type Asked = { party: PartyMon[] } & (
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
-  walk: ["go", "goTo", "swap", "viewAtlas", "zoom", "press"],
+  walk: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"],
   choice: ["choose", "zoom", "press"],
   battleAction: ["fight", "switch", "run", "use", "zoom", "press"],
   battleMove: ["fight", "zoom", "press"],
@@ -93,7 +92,7 @@ const BUTTONS = Object.keys(Keys) as Button[];
 export function askedOf(observation: Observation, atlasViewed: boolean): Asked | null {
   const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasViewed };
+    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasViewed, items: walkItems(observation.bag) };
     if (waitingFor.kind === "buyList") return { kind: "buyList", party, forSale: waitingFor.items, bag: observation.bag };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
@@ -157,7 +156,7 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
   const items = "items" in asked ? asked.items : [];
   const item = items.find((i) => plain(i.name) === plain(name));
   if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
-  if (item.battle === "alone") {
+  if (itemUse(item, asked) === "alone") {
     if (on !== undefined) throw new Error(`${item.name} does not work on a Pokémon: use ${item.name}`);
     return { name: "use", item: item.name };
   }
@@ -172,6 +171,11 @@ function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: 
   const found = names.find((n) => plain(n) === plain(item));
   if (!found) throw new Error(`"${quoted(item)}" is not an item of ${name === "buy" ? "the buy list" : "your Bag"}: ${names.join(", ") || "none"}`);
   return { name, item: found, quantity };
+}
+
+/** How the item works at this Decision point: in a battle or on a walk. */
+export function itemUse(item: BagItem, asked: Asked): ItemUse | null {
+  return asked.kind === "walk" ? item.walk : item.battle;
 }
 
 // The model can write "Poke Ball" for "POKé BALL".

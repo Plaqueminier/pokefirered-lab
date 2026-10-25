@@ -4,6 +4,7 @@ import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { DocTab } from "./doc";
 import { describe, draw, howLabel } from "./mapdraw";
+import { MemoryPanel } from "./memory-panel";
 import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
 import { RunsPanel } from "./runs";
@@ -82,6 +83,7 @@ const modelPanel = new ModelPanel({
   blocks: $("model-blocks"),
 });
 const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats") });
+const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const docTab = new DocTab(
   {
     labButton: $<HTMLButtonElement>("tab-lab"),
@@ -190,6 +192,7 @@ function onMessage(message: ServerMessage): void {
       replayPanel.onEvents(message.events);
       modelPanel.onEvents(message.events);
       statsPanel.onEvents(message.events);
+      memoryPanel.onEvents(message.events);
       break;
   }
 }

@@ -205,6 +205,22 @@
       .stats-card h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
       .stats-card table { border-collapse: collapse; width: 100%; }
       .stats-card td { padding: 2px 8px 2px 0; border-top: 1px solid var(--line); vertical-align: top; }
+      .memory-panel { flex-basis: 100%; }
+      .memory-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+      .memory-outline, .memory-log { max-height: 720px; overflow: auto; font-size: 13px; }
+      .memory-node > summary { list-style: none; cursor: pointer; }
+      .memory-node > summary::-webkit-details-marker { display: none; }
+      .memory-node > summary .memory-line::before { content: "▸ "; color: var(--muted); }
+      .memory-node[open] > summary .memory-line::before { content: "▾ "; }
+      .memory-node > :not(summary) { margin-left: 18px; border-left: 1px solid var(--line); padding-left: 8px; }
+      .memory-line { padding: 3px 4px; border-radius: 4px; }
+      .memory-line:hover { background: var(--code-bg); }
+      .memory-calls { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .memory-calls th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 8px 4px 0; position: sticky; top: 0; background: var(--panel); }
+      .memory-calls td { padding: 4px 8px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
+      .memory-calls td:not(:nth-child(3)) { white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
+      .memory-calls summary { cursor: pointer; }
+      .memory-calls .model-pre { white-space: pre-wrap; max-height: 260px; margin-top: 4px; }
       .tabs { display: flex; gap: 6px; padding: 16px 16px 0; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
@@ -375,6 +391,17 @@
         </div>
         <div class="stats-cards" id="stats"></div>
       </section>
+      <!-- Issue #21: the user chose variant B from three prototypes: the Memory lines of the prompt with zoom, and the log of the Summary calls. The losers were A (tree columns) and C (a timeline). -->
+      <section class="memory-panel">
+        <div class="panel-head">
+          <h2>Memory</h2>
+          <span class="muted" id="memory-title"></span>
+        </div>
+        <div class="memory-columns">
+          <div class="memory-outline" id="memory-outline"></div>
+          <div class="memory-log" id="memory-calls"></div>
+        </div>
+      </section>
     </main>
     <article id="doc" hidden>
       <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
@@ -461,7 +488,7 @@
         <section class="w5 doc-warn">
           <h2>Not yet</h2>
           <dl>
-            <dt>Menus</dt><dd>Start, the Bag on a walk, PC, multichoice: the Harness sees a busy game.</dd>
+            <dt>Menus</dt><dd>PC, multichoice, the Bag outside use and sell: the Harness sees a busy game.</dd>
             <dt>Name screen</dt><dd>No typing: at the nickname, a Bot answers NO.</dd>
           </dl>
         </section>
@@ -476,7 +503,7 @@
               story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (its map and the texts of its people in full, 1 500 characters for the other maps), and it can ask for the full Atlas one
               time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
               progress, and the top nodes of its Memory tree: it adds a note when it learns something, a Summary call merges two
-              nodes of the same size, and <code>zoom &lt;a-b&gt;</code> opens a node. The panel "Model" shows each Model call in full; the panel "Stats" counts the actions, the calls and the cost for each Milestone.
+              nodes of the same size, and <code>zoom &lt;a-b&gt;</code> opens a node. The panel "Model" shows each Model call in full; the panel "Stats" counts the actions, the calls and the cost for each Milestone. The panel "Memory" shows the top nodes with zoom, and the Summary calls.
             </dd>
           </dl>
           <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>

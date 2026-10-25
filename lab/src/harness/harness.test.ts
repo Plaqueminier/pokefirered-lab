@@ -530,8 +530,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     const observation = harness.observe();
     expect(observation.money).toBe(3080);
     expect(observation.bag).toEqual([
-      { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points.", battle: "pokemon" }] },
-      { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON. It is designed in a capsule style.", battle: "alone" }] },
+      { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" }] },
+      { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON. It is designed in a capsule style.", battle: "alone", walk: null }] },
     ]);
     expect(harness.availableActions()).toEqual(expect.arrayContaining([{ name: "use", item: "POTION" }, { name: "use", item: "POKé BALL" }]));
   });
@@ -570,6 +570,32 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     expect(await harness.choose("NO")).toMatchObject({ status: "done" });
     while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") await harness.readText();
     expect(harness.observe().party.map((m) => m.species)).toEqual(["SQUIRTLE", enemy.battle.enemy.species]);
+  });
+
+  test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP", async () => {
+    const harness = await Harness.open({ startSave: TEST_BAG });
+    expect(harness.availableActions()).toContainEqual({ name: "use", item: "POTION" });
+    expect(harness.availableActions()).not.toContainEqual({ name: "use", item: "POKé BALL" });
+    expect(await harness.use("POKé BALL")).toMatchObject({ status: "impossible", reason: "POKé BALL does not work outside a battle", frames: 0 });
+    expect(await harness.use("POTION", 0)).toMatchObject({ status: "impossible", reason: "the game refuses the POTION: It won't have any effect." });
+    expect(harness.observe()).toMatchObject({ waitingFor: { kind: "walk" }, bag: [{ items: [{ name: "POTION", quantity: 5 }] }, expect.anything()] });
+    harness.close();
+
+    const hurt = await toWildBattle();
+    for (let turn = 0; hurt.observe().party[0].hp === hurt.observe().party[0].maxHp; turn++) {
+      if (turn === 10) throw new Error("SQUIRTLE is not hurt after 10 turns");
+      await hurt.fight(TAIL_WHIP);
+      await toNextAction(hurt);
+    }
+    for (let turn = 0; hurt.waitingFor().kind !== "walk"; turn++) {
+      if (turn === 40) throw new Error("the battle does not end");
+      await (hurt.waitingFor().kind === "battleAction" ? hurt.run() : hurt.readText());
+    }
+    const { hp, maxHp } = hurt.observe().party[0];
+    const result = await hurt.use("POTION", 0);
+    expect(result).toMatchObject({ status: "done", text: [`SQUIRTLE's HP was restored by ${Math.min(20, maxHp - hp)} point(s).`] });
+    expect(hurt.observe()).toMatchObject({ waitingFor: { kind: "walk" }, party: [{ hp: Math.min(maxHp, hp + 20) }], bag: [{ items: [{ name: "POTION", quantity: 4 }] }, expect.anything()] });
+    expect(hurt.rawInputs).toBe(0);
   });
 });
 

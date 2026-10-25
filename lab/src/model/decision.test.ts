@@ -42,6 +42,7 @@ describe("readAction", () => {
     overworld,
     view: { lines: [], targets: Array.from({ length: targets }, () => edge) },
     atlasViewed: false,
+    items: [],
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
 
@@ -70,8 +71,8 @@ describe("readAction", () => {
   });
 
   test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {
-    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon" };
-    const ball: BagItem = { name: "POKé BALL", quantity: 20, description: "", battle: "alone" };
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon", walk: "pokemon" };
+    const ball: BagItem = { name: "POKé BALL", quantity: 20, description: "", battle: "alone", walk: null };
     const party = [{ nickname: "SQUIRTLE", species: "SQUIRTLE" }, { nickname: "BIRD", species: "PIDGEY" }] as PartyMon[];
     const asked: Asked = { kind: "battleAction", battle, items: [potion, ball], party };
     expect(readAction("use potion on bird", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
@@ -82,7 +83,7 @@ describe("readAction", () => {
   });
 
   test("at the buy list of a Poké Mart: buy an item of the list, or sell an item of the Bag, with a quantity", () => {
-    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon" };
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon", walk: "pokemon" };
     const asked: Asked = { kind: "buyList", forSale: [{ name: "POKé BALL", price: 200 }], bag: [{ pocket: "ITEMS", items: [potion] }], party: [] };
     expect(readAction("buy Poke Ball 5", asked)).toEqual({ name: "buy", item: "POKé BALL", quantity: 5 });
     expect(readAction("sell potion 2", asked)).toEqual({ name: "sell", item: "POTION", quantity: 2 });

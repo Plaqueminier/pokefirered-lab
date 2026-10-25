@@ -4,7 +4,7 @@ import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent 
 import type { BagItem, BagPocket } from "../bag";
 import { type Milestone, MILESTONES } from "../game";
 import type { PartyMon, PartyMove } from "../party";
-import { actionsOf, alternatives, type Asked, type AskedKind, MAX_SENTENCE, sendable } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 
@@ -284,6 +284,7 @@ function actionLines(asked: Asked): string[] {
         ...(asked.view.targets.length === 0 ? [] : ["- go <target number>: walk to the target. At an exit, take it. At a person or a sign, walk next to it, then talk to it or read it."]),
         `- goTo <x> <y>: walk to a cell of this map. A cell just past an edge (x -1 or ${grid.mapWidth}, y -1 or ${grid.mapHeight}) crosses that edge.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
+        ...useLine(asked),
         ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon goes into the next battle. ${POKEMON}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
@@ -295,7 +296,7 @@ function actionLines(asked: Asked): string[] {
         ...fights(asked.battle),
         ...partyLine(asked, "switch", "take your Pokémon out of the battle and send this one"),
         `- run${asked.battle.kind === "trainer" ? ": impossible in a trainer battle" : ""}`,
-        ...useLine(asked.items),
+        ...useLine(asked),
       ];
     case "battleMove":
       return fights(asked.battle);
@@ -309,9 +310,9 @@ function actionLines(asked: Asked): string[] {
   }
 }
 
-function useLine(items: BagItem[]): string[] {
-  if (items.length === 0) return [];
-  const names = items.map((item) => (item.battle === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
+function useLine(asked: Asked & { items: BagItem[] }): string[] {
+  if (asked.items.length === 0) return [];
+  const names = asked.items.map((item) => (itemUse(item, asked) === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
   return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}. ${POKEMON}`];
 }
 

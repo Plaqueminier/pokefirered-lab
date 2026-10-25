@@ -45,15 +45,23 @@ export function dueMerges(tree: MemoryTree): NodeRange[] {
   return due;
 }
 
-/** The top nodes, one line each. A node with no summary shows its two halves in its place. */
-export function memoryLines(tree: MemoryTree): string[] {
-  return tops(tree.notes.length).flatMap((node) => shown(tree, node)).map(nodeLine);
+/** The top nodes as the prompt shows them. A node with no summary shows its two halves in its place. */
+export function topNodes(tree: MemoryTree): MemoryNode[] {
+  return tops(tree.notes.length).flatMap((node) => shown(tree, node));
 }
 
-/** The two halves of a node, one line each; null when the range is a note or not a node of the tree. */
-export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
+/** The two halves of a node, as zoom shows them; null when the range is a note or not a node of the tree. */
+export function zoomNodes(tree: MemoryTree, node: NodeRange): MemoryNode[] | null {
   if (!isNode(tree, node) || node.from === node.to) return null;
-  return halves(node).flatMap((half) => shown(tree, half)).map(nodeLine);
+  return halves(node).flatMap((half) => shown(tree, half));
+}
+
+export function memoryLines(tree: MemoryTree): string[] {
+  return topNodes(tree).map(nodeLine);
+}
+
+export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
+  return zoomNodes(tree, node)?.map(nodeLine) ?? null;
 }
 
 /** The prompt of the Summary call of a due node. */
@@ -87,7 +95,7 @@ function key({ from, to }: NodeRange): string {
   return `${from}-${to}`;
 }
 
-function nodeLine(node: MemoryNode): string {
+export function nodeLine(node: MemoryNode): string {
   return `${nodeName(node)}: ${node.text}`;
 }
 
