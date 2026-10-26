@@ -157,7 +157,7 @@ describe("a selection", () => {
 });
 
 test("the Stuck counter is low under a third of the Reflection turn interval, mid under two thirds, and high above", () => {
-  expect([0, 9, 10, 19, 20, 45].map(stuckLevel)).toEqual(["low", "low", "mid", "mid", "high", "high"]);
+  expect([0, 6, 7, 13, 14, 45].map(stuckLevel)).toEqual(["low", "low", "mid", "mid", "high", "high"]);
 });
 
 test("the cost scale stops at the cost while the cost is less than half of the limit, and then it shows the limit as a line", () => {
