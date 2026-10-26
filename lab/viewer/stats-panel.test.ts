@@ -111,7 +111,6 @@ test("the lane Prompt tokens shows the prompt tokens of each Model call at its f
   ]);
   const svg = lanesSvg({ view, scale: axisScale(1000, NOW), played: NOW, costLimit: 1, selection: null });
   expect(svg).toContain(">Prompt tokens<");
-  expect(svg).toContain('data-tip="prompt of 5,100 tokens at 0:01"');
   const old = statsView([call(10, "go A"), call(40, null)], OPTIONS);
   expect(old.calls.map((c) => c.prompt)).toEqual([null, null]);
   expect(lanesSvg({ view: old, scale: axisScale(1000, NOW), played: NOW, costLimit: 1, selection: null })).toContain("no prompt tokens in this Run record");

@@ -41,13 +41,14 @@ describe("readAction", () => {
   const battle = { player: { partyIndex: 0 } } as BattleState;
   const party: PartyMon[] = [];
   const edge: Target = { kind: "edge", name: "north edge", label: "north edge, 3 north: not taken", side: "north", to: null };
-  const walk = (targets: number, mons = party): Asked => ({
+  const walk = (targets: number, mons = party, bagEmpty = false): Asked => ({
     kind: "walk",
     party: mons,
     overworld,
     view: { lines: [], targets: Array.from({ length: targets }, () => edge) },
     atlasShown: false,
     items: [],
+    bagEmpty,
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
 
@@ -68,6 +69,7 @@ describe("readAction", () => {
   test("at a choice: an option of the choice, in any case", () => {
     expect(readAction("choose no", choice)).toEqual({ name: "choose", option: "NO" });
     expect(() => readAction("choose MAYBE", choice)).toThrow('"MAYBE" is not an option: YES, NO');
+    expect(readAction("choose(NO, THANKS)", { ...choice, options: ["YES", "NO, THANKS"] })).toEqual({ name: "choose", option: "NO, THANKS" });
     expect(() => readAction(`choose ${"o".repeat(500)}`, choice)).toThrow(`"${"o".repeat(80)}" is not an option`);
   });
 
@@ -82,7 +84,8 @@ describe("readAction", () => {
   test("press Start is not read: its reason tells that there is no Start menu, names use and the items of the Bag that work now, or tells that none works", () => {
     const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
     expect(() => readAction("press Start", { kind: "battleAction", party, battle, items: [potion] })).toThrow("there is no Start menu: write use <item> to use an item of your Bag; the items that work now: POTION");
-    expect(() => readAction("press(start)", walk(3))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag is empty or has no item that works now");
+    expect(() => readAction("press(start)", walk(3))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag has no item that works now");
+    expect(() => readAction("press Start", walk(3, party, true))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag is empty");
   });
 
   test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {

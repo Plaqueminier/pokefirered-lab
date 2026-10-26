@@ -5,8 +5,8 @@ import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { isNewNote } from "../src/model/memory-tree";
 import { actionText, type ShownRun } from "../src/protocol";
 import { card, element, line, rows, showTooltip } from "./dom";
-import { dollars, runKey } from "./runs";
-import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel, tokens } from "./stats-lanes";
+import { dollars, runKey, tokens } from "./runs";
+import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel } from "./stats-lanes";
 
 type Count = { name: string; count: number };
 
@@ -82,13 +82,15 @@ export function statsView(events: readonly RunEvent[], { now, areas, continued }
         break;
       case "model": {
         const { decision } = event;
+        // An unreadable call has the usage 0 (NO_USAGE of the model bot): it has no prompt to show.
+        const promptTokens = event.usage?.promptTokens ?? 0;
         view.calls.push({
           index: view.calls.length,
           frame: event.frame,
           situation: event.situation,
           stuck: event.stuck ?? null,
           reflection: event.reflection ?? false,
-          prompt: event.usage?.promptTokens || null,
+          prompt: promptTokens > 0 ? promptTokens : null,
           note: decision !== null && isNewNote(decision.note, lastNote),
           answer: decision ? { kind: "action", name: actionName(decision.action), text: decision.action } : { kind: "unreadable", error: event.error },
         });

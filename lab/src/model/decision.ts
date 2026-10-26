@@ -49,9 +49,9 @@ const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
 
 export type Asked = { party: PartyMon[] } & (
-  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[] }
+  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[]; bagEmpty?: boolean }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
-  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
+  | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; bagEmpty?: boolean }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
 );
@@ -98,16 +98,17 @@ const BUTTONS = Object.keys(Keys) as Button[];
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
 export function askedOf(observation: Observation, atlasShown: boolean): Asked | null {
   const { waitingFor, party } = observation;
+  const bagEmpty = observation.bag.every((pocket) => pocket.items.length === 0);
   if (observation.mode === "naming") return waitingFor.kind === "naming" ? { kind: "naming", party, subject: waitingFor.subject, maxLength: waitingFor.maxLength, keys: waitingFor.keys } : null;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
+    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag), bagEmpty };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
   const { battle } = observation;
   if (waitingFor.kind === "choice") return { kind: "choice", party, battle, options: waitingFor.options };
   const { kind } = waitingFor;
-  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, party, battle, items: battleItems(observation.bag, battle.kind) } : null;
+  return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, party, battle, items: battleItems(observation.bag, battle.kind), bagEmpty } : null;
 }
 
 // Some models write a stray "{" line or a code fence before the object, and copy it again after the error.
@@ -150,7 +151,7 @@ export function readAction(text: string, asked: Asked): ModelAction {
   const action = parse(text.trim());
   const accepted = actionsOf(asked);
   if (!action) throw new Error(unreadable(text.trim(), accepted));
-  if (!accepted.includes(action.name)) throw new Error(`"${action.name}" is not an action now: use ${alternatives(accepted)}`);
+  if (!accepted.includes(action.name)) throw new Error(notNow(action.name, accepted));
   switch (action.name) {
     case "go": {
       const targets = asked.kind === "walk" ? asked.view.targets.length : 0;
@@ -175,14 +176,19 @@ export function readAction(text: string, asked: Asked): ModelAction {
     case "buy":
     case "sell":
       return readTrade(action.name, action.item, action.quantity, asked);
-    case "press": {
-      if (action.button !== "Start") return action;
-      const items = "items" in asked ? asked.items.map((i) => i.name) : [];
-      throw new Error(`there is no Start menu: write use <item> to use an item of your Bag; ${items.length === 0 ? "your Bag is empty or has no item that works now" : `the items that work now: ${items.join(", ")}`}`);
-    }
+    case "press":
+      if (action.button === "Start") throw new Error(noStartMenu(asked));
+      return action;
     default:
       return action;
   }
+}
+
+function noStartMenu(asked: Asked): string {
+  const hint = "there is no Start menu: write use <item> to use an item of your Bag";
+  if (asked.kind === "shopMenu" || asked.kind === "choice" || asked.kind === "naming") return hint;
+  if (asked.items.length > 0) return `${hint}; the items that work now: ${asked.items.map((i) => i.name).join(", ")}`;
+  return `${hint}; ${asked.bagEmpty ? "your Bag is empty" : "your Bag has no item that works now"}`;
 }
 
 function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
@@ -212,10 +218,11 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
+// The separator of the arguments in the form action(a, b) or action a, b, as a written action: a space when the action is not here. A null keeps the text as one argument.
 const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null], ["choose", null]]);
 
 function withSpaces(action: string): string {
-  const call = action.match(/^(\w+)\s*\((.*)\)$/) ?? action.match(/^(\w+)\s+(.*)$/);
+  const call = action.match(/^(\w+)\s*\((.*)\)$/) ?? (action.includes(",") ? action.match(/^(\w+)\s+(.*)$/) : null);
   if (!call) return action;
   const [, verb, args] = call;
   const separator = ARGUMENT_SEPARATORS.get(verb.toLowerCase());
@@ -242,11 +249,15 @@ const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
   zoom: ["zoom <a-b>", "zoom 1-8"],
 };
 
+function notNow(name: string, accepted: ModelAction["name"][]): string {
+  return `"${name}" is not an action now: use ${alternatives(accepted)}`;
+}
+
 function unreadable(text: string, accepted: ModelAction["name"][]): string {
   const verb = text.match(/^\w+/)?.[0].toLowerCase();
   const name = MODEL_ACTION_NAMES.find((n) => n.toLowerCase() === verb);
   if (!name) return `"${quoted(text)}" is not an action`;
-  if (!accepted.includes(name)) return `"${name}" is not an action now: use ${alternatives(accepted)}`;
+  if (!accepted.includes(name)) return notNow(name, accepted);
   const [form, example] = FORMS[name];
   return `"${quoted(text)}" is not an action: write ${form}${form === example ? "" : `, for example ${example}`}`;
 }

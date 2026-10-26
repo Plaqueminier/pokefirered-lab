@@ -1,6 +1,6 @@
 import { REFLECTION_EVERY } from "../src/model/decision";
 import { GBA_FPS } from "../src/protocol";
-import { dollars } from "./runs";
+import { dollars, tokens } from "./runs";
 import type { Call, Span, StatsView } from "./stats-panel";
 
 const PLOT_LEFT = 118;
@@ -63,10 +63,6 @@ export function clock(frame: number): string {
   const minutes = Math.floor(seconds / 60);
   const mmss = `${String(minutes % 60).padStart(minutes >= 60 ? 2 : 1, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${mmss}` : mmss;
-}
-
-export function tokens(count: number): string {
-  return count.toLocaleString("en-US");
 }
 
 export function spanText({ from, to }: Span): string {
@@ -160,8 +156,12 @@ function costLane({ view, scale: { x }, top, height, costLimit }: Plot): string 
   return parts.join("");
 }
 
+function callsWith<K extends "stuck" | "prompt">(view: StatsView, key: K): (Call & Record<K, number>)[] {
+  return view.calls.filter((c): c is Call & Record<K, number> => c[key] !== null);
+}
+
 function stuckLane({ view, scale: { x, end }, top, height }: Plot): string {
-  const known = view.calls.filter((c): c is Call & { stuck: number } => c.stuck !== null);
+  const known = callsWith(view, "stuck");
   if (known.length === 0) return `<text x="${x(0) + 6}" y="${top + 34}">no Stuck counter in this Run record (a model bot before version 4)</text>`;
   const max = Math.max(...known.map((c) => c.stuck));
   const now = known[known.length - 1].stuck;
@@ -186,7 +186,7 @@ function stuckLane({ view, scale: { x, end }, top, height }: Plot): string {
 }
 
 function promptLane({ view, scale: { x }, top, height }: Plot): string {
-  const known = view.calls.filter((c): c is Call & { prompt: number } => c.prompt !== null);
+  const known = callsWith(view, "prompt");
   if (known.length === 0) return `<text x="${x(0) + 6}" y="${top + 28}">no prompt tokens in this Run record</text>`;
   const max = Math.max(...known.map((c) => c.prompt));
   const y = (count: number) => top + height - (count / (max * 1.1)) * height;
