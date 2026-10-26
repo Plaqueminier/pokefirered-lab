@@ -630,7 +630,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     return harness;
   }
 
-  test("buy POKé BALL 5 puts 5 Poké Balls in the Bag and takes their price from the money", async () => {
+  test("buy POTION 2, on the second row of the buy list, puts 2 Potions in the Bag and takes their price from the money", async () => {
     const harness = await toBuyList();
     expect(harness.observe()).toMatchObject({
       money: 3080,
@@ -644,8 +644,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
         ],
       },
     });
-    expect(await harness.buy("POKé BALL", 5)).toMatchObject({ status: "done" });
-    expect(harness.observe()).toMatchObject({ money: 2080, waitingFor: { kind: "buyList" }, bag: [expect.anything(), { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 25 }] }] });
+    expect(await harness.buy("POTION", 2)).toMatchObject({ status: "done" });
+    expect(harness.observe()).toMatchObject({ money: 2480, waitingFor: { kind: "buyList" }, bag: [{ pocket: "ITEMS", items: [{ name: "POTION", quantity: 7 }] }, expect.anything()] });
     expect(harness.rawInputs).toBe(0);
   });
 
