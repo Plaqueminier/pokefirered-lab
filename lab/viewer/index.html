@@ -579,6 +579,7 @@
             <p>At a choice, one line shows the question of the game and the options, for example <code>The game asks: "Do you want to give a nickname to this BULBASAUR?" Choose YES or NO.</code> The question is the last text that the game showed: a <code>zoom</code> or a <code>viewAtlas</code> does not hide it. The actions are <code>choose &lt;option&gt;</code> and <code>zoom</code>, with no <code>press</code>, also in a battle.</p>
             <p>At a walk, <code>use</code> works with a medicine on a Pokémon, and with REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone. At the shop menu, the model sees the items for sale with their prices, the items of the Bag that the Mart buys and the money, and chooses <code>buy &lt;item&gt; &lt;quantity&gt;</code>, <code>sell &lt;item&gt; &lt;quantity&gt;</code> or <code>leave</code>, with no <code>press</code>: the code does all the menus of the Mart.</p>
             <p>At the naming screen, the model sees what the screen names and the maximum length, and chooses <code>name &lt;text&gt;</code> or <code>name</code> to keep the name, with no <code>press</code>. It is free to give a nickname.</p>
+            <p><code>press</code> has no Start: the model bot does not know the Start menu. A <code>press Start</code> answer cannot be read, and its reason tells the model to <code>use &lt;item&gt;</code>, with the items that work now.</p>
             </dd>
           </dl>
           <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>

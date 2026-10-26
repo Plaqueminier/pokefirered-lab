@@ -40,7 +40,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
-const PRESS = "- press <button>: one press of A, B, Start, Select, Up, Down, Left, Right, L or R.";
+const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
 export function systemPrompt(starterRule: string): string {

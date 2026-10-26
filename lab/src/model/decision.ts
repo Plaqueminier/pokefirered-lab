@@ -175,6 +175,11 @@ export function readAction(text: string, asked: Asked): ModelAction {
     case "buy":
     case "sell":
       return readTrade(action.name, action.item, action.quantity, asked);
+    case "press": {
+      if (action.button !== "Start") return action;
+      const items = "items" in asked ? asked.items.map((i) => i.name) : [];
+      throw new Error(`there is no Start menu: write use <item> to use an item of your Bag; ${items.length === 0 ? "your Bag is empty or has no item that works now" : `the items that work now: ${items.join(", ")}`}`);
+    }
     default:
       return action;
   }
