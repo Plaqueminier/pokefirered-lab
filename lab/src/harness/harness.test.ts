@@ -529,7 +529,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     }
     expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["YES", "NO"] } });
     expect(await harness.choose("YES")).toMatchObject({ status: "done" });
-    expect(harness.waitingFor()).toEqual({ kind: "naming", subject: `a nickname for ${enemy.battle.enemy.species}`, maxLength: 10 });
+    expect(harness.waitingFor()).toMatchObject({ kind: "naming", subject: `a nickname for ${enemy.battle.enemy.species}`, maxLength: 10 });
     expect(await harness.name("Bird")).toMatchObject({ status: "done" });
     while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") await harness.readText();
     expect(harness.observe().party.map((m) => [m.species, m.nickname])).toEqual([

@@ -6,7 +6,7 @@ import { runKey } from "./runs";
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
   [/^Memory tree/, "Memory tree"],
-  [/^The game waits|^The game asks/, "Situation"],
+  [/^The game waits|^The game asks|^The naming screen asks/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Something important happened/, "Events"],
   [/^Party/, "Party"],
@@ -19,7 +19,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Node #|^There is no node/, "Zoom"],
   [/^Battle against/, "Battle"],
   [/^The Poké Mart sells/, "Poké Mart"],
-  [/^The question is/, "Question"],
+  [/^The question is/, "Question"], // The prompts of the old Run records
   [/^Actions/, "Actions"],
   [/^Your answer could not be read/, "Error"],
   [/^Answer with JSON again/, "Request"],

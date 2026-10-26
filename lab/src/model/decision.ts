@@ -53,7 +53,7 @@ export type Asked = { party: PartyMon[] } & (
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
-  | { kind: "naming"; subject: string; maxLength: number }
+  | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
 );
 
 export type AskedKind = Asked["kind"];
@@ -98,8 +98,7 @@ const BUTTONS = Object.keys(Keys) as Button[];
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
 export function askedOf(observation: Observation, atlasShown: boolean): Asked | null {
   const { waitingFor, party } = observation;
-  if (waitingFor.kind === "naming") return { kind: "naming", party, subject: waitingFor.subject, maxLength: waitingFor.maxLength };
-  if (observation.mode === "naming") return null;
+  if (observation.mode === "naming") return waitingFor.kind === "naming" ? { kind: "naming", party, subject: waitingFor.subject, maxLength: waitingFor.maxLength, keys: waitingFor.keys } : null;
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
@@ -208,12 +207,15 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
+// The separator of the arguments in the form action(a, b), as a written action: a space when the action is not here. A null keeps the text as one argument.
+const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null]]);
+
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/);
   if (!call) return action;
-  if (call[1].toLowerCase() === "name") return `name ${call[2]}`.trim();
-  const separator = call[1].toLowerCase() === "use" ? " on " : " ";
-  return `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(separator)}`.trim();
+  const [, verb, args] = call;
+  const separator = ARGUMENT_SEPARATORS.get(verb.toLowerCase());
+  return `${verb} ${separator === null ? args : args.split(",").map((arg) => arg.trim()).join(separator ?? " ")}`.trim();
 }
 
 function parse(written: string): ParsedAction | null {

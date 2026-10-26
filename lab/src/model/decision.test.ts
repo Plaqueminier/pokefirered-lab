@@ -104,7 +104,7 @@ describe("readAction", () => {
   });
 
   test("at the naming screen: name with the rest of the line as the text, with its spaces and its case, or name alone to keep the name; no press", () => {
-    const naming: Asked = { kind: "naming", party, subject: "a nickname for BULBASAUR", maxLength: 10 };
+    const naming: Asked = { kind: "naming", party, subject: "a nickname for BULBASAUR", maxLength: 10, keys: [] };
     expect(readAction("name Mr Bulb", naming)).toEqual({ name: "name", text: "Mr Bulb" });
     expect(readAction("name", naming)).toEqual({ name: "name", text: "" });
     expect(readAction("name(Bulby, Jr.)", naming)).toEqual({ name: "name", text: "Bulby, Jr." });

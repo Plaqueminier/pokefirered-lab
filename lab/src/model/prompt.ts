@@ -132,10 +132,14 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   ].join("\n");
 }
 
+/** The question of a choice is the last text that the game showed: the texts of the last played action that had some. A zoom or a viewAtlas plays nothing, so it does not hide the question. */
+function lastText(events: readonly RunEvent[]): string | undefined {
+  return events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : [])).at(-1);
+}
+
 function waitLine(asked: Asked, events: readonly RunEvent[]): string {
   if (asked.kind !== "choice") return `The game waits for ${WAITS[asked.kind]}.`;
-  const last = callTurns(events).findLast((turn) => turn.call)?.events ?? [];
-  const question = last.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : [])).at(-1);
+  const question = lastText(events);
   return question ? `The game asks: "${question}" Choose ${alternatives(asked.options)}.` : `The game waits for ${WAITS.choice}: ${asked.options.join(", ")}.`;
 }
 
@@ -342,10 +346,16 @@ function actionLines(asked: Asked): string[] {
       ];
     case "naming":
       return [
-        `- name <text>: type the text and press OK, for example name Sparky. The keys are the letters A to Z and a to z, the digits, the space and . , ! ? ♂ ♀ / - … " '.`,
+        `- name <text>: type the text and press OK, for example name Sparky. The keys of the keyboard: ${keyList(asked.keys)} A " in the text types “ or ”.`,
         "- name: keep the name that the game gives.",
       ];
   }
+}
+
+// The space has no sign of its own.
+function keyList(keys: string[]): string {
+  const signs = keys.filter((key) => key !== " ").join("");
+  return keys.includes(" ") ? `${signs} and the space.` : `${signs}.`;
 }
 
 function useLine(asked: Asked & { items: BagItem[] }): string[] {

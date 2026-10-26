@@ -8,12 +8,28 @@ const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
 const START_MENU_INPUT_STEP = 1;
-const NAMING_SUBJECTS = ["the name of the player", "the name of a PC box", null, null, "the name of the rival"];
+// NAMING_SCREEN_* of the game. The two Pokémon templates (2 and 3) are not here: they name a Pokémon by its species.
+const NAMING_SUBJECTS = new Map([
+  [0, "the name of the player"],
+  [1, "the name of a PC box"],
+  [4, "the name of the rival"],
+]);
 // Decomp STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
 const NAMING_INPUT_STATE = 2;
 const NAMING_PAGES = 3;
 
-export type NamingScreen = { subject: string; maxLength: number; ready: boolean; page: number; pages: string[][]; cursor: { x: number; y: number }; text: string };
+/** `keys` are the rows of the page that the screen shows, one text for each row; `characters` are the characters of all the pages, each one once. */
+export type NamingScreen = {
+  subject: string;
+  maxLength: number;
+  ready: boolean;
+  page: number;
+  keys: string[];
+  columns: number;
+  characters: () => string[];
+  cursor: { x: number; y: number };
+  text: string;
+};
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };
 
@@ -64,24 +80,27 @@ function menuText(mem: Memory, address: number, decode: Decode): string {
   return decode(mem.bus.read(address, MAX_MENU_TEXT));
 }
 
+function keyboardRows(mem: Memory, decode: Decode, page: number): string[] {
+  const keyboard = mem.global("sPageToKeyboardId").at(page).int();
+  const columns = mem.global("sPageColumnCounts").at(keyboard).int();
+  const rows = mem.global("sKeyboardChars").at(keyboard);
+  return Array.from({ length: rows.length }, (_, row) => decode(rows.at(row).bytes()).slice(0, columns));
+}
+
 export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_NamingScreen") return null;
   const screen = mem.global("sNamingScreen").deref();
-  const template = screen.field("template").deref();
   const page = screen.field("currentPage").int();
-  const pages = Array.from({ length: NAMING_PAGES }, (_, i) => {
-    const keyboard = mem.global("sPageToKeyboardId").at((page + i) % NAMING_PAGES).int();
-    const columns = mem.global("sPageColumnCounts").at(keyboard).int();
-    const rows = mem.global("sKeyboardChars").at(keyboard);
-    return Array.from({ length: rows.length }, (_, row) => decode(rows.at(row).bytes()).slice(0, columns));
-  });
+  const keys = keyboardRows(mem, decode, page);
   const cursor = mem.global("gSprites").at(screen.field("cursorSpriteId").int()).field("data");
   return {
-    subject: NAMING_SUBJECTS[screen.field("templateNum").int()] ?? `a nickname for ${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
-    maxLength: template.field("maxChars").int(),
+    subject: NAMING_SUBJECTS.get(screen.field("templateNum").int()) ?? `a nickname for ${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
+    maxLength: screen.field("template").deref().field("maxChars").int(),
     ready: screen.field("state").int() === NAMING_INPUT_STATE,
     page,
-    pages,
+    keys,
+    columns: keys[0].length,
+    characters: () => [...new Set(Array.from({ length: NAMING_PAGES }, (_, i) => Array.from(keyboardRows(mem, decode, i).join(""))).flat())],
     cursor: { x: cursor.at(0).int(), y: cursor.at(1).int() },
     text: decode(screen.field("textBuffer").bytes()),
   };

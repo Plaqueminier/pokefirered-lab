@@ -102,7 +102,7 @@ export type WaitingFor =
   | { kind: "battleMove" }
   | { kind: "partyPick" }
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
-  | { kind: "naming"; subject: string; maxLength: number }
+  | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
   | { kind: "busy" };
 
 export function isDecisionPoint({ kind }: WaitingFor): boolean {
@@ -277,7 +277,7 @@ export class Game {
 
   waitingFor(): WaitingFor {
     const naming = this.namingScreen();
-    if (naming) return naming.ready ? { kind: "naming", subject: naming.subject, maxLength: naming.maxLength } : { kind: "busy" };
+    if (naming) return naming.ready ? { kind: "naming", subject: naming.subject, maxLength: naming.maxLength, keys: naming.characters() } : { kind: "busy" };
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
     if (mode !== "overworld") return { kind: "busy" };

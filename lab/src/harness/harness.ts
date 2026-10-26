@@ -388,6 +388,7 @@ export class Harness {
       milestones: game.milestones(),
       atlas: this.#atlas.atlas(this.#knowledge),
     };
+    // The naming screen has no map and no grid: overworld() would fail there.
     if (base.waitingFor.kind === "naming") return { ...base, mode: "naming" };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };

@@ -163,6 +163,7 @@ describe("a choice", () => {
     const events = [call("choose YES"), played({ name: "choose", option: "YES" }, { status: "done", frames: 10 }), played({ name: "readText" }, { status: "done", frames: 50, text: ["PLOK received the BULBASAUR from PROF. OAK!", question] })];
     const prompt = userPrompt(observation, asked, events, NO_TURN);
     expect(prompt).toContain(`The game asks: "${question}" Choose YES or NO.`);
+    expect(userPrompt(observation, asked, [...events, call("zoom 1-2")], NO_TURN)).toContain(`The game asks: "${question}" Choose YES or NO.`);
     expect(prompt).not.toContain("The game waits for");
     expect(prompt).not.toContain("The question is the last text");
     expect(prompt).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: [^\n]*$/);
@@ -206,7 +207,7 @@ describe("the naming screen", () => {
   test("the prompt tells what the screen names and the maximum length, and gives name <text> and name, with no press", () => {
     const observation = {
       mode: "naming",
-      waitingFor: { kind: "naming", subject: "a nickname for BULBASAUR", maxLength: 10 },
+      waitingFor: { kind: "naming", subject: "a nickname for BULBASAUR", maxLength: 10, keys: [..."AB .ab,01!?♂♀/-…“”‘'"] },
       party: [],
       money: 0,
       bag: [],
@@ -219,7 +220,7 @@ describe("the naming screen", () => {
     expect(prompt).toContain(
       [
         "Actions:",
-        "- name <text>: type the text and press OK, for example name Sparky. The keys are the letters A to Z and a to z, the digits, the space and . , ! ? ♂ ♀ / - … \" '.",
+        "- name <text>: type the text and press OK, for example name Sparky. The keys of the keyboard: AB.ab,01!?♂♀/-…“”‘' and the space. A \" in the text types “ or ”.",
         "- name: keep the name that the game gives.",
       ].join("\n"),
     );
