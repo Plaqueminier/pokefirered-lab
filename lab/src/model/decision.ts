@@ -202,7 +202,14 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
-function parse(action: string): ParsedAction | null {
+// Some models write an action as a call: "press(Up)" or "buy(POTION, 2)" is the same as "press Up" or "buy POTION 2".
+function withSpaces(action: string): string {
+  const call = action.match(/^(\w+)\s*\((.*)\)$/);
+  return call ? `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(" ")}`.trim() : action;
+}
+
+function parse(written: string): ParsedAction | null {
+  const action = withSpaces(written);
   let m: RegExpMatchArray | null;
   if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
   if ((m = action.match(/^(buy|sell)\s+(.+?)\s+(\d+)$/i))) return { name: m[1].toLowerCase() as "buy" | "sell", item: m[2], quantity: Number(m[3]) };
