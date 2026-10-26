@@ -6,7 +6,7 @@ import { Harness } from "../src/harness/harness";
 import { continuationOf, type ModelEvent, RecordPlayer, type RunEvent, type RunRecord } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { ROM_FILE, START_SAVE } from "../src/run";
-import { costScale, lanes, stuckLevel } from "./stats-lanes";
+import { axisScale, costScale, lanes, lanesSvg, stuckLevel } from "./stats-lanes";
 import { type StatsOptions, selected, statsView } from "./stats-panel";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -65,7 +65,7 @@ describe.skipIf(!ready)("the panel Stats", () => {
   });
 });
 
-const usage = (cost: number) => ({ promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost });
+const usage = (cost: number, promptTokens = 0) => ({ promptTokens, completionTokens: 0, reasoningTokens: 0, cost });
 
 function call(frame: number, action: string | null, more: Partial<ModelEvent> = {}, note = ""): RunEvent {
   const answer = action === null ? { decision: null, error: "no JSON" } : { decision: { reason: "", action, mission: "", objective: "", note }, error: null };
@@ -101,18 +101,34 @@ test("it places the calls, the played actions and the Summary calls at their fra
   expect(view.cost).toBe(1.25);
 });
 
+test("the lane Prompt tokens shows the prompt tokens of each Model call at its frame, and a Run record with no usage shows an empty lane", () => {
+  const tokens = (frame: number, promptTokens: number) => call(frame, "go A", { usage: usage(0.25, promptTokens) });
+  const view = statsView([tokens(10, 1600), played(10, "done"), tokens(40, 3200), summary(40), tokens(70, 5100)], OPTIONS);
+  expect(view.calls.map((c) => [c.frame, c.prompt])).toEqual([
+    [10, 1600],
+    [40, 3200],
+    [70, 5100],
+  ]);
+  const svg = lanesSvg({ view, scale: axisScale(1000, NOW), played: NOW, costLimit: 1, selection: null });
+  expect(svg).toContain(">Prompt tokens<");
+  expect(svg).toContain('data-tip="prompt of 5,100 tokens at 0:01"');
+  const old = statsView([call(10, "go A"), call(40, null)], OPTIONS);
+  expect(old.calls.map((c) => c.prompt)).toEqual([null, null]);
+  expect(lanesSvg({ view: old, scale: axisScale(1000, NOW), played: NOW, costLimit: 1, selection: null })).toContain("no prompt tokens in this Run record");
+});
+
 describe("a selection", () => {
   const view = statsView(
     [
-      call(10, "go A", { stuck: 3 }, "a note"),
+      call(10, "go A", { stuck: 3, usage: usage(0.25, 1500) }, "a note"),
       played(10, "done"),
       played(20, "impossible", "no path to 3 4"),
       summary(20),
       call(30, null, { stuck: 12 }),
-      call(30, "goTo 1 2", { stuck: 12, reflection: true }, "a lesson"),
+      call(30, "goTo 1 2", { stuck: 12, reflection: true, usage: usage(0.25, 2400) }, "a lesson"),
       played(30, "impossible", "no path to 5 6"),
       played(35, "blocked", "a person stays in the way"),
-      call(60, "go B", { stuck: 25 }, "a lesson"),
+      call(60, "go B", { stuck: 25, usage: usage(0.25, 2100) }, "a lesson"),
       played(60, "done"),
     ],
     OPTIONS,
@@ -128,6 +144,7 @@ describe("a selection", () => {
     expect(range.notes).toBe(1);
     expect(range.stuck).toEqual({ end: 12, max: 12 });
     expect(range.reflections).toBe(1);
+    expect(range.prompt).toEqual({ min: 2400, max: 2400 });
     expect(range.impossible).toEqual([{ name: "goTo: no path to # #", count: 2 }]);
     expect(range.unreadable).toEqual([{ name: "no JSON", count: 1 }]);
     expect(range.actions.slice(0, 2)).toEqual([
@@ -153,6 +170,7 @@ describe("a selection", () => {
     expect(all.calls).toHaveLength(4);
     expect(all.notes).toBe(2);
     expect(all.stuck).toEqual({ end: 25, max: 25 });
+    expect(all.prompt).toEqual({ min: 1500, max: 2400 });
   });
 });
 
@@ -188,12 +206,13 @@ test("a Continued Run starts at the end of its parent, and the cost of the paren
 
 test("a Run with no Model call has no lanes of the model, a model bot has them before its first call, and a record with no Stuck counter has none in the selection", () => {
   const scripted = statsView([{ type: "map", frame: 0, map: "PalletTown" }, played(10, "done")], OPTIONS);
-  const all = ["Milestones", "Areas", "Cost", "Stuck", "Model calls", "Played actions", "Summary calls", "Battles"];
+  const all = ["Milestones", "Areas", "Cost", "Stuck", "Prompt tokens", "Model calls", "Played actions", "Summary calls", "Battles"];
   expect(lanes(scripted, false).map((l) => l.name)).toEqual(["Milestones", "Areas", "Played actions", "Battles"]);
   expect(lanes(scripted, true).map((l) => l.name)).toEqual(all);
   const old = statsView([call(10, "go A")], OPTIONS);
   expect(lanes(old, false).map((l) => l.name)).toEqual(all);
   expect(selected(old, null).stuck).toBeNull();
+  expect(selected(old, null).prompt).toBeNull();
 });
 
 test("a battle is a span from its start to its end, and a battle that plays now ends now", () => {
