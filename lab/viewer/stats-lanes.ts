@@ -33,6 +33,7 @@ const LANES: Lane[] = [
   { name: "Areas", height: 38, model: false, draw: areasLane },
   { name: "Cost", height: 90, model: true, draw: costLane },
   { name: "Stuck", height: 60, model: true, draw: stuckLane },
+  { name: "Prompt tokens", height: 50, model: true, draw: promptLane },
   { name: "Model calls", height: 22, model: true, draw: callsLane },
   { name: "Played actions", height: 40, model: false, draw: playedLane },
   { name: "Summary calls", height: 16, model: true, draw: summariesLane },
@@ -62,6 +63,10 @@ export function clock(frame: number): string {
   const minutes = Math.floor(seconds / 60);
   const mmss = `${String(minutes % 60).padStart(minutes >= 60 ? 2 : 1, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${mmss}` : mmss;
+}
+
+export function tokens(count: number): string {
+  return count.toLocaleString("en-US");
 }
 
 export function spanText({ from, to }: Span): string {
@@ -177,6 +182,18 @@ function stuckLane({ view, scale: { x, end }, top, height }: Plot): string {
   }
   parts.push(`<text class="stuck-now ${stuckLevel(now)}" x="0" y="${top + 38}">${now}</text><text x="${8 + String(now).length * 12}" y="${top + 38}">now</text>`);
   parts.push(`<text class="stuck-max ${stuckLevel(max)}" x="0" y="${top + 54}">max ${max}</text>`);
+  return parts.join("");
+}
+
+function promptLane({ view, scale: { x }, top, height }: Plot): string {
+  const known = view.calls.filter((c): c is Call & { prompt: number } => c.prompt !== null);
+  if (known.length === 0) return `<text x="${x(0) + 6}" y="${top + 28}">no prompt tokens in this Run record</text>`;
+  const max = Math.max(...known.map((c) => c.prompt));
+  const y = (count: number) => top + height - (count / (max * 1.1)) * height;
+  const path = known.map((c, i) => `${i === 0 ? "M" : "L"} ${x(c.frame)} ${y(c.prompt)}`).join(" ");
+  const parts = [`<path class="prompt" d="${path}"/>`];
+  for (const c of known) parts.push(`<circle class="prompt-dot" cx="${x(c.frame)}" cy="${y(c.prompt)}" r="2.5" data-tip="prompt of ${tokens(c.prompt)} tokens at ${clock(c.frame)}"/>`);
+  parts.push(`<text class="prompt-now" x="0" y="${top + 32}">${tokens(known[known.length - 1].prompt)} now</text><text x="0" y="${top + 46}">max ${tokens(max)}</text>`);
   return parts.join("");
 }
 
