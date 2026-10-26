@@ -155,6 +155,22 @@ describe("the Bag", () => {
   });
 });
 
+describe("a choice", () => {
+  test("the choice line shows the question, the last text of the last decision, or the old line with no text; the actions are choose and zoom, with no press", () => {
+    const observation = { ...route1(22, []), waitingFor: { kind: "choice", options: ["YES", "NO"] } } as Observation;
+    const asked = askedOf(observation, false)!;
+    const question = "Do you want to give a nickname to this BULBASAUR?";
+    const events = [call("choose YES"), played({ name: "choose", option: "YES" }, { status: "done", frames: 10 }), played({ name: "readText" }, { status: "done", frames: 50, text: ["PLOK received the BULBASAUR from PROF. OAK!", question] })];
+    const prompt = userPrompt(observation, asked, events, NO_TURN);
+    expect(prompt).toContain(`The game asks: "${question}" Choose YES or NO.`);
+    expect(prompt).not.toContain("The game waits for");
+    expect(prompt).not.toContain("The question is the last text");
+    expect(prompt).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: [^\n]*$/);
+    expect(userPrompt(observation, asked, [], NO_TURN)).toContain("The game waits for a choice: YES, NO.");
+    expect(() => readAction("press A", asked)).toThrow('"press" is not an action now: use choose or zoom');
+  });
+});
+
 describe("the Poké Mart", () => {
   test("at the shop menu, the prompt shows the items for sale with their prices, the money, the items of the Bag that the Mart buys, and the actions buy, sell and leave, with no press", () => {
     const observation = {

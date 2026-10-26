@@ -60,7 +60,7 @@ function chain(routes: number): AtlasMap[] {
 }
 
 describe("the extract of the Atlas", () => {
-  test("the map block of a house: every row with ? for the cells not seen, the targets as letters in groups with their distance and direction, no edge that leads out, and no exit to the outside yet", () => {
+  test("the map block of a house: every row with ? for the cells not seen, the targets as letters in groups with their distance and direction, a person with its last text, no edge that leads out, and no exit to the outside yet", () => {
     const house: AtlasMap = {
       name: "House",
       width: 8,
@@ -70,7 +70,7 @@ describe("the extract of the Atlas", () => {
       edges: [],
       hasEdges: false,
       signs: [{ x: 3, y: 0, facing: "north", text: "It's a TV." }],
-      people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!"] }],
+      people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!", "MOM: Take care!"] }],
       entry: { x: 6, y: 2 },
     };
     const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", to: "House" }], signs: [], people: [] };
@@ -89,7 +89,7 @@ describe("the extract of the Atlas", () => {
       "Edges: no edge of this map leads to another map.",
       "",
       "What the people of this map said to you:",
-      '- MOM, last seen at (5, 3): "MOM: Hi!"',
+      '- MOM, last seen at (5, 3): "MOM: Hi!"; "MOM: Take care!"',
       "",
       "Maps one exit away:",
       "- A (stairs) leads to House_2F. Its exits (cells of House_2F): stairs at (1, 1), to House.",
@@ -101,7 +101,7 @@ describe("the extract of the Atlas", () => {
       "B. unseen cells south of (3, 3), 2 south",
       "People and signs:",
       'C. sign at (3, 0), adjacent north, you face it: read, "It\'s a TV."',
-      "D. MOM at (5, 3), 2 south, 2 east: talked",
+      'D. MOM at (5, 3), 2 south, 2 east: talked, "MOM: Take care!"',
     ]);
   });
 

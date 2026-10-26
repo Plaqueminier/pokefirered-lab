@@ -98,7 +98,6 @@ export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEve
 }
 
 export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, happened }: PromptState): string {
-  const now = asked.kind === "choice" ? `${WAITS.choice}: ${asked.options.join(", ")}` : WAITS[asked.kind];
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
@@ -110,7 +109,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     memoryText(memoryTree(events)),
     "",
-    `The game waits for ${now}.`,
+    waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
     ...(reflection ? REFLECTION : []),
@@ -131,6 +130,13 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     ZOOM,
     ...(actionsOf(asked).includes("press") ? [PRESS] : []),
   ].join("\n");
+}
+
+function waitLine(asked: Asked, events: readonly RunEvent[]): string {
+  if (asked.kind !== "choice") return `The game waits for ${WAITS[asked.kind]}.`;
+  const last = callTurns(events).findLast((turn) => turn.call)?.events ?? [];
+  const question = last.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : [])).at(-1);
+  return question ? `The game asks: "${question}" Choose ${alternatives(asked.options)}.` : `The game waits for ${WAITS.choice}: ${asked.options.join(", ")}.`;
 }
 
 export function atlasMessage(asked: Asked & { kind: "walk" }): string {
@@ -289,10 +295,8 @@ function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
       return asked.view.lines;
-    case "choice": {
-      const where = "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
-      return [...where, "", "The question is the last text of your last decisions."];
-    }
+    case "choice":
+      return "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
       return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];

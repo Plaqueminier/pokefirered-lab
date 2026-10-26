@@ -123,7 +123,7 @@ function edgeTarget(e: AtlasEdge, here: AtlasMap, player: Overworld["player"]): 
 
 function personTarget(p: AtlasPerson, player: Overworld["player"], behindCounter: boolean): LocalTarget {
   const counter = behindCounter ? ", behind a counter: go talks across it" : "";
-  const talked = p.texts.length > 0 ? ": talked" : "";
+  const talked = p.texts.length > 0 ? `: talked, "${p.texts.at(-1)}"` : "";
   return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${whereFrom(player, p)}${counter}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
 }
 
