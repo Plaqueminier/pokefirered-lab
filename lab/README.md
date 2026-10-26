@@ -182,7 +182,7 @@ In the tests, a fake model answers: `bun test` never calls the network.
 
 - Progress: a new map, a new **Milestone**, a new exit in the **Atlas**, a level up, or a text of a person that the player did not hear before. A new cell is not progress.
 - The stuck counter is `harness.noProgress.stuck`: the **Decision points** since the last progress (see `no progress` in "Run a Bot"). The prompt shows it at each call: "Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 12." The tries since the last progress start at the same progress.
-- A reflection turn is the first walk **Decision point** at 30 on the counter, then at 60, 90… (`REFLECTION_EVERY` in `src/model/decision.ts`). A battle or a choice at 30 moves it to the next walk. It is a normal decision: the same **Model call**, with no separate request.
+- A reflection turn is the first walk **Decision point** at 20 on the counter, then at 40, 60… (`REFLECTION_EVERY` in `src/model/decision.ts`). A battle or a choice at 20 moves it to the next walk. It is a normal decision: the same **Model call**, with no separate request.
 - Its prompt adds the full **Atlas** after the extract, and the instruction: read the **Memory tree** and the full **Atlas**, use `zoom` freely (`zoom` stays in the same conversation), write a lesson in `note` (what the model tried, why it failed, what it will do now), and set a new `objective`. `viewAtlas` is not an action in a reflection turn. The notes and the **Objective** are the only things that stay after the action: the conversation ends.
 
 ### The events that ask for a note
