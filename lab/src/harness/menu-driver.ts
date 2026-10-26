@@ -13,6 +13,7 @@ const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
 const SHOP_BUY = 0;
 const SHOP_SELL = 1;
+const SHOP_QUIT = 2;
 const MAX_TRADE = 99;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
@@ -37,6 +38,8 @@ const impossible = (reason: string): Outcome => ({ status: "impossible", reason 
 const withText = (outcome: Outcome, text: string[] = []): Outcome & Texts => ({ ...outcome, text });
 
 const BATTLE_INTERRUPTION: Outcome = { status: "interrupted", reason: "battle" };
+
+const DONE: Outcome = { status: "done" };
 
 /** The key that moves a cursor from `at` toward `target`. */
 function toward(target: number, more: number, less: number): (at: number) => number {
@@ -63,14 +66,6 @@ function sale(item: string, place: BagPlace | null): Sale {
   if (!place) return { place, refusal: `there is no ${item} in the Bag` };
   if (place.pocket >= BATTLE_POCKETS) return { place: null, refusal: "the sale of the TM Case and of the Berry Pouch is not covered yet" };
   return place.price > 0 ? { place, refusal: null } : { place: null, refusal: `the shop does not buy ${item}` };
-}
-
-/** The items of the Bag that the shop buys. */
-export function sellableItems(game: Game): string[] {
-  return game
-    .bag()
-    .flatMap(({ items }) => items.map((item) => item.name))
-    .filter((name) => sale(name, game.findInBag(name)).refusal === null);
 }
 
 export class MessageReader {
@@ -176,16 +171,18 @@ export class MenuDriver {
 
   buy(item: string, quantity: number): Outcome {
     const { game } = this;
-    const list = () => game.buyList();
-    const items = list()?.items ?? [];
+    const items = (game.buyList() ?? game.shopMenu())?.items ?? [];
     const row = items.findIndex((i) => i.name === item);
     if (row < 0) return impossible(`the shop does not sell ${item}`);
     // The quantity box stops without error at the quantity that the money pays: check the money first.
     const cost = items[row].price * quantity;
     if (cost > game.money()) return impossible(`${quantity} ${item} cost ${cost} and the money is ${game.money()}`);
     if (quantity < 1 || quantity > MAX_TRADE) return impossible(`the quantity of ${item} to buy is 1 to ${MAX_TRADE}`);
+    const list = () => game.buyList();
+    const opened = list() ? DONE : this.shopOption(SHOP_BUY, () => list() !== null, "the buy list");
+    if (opened.status !== "done") return opened;
     const moved = this.moveMenuCursor(row, () => list()?.row ?? null);
-    return moved.status === "done" ? this.trade(quantity) : moved;
+    return moved.status === "done" ? this.tradeAndReturn(quantity, () => list() !== null) : moved;
   }
 
   sell(item: string, quantity: number): Outcome {
@@ -194,16 +191,18 @@ export class MenuDriver {
     if (refusal !== null) return impossible(refusal);
     const most = Math.min(game.bagQuantity(place.item), MAX_TRADE);
     if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to sell is 1 to ${most}`);
-    const menu = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
+    const menu = this.toShopMenu();
     if (menu.status !== "done") return menu;
     const opened = this.shopOption(SHOP_SELL, () => game.bagMenu()?.screen === "list", "the Bag");
     if (opened.status !== "done") return opened;
     const row = this.toBagItem(place);
-    if (row.status !== "done") return row;
-    const sold = this.trade(quantity);
-    if (sold.status !== "done") return sold;
-    const back = this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
-    return back.status === "done" ? this.shopOption(SHOP_BUY, () => game.buyList() !== null, "the buy list") : back;
+    return row.status === "done" ? this.tradeAndReturn(quantity, () => game.bagMenu()?.screen === "list") : row;
+  }
+
+  /** From the shop menu or the buy list, SEE YA!: the clerk then says goodbye. */
+  leave(): Outcome {
+    const menu = this.toShopMenu();
+    return menu.status === "done" ? this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop") : menu;
   }
 
   switch(slot: number): Outcome & Texts {
@@ -333,10 +332,21 @@ export class MenuDriver {
   }
 
   private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
-    const { game } = this;
-    const cursor = () => game.shopMenu()?.cursor ?? null;
-    const moved = this.moveMenuCursor(option, cursor);
+    const moved = this.moveMenuCursor(option, () => this.game.shopMenu()?.cursor ?? null);
     return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
+  }
+
+  private toShopMenu(): Outcome {
+    const { game } = this;
+    return game.shopMenu() ? DONE : this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
+  }
+
+  /** The trade ends at its list, also when the game refuses it: then B goes back to the shop menu. */
+  private tradeAndReturn(quantity: number, atList: () => boolean): Outcome {
+    const traded = this.trade(quantity);
+    if (!atList()) return traded;
+    const back = this.toShopMenu();
+    return back.status === "done" ? traded : back;
   }
 
   private toBagItem(place: BagPlace): Outcome {

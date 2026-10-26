@@ -19,7 +19,7 @@ import type { Memory, Ref } from "./memory";
 import { multichoice, type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
-import { type BuyList, buyList, type ShopItem, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
+import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
 
 const REPO_DIR = join(import.meta.dir, "..", "..");
@@ -101,6 +101,7 @@ export type WaitingFor =
   | { kind: "battleAction" }
   | { kind: "battleMove" }
   | { kind: "partyPick" }
+  | { kind: "shopMenu"; items: ShopItem[] }
   | { kind: "buyList"; items: ShopItem[] }
   | { kind: "busy" };
 
@@ -280,7 +281,9 @@ export class Game {
     if (mode !== "overworld") return { kind: "busy" };
     const list = this.buyList();
     if (list) return { kind: "buyList", items: list.items };
-    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode) ?? this.shopMenu();
+    const shop = this.shopMenu();
+    if (shop) return { kind: "shopMenu", items: shop.items };
+    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode);
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
@@ -368,7 +371,7 @@ export class Game {
     return bagMenu(this.mem);
   }
 
-  shopMenu(): Choice | null {
+  shopMenu(): ShopMenu | null {
     return shopMenu(this.mem, this.decode);
   }
 

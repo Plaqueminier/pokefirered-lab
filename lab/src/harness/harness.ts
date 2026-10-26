@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { type BagPocket, battleItems, walkItems } from "../bag";
+import { type BagPocket, battleItems, sellableItems, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -21,7 +21,7 @@ import { type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
-import { MenuDriver, MessageReader, type Outcome, sellableItems, type Texts } from "./menu-driver";
+import { MenuDriver, MessageReader, type Outcome, type Texts } from "./menu-driver";
 import { type BlockOf, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
@@ -55,7 +55,8 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   battleAction: ["fight", "switch", "run", "use"],
   battleMove: ["fight"],
   partyPick: ["send"],
-  buyList: ["buy", "sell"],
+  shopMenu: ["buy", "sell", "leave"],
+  buyList: ["buy", "sell", "leave"],
   busy: ["readText"],
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
@@ -102,7 +103,8 @@ export type MacroAction =
   | { name: "run" }
   | { name: "use"; item: string; on?: number }
   | { name: "buy"; item: string; quantity: number }
-  | { name: "sell"; item: string; quantity: number };
+  | { name: "sell"; item: string; quantity: number }
+  | { name: "leave" };
 
 export type AvailableAction =
   | { name: "goTo" }
@@ -401,6 +403,7 @@ export class Harness {
       switch (name) {
         case "goTo":
         case "readText":
+        case "leave":
           return [{ name }];
         case "swap":
           return game.party().length > 1 ? [{ name }] : [];
@@ -420,9 +423,9 @@ export class Harness {
           return (waiting.kind === "walk" ? walkItems(bag) : battleItems(bag, game.requireBattle().kind)).map((item) => ({ name, item: item.name }));
         }
         case "buy":
-          return waiting.kind === "buyList" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
+          return waiting.kind === "shopMenu" || waiting.kind === "buyList" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
         case "sell":
-          return sellableItems(game).map((item) => ({ name, item }));
+          return sellableItems(game.bag()).map((item) => ({ name, item: item.name }));
       }
     });
   }
@@ -486,19 +489,21 @@ export class Harness {
   }
 
   async readText(): Promise<TextResult> {
-    return this.act<Texts>({ name: "readText" }, () => {
-      const game = this.#run.game;
-      const reader = new MessageReader(game);
-      for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
-        const outcome = this.#menus.untilDecision(() => reader.update());
-        if (outcome.status !== "done" || game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
-        if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
-        const battle = this.#menus.tap(Keys.A);
-        if (battle) return { status: "interrupted", reason: battle, text: reader.text };
-        reader.pressed();
-      }
-      return { status: "impossible", reason: `the text still waits for A after ${MAX_TEXT_PRESSES} presses`, text: reader.text };
-    }, { text: [] });
+    return this.act<Texts>({ name: "readText" }, () => this.readTexts(), { text: [] });
+  }
+
+  private readTexts(): Outcome & Texts {
+    const game = this.#run.game;
+    const reader = new MessageReader(game);
+    for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
+      const outcome = this.#menus.untilDecision(() => reader.update());
+      if (outcome.status !== "done" || game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
+      if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
+      const battle = this.#menus.tap(Keys.A);
+      if (battle) return { status: "interrupted", reason: battle, text: reader.text };
+      reader.pressed();
+    }
+    return { status: "impossible", reason: `the text still waits for A after ${MAX_TEXT_PRESSES} presses`, text: reader.text };
   }
 
   async choose(option: string): Promise<ActionResult> {
@@ -523,6 +528,13 @@ export class Harness {
 
   async sell(item: string, quantity: number): Promise<ActionResult> {
     return this.act({ name: "sell", item, quantity }, () => this.#menus.sell(item, quantity));
+  }
+
+  async leave(): Promise<TextResult> {
+    return this.act<Texts>({ name: "leave" }, () => {
+      const left = this.#menus.leave();
+      return left.status === "done" ? this.readTexts() : left;
+    }, { text: [] });
   }
 
   async switch(slot: number): Promise<TextResult> {
@@ -564,6 +576,8 @@ export class Harness {
         return this.buy(action.item, action.quantity);
       case "sell":
         return this.sell(action.item, action.quantity);
+      case "leave":
+        return this.leave();
       case "press":
         return this.press(action.button);
     }

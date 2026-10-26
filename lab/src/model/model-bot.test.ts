@@ -201,7 +201,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "4", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "5", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
@@ -419,6 +419,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("model bot at a
     await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
     // The counter of this Mart has an L shape: (3, 3) and (2, 4) are both counter cells next to the clerk.
     expect(harness.actions.find(({ action }) => action.name === "interact")).toMatchObject({ action: { x: 2, y: 4 }, result: { status: "done" } });
-    expect(prompts.at(-1)?.user).toContain("The game waits for a choice: BUY, SELL, SEE YA!.");
+    expect(prompts.at(-1)?.user).toContain("The game waits for the shop menu of a Poké Mart.");
   });
 });

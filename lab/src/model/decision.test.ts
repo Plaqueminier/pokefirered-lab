@@ -79,8 +79,8 @@ describe("readAction", () => {
   });
 
   test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {
-    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon", walk: "pokemon" };
-    const ball: BagItem = { name: "POKé BALL", quantity: 20, description: "", battle: "alone", walk: null };
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
+    const ball: BagItem = { name: "POKé BALL", quantity: 20, description: "", price: 200, battle: "alone", walk: null };
     const party = [{ nickname: "SQUIRTLE", species: "SQUIRTLE" }, { nickname: "BIRD", species: "PIDGEY" }] as PartyMon[];
     const asked: Asked = { kind: "battleAction", battle, items: [potion, ball], party };
     expect(readAction("use potion on bird", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
@@ -90,14 +90,16 @@ describe("readAction", () => {
     expect(() => readAction("use ANTIDOTE", asked)).toThrow('"ANTIDOTE" is not an item that works now: POTION, POKé BALL');
   });
 
-  test("at the buy list of a Poké Mart: buy an item of the list, or sell an item of the Bag, with a quantity", () => {
-    const potion: BagItem = { name: "POTION", quantity: 5, description: "", battle: "pokemon", walk: "pokemon" };
-    const asked: Asked = { kind: "buyList", forSale: [{ name: "POKé BALL", price: 200 }], bag: [{ pocket: "ITEMS", items: [potion] }], party: [] };
+  test("at the shop menu of a Poké Mart: buy an item for sale, or sell an item of the Bag that the Mart buys, with a quantity, or leave", () => {
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
+    const asked: Asked = { kind: "shopMenu", forSale: [{ name: "POKé BALL", price: 200 }], sellable: [potion], party: [] };
     expect(readAction("buy Poke Ball 5", asked)).toEqual({ name: "buy", item: "POKé BALL", quantity: 5 });
     expect(readAction("sell potion 2", asked)).toEqual({ name: "sell", item: "POTION", quantity: 2 });
+    expect(readAction("leave", asked)).toEqual({ name: "leave" });
     expect(readAction("buy(POTION, 2)", { ...asked, forSale: [{ name: "POTION", price: 300 }] })).toEqual({ name: "buy", item: "POTION", quantity: 2 });
-    expect(() => readAction("buy POTION 1", asked)).toThrow('"POTION" is not an item of the buy list: POKé BALL');
-    expect(() => readAction("sell ANTIDOTE 1", asked)).toThrow('"ANTIDOTE" is not an item of your Bag: POTION');
+    expect(() => readAction("buy POTION 1", asked)).toThrow('"POTION" is not an item for sale: POKé BALL');
+    expect(() => readAction("sell ANTIDOTE 1", asked)).toThrow('"ANTIDOTE" is not an item of your Bag that the Poké Mart buys: POTION');
+    expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use buy, sell, leave or zoom');
   });
 
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {

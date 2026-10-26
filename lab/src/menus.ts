@@ -53,6 +53,6 @@ export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {
   return { kind: "busy" };
 }
 
-export function menuText(mem: Memory, address: number, decode: Decode): string {
+function menuText(mem: Memory, address: number, decode: Decode): string {
   return decode(mem.bus.read(address, MAX_MENU_TEXT));
 }
