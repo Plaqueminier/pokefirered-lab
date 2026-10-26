@@ -205,7 +205,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "6", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "7", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
@@ -341,14 +341,15 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[4].prompt.turns?.[1].user).toContain("There is no node #5-6 with two halves");
   });
 
-  test("on a screen that no Macro-action covers, the code presses B three times and tells the model", async () => {
+  test("on a screen that no Macro-action covers, as the PC, the code presses B three times and tells the model", async () => {
     const harness = await Harness.open({ noProgressLimit: 30 });
-    const bot = modelBot({ costLimit: 1 }, () => answers(reply("press Start").content, reply("goTo 8 6").content));
+    const bot = modelBot({ costLimit: 1 }, () => answers(reply("go C").content, reply("goTo 8 6").content));
     await harness.play(bot).catch(() => {});
     const calls = modelEvents(harness);
     expect(calls[1].prompt.user).toContain("The game showed a screen that no action covers: the program pressed B 3 times.");
-    expect(harness.actions.slice(0, 5).map((e) => e.action)).toEqual([
-      { name: "press", button: "Start" },
+    expect(harness.actions.slice(0, 6).map((e) => e.action)).toEqual([
+      { name: "goTo", x: 1, y: 2 },
+      { name: "interact", x: 1, y: 1 },
       { name: "readText" },
       { name: "press", button: "B" },
       { name: "press", button: "B" },

@@ -56,12 +56,13 @@ describe("readAction", () => {
     expect(readAction(" GO b ", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo 12 -1", walk(3))).toEqual({ name: "goTo", x: 12, y: -1 });
     expect(readAction("goTo 3 4 Route1", walk(3))).toEqual({ name: "goTo", x: 3, y: 4, map: "Route1" });
-    expect(readAction("press start", walk(3))).toEqual({ name: "press", button: "Start" });
+    expect(readAction("press select", walk(3))).toEqual({ name: "press", button: "Select" });
     expect(readAction("zoom 1-8", walk(3))).toEqual({ name: "zoom", from: 1, to: 8 });
     expect(readAction("zoom #13", walk(3))).toEqual({ name: "zoom", from: 13, to: 13 });
     expect(readAction("press(Up)", walk(3))).toEqual({ name: "press", button: "Up" });
     expect(readAction("go(B)", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo(4, 7)", walk(3))).toEqual({ name: "goTo", x: 4, y: 7 });
+    expect(readAction("goTo 9, 42", walk(3))).toEqual({ name: "goTo", x: 9, y: 42 });
   });
 
   test("at a choice: an option of the choice, in any case", () => {
@@ -76,6 +77,12 @@ describe("readAction", () => {
     expect(readAction("run", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "run" });
     expect(readAction("press A", { kind: "partyPick", party, battle, items: [] })).toEqual({ name: "press", button: "A" });
     expect(() => readAction("fight 1", { kind: "partyPick", party, battle, items: [] })).toThrow('"fight" is not an action now: use zoom or press');
+  });
+
+  test("press Start is not read: its reason tells that there is no Start menu, names use and the items of the Bag that work now, or tells that none works", () => {
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
+    expect(() => readAction("press Start", { kind: "battleAction", party, battle, items: [potion] })).toThrow("there is no Start menu: write use <item> to use an item of your Bag; the items that work now: POTION");
+    expect(() => readAction("press(start)", walk(3))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag is empty or has no item that works now");
   });
 
   test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {
@@ -98,6 +105,7 @@ describe("readAction", () => {
     expect(readAction("sell potion 2", asked)).toEqual({ name: "sell", item: "POTION", quantity: 2 });
     expect(readAction("leave", asked)).toEqual({ name: "leave" });
     expect(readAction("buy(POTION, 2)", { ...asked, forSale: [{ name: "POTION", price: 300 }] })).toEqual({ name: "buy", item: "POTION", quantity: 2 });
+    expect(readAction("buy POTION, 2", { ...asked, forSale: [{ name: "POTION", price: 300 }] })).toEqual({ name: "buy", item: "POTION", quantity: 2 });
     expect(() => readAction("buy POTION 1", asked)).toThrow('"POTION" is not an item for sale: POKé BALL');
     expect(() => readAction("sell ANTIDOTE 1", asked)).toThrow('"ANTIDOTE" is not an item of your Bag that the Poké Mart buys: POTION');
     expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use buy, sell, leave or zoom');
@@ -108,17 +116,19 @@ describe("readAction", () => {
     expect(readAction("name Mr Bulb", naming)).toEqual({ name: "name", text: "Mr Bulb" });
     expect(readAction("name", naming)).toEqual({ name: "name", text: "" });
     expect(readAction("name(Bulby, Jr.)", naming)).toEqual({ name: "name", text: "Bulby, Jr." });
+    expect(readAction("name A, B", naming)).toEqual({ name: "name", text: "A, B" });
     expect(() => readAction("press A", naming)).toThrow('"press" is not an action now: use name or zoom');
   });
 
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {
     expect(() => readAction("walk north", walk(3))).toThrow('"walk north" is not an action');
+    expect(() => readAction("goTo 9 north", walk(3))).toThrow('"goTo 9 north" is not an action: write goTo <x> <y>, for example goTo 9 42');
     expect(() => readAction("go D", walk(3))).toThrow("there is no target D: the targets are A to C");
     expect(() => readAction("go 2", walk(3))).toThrow("there is no target 2: the targets are letters, A to C");
     expect(() => readAction("go A", walk(0))).toThrow("there is no target A: the map has no targets");
     expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo, viewAtlas, zoom or press');
-    expect(() => readAction("fight 4", { kind: "battleAction", party, battle, items: [] })).toThrow('"fight 4" is not an action');
-    expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action');
+    expect(() => readAction("fight 4", { kind: "battleAction", party, battle, items: [] })).toThrow('"fight 4" is not an action: write fight <0-3>, for example fight 0');
+    expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action: write press <button>, for example press A');
     expect(() => readAction("a".repeat(500), walk(3))).toThrow(`"${"a".repeat(80)}" is not an action`);
   });
 
