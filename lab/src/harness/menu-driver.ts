@@ -184,8 +184,7 @@ export class MenuDriver {
     if (opened.status !== "done") return opened;
     const moved = this.moveMenuCursor(row, () => list()?.row ?? null);
     if (moved.status !== "done") return moved;
-    const traded = this.trade(quantity);
-    return traded.status === "done" ? this.toShopMenu() : traded;
+    return this.backToShopMenu(this.trade(quantity));
   }
 
   sell(item: string, quantity: number): Outcome {
@@ -200,8 +199,7 @@ export class MenuDriver {
     if (opened.status !== "done") return opened;
     const row = this.toBagItem(place);
     if (row.status !== "done") return row;
-    const traded = this.trade(quantity);
-    return traded.status === "done" ? this.toShopMenu() : traded;
+    return this.backToShopMenu(this.trade(quantity));
   }
 
   leave(): Outcome & Texts {
@@ -357,6 +355,13 @@ export class MenuDriver {
   private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
     const moved = this.moveMenuCursor(option, () => this.game.shopMenu()?.cursor ?? null);
     return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
+  }
+
+  // A refused trade stays in its list, and the Bag of the shop is not a Decision point: go back to the shop menu also then.
+  private backToShopMenu(traded: Outcome): Outcome {
+    if (traded.status === "interrupted") return traded;
+    const back = this.toShopMenu();
+    return traded.status === "done" || back.status !== "done" ? back : traded;
   }
 
   private toShopMenu(): Outcome {
