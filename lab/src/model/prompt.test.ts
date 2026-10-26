@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
-import { askedOf, readAction, REFLECTION_EVERY } from "./decision";
+import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
-import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, tries, userPrompt } from "./prompt";
+import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, systemPrompt, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -143,12 +143,14 @@ describe("the Bag", () => {
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
   });
 
-  test("on a walk, the use line lists only the items that work outside a battle; the model uses POTION on a Pokémon of the party, and REPEL alone", () => {
+  test("on a walk, the use line lists only the items that work outside a battle; the model uses POTION on a Pokémon of the party, and REPEL alone; the press line has no Start", () => {
     const repel = { name: "REPEL", quantity: 1, description: "Prevents weak wild POKéMON from appearing for 100 steps.", price: 350, battle: null, walk: "alone" };
     const observation = route1(10, [POTION, repel]);
     observation.bag.push({ pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", price: 200, battle: "alone", walk: null }] });
     const asked = askedOf(observation, false)!;
-    expect(userPrompt(observation, asked, [], NO_TURN)).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), REPEL.");
+    const prompt = userPrompt(observation, asked, [], NO_TURN);
+    expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), REPEL.");
+    expect(prompt).toContain("- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.");
     expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
     expect(readAction("use repel", asked)).toEqual({ name: "use", item: "REPEL" });
     expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION, REPEL');
@@ -229,16 +231,17 @@ describe("the naming screen", () => {
 });
 
 describe("the stuck counter and the reflection turn", () => {
-  test(`the first walk at ${REFLECTION_EVERY} Decision points with no progress, and at each ${REFLECTION_EVERY} more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective`, () => {
+  test("the first walk at 20 Decision points with no progress, and at each 20 more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective", () => {
     const observation = route1(22, [POTION]);
     const at = (stuck: number, events: RunEvent[] = []) => reflectionTurn("walk", events, { stuck, since: 0 });
-    const reflected = { ...call("go A"), stuck: 31, reflection: true };
-    expect([at(29), at(30), at(31), at(59, [reflected]), at(61, [reflected])]).toEqual([false, true, true, false, true]);
-    expect(reflectionTurn("battleAction", [], { stuck: 30, since: 0 })).toBe(false);
+    const reflected = { ...call("go A"), stuck: 21, reflection: true };
+    expect([at(19), at(20), at(21), at(39, [reflected]), at(40, [reflected])]).toEqual([false, true, true, false, true]);
+    expect(reflectionTurn("battleAction", [], { stuck: 20, since: 0 })).toBe(false);
+    expect(systemPrompt("")).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn");
 
     const noted = [call("go A", "", "fact 1")];
-    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 30, since: 0 }, reflection: true });
-    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 30.");
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, reflection: true });
+    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 20.");
     expect(prompt).toContain(
       [
         "Reflection turn: stop and think before you act.",

@@ -10,7 +10,7 @@ import { type Overworld, targetIndex, targetLetter } from "./targets";
 // The text that the model writes returns in each prompt: a cap keeps the prompt small.
 export const MAX_SENTENCE = 200;
 /** The model bot gets a Reflection turn at each REFLECTION_EVERY more Decision points on the Stuck counter. */
-export const REFLECTION_EVERY = 30;
+export const REFLECTION_EVERY = 20;
 const MAX_QUOTED_ACTION = 80;
 
 const FIELDS = ["reason", "action", "mission", "objective", "note"] as const satisfies readonly (keyof Decision)[];
@@ -148,8 +148,8 @@ type ParsedAction = Exclude<ModelAction, { name: Written["name"] }> | Written;
 
 export function readAction(text: string, asked: Asked): ModelAction {
   const action = parse(text.trim());
-  if (!action) throw new Error(`"${quoted(text)}" is not an action`);
   const accepted = actionsOf(asked);
+  if (!action) throw new Error(unreadable(text.trim(), accepted));
   if (!accepted.includes(action.name)) throw new Error(`"${action.name}" is not an action now: use ${alternatives(accepted)}`);
   switch (action.name) {
     case "go": {
@@ -175,6 +175,11 @@ export function readAction(text: string, asked: Asked): ModelAction {
     case "buy":
     case "sell":
       return readTrade(action.name, action.item, action.quantity, asked);
+    case "press": {
+      if (action.button !== "Start") return action;
+      const items = "items" in asked ? asked.items.map((i) => i.name) : [];
+      throw new Error(`there is no Start menu: write use <item> to use an item of your Bag; ${items.length === 0 ? "your Bag is empty or has no item that works now" : `the items that work now: ${items.join(", ")}`}`);
+    }
     default:
       return action;
   }
@@ -207,15 +212,45 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
-// The separator of the arguments in the form action(a, b), as a written action: a space when the action is not here. A null keeps the text as one argument.
-const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null]]);
+// The separator that replaces a comma between the arguments, in action(a, b) and in action a, b: a space when the action is not here. A null keeps the text as one argument, with its commas: the text of name and the option of choose.
+const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null], ["choose", null]]);
 
 function withSpaces(action: string): string {
-  const call = action.match(/^(\w+)\s*\((.*)\)$/);
+  const call = action.match(/^(\w+)\s*\((.*)\)$/) ?? action.match(/^(\w+)\s+(.*)$/);
   if (!call) return action;
   const [, verb, args] = call;
   const separator = ARGUMENT_SEPARATORS.get(verb.toLowerCase());
-  return `${verb} ${separator === null ? args : args.split(",").map((arg) => arg.trim()).join(separator ?? " ")}`.trim();
+  const written = separator === null ? args : args.split(",").map((arg) => arg.trim()).filter((arg) => arg !== "").join(separator ?? " ");
+  return `${verb} ${written}`.trim();
+}
+
+// The form of each action and one example, for the reason of an answer that the Bot cannot read.
+const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
+  go: ["go <letter>", "go B"],
+  goTo: ["goTo <x> <y>", "goTo 9 42"],
+  swap: ["swap <Pokémon> <Pokémon>", "swap 1 2"],
+  choose: ["choose <option>", "choose YES"],
+  fight: ["fight <0-3>", "fight 0"],
+  switch: ["switch <Pokémon>", "switch 2"],
+  send: ["send <Pokémon>", "send 2"],
+  run: ["run", "run"],
+  use: ["use <item> [on <Pokémon>]", "use POTION on 1"],
+  buy: ["buy <item> <quantity>", "buy POTION 2"],
+  sell: ["sell <item> <quantity>", "sell POTION 2"],
+  leave: ["leave", "leave"],
+  name: ["name <text>", "name Sparky"],
+  press: ["press <button>", "press A"],
+  viewAtlas: ["viewAtlas", "viewAtlas"],
+  zoom: ["zoom <a-b>", "zoom 1-8"],
+};
+
+function unreadable(text: string, accepted: ModelAction["name"][]): string {
+  const verb = text.match(/^\w+/)?.[0].toLowerCase();
+  const name = MODEL_ACTION_NAMES.find((n) => n.toLowerCase() === verb);
+  if (!name) return `"${quoted(text)}" is not an action`;
+  if (!accepted.includes(name)) return `"${name}" is not an action now: use ${alternatives(accepted)}`;
+  const [form, example] = FORMS[name];
+  return `"${quoted(text)}" is not an action: write ${form}${form === example ? "" : `, for example ${example}`}`;
 }
 
 function parse(written: string): ParsedAction | null {
