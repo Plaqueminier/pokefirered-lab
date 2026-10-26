@@ -22,7 +22,7 @@ const WAITS: Record<AskedKind, string> = {
   battleAction: "a battle action",
   battleMove: "a move",
   partyPick: "a Pokémon in the party menu of the battle",
-  buyList: "the buy list of a Poké Mart",
+  shopMenu: "the shop menu of a Poké Mart",
 };
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
@@ -129,7 +129,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "Actions:",
     ...actionLines(asked),
     ZOOM,
-    PRESS,
+    ...(actionsOf(asked).includes("press") ? [PRESS] : []),
   ].join("\n");
 }
 
@@ -293,14 +293,16 @@ function context(asked: Asked): string[] {
       const where = "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
       return [...where, "", "The question is the last text of your last decisions."];
     }
-    case "buyList":
-      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", "To leave the shop: press B, then choose SEE YA!."];
+    case "shopMenu": {
+      const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
+      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];
+    }
     default:
       return battleLines(asked.battle);
   }
 }
 
-// The actions of actionsOf, with their help; press is the last action of each list.
+// The actions of actionsOf, with their help; zoom and press come after them.
 function actionLines(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk": {
@@ -327,10 +329,11 @@ function actionLines(asked: Asked): string[] {
       return fights(asked.battle);
     case "partyPick":
       return partyLine(asked, "send", "send this Pokémon into the battle");
-    case "buyList":
+    case "shopMenu":
       return [
-        `- buy <item> <quantity>: buy items of the list, for example buy POTION 2. Your money must pay the price of all the items.`,
-        "- sell <item> <quantity>: sell items of your Bag. The shop pays half of the price of each item. It does not buy the KEY ITEMS.",
+        "- buy <item> <quantity>: buy items for sale, for example buy POTION 2. Your money must pay the price of all the items.",
+        ...(actionsOf(asked).includes("sell") ? ["- sell <item> <quantity>: sell items of your Bag that the Poké Mart buys, for example sell POTION 1."] : []),
+        "- leave: say goodbye to the clerk and walk again.",
       ];
   }
 }

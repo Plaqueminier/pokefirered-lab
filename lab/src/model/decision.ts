@@ -1,4 +1,4 @@
-import { type BagItem, type BagPocket, battleItems, type ItemUse, walkItems } from "../bag";
+import { type BagItem, battleItems, type ItemUse, sellableItems, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
 import { type PartyMon, sendableSlots } from "../party";
@@ -43,7 +43,7 @@ export function isPlayed(action: ModelAction): action is PlayedAction {
   return action.name !== "viewAtlas" && action.name !== "zoom";
 }
 
-const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
+const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, leave: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
@@ -52,7 +52,7 @@ export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[] }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
-  | { kind: "buyList"; forSale: ShopItem[]; bag: BagPocket[] }
+  | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
 );
 
 export type AskedKind = Asked["kind"];
@@ -63,7 +63,7 @@ const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   battleAction: ["fight", "switch", "run", "use", "zoom", "press"],
   battleMove: ["fight", "zoom", "press"],
   partyPick: ["send", "zoom", "press"],
-  buyList: ["buy", "sell", "zoom", "press"],
+  shopMenu: ["buy", "sell", "leave", "zoom"],
 };
 
 export function actionsOf(asked: Asked): ModelAction["name"][] {
@@ -78,6 +78,8 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
         return sendable(asked).length > 0;
       case "use":
         return "items" in asked && asked.items.length > 0;
+      case "sell":
+        return asked.kind === "shopMenu" && asked.sellable.length > 0;
       default:
         return true;
     }
@@ -96,7 +98,8 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
   const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
-    if (waitingFor.kind === "buyList") return { kind: "buyList", party, forSale: waitingFor.items, bag: observation.bag };
+    // The buy list shows after an Interruption or a Raw input only: the actions of the shop menu work there too.
+    if (waitingFor.kind === "shopMenu" || waitingFor.kind === "buyList") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
   const { battle } = observation;
@@ -188,9 +191,9 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
 }
 
 function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: Asked): ModelAction {
-  const names = asked.kind !== "buyList" ? [] : name === "buy" ? asked.forSale.map((i) => i.name) : asked.bag.flatMap((pocket) => pocket.items.map((i) => i.name));
+  const names = (asked.kind !== "shopMenu" ? [] : name === "buy" ? asked.forSale : asked.sellable).map((i) => i.name);
   const found = names.find((n) => plain(n) === plain(item));
-  if (!found) throw new Error(`"${quoted(item)}" is not an item of ${name === "buy" ? "the buy list" : "your Bag"}: ${names.join(", ") || "none"}`);
+  if (!found) throw new Error(`"${quoted(item)}" is not an item ${name === "buy" ? "for sale" : "of your Bag that the Poké Mart buys"}: ${names.join(", ") || "none"}`);
   return { name, item: found, quantity };
 }
 
@@ -221,6 +224,7 @@ function parse(written: string): ParsedAction | null {
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
   if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };
   if (/^run$/i.test(action)) return { name: "run" };
+  if (/^leave$/i.test(action)) return { name: "leave" };
   if (/^viewAtlas$/i.test(action)) return { name: "viewAtlas" };
   if ((m = action.match(/^zoom\s+#?(\d+)(?:-(\d+))?$/i))) return { name: "zoom", from: Number(m[1]), to: Number(m[2] ?? m[1]) };
   const button = action.match(/^press\s+(\w+)$/i)?.[1].toLowerCase();

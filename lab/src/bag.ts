@@ -16,7 +16,8 @@ export type PocketName = (typeof POCKET_NAMES)[number];
 
 export type ItemUse = "pokemon" | "alone";
 
-export type BagItem = { name: string; quantity: number; description: string; battle: ItemUse | null; walk: ItemUse | null };
+/** `price`: the price of one item in a Poké Mart; 0 for an item that a Poké Mart does not buy, as the Key Items. */
+export type BagItem = { name: string; quantity: number; description: string; price: number; battle: ItemUse | null; walk: ItemUse | null };
 
 export type BagPocket = { pocket: PocketName; items: BagItem[] };
 
@@ -64,6 +65,11 @@ export function walkItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap((pocket) => pocket.items.filter((item) => item.walk));
 }
 
+/** The items that a Poké Mart buys: the items with a price, out of the TM Case and the Berry Pouch (their sale is not covered yet). */
+export function sellableItems(bag: BagPocket[]): BagItem[] {
+  return bag.flatMap(({ pocket, items }) => (POCKET_NAMES.indexOf(pocket) < BATTLE_POCKETS ? items.filter((item) => item.price > 0) : []));
+}
+
 export function bagMenu(mem: Memory): BagMenu | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_BagMenuRun" || mem.global("gPaletteFade").field("active").int()) return null;
   const list = activeTask(mem, "Task_BagMenu_HandleInput") !== null && activeTask(mem, "Task_AnimateWin0v") === null;
@@ -101,6 +107,7 @@ function itemName(mem: Memory, item: number, decode: Decode): string {
 }
 
 function itemInfo(mem: Memory, item: number, decode: Decode, pocket: number): Omit<BagItem, "quantity"> {
-  const description = oneLine(decode(mem.bus.read(mem.global("gItems").at(item).field("description").pointer(), MAX_STRING)));
-  return { name: itemName(mem, item, decode), description, ...itemUses(mem, item, pocket) };
+  const data = mem.global("gItems").at(item);
+  const description = oneLine(decode(mem.bus.read(data.field("description").pointer(), MAX_STRING)));
+  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, item, pocket) };
 }

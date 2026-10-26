@@ -18,6 +18,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Full Atlas/, "Full Atlas"],
   [/^Node #|^There is no node/, "Zoom"],
   [/^Battle against/, "Battle"],
+  [/^The Poké Mart sells/, "Poké Mart"],
   [/^The question is/, "Question"],
   [/^Actions/, "Actions"],
   [/^Your answer could not be read/, "Error"],

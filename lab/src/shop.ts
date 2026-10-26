@@ -1,6 +1,5 @@
 import type { Memory } from "./memory";
-import { menuText } from "./menus";
-import { activeTask, type Choice, type Decode } from "./prompts";
+import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
 const BUY_QUANTITY = 1;
@@ -8,25 +7,31 @@ const SELL_QUANTITY = 8;
 
 export type ShopItem = { name: string; price: number };
 
+/** The menu BUY, SELL, SEE YA!: `cursor` is the row of the option. */
+export type ShopMenu = { items: ShopItem[]; cursor: number };
+
 export type BuyList = { items: ShopItem[]; row: number };
 
-export function shopMenu(mem: Memory, decode: Decode): Choice | null {
+// CreatePokemartMenu (shop.c) sets the items for sale before it shows the shop menu.
+export function shopMenu(mem: Memory, decode: Decode): ShopMenu | null {
   if (!activeTask(mem, "Task_ShopMenu")) return null;
-  const actions = mem.global("sShopMenuActions_BuySellQuit");
-  const options = Array.from({ length: actions.length }, (_, i) => menuText(mem, actions.at(i).field("text").pointer(), decode));
-  return { options, cursor: mem.global("sMenu").field("cursorPos").int() };
+  return { items: itemsForSale(mem, decode), cursor: mem.global("sMenu").field("cursorPos").int() };
 }
 
 export function buyList(mem: Memory, decode: Decode): BuyList | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_BuyMenu") return null;
   if (!activeTask(mem, "Task_BuyMenu") || mem.global("gPaletteFade").field("active").int()) return null;
   const shop = mem.global("sShopData");
+  return { items: itemsForSale(mem, decode), row: shop.field("scrollOffset").int() + shop.field("selectedRow").int() };
+}
+
+function itemsForSale(mem: Memory, decode: Decode): ShopItem[] {
+  const shop = mem.global("sShopData");
   const list = shop.field("itemList").pointer();
-  const items = Array.from({ length: shop.field("itemCount").int() }, (_, i) => {
+  return Array.from({ length: shop.field("itemCount").int() }, (_, i) => {
     const data = mem.global("gItems").at(mem.u16(list + 2 * i));
     return { name: decode(data.field("name").bytes()), price: data.field("price").int() };
   });
-  return { items, row: shop.field("scrollOffset").int() + shop.field("selectedRow").int() };
 }
 
 export function tradeQuantity(mem: Memory): number | null {
