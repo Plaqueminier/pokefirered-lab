@@ -4,6 +4,8 @@ import { functionName } from "./symbols";
 
 const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
+// tMultichoiceId (script_menu.c).
+const MULTICHOICE_ID = 7;
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };
 
@@ -13,6 +15,16 @@ export function startMenu(mem: Memory, decode: Decode): Choice | null {
   const items = mem.global("sStartMenuActionTable");
   const options = Array.from({ length: mem.global("sNumStartMenuItems").int() }, (_, i) => menuText(mem, items.at(order.at(i).int()).field("text").pointer(), decode));
   return { options, cursor: mem.global("sStartMenuCursorPos").int() };
+}
+
+// Task_MultichoiceMenu_HandleInput reads no input while sDelay counts down or the palette fades.
+export function multichoice(mem: Memory, decode: Decode): Choice | null {
+  const task = activeTask(mem, "Task_MultichoiceMenu_HandleInput");
+  if (!task || mem.global("sDelay").int() !== 0 || mem.global("gPaletteFade").field("active").int()) return null;
+  const menu = mem.global("sMultichoiceLists").at(task.field("data").at(MULTICHOICE_ID).int());
+  const list = menu.field("list");
+  const options = Array.from({ length: menu.field("count").int() }, (_, i) => menuText(mem, list.at(i).field("text").pointer(), decode));
+  return { options, cursor: mem.global("sMenu").field("cursorPos").int() };
 }
 
 export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {

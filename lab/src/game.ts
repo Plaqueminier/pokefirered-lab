@@ -16,7 +16,7 @@ import {
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { type PartyMenu, partyMenu, startMenu } from "./menus";
+import { multichoice, type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -237,7 +237,7 @@ export class Game {
     if (mode !== "overworld") return { kind: "busy" };
     const list = this.buyList();
     if (list) return { kind: "buyList", items: list.items };
-    const choice = this.prompts.choice() ?? this.shopMenu();
+    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode) ?? this.shopMenu();
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };

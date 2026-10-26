@@ -105,13 +105,19 @@ export function reached(destination: Destination, here: Place): boolean {
 function exitArrival(map: RouteMap, cell: Cell, load: MapSource): Place | null {
   const warp = map.warps.find((w) => w.how !== "none" && w.x === cell.x && w.y === cell.y);
   if (warp) return arrivalOf(warp, load);
-  const side: Direction | null =
+  const side = pastEdge(map, cell);
+  return side && acrossConnection(map, { map: map.name, ...cell }, side, load);
+}
+
+/** The edge that a cell just past it crosses, for example (x, -1) the north edge. */
+export function pastEdge(map: Pick<MapCells, "mapWidth" | "mapHeight">, cell: Cell): Direction | null {
+  return (
     cell.y === -1 ? "north"
     : cell.y === map.mapHeight ? "south"
     : cell.x === -1 ? "west"
     : cell.x === map.mapWidth ? "east"
-    : null;
-  return side && acrossConnection(map, { map: map.name, ...cell }, side, load);
+    : null
+  );
 }
 
 function arrivalOf(warp: WarpExit, load: MapSource): Place | null {

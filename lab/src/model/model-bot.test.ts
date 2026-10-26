@@ -258,6 +258,19 @@ describe.skipIf(!ready)("model bot", () => {
     await expect(Harness.open({ parent: { name: "parent.json", record: { ...record, header: { ...record.header, seed: 1 } } } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 
+  test("after an impossible action, the conversation goes on with the reason of the Harness and the exits of the map; after 3 in a row, a new conversation starts", async () => {
+    const harness = await Harness.open();
+    const outside = ["goTo 6 20", "goTo 6 9", "goTo 6 30"].map((action) => reply(action).content);
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => answers(...outside, "?")))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const calls = modelEvents(harness);
+    expect(calls[1].prompt.user).toBe(calls[0].prompt.user);
+    expect(calls[1].prompt.turns).toEqual([{ assistant: outside[0], user: expect.stringContaining('Your action "goTo 6 20" is impossible: (6, 20) is outside PalletTown_PlayersHouse_2F; the cells of PalletTown_PlayersHouse_2F are x from 0 to 11, y from 0 to 8. The player did not move.') }]);
+    expect(calls[1].prompt.turns?.[0].user).toMatch(/^To leave this map, go to one of its exits \(go <target number>\):\n\d+\. stairs at /m);
+    expect(calls[2].prompt.turns?.map((t) => t.user)).toEqual([calls[1].prompt.turns?.[0].user, expect.stringContaining("no map connects to the south edge of PalletTown_PlayersHouse_2F")]);
+    expect(calls[3].prompt.turns).toBeUndefined();
+    expect(calls[3].prompt.user).toContain("goTo(6, 30) ×1: impossible ((6, 30) is outside PalletTown_PlayersHouse_2F");
+  });
+
   test("viewAtlas runs no frames: the code continues the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {
     const harness = await Harness.open();
     const viewAtlas = reply("viewAtlas").content;

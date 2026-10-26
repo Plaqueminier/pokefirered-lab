@@ -1,12 +1,14 @@
-import { type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
+import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
 import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
-import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
+import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
+// After this number of impossible actions in a row, a new conversation starts from a new prompt.
+const MAX_IMPOSSIBLE = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
@@ -23,7 +25,7 @@ function starterRule(starter: Starter): string {
   return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
 }
 
-type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean };
+type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean; impossible: number };
 
 class ModelPlay {
   readonly #system: string;
@@ -54,8 +56,14 @@ class ModelPlay {
       this.stopAtUnreadable();
       await this.summarize();
       if (action && isPlayed(action)) {
+        const conversation = this.#conversation;
         this.#conversation = null;
-        await this.perform(action, asked);
+        const result = await this.perform(action, asked);
+        if (conversation && result?.status === "impossible" && ++conversation.impossible < MAX_IMPOSSIBLE && this.harness.waitingFor().kind === kind) {
+          const call = modelEvents(this.harness.events).at(-1)!;
+          conversation.turns.push({ assistant: call.answer ?? "", user: impossibleMessage(call.decision?.action ?? "", "reason" in result ? result.reason : "", asked) });
+          this.#conversation = conversation;
+        }
       }
     }
   }
@@ -66,7 +74,7 @@ class ModelPlay {
   }
 
   private async answer(observation: Observation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
-    const conversation = this.#conversation ?? { user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress), turns: [], atlasViewed: false };
+    const conversation = this.#conversation ?? { user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress), turns: [], atlasViewed: false, impossible: 0 };
     this.#conversation = conversation;
     const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
     const request = { model: this.settings.id, situation: situation(asked), prompt };
@@ -126,32 +134,25 @@ class ModelPlay {
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }
 
-  private async perform(action: PlayedAction, asked: Asked): Promise<void> {
-    if (action.name !== "go") {
-      await this.harness.perform(action);
-      return;
-    }
+  /** The result of the last Macro-action, or null when go found no cell to walk to. */
+  private async perform(action: PlayedAction, asked: Asked): Promise<ActionResult | null> {
+    if (action.name !== "go") return this.harness.perform(action);
     if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
-    await this.go(asked.view.targets[action.target - 1], asked.overworld);
+    return this.go(asked.view.targets[action.target - 1], asked.overworld);
   }
 
-  private async go(target: Target, overworld: Overworld): Promise<void> {
-    if (target.kind === "map") {
-      await this.harness.goTo(target.cell.x, target.cell.y, target.map);
-      return;
-    }
+  private async go(target: Target, overworld: Overworld): Promise<ActionResult | null> {
+    if (target.kind === "map") return this.harness.goTo(target.cell.x, target.cell.y, target.map);
     const talkTo = target.kind === "person" || target.kind === "sign" ? target : null;
     const here = talkTo && interactCell(talkTo, overworld.grid, overworld.player);
-    if (here) {
-      await this.harness.interact(here.x, here.y);
-      return;
-    }
+    if (here) return this.harness.interact(here.x, here.y);
+    let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
-      const { status } = await this.harness.goTo(cell.x, cell.y);
-      if (status === "impossible") continue;
-      const at = status === "done" && talkTo && interactCell(talkTo, overworld.grid, cell);
-      if (at) await this.harness.interact(at.x, at.y);
-      return;
+      result = await this.harness.goTo(cell.x, cell.y);
+      if (result.status === "impossible") continue;
+      const at = result.status === "done" && talkTo && interactCell(talkTo, overworld.grid, cell);
+      return at ? this.harness.interact(at.x, at.y) : result;
     }
+    return result;
   }
 }

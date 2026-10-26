@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
-import { type AvailableAction, type BattleState, type Bot, botInfos, Harness } from "./harness";
+import { type AvailableAction, type BattleState, type Bot, botInfos, Harness, must } from "./harness";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -412,6 +412,18 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe().waitingFor).toEqual({ kind: "walk" });
   });
 
+  test("goTo a cell outside the map is impossible with no frames, and the reason gives the cells of the map", async () => {
+    const harness = await Harness.open();
+    const range = "the cells of PalletTown_PlayersHouse_2F are x from 0 to 11, y from 0 to 8";
+    expect(await harness.goTo(6, 9)).toEqual({ status: "impossible", reason: `no map connects to the south edge of PalletTown_PlayersHouse_2F; ${range}`, frames: 0 });
+    expect(await harness.goTo(6, 20)).toEqual({ status: "impossible", reason: `(6, 20) is outside PalletTown_PlayersHouse_2F; ${range}`, frames: 0 });
+    expect(await harness.goTo(6, -1, "PalletTown")).toEqual({
+      status: "impossible",
+      reason: "(6, -1) is outside PalletTown, and a cell past an edge crosses it only in a goTo with no map; the cells of PalletTown are x from 0 to 23, y from 0 to 19",
+      frames: 0,
+    });
+  });
+
   test("goTo to an exit of the map takes it: the stairs, the door mat, a door and the north edge, and it is done on the other map", async () => {
     const harness = await Harness.open();
     expect(await harness.goTo(10, 2)).toMatchObject({ status: "done" });
@@ -698,5 +710,18 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     const harness = await toBuyList();
     expect(await harness.buy("POKé BALL", 20)).toEqual({ status: "impossible", reason: "20 POKé BALL cost 4000 and the money is 3080", frames: 0 });
     expect(harness.observe()).toMatchObject({ money: 3080, waitingFor: { kind: "buyList" } });
+  });
+});
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at a Pokémon Center", () => {
+  test("the Nurse asks with a multichoice menu: it is a choice, and choose YES heals the party", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    must(await harness.goTo(7, 4, "ViridianCity_PokemonCenter_1F"));
+    must(await harness.interact(7, 3));
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["Welcome to our POKéMON CENTER! Would you like me to heal your POKéMON back to perfect health?"] });
+    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0 });
+    must(await harness.choose("YES"));
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["Thank you for waiting. We've restored your POKéMON to full health.", "We hope to see you again!"] });
+    expect(harness.waitingFor().kind).toBe("walk");
   });
 });

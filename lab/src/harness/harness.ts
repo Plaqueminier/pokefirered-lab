@@ -21,7 +21,7 @@ import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { MenuDriver, MessageReader, type Outcome, sellableItems, type Texts } from "./menu-driver";
-import { destinationOf, findRoute, type Leg, MAX_ROUTE_MAPS, type MapSource, type Place, type RouteMap, reached } from "./path";
+import { destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
   GameWatch,
@@ -433,6 +433,8 @@ export class Harness {
     return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
       const asked = { map: map ?? this.place().map, x, y };
       const destination = destinationOf(asked, map === undefined, this.routeMaps());
+      const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), map === undefined);
+      if (outside) return { status: "impossible", reason: outside };
       let tries = 0;
       let stuckAt: Place | null = null;
       for (let legs = 0; legs < MAX_LEGS; legs++) {
@@ -758,6 +760,15 @@ export class Harness {
     this.advance(keys);
     return this.#run.game.interruption();
   }
+}
+
+function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean): string | null {
+  if (!map || inside(map, cell)) return null;
+  const range = `the cells of ${map.name} are x from 0 to ${map.mapWidth - 1}, y from 0 to ${map.mapHeight - 1}`;
+  const side = pastEdge(map, cell);
+  if (side && canExit) return `no map connects to the ${side} edge of ${map.name}; ${range}`;
+  if (side) return `(${cell.x}, ${cell.y}) is outside ${map.name}, and a cell past an edge crosses it only in a goTo with no map; ${range}`;
+  return `(${cell.x}, ${cell.y}) is outside ${map.name}; ${range}`;
 }
 
 function withoutPeople(map: RouteMap | null): RouteMap | null {

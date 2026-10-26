@@ -129,6 +129,13 @@ export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): st
   return [...shown, "", chooseAgain(asked)].join("\n");
 }
 
+/** The Harness refused the action, so the game is at the same Decision point: the conversation goes on with the reason. */
+export function impossibleMessage(action: string, reason: string, asked: Asked): string {
+  const exits = asked.kind === "walk" ? asked.view.targets.flatMap((t, i) => (t.kind === "exit" || t.kind === "edge" ? [`${i + 1}. ${t.label}`] : [])) : [];
+  const hint = exits.length > 0 && /^go(To)?\b/.test(action) ? ["To leave this map, go to one of its exits (go <target number>):", ...exits] : [];
+  return [`Your action "${action}" is impossible: ${reason}. The player did not move.`, ...hint, "", chooseAgain(asked)].join("\n");
+}
+
 export function errorMessage(error: string, asked: Asked): string {
   return [`Your answer could not be read: ${error}.`, "", chooseAgain(asked)].join("\n");
 }
