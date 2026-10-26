@@ -1,5 +1,5 @@
 // The menus of the game: the keys that a Macro-action presses in the battle menus, the Bag, the Poké Mart and the party menu.
-import { type BagPlace, BATTLE_POCKETS, POKE_BALLS_POCKET } from "../bag";
+import { type BagPlace, BATTLE_POCKETS, POKE_BALLS_POCKET, sellRefusal } from "../bag";
 import type { BattleMenu } from "../battle";
 import type { Game } from "../game";
 import { type Messages, oneLine } from "../prompts";
@@ -15,6 +15,7 @@ const SHOP_BUY = 0;
 const SHOP_SELL = 1;
 const SHOP_QUIT = 2;
 const MAX_TRADE = 99;
+const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
@@ -64,8 +65,8 @@ type Sale = { place: BagPlace; refusal: null } | { place: null; refusal: string 
 
 function sale(item: string, place: BagPlace | null): Sale {
   if (!place) return { place, refusal: `there is no ${item} in the Bag` };
-  if (place.pocket >= BATTLE_POCKETS) return { place: null, refusal: "the sale of the TM Case and of the Berry Pouch is not covered yet" };
-  return place.price > 0 ? { place, refusal: null } : { place: null, refusal: `the shop does not buy ${item}` };
+  const refusal = sellRefusal(place.pocket, place.price, item);
+  return refusal === null ? { place, refusal } : { place: null, refusal };
 }
 
 export class MessageReader {
@@ -182,7 +183,9 @@ export class MenuDriver {
     const opened = list() ? DONE : this.shopOption(SHOP_BUY, () => list() !== null, "the buy list");
     if (opened.status !== "done") return opened;
     const moved = this.moveMenuCursor(row, () => list()?.row ?? null);
-    return moved.status === "done" ? this.tradeAndReturn(quantity, () => list() !== null) : moved;
+    if (moved.status !== "done") return moved;
+    const traded = this.trade(quantity);
+    return traded.status === "done" ? this.toShopMenu() : traded;
   }
 
   sell(item: string, quantity: number): Outcome {
@@ -196,12 +199,29 @@ export class MenuDriver {
     const opened = this.shopOption(SHOP_SELL, () => game.bagMenu()?.screen === "list", "the Bag");
     if (opened.status !== "done") return opened;
     const row = this.toBagItem(place);
-    return row.status === "done" ? this.tradeAndReturn(quantity, () => game.bagMenu()?.screen === "list") : row;
+    if (row.status !== "done") return row;
+    const traded = this.trade(quantity);
+    return traded.status === "done" ? this.toShopMenu() : traded;
   }
 
-  leave(): Outcome {
+  leave(): Outcome & Texts {
     const menu = this.toShopMenu();
-    return menu.status === "done" ? this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop") : menu;
+    if (menu.status !== "done") return withText(menu);
+    const left = this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop");
+    return left.status === "done" ? this.readText() : withText(left);
+  }
+
+  readText(): Outcome & Texts {
+    const reader = new MessageReader(this.game);
+    for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
+      const outcome = this.untilDecision(() => reader.update());
+      if (outcome.status !== "done" || this.game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
+      if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
+      const battle = this.tap(Keys.A);
+      if (battle) return { status: "interrupted", reason: battle, text: reader.text };
+      reader.pressed();
+    }
+    return { status: "impossible", reason: `the text still waits for A after ${MAX_TEXT_PRESSES} presses`, text: reader.text };
   }
 
   switch(slot: number): Outcome & Texts {
@@ -300,8 +320,12 @@ export class MenuDriver {
       const effect = this.menuInput(Keys.A, () => game.waitingTexts().length > 0);
       if (effect.status !== "done") return effect;
     }
-    const text = game.waitingTexts();
-    // ESCAPE ROPE closes the Bag and shows its text on the field, then warps to another map.
+    return this.endWalkUse(item, id, before, game.waitingTexts());
+  }
+
+  // The medicines and the REPEL items go back to the Bag and then to the field. ESCAPE ROPE closes the Bag and shows its text on the field, then warps to another map.
+  private endWalkUse(item: string, id: number, before: number, text: string[]): Outcome & Partial<Texts> {
+    const { game } = this;
     if (game.mode() === "overworld") {
       const escaped = this.menuInput(Keys.A, () => game.waitingFor().kind !== "busy");
       return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
@@ -338,13 +362,6 @@ export class MenuDriver {
   private toShopMenu(): Outcome {
     const { game } = this;
     return game.shopMenu() ? DONE : this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
-  }
-
-  private tradeAndReturn(quantity: number, atList: () => boolean): Outcome {
-    const traded = this.trade(quantity);
-    if (!atList()) return traded;
-    const back = this.toShopMenu();
-    return back.status === "done" ? traded : back;
   }
 
   private toBagItem(place: BagPlace): Outcome {

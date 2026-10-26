@@ -1,4 +1,4 @@
-import type { Memory } from "./memory";
+import type { Memory, Ref } from "./memory";
 import { activeTask, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -9,6 +9,8 @@ const BATTLE_USAGE: Record<number, ItemUse> = { 1: "pokemon", 2: "alone" };
 const UNSUPPORTED_BATTLE_FUNCS = new Set(["BattleUseFunc_Ether", "ItemUseInBattle_EnigmaBerry"]);
 const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon", FieldUseFunc_Repel: "alone", ItemUseOutOfBattle_EscapeRope: "alone" };
 const ITEM_ANIM_KEY_STATE = 12;
+// The pocket of gItems counts from 1 (POCKET_ITEMS); the Bag counts from 0.
+const FIRST_ITEM_POCKET = 1;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
 
@@ -36,7 +38,8 @@ export function findInBag(mem: Memory, name: string, decode: Decode): BagPlace |
     const row = slots.findIndex(({ item }) => itemName(mem, item, decode) === name);
     if (row < 0) continue;
     const { item } = slots[row];
-    return { item, pocket, row, price: mem.global("gItems").at(item).field("price").int(), ...itemUses(mem, item) };
+    const data = mem.global("gItems").at(item);
+    return { item, pocket, row, price: data.field("price").int(), ...itemUses(mem, data) };
   }
   return null;
 }
@@ -45,14 +48,12 @@ export function bagQuantity(mem: Memory, item: number): number {
   return pocketSlots(mem).flat().find((slot) => slot.item === item)?.quantity ?? 0;
 }
 
-export function itemUses(mem: Memory, item: number): Pick<BagItem, "battle" | "walk"> {
-  const data = mem.global("gItems").at(item);
-  if (data.field("pocket").int() - 1 >= BATTLE_POCKETS) return { battle: null, walk: null };
-  return { battle: itemBattleUse(mem, item), walk: WALK_USE_FUNCS[functionName(mem.symbols, data.field("fieldUseFunc").pointer()) ?? ""] ?? null };
+export function itemUses(mem: Memory, data: Ref): Pick<BagItem, "battle" | "walk"> {
+  if (data.field("pocket").int() - FIRST_ITEM_POCKET >= BATTLE_POCKETS) return { battle: null, walk: null };
+  return { battle: itemBattleUse(mem, data), walk: WALK_USE_FUNCS[functionName(mem.symbols, data.field("fieldUseFunc").pointer()) ?? ""] ?? null };
 }
 
-function itemBattleUse(mem: Memory, item: number): ItemUse | null {
-  const data = mem.global("gItems").at(item);
+function itemBattleUse(mem: Memory, data: Ref): ItemUse | null {
   const use = BATTLE_USAGE[data.field("battleUsage").int()] ?? null;
   return use && !UNSUPPORTED_BATTLE_FUNCS.has(functionName(mem.symbols, data.field("battleUseFunc").pointer()) ?? "") ? use : null;
 }
@@ -65,8 +66,14 @@ export function walkItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap((pocket) => pocket.items.filter((item) => item.walk));
 }
 
+/** Why the Poké Mart does not buy an item of this pocket (the index of the Bag) and this price, or null when it buys it. */
+export function sellRefusal(pocket: number, price: number, item: string): string | null {
+  if (pocket >= BATTLE_POCKETS) return "the sale of the TM Case and of the Berry Pouch is not covered yet";
+  return price > 0 ? null : `the shop does not buy ${item}`;
+}
+
 export function sellableItems(bag: BagPocket[]): BagItem[] {
-  return bag.flatMap(({ pocket, items }) => (POCKET_NAMES.indexOf(pocket) < BATTLE_POCKETS ? items.filter((item) => item.price > 0) : []));
+  return bag.flatMap(({ pocket, items }) => items.filter((item) => sellRefusal(POCKET_NAMES.indexOf(pocket), item.price, item.name) === null));
 }
 
 export function bagMenu(mem: Memory): BagMenu | null {
@@ -108,5 +115,5 @@ function itemName(mem: Memory, item: number, decode: Decode): string {
 function itemInfo(mem: Memory, item: number, decode: Decode): Omit<BagItem, "quantity"> {
   const data = mem.global("gItems").at(item);
   const description = oneLine(decode(mem.bus.read(data.field("description").pointer(), MAX_STRING)));
-  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, item) };
+  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, data) };
 }

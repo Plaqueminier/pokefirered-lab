@@ -98,7 +98,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
   const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
-    if (waitingFor.kind === "shopMenu" || waitingFor.kind === "buyList") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
+    if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
   const { battle } = observation;
@@ -206,7 +206,9 @@ function plain(text: string): string {
 
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/);
-  return call ? `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(" ")}`.trim() : action;
+  if (!call) return action;
+  const separator = call[1].toLowerCase() === "use" ? " on " : " ";
+  return `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(separator)}`.trim();
 }
 
 function parse(written: string): ParsedAction | null {

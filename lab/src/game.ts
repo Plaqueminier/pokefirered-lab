@@ -101,8 +101,7 @@ export type WaitingFor =
   | { kind: "battleAction" }
   | { kind: "battleMove" }
   | { kind: "partyPick" }
-  | { kind: "shopMenu"; items: ShopItem[] }
-  | { kind: "buyList"; items: ShopItem[] }
+  | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
   | { kind: "busy" };
 
 export function isDecisionPoint({ kind }: WaitingFor): boolean {
@@ -280,9 +279,9 @@ export class Game {
     if (mode === "battle") return this.battleWaitingFor();
     if (mode !== "overworld") return { kind: "busy" };
     const list = this.buyList();
-    if (list) return { kind: "buyList", items: list.items };
+    if (list) return { kind: "shopMenu", items: list.items, screen: "buyList" };
     const shop = this.shopMenu();
-    if (shop) return { kind: "shopMenu", items: shop.items };
+    if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
     const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode);
     if (choice) return { kind: "choice", ...choice };
     if (this.textWaits()) return { kind: "text" };
