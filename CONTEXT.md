@@ -72,6 +72,10 @@ _Avoid_: mode (used for overworld or battle), cheat mode
 What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
+**Area**:
+A town, a route or another place of the Town Map, with all its maps: the game gives each map one map section. For example, Viridian City has its streets, its Poké Mart and its Pokémon Center.
+_Avoid_: zone, map section, region (Kanto is the region)
+
 **Raw input**:
 A button press that a **Bot** sends directly, when no **Macro-action** covers the case. The **Harness** counts each one, and then runs the game to the next **Decision point**.
 _Avoid_: key press

@@ -1,6 +1,7 @@
 import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
 import { element } from "./dom";
+import { runKey } from "./runs";
 
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
@@ -103,7 +104,7 @@ export class ModelPanel {
   }
 
   onStatus(shown: ShownRun): void {
-    const run = shown.kind === "bot" ? `bot ${shown.run.id}` : `viewer ${shown.replay?.name ?? ""}`;
+    const run = runKey(shown);
     const started = callsStarted(shown);
     if (run === this.#run && started === this.#callsStarted) return;
     if (run !== this.#run) this.#selected = null;

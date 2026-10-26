@@ -1,8 +1,8 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
-import type { Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
+import type { Areas, Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { Sight } from "./harness/atlas";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
-import type { ModelOptions, ModelSettings, RunEvent } from "./harness/record";
+import type { Continuation, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -35,6 +35,8 @@ export const STARTERS = ["free", "BULBASAUR", "CHARMANDER", "SQUIRTLE"] as const
 
 export const DEFAULT_STARTER: (typeof STARTERS)[number] = "free";
 
+export const GBA_FPS = 16777216 / 280896; // 59.7275
+
 /** The Viewer shows the screen and the state of a Run at most at these rates. */
 export const SCREEN_INTERVAL_MS = 1000 / 60;
 export const STATE_INTERVAL_MS = 100;
@@ -52,7 +54,7 @@ export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal
 /** The Model calls of a replay: `calls` and `cost` up to the frame of the replay, the totals for the whole record. */
 export type ReplayModel = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { calls: number; cost: number; totalCalls: number; totalCost: number };
 
-export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason; model: ReplayModel | null };
+export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason; model: ReplayModel | null; continued: Continuation | null };
 
 export type RunSummary = {
   id: number;
@@ -64,6 +66,7 @@ export type RunSummary = {
   error: string | null;
   /** The Run record that the Run continues. */
   parent: string | null;
+  continued: Continuation | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
   model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { cost: number; callsStarted: number }) | null;
 };
@@ -87,6 +90,7 @@ export type ServerMessage =
   | { type: "notice"; text: string }
   | { type: "records"; names: string[] }
   | { type: "bots"; bots: BotInfo[] }
+  | { type: "areas"; areas: Areas }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   | { type: "events"; events: RunEvent[] };
 

@@ -181,6 +181,45 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
+export type MapArea = { area: string; place: string | null };
+
+export type Areas = Readonly<Record<string, MapArea>>;
+
+const OUTSIDE_MAP_TYPES = new Set(["MAP_TYPE_TOWN", "MAP_TYPE_CITY", "MAP_TYPE_ROUTE", "MAP_TYPE_OCEAN_ROUTE"]);
+
+export async function readAreas(): Promise<Areas> {
+  const { map_sections } = (await Bun.file(join(REPO_DIR, "src/data/region_map/region_map_sections.json")).json()) as { map_sections: { id: string; name?: string }[] };
+  const names = new Map(map_sections.flatMap(({ id, name }) => (name ? [[id, normalCase(name)]] : [])));
+  const paths = await Array.fromAsync(new Bun.Glob("data/maps/*/map.json").scan(REPO_DIR));
+  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<{ name: string; region_map_section: string; map_type: string }>));
+  return Object.fromEntries(
+    maps.flatMap((map) => {
+      const area = names.get(map.region_map_section);
+      return area ? [[map.name, { area, place: OUTSIDE_MAP_TYPES.has(map.map_type) ? null : placeName(map.name, area) }]] : [];
+    }),
+  );
+}
+
+const PLACE_WORDS: Record<string, string> = { PlayersHouse: "Player's House", RivalsHouse: "Rival's House", ProfessorOaksLab: "Prof. Oak's Lab", PokemonCenter: "Pokémon Center", Mart: "Poké Mart" };
+
+// The Area name can follow a prefix (`FiveIsland_LostCave_Room1`), and the map names have no accents ("Pokemon").
+function placeName(map: string, area: string): string {
+  const parts = map.split("_");
+  const key = (text: string) => text.normalize("NFD").replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  let after = 0;
+  for (let from = 0; from < parts.length && after === 0; from++) {
+    for (let to = from + 1; to <= parts.length; to++) if (key(parts.slice(from, to).join("")) === key(area)) after = to;
+  }
+  return parts
+    .slice(after)
+    .map((part) => PLACE_WORDS[part] ?? part.replace(/([a-z])([A-Z0-9])/g, "$1 $2").replace(/\bPokemon\b/g, "Pokémon"))
+    .join(" ");
+}
+
+function normalCase(name: string): string {
+  return name.toLowerCase().replace(/(^|[\s.])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
+}
+
 export class Game {
   private readonly decode: Decode;
   private readonly prompts: Prompts;

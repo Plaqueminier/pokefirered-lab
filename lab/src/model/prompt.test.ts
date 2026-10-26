@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
-import { askedOf, readAction } from "./decision";
+import { askedOf, readAction, REFLECTION_EVERY } from "./decision";
 import { importantEvents } from "./important-events";
-import { MAX_TRIES, missionLine, nextMilestone, REFLECTION_EVERY, reflectionTurn, tries, userPrompt } from "./prompt";
+import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 

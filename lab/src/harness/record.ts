@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import type { REASONING, STARTERS } from "../protocol";
 import { Run, type RunOrigin } from "../run";
-import type { ActionEntry, Bot, KnowledgeLevel, RunResult } from "./harness";
+import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
 export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
@@ -232,6 +232,23 @@ export async function replay(record: RunRecord): Promise<Replay> {
   } finally {
     run.core.close();
   }
+}
+
+export async function readRunRecord(name: string): Promise<RunRecord | null> {
+  return readRecord(await Bun.file(join(RUNS_DIR, name)).json().catch(() => null));
+}
+
+export async function parentRecord(name: string): Promise<ParentRecord> {
+  const record = await readRunRecord(name);
+  if (!record) throw new Error(`${name} is not a Run record`);
+  return { name, record };
+}
+
+/** The events of a Continued Run start with the `events` events of its parent; `frame` is its first frame. */
+export type Continuation = { frame: number; events: number };
+
+export function continuationOf(parent: RunRecord): Continuation {
+  return { frame: new RecordPlayer(parent).frames, events: parent.events.length };
 }
 
 export async function writeRecord(record: RunRecord): Promise<string> {

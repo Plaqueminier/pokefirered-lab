@@ -21,10 +21,14 @@ export function memoryTree(events: readonly RunEvent[]): MemoryTree {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
     if (event.type !== "model" || !event.decision) continue;
     const { note } = event.decision;
-    // The answer after viewAtlas or zoom can give the same note again.
-    if (note !== "" && note !== tree.notes.at(-1)) tree.notes.push(note);
+    if (isNewNote(note, tree.notes.at(-1))) tree.notes.push(note);
   }
   return tree;
+}
+
+// The answer after viewAtlas or zoom can give the same note again.
+export function isNewNote(note: string, last: string | undefined): boolean {
+  return note !== "" && note !== last;
 }
 
 export function nodeName({ from, to }: NodeRange): string {

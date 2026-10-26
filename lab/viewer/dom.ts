@@ -25,3 +25,13 @@ export function rows(cells: string[][]): HTMLElement {
 export function line(text: string): HTMLElement {
   return element("div", text, "muted");
 }
+
+export function showTooltip(tooltip: HTMLElement, text: string | null, clientX: number, clientY: number): void {
+  tooltip.style.display = text ? "block" : "none";
+  if (!text) return;
+  tooltip.textContent = text;
+  const width = tooltip.offsetWidth;
+  const left = clientX + 14 + width > window.innerWidth - 8 ? clientX - 14 - width : clientX + 14;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.min(clientY + 14, window.innerHeight - tooltip.offsetHeight - 8)}px`;
+}

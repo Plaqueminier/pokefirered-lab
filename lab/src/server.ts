@@ -3,15 +3,16 @@ import { mkdir, readdir, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
-import { type Camera, safely } from "./game";
+import { type Camera, readAreas, safely } from "./game";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
-import { type ModelOptions, modelTotals, originDifferences, readRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { type Continuation, continuationOf, type ModelOptions, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
   BinaryKind,
   type ClientMessage,
   DEFAULT_STARTER,
+  GBA_FPS,
   type ReplayModel,
   type ReplayStatus,
   type RunSummary,
@@ -24,12 +25,11 @@ import {
 import { ROM_NAME, Run, type RunOrigin, type RunState, SAVES_DIR, START_SAVE } from "./run";
 
 const PORT = Number(process.env.LAB_PORT ?? 8766);
-const GBA_FPS = 16777216 / 280896; // 59.7275
 const AUDIO_RATE = 48000;
 // The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
 const AUDIO_TARGET_MS = 60;
 
-type Replay = { name: string; player: RecordPlayer };
+type Replay = { name: string; player: RecordPlayer; continued: Continuation | null };
 
 class LivePlay {
   keys = 0;
@@ -63,12 +63,12 @@ class LivePlay {
     this.resyncClock();
   }
 
-  async startReplay(name: string, record: RunRecord): Promise<(keyof RunOrigin)[]> {
+  async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
     await this.reset();
     // No await from here on: a tick in between would run frames that the record does not have.
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) return differences;
-    this.activeReplay = { name, player: new RecordPlayer(record) };
+    this.activeReplay = { name, player: new RecordPlayer(record), continued };
     this.speed = 1;
     this.paused = false;
     this.syncAudio();
@@ -144,7 +144,7 @@ class LivePlay {
   }
 }
 
-const run = await Run.open();
+const [run, areas] = await Promise.all([Run.open(), readAreas()]);
 const live = new LivePlay(run);
 // The Run of the Viewer is one of the emulators.
 const pool = new RunPool(MAX_RUNS - 1);
@@ -259,8 +259,8 @@ async function recordNames(): Promise<string[]> {
   return names.filter((name) => name.endsWith(".json")).sort().reverse();
 }
 
-function replayStatus({ name, player }: Replay): ReplayStatus {
-  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended, model: replayModel(player) };
+function replayStatus({ name, player, continued }: Replay): ReplayStatus {
+  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended, model: replayModel(player), continued };
 }
 
 function replayModel(player: RecordPlayer): ReplayModel | null {
@@ -275,21 +275,26 @@ function replayModel(player: RecordPlayer): ReplayModel | null {
 
 async function replayFile(name: string): Promise<string> {
   if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/.`;
-  const record = readRecord(await Bun.file(join(RUNS_DIR, name)).json().catch(() => null));
+  const record = await readRunRecord(name);
   if (!record) return `${name} is not a Run record.`;
-  const differences = await live.startReplay(name, record);
+  const { parent } = record.header;
+  const parentRecord = parent === undefined ? null : await readRunRecord(parent);
+  const continued = parentRecord && continuationOf(parentRecord);
+  const differences = await live.startReplay(name, record, continued);
   show(viewerRun);
   if (differences.length > 0) {
     return `${name} does not replay here (different ${differences.join(", ")}). The Run starts again from the Starting save, and the keyboard plays it.`;
   }
-  return `Replay of ${name}.`;
+  const noParent = parent !== undefined && continued === null ? ` Its parent ${parent} does not read: the panel Stats counts the cost of the parent in the cost limit.` : "";
+  return `Replay of ${name}.${noParent}`;
 }
 
-function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: PoolRun): RunSummary {
+function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopAsked }: PoolRun): RunSummary {
   return {
     id,
     bot: spec.bot,
     parent: spec.parent ?? null,
+    continued,
     playing: end === null,
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
@@ -311,6 +316,8 @@ function show(next: RunSource): void {
 async function startBot(name: string, given: ModelOptions, parent?: string): Promise<string> {
   if (!(await botNames()).includes(name)) return `No Bot ${name} in lab/bots/.`;
   if (parent !== undefined && !(await recordNames()).includes(parent)) return `No Run record ${parent} in lab/runs/.`;
+  const parentRecord = parent === undefined ? null : await readRunRecord(parent);
+  if (parent !== undefined && !parentRecord) return `${parent} is not a Run record.`;
   if (pool.full) return `No new Run: ${pool.limit} Runs of Bots play now (${MAX_RUNS} emulators at most, with the Viewer Run).`;
   let bot: Bot;
   try {
@@ -319,7 +326,7 @@ async function startBot(name: string, given: ModelOptions, parent?: string): Pro
     return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
-  const started = pool.start({ bot: name, ...(model ? { model } : {}), ...(parent === undefined ? {} : { parent }) });
+  const started = pool.start({ bot: name, ...(model ? { model } : {}), ...(parent === undefined ? {} : { parent }) }, parentRecord && continuationOf(parentRecord));
   show(botRun(started));
   void started.done.then((end) => onBotEnd(started, end));
   const from = parent === undefined ? "" : ` from the end of ${parent}`;
@@ -509,6 +516,7 @@ Bun.serve({
       clients.add(ws);
       void sendStatus(ws);
       send({ type: "maps", names: run.game.allMapNames }, ws);
+      send({ type: "areas", areas }, ws);
       void recordNames().then((names) => send({ type: "records", names }, ws));
       void botInfos().then((bots) => send({ type: "bots", bots }, ws));
       sendEvents(ws);

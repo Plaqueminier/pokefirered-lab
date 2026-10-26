@@ -3,6 +3,10 @@ import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, 
 const VIEWER_RUN = "";
 const FROM_START = "";
 
+export function runKey(shown: ShownRun): string {
+  return shown.kind === "bot" ? `bot ${shown.run.id}` : `viewer ${shown.replay?.name ?? ""}`;
+}
+
 export function dollars(cost: number): string {
   return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
 }

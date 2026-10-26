@@ -3,6 +3,7 @@ import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { DocTab } from "./doc";
+import { showTooltip } from "./dom";
 import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
 import { ModelPanel } from "./model-panel";
@@ -83,7 +84,7 @@ const modelPanel = new ModelPanel({
   answer: $("model-answer"),
   blocks: $("model-blocks"),
 });
-const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats") });
+const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip });
 const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const docTab = new DocTab(
   {
@@ -145,6 +146,7 @@ function onMessage(message: ServerMessage): void {
         (message.hasStartSave ? "" : " · no Starting save yet");
       replayPanel.onStatus(message.frame, message.shown);
       modelPanel.onStatus(message.shown);
+      statsPanel.onStatus(message.frame, message.shown);
       runsPanel.onStatus(message.runs, message.shown);
       break;
     }
@@ -175,6 +177,9 @@ function onMessage(message: ServerMessage): void {
       break;
     case "maps":
       setMapNames(message.names);
+      break;
+    case "areas":
+      statsPanel.onAreas(message.areas);
       break;
     case "preview":
       showPreview(message.grid, message.actors);
@@ -241,24 +246,14 @@ function drawOverlay(): void {
   draw(overlayCtx, grid, actors, { x: camera.x * SCALE, y: camera.y * SCALE, cell: 16 * SCALE }, "overlay");
 }
 
-function showTooltip(text: string | null, clientX: number, clientY: number): void {
-  tooltip.style.display = text ? "block" : "none";
-  if (!text) return;
-  tooltip.textContent = text;
-  const width = tooltip.offsetWidth;
-  const left = clientX + 14 + width > window.innerWidth - 8 ? clientX - 14 - width : clientX + 14;
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${Math.min(clientY + 14, window.innerHeight - tooltip.offsetHeight - 8)}px`;
-}
-
 $("screen").addEventListener("mousemove", (event) => {
-  if (!overlayOn || !grid || !camera) return showTooltip(null, 0, 0);
+  if (!overlayOn || !grid || !camera) return showTooltip(tooltip, null, 0, 0);
   const rect = overlayCanvas.getBoundingClientRect();
   const sx = ((event.clientX - rect.left) / rect.width) * 240;
   const sy = ((event.clientY - rect.top) / rect.height) * 160;
-  showTooltip(describe(grid, actors, Math.floor((sx - camera.x) / 16), Math.floor((sy - camera.y) / 16)), event.clientX, event.clientY);
+  showTooltip(tooltip, describe(grid, actors, Math.floor((sx - camera.x) / 16), Math.floor((sy - camera.y) / 16)), event.clientX, event.clientY);
 });
-$("screen").addEventListener("mouseleave", () => showTooltip(null, 0, 0));
+$("screen").addEventListener("mouseleave", () => showTooltip(tooltip, null, 0, 0));
 
 // ---- Whole-map view: wheel to zoom, drag to move, double-click to follow the player.
 // A click on a warp or on a neighbor map opens that map (read from ROM); the player does not move.
@@ -400,7 +395,7 @@ mapCanvas.addEventListener("pointermove", (event) => {
       mapView.y = drag.viewY + dy;
       drawMap();
     }
-    return showTooltip(null, 0, 0);
+    return showTooltip(tooltip, null, 0, 0);
   }
   const { grid: g, actors: a } = shown();
   if (!g) return;
@@ -408,7 +403,7 @@ mapCanvas.addEventListener("pointermove", (event) => {
   const link = linkAt(g, x, y);
   mapCanvas.style.cursor = link ? "pointer" : "";
   const text = describe(g, a, x, y) ?? (link ? `edge of the map` : null);
-  showTooltip(text && link ? `${text}\nclick: see ${link.name}` : text, event.clientX, event.clientY);
+  showTooltip(tooltip, text && link ? `${text}\nclick: see ${link.name}` : text, event.clientX, event.clientY);
 });
 mapCanvas.addEventListener("pointerup", (event) => {
   const clicked = drag && !drag.moved;
@@ -419,7 +414,7 @@ mapCanvas.addEventListener("pointerup", (event) => {
   const link = linkAt(g, x, y);
   if (link) viewMap(link.group, link.num);
 });
-mapCanvas.addEventListener("pointerleave", () => showTooltip(null, 0, 0));
+mapCanvas.addEventListener("pointerleave", () => showTooltip(tooltip, null, 0, 0));
 mapCanvas.addEventListener("dblclick", () => (preview ? backToPlayer() : setFollow(true)));
 $("follow").addEventListener("click", () => (preview ? backToPlayer() : setFollow(!follow)));
 $("map-back").addEventListener("click", () => {
@@ -502,7 +497,7 @@ function setOverlay(on: boolean): void {
   $("overlay-toggle").classList.toggle("on", on);
   send({ type: "overlay", enabled: on });
   drawOverlay();
-  if (!on) showTooltip(null, 0, 0);
+  if (!on) showTooltip(tooltip, null, 0, 0);
 }
 
 /** Browsers allow sound only after a click or a key press. */

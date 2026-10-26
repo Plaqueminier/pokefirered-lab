@@ -2,7 +2,7 @@
 import type { RunState } from "../run";
 import type { Sight } from "./atlas";
 import type { HarnessOptions } from "./harness";
-import type { ModelSettings, RunEvent, RunRecord } from "./record";
+import type { Continuation, ModelSettings, RunEvent, RunRecord } from "./record";
 
 // A choice, not a limit of the machine: it plays about 12 Runs at full speed.
 export const MAX_RUNS = 4;
@@ -35,6 +35,7 @@ export class PoolRun {
   constructor(
     readonly id: number,
     readonly spec: RunSpec,
+    readonly continued: Continuation | null = null,
   ) {
     const worker = new Worker(new URL("./worker.ts", import.meta.url).href);
     let end: RunEnd = { record: null, error: "the worker stopped before the end of the Run" };
@@ -106,9 +107,9 @@ export class RunPool {
     return this.runs.filter((run) => run.end === null).length >= this.limit;
   }
 
-  start(spec: RunSpec): PoolRun {
+  start(spec: RunSpec, continued: Continuation | null = null): PoolRun {
     if (this.full) throw new Error(`the pool plays ${this.limit} Runs at most`);
-    const run = new PoolRun(this.runs.length + 1, spec);
+    const run = new PoolRun(this.runs.length + 1, spec, continued);
     this.runs.push(run);
     return run;
   }

@@ -5,7 +5,7 @@ import { type ActionEntry, type BattleState, type NoProgress, type Observation }
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { PartyMon, PartyMove } from "../party";
 import { actionText } from "../protocol";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, sendable } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, targetLines } from "./targets";
@@ -24,7 +24,6 @@ const WAITS: Record<AskedKind, string> = {
   partyPick: "a Pokémon in the party menu of the battle",
   buyList: "the buy list of a Poké Mart",
 };
-export const REFLECTION_EVERY = 30;
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",

@@ -1,9 +1,8 @@
-import { join } from "node:path";
 import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
-import { Harness, loadBot, type ParentRecord } from "./harness";
+import { Harness, loadBot } from "./harness";
 import type { WorkerMessage, WorkerStart } from "./pool";
-import { readRecord, type RunEvent, RUNS_DIR } from "./record";
+import { parentRecord, type RunEvent } from "./record";
 
 declare const self: Worker;
 
@@ -51,12 +50,6 @@ class ViewPoster {
     this.#lastState = now;
     post({ type: "state", ...this.run.readState(), sight: harness.sight() });
   }
-}
-
-async function parentRecord(name: string): Promise<ParentRecord> {
-  const record = readRecord(await Bun.file(join(RUNS_DIR, name)).json());
-  if (!record) throw new Error(`${name} is not a Run record`);
-  return { name, record };
 }
 
 self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => {
