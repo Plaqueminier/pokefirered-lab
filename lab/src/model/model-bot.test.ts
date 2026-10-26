@@ -11,8 +11,8 @@ import type { ModelClient } from "./openrouter";
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
-const AFTER_RIVAL = ["go 1", "go 4"];
-const DECISIONS = ["go 1", "go 2", "go 1", "go 2", "go 2", "go 7", "choose YES", "choose NO", "go 1", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
+const AFTER_RIVAL = ["go A", "go C"];
+const DECISIONS = ["go A", "go B", "go B", "go D", "go A", "go E", "choose YES", "choose NO", "go A", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
 
 function reply(action: string, objective = "Get a Pokémon", note = "") {
   return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
@@ -20,8 +20,8 @@ function reply(action: string, objective = "Get a Pokémon", note = "") {
 
 function target(prompt: Prompt, ...labels: string[]): string {
   for (const label of labels) {
-    const n = prompt.user.match(new RegExp(`^(\\d+)\\. ${label}`, "m"))?.[1];
-    if (n) return `go ${n}`;
+    const letter = prompt.user.match(new RegExp(`^([A-Z]+)\\. ${label}`, "m"))?.[1];
+    if (letter) return `go ${letter}`;
   }
   throw new Error(`no target "${labels.join('" or "')}" in the prompt:\n${prompt.user}`);
 }
@@ -64,7 +64,7 @@ function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
       case "PalletTown":
         return reply(target(prompt, "door at \\(16, 13\\)", "unseen cells east", "unseen cells south"));
       case "PalletTown_ProfessorOaksLab": {
-        const ball = prompt.user.match(/^(\d+)\. ITEM BALL at \(9, 4\)$/m)?.[1];
+        const ball = prompt.user.match(/^([A-Z]+)\. ITEM BALL at \(9, 4\)/m)?.[1];
         if (!ball) return reply(target(prompt, "unseen cells north"));
         if (talks++ >= 3) break;
         return reply(`go ${ball}`);
@@ -163,7 +163,7 @@ describe.skipIf(!ready)("model bot", () => {
       expect(call.answer).toBe(reply(call.decision?.action ?? "").content);
       expect(call.latencyMs).toBeGreaterThanOrEqual(0);
     }
-    expect(seen.slice(0, 4)).toEqual(["thinks", "answer go 1", "goTo", "thinks"]);
+    expect(seen.slice(0, 4)).toEqual(["thinks", "answer go A", "goTo", "thinks"]);
     expect(seen.filter((s) => s === "thinks")).toHaveLength(calls.length);
     expect(harness.actions.filter((e) => e.action.name === "readText").length).toBeGreaterThan(10);
     const titles = calls.flatMap((_, i) => modelPanelView(harness.events, 0, i).call?.blocks.map((b) => b.title) ?? []);
@@ -182,11 +182,11 @@ describe.skipIf(!ready)("model bot", () => {
     expect(prompts[0].system).toContain("heal your Pokémon at a Pokémon Center");
     expect(prompts[0].system).not.toMatch(/goal of this run|rival|Oak/i);
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
-    expect(prompts[1].user).toMatch(/You chose: go 1\n +goTo\(10, 2\): done/);
-    const pallet = first(/^Map PalletTown,/m);
-    expect(pallet).toMatch(/^\d+\. door at \(6, 7\), to PalletTown_PlayersHouse_1F$/m);
-    expect(pallet).toMatch(/^\d+\. unseen cells north of \(\d+, \d+\)$/m);
-    expect(pallet).toMatch(/^- PalletTown_PlayersHouse_1F: /m);
+    expect(prompts[1].user).toMatch(/You chose: go A\n +goTo\(10, 2\): done/);
+    const pallet = first(/^Map PalletTown:/m);
+    expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F, taken$/m);
+    expect(pallet).toMatch(/^[A-Z]\. unseen cells north of \(\d+, \d+\), /m);
+    expect(pallet).toMatch(/^- A \(door\) leads to PalletTown_PlayersHouse_1F\. /m);
     const choice = first(/^The game waits for a choice: YES, NO\.$/m);
     expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
     expect(choice).toContain("Objective: Get a Pokémon");
@@ -201,7 +201,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "2", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "3", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
@@ -265,7 +265,7 @@ describe.skipIf(!ready)("model bot", () => {
     const calls = modelEvents(harness);
     expect(calls[1].prompt.user).toBe(calls[0].prompt.user);
     expect(calls[1].prompt.turns).toEqual([{ assistant: outside[0], user: expect.stringContaining('Your action "goTo 6 20" is impossible: (6, 20) is outside PalletTown_PlayersHouse_2F; the cells of PalletTown_PlayersHouse_2F are x from 0 to 11, y from 0 to 8. The player did not move.') }]);
-    expect(calls[1].prompt.turns?.[0].user).toMatch(/^To leave this map, go to one of its exits \(go <target number>\):\n\d+\. stairs at /m);
+    expect(calls[1].prompt.turns?.[0].user).toMatch(/^To leave this map, go to one of its exits \(go <letter>\):\nA\. stairs at /m);
     expect(calls[2].prompt.turns?.map((t) => t.user)).toEqual([calls[1].prompt.turns?.[0].user, expect.stringContaining("no map connects to the south edge of PalletTown_PlayersHouse_2F")]);
     expect(calls[3].prompt.turns).toBeUndefined();
     expect(calls[3].prompt.user).toContain("goTo(6, 30) ×1: impossible ((6, 30) is outside PalletTown_PlayersHouse_2F");
@@ -299,8 +299,8 @@ describe.skipIf(!ready)("model bot", () => {
     const harness = await Harness.open();
     const { client, prompts } = ballTalker();
     await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
-    const lab = prompts.filter((p) => /^Map PalletTown_ProfessorOaksLab,/m.test(p.user)).map((p) => p.user);
-    expect(lab.filter((user) => /^\d+\. BOB \(your rival\) at \(5, 4\)$/m.test(user)).length).toBeGreaterThan(0);
+    const lab = prompts.filter((p) => /^Map PalletTown_ProfessorOaksLab:/m.test(p.user)).map((p) => p.user);
+    expect(lab.filter((user) => /^[A-Z]+\. BOB \(your rival\) at \(5, 4\), /m.test(user)).length).toBeGreaterThan(0);
     expect(lab.filter((user) => user.includes("BLUE"))).toEqual([]);
     const afterTalks = lab.findLast((user) => /^- interact\(9, 4\)/m.test(user)) ?? "";
     expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×3: ".+"$/)]);
@@ -348,6 +348,33 @@ describe.skipIf(!ready)("model bot", () => {
       { name: "press", button: "B" },
       { name: "press", button: "B" },
       { name: "press", button: "B" },
+    ]);
+  });
+
+  test("go to a person who walks during the walk talks to that person at the new cell", async () => {
+    const harness = await Harness.open();
+    let chosen = null as string | null;
+    const client: ModelClient = async (prompt) => {
+      if (chosen) return reply("?");
+      switch (prompt.user.match(/^Map (\w+)/m)?.[1]) {
+        case "PalletTown_PlayersHouse_2F":
+          return reply(target(prompt, "stairs"));
+        case "PalletTown_PlayersHouse_1F":
+          return reply(target(prompt, "exit mat", "unseen cells south"));
+      }
+      const man = prompt.user.match(/^([A-Z]+)\. (FAT MAN at \(\d+, \d+\))/m);
+      if (!man) return reply(target(prompt, "unseen cells south"));
+      chosen = man[2];
+      return reply(`go ${man[1]}`);
+    };
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    expect(chosen).toBe("FAT MAN at (14, 17)");
+    const talk = harness.actions.findIndex(({ action }) => action.name === "interact");
+    expect(harness.actions.slice(talk - 2, talk + 2)).toMatchObject([
+      { action: { name: "goTo", x: 13, y: 17 }, result: { status: "done" } },
+      { action: { name: "goTo", x: 15, y: 17 }, result: { status: "done" } },
+      { action: { name: "interact", x: 15, y: 18 }, result: { status: "done" } },
+      { action: { name: "readText" }, result: { text: [expect.stringContaining("Technology is incredible!")] } },
     ]);
   });
 });

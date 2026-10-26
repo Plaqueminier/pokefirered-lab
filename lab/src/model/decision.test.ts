@@ -40,7 +40,7 @@ describe("readAction", () => {
   const overworld = {} as Overworld;
   const battle = { player: { partyIndex: 0 } } as BattleState;
   const party: PartyMon[] = [];
-  const edge: Target = { kind: "edge", label: "north edge of the map", side: "north" };
+  const edge: Target = { kind: "edge", name: "north edge", label: "north edge, 3 north: not taken", side: "north", to: null };
   const walk = (targets: number, mons = party): Asked => ({
     kind: "walk",
     party: mons,
@@ -52,8 +52,8 @@ describe("readAction", () => {
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
 
   test("at a walk: a target, a cell of the map or of another map, or a Raw input", () => {
-    expect(readAction("go 2", walk(3))).toEqual({ name: "go", target: 2 });
-    expect(readAction(" GO 3 ", walk(3))).toEqual({ name: "go", target: 3 });
+    expect(readAction("go C", walk(3))).toEqual({ name: "go", target: 2 });
+    expect(readAction(" GO b ", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo 12 -1", walk(3))).toEqual({ name: "goTo", x: 12, y: -1 });
     expect(readAction("goTo 3 4 Route1", walk(3))).toEqual({ name: "goTo", x: 3, y: 4, map: "Route1" });
     expect(readAction("press start", walk(3))).toEqual({ name: "press", button: "Start" });
@@ -98,8 +98,9 @@ describe("readAction", () => {
 
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {
     expect(() => readAction("walk north", walk(3))).toThrow('"walk north" is not an action');
-    expect(() => readAction("go 4", walk(3))).toThrow("there is no target 4: the targets are 1 to 3");
-    expect(() => readAction("go 1", walk(0))).toThrow("there is no target 1: the map has no targets");
+    expect(() => readAction("go D", walk(3))).toThrow("there is no target D: the targets are A to C");
+    expect(() => readAction("go 2", walk(3))).toThrow("there is no target 2: the targets are letters, A to C");
+    expect(() => readAction("go A", walk(0))).toThrow("there is no target A: the map has no targets");
     expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo, viewAtlas, zoom or press');
     expect(() => readAction("fight 4", { kind: "battleAction", party, battle, items: [] })).toThrow('"fight 4" is not an action');
     expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action');

@@ -45,7 +45,6 @@ const MAX_TEXT_PRESSES = 256;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
-const RIVAL_GRAPHICS = "BLUE";
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
@@ -68,8 +67,7 @@ export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enem
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
-/** The game tells the player the name of the rival at the start, so the player Knowledge level shows it. */
-export type Person = Pick<MapActors["people"][number], "x" | "y" | "graphics"> & { rival?: string };
+export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded">;
 
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState });
@@ -381,6 +379,7 @@ export class Harness {
 
   observe(): Observation {
     const game = this.#run.game;
+    this.#atlas.lookAround();
     const base = {
       waitingFor: game.waitingFor(),
       party: game.partyOnScreen(),
@@ -392,7 +391,7 @@ export class Harness {
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
-    const people = actors.people.map(({ x, y, graphics }): Person => (graphics === RIVAL_GRAPHICS ? { x, y, graphics, rival: game.rivalName() } : { x, y, graphics }));
+    const people = actors.people.map(({ localId, x, y, graphics, loaded }): Person => ({ localId, x, y, graphics, loaded }));
     return { ...base, mode: "overworld", map: game.map(), player, grid, people };
   }
 

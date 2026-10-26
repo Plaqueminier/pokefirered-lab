@@ -12,6 +12,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^What the people/, "People"],
   [/^Maps one exit away/, "Atlas"],
   [/^Targets/, "Targets"],
+  [/^Exits of this map/, "Targets"],
   [/^Full Atlas/, "Full Atlas"],
   [/^Node #|^There is no node/, "Zoom"],
   [/^Battle against/, "Battle"],

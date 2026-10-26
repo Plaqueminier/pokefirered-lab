@@ -8,6 +8,7 @@ import { actionText } from "../protocol";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, sendable } from "./decision";
 import { fullAtlas, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
+import { isExit, targetLines } from "./targets";
 
 export const B_PRESSES = 3;
 const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat the Elite Four.";
@@ -52,11 +53,11 @@ At each decision, you get your Milestones, the next Milestone (the next big step
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with only the cells that you saw on the screen, what the people of this map said to you, the maps one exit away, and the numbered targets. An exit shows where it leads only when you went through it. The map legend: @ you, # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you can jump down only in that direction, ? a cell that you did not see, 1-9 and A-Z the targets (A is 10, B is 11…).
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
-- "action": exactly one of the actions of the message, for example "go 2" or "choose NO".
+- "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
 - "note": a new fact to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters, for example "A person blocks the north exit of the town". Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note only when you learn something useful, and never write a note again.
@@ -131,8 +132,8 @@ export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): st
 
 /** The Harness refused the action, so the game is at the same Decision point: the conversation goes on with the reason. */
 export function impossibleMessage(action: string, reason: string, asked: Asked): string {
-  const exits = asked.kind === "walk" ? asked.view.targets.flatMap((t, i) => (t.kind === "exit" || t.kind === "edge" ? [`${i + 1}. ${t.label}`] : [])) : [];
-  const hint = exits.length > 0 && /^go(To)?\b/.test(action) ? ["To leave this map, go to one of its exits (go <target number>):", ...exits] : [];
+  const exits = asked.kind === "walk" ? targetLines(asked.view.targets, isExit) : [];
+  const hint = exits.length > 0 && /^go(To)?\b/.test(action) ? ["To leave this map, go to one of its exits (go <letter>):", ...exits] : [];
   return [`Your action "${action}" is impossible: ${reason}. The player did not move.`, ...hint, "", chooseAgain(asked)].join("\n");
 }
 
@@ -172,11 +173,11 @@ export function situation(asked: Asked): string {
 // The last Model calls, each with what the program played and the game did until the next one.
 function pastCalls(events: readonly RunEvent[]): string[] {
   const calls = callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: turn.events }] : []));
-  return calls.slice(-MAX_PAST_CALLS).map(({ call, events: after }, i) => {
+  return calls.slice(-MAX_PAST_CALLS).map(({ call, events: after }) => {
     const lines = after.flatMap(eventLines);
     const answer = call.decision ? `You chose: ${call.decision.action}` : `Your answer could not be read: ${call.error}`;
     const shown = lines.length > MAX_CALL_LINES ? [`… ${lines.length - MAX_CALL_LINES + 1} lines before`, ...lines.slice(-(MAX_CALL_LINES - 1))] : lines;
-    return [`${i + 1}. At ${call.situation}. ${answer}`, ...shown.map((line) => `   ${line}`)].join("\n");
+    return [`- At ${call.situation}. ${answer}`, ...shown.map((line) => `  ${line}`)].join("\n");
   });
 }
 
@@ -292,8 +293,8 @@ function actionLines(asked: Asked): string[] {
     case "walk": {
       const { grid } = asked.overworld;
       return [
-        ...(asked.view.targets.length === 0 ? [] : ["- go <target number>: walk to the target. At an exit, take it. At a person or a sign, walk next to it, then talk to it or read it."]),
-        `- goTo <x> <y>: walk to a cell of this map. A cell just past an edge (x -1 or ${grid.mapWidth}, y -1 or ${grid.mapHeight}) crosses that edge.`,
+        ...(asked.view.targets.length === 0 ? [] : ["- go <letter>: walk to the target, for example go B. At an exit, take it. At a person or a sign, walk next to it, then talk to it or read it."]),
+        `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
         ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle. ${POKEMON}`] : []),

@@ -127,7 +127,7 @@ describe("the Bag", () => {
 
   test("on a walk, the use line lists only the items that work outside a battle, and the model uses them on a Pokémon of the party", () => {
     const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-    const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], signs: [], people: [], entry: null };
+    const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people: [], entry: null };
     const observation = {
       mode: "overworld",
       waitingFor: { kind: "walk" },
@@ -140,7 +140,7 @@ describe("the Bag", () => {
       milestones: [],
       map: { group: 0, num: 0, name: "Route1" },
       player: { x: 1, y: 1, facing: "north" },
-      grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, signs: [] },
+      grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
       people: [],
       atlas: { maps: [map] },
     } as unknown as Observation;

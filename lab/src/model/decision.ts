@@ -5,7 +5,7 @@ import { type PartyMon, sendableSlots } from "../party";
 import { Keys } from "../protocol";
 import type { ShopItem } from "../shop";
 import { atlasExtract, type AtlasView } from "./extract";
-import type { Overworld } from "./targets";
+import { type Overworld, targetIndex, targetLetter } from "./targets";
 
 // The text that the model writes returns in each prompt: a cap keeps the prompt small.
 export const MAX_SENTENCE = 200;
@@ -17,7 +17,7 @@ export const DECISION_SCHEMA = {
   type: "object",
   properties: {
     reason: { type: "string", description: "Why you choose this action, in one or two short sentences." },
-    action: { type: "string", description: "Exactly one of the actions of the message, for example \"go 2\"." },
+    action: { type: "string", description: "Exactly one of the actions of the message, for example \"go B\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
     note: { type: "string", description: `A new fact to keep in your Memory tree, in one line of ${MAX_SENTENCE} characters at most, or an empty string. Nobody changes it later.` },
@@ -133,6 +133,7 @@ export function readDecision(content: string): Decision {
 
 /** An action as the model writes it: the Pokémon, the item and the option are still texts. */
 type Written =
+  | { name: "go"; target: string }
   | { name: "switch" | "send" | "swap"; pokemon: string }
   | { name: "use"; item: string; on?: string }
   | { name: "buy" | "sell"; item: string; quantity: number };
@@ -146,10 +147,10 @@ export function readAction(text: string, asked: Asked): ModelAction {
   switch (action.name) {
     case "go": {
       const targets = asked.kind === "walk" ? asked.view.targets.length : 0;
-      if (action.target < 1 || action.target > targets) {
-        throw new Error(`there is no target ${action.target}: ${targets === 0 ? "the map has no targets" : `the targets are 1 to ${targets}`}`);
-      }
-      return action;
+      const index = targetIndex(action.target);
+      if (index >= 0 && index < targets) return { name: "go", target: index };
+      const known = targets === 0 ? "the map has no targets" : `the targets are ${index < 0 ? "letters, " : ""}A to ${targetLetter(targets - 1)}`;
+      throw new Error(`there is no target ${quoted(action.target)}: ${known}`);
     }
     case "switch":
     case "send":
@@ -206,7 +207,7 @@ function parse(action: string): ParsedAction | null {
   if ((m = action.match(/^switch\s+(.+)$/i))) return { name: "switch", pokemon: m[1] };
   if ((m = action.match(/^send\s+(.+)$/i))) return { name: "send", pokemon: m[1] };
   if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };
-  if ((m = action.match(/^go\s+(\d+)$/i))) return { name: "go", target: Number(m[1]) };
+  if ((m = action.match(/^go\s+(\S+)$/i))) return { name: "go", target: m[1] };
   if ((m = action.match(/^goto\s+(-?\d+)\s+(-?\d+)(?:\s+(\S+))?$/i))) return { name: "goTo", x: Number(m[1]), y: Number(m[2]), ...(m[3] ? { map: m[3] } : {}) };
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
   if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };

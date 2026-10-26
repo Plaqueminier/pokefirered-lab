@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, type Game, type MapGrid, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type Cell, cellKey, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -7,6 +7,7 @@ const SCREEN_LEFT = 7;
 const SCREEN_RIGHT = 7;
 const SCREEN_UP = 5;
 const SCREEN_DOWN = 4;
+const RIVAL_GRAPHICS = "BLUE";
 
 export type AtlasWarp = { x: number; y: number; behavior: string; to: string | null };
 
@@ -14,7 +15,8 @@ export type AtlasEdge = { side: Direction; to: string | null };
 
 export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null };
 
-export type AtlasPerson = { localId: number; graphics: string; x: number; y: number; texts: string[] };
+/** x and y: where the player last saw the person on the screen, not where the person is now. */
+export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
 
 export type AtlasMap = {
   name: string;
@@ -24,6 +26,8 @@ export type AtlasMap = {
   cells: string;
   warps: AtlasWarp[];
   edges: AtlasEdge[];
+  /** An edge of the map goes to another map, seen or not: a building has none. */
+  hasEdges: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];
   entry: Cell | null;
@@ -112,6 +116,12 @@ export class AtlasWatch {
     return texts;
   }
 
+  lookAround(): void {
+    const place = this.#place;
+    const visit = place && this.#visits.get(place.map);
+    if (visit) this.seePeople(visit, place);
+  }
+
   atlas(knowledge: KnowledgeLevel): Atlas {
     if (knowledge === "player") return { maps: [...this.#visits.values()].map(atlasMap) };
     const maps = this.game.allMapNames.flatMap((names, group) =>
@@ -130,18 +140,18 @@ export class AtlasWatch {
     const people = this.game.mapView(visit.grid.name)?.actors.people ?? [];
     const found = cells.flatMap((c) => people.filter((p) => p.loaded && p.x === c.x && p.y === c.y))[0];
     if (!found) return null;
-    const person = visit.people.get(found.localId) ?? { localId: found.localId, graphics: found.graphics, x: found.x, y: found.y, texts: [] };
-    Object.assign(person, { x: found.x, y: found.y });
-    visit.people.set(found.localId, person);
-    return { person, text: null, index: null };
+    return { person: this.seen(visit, found), text: null, index: null };
   }
 
-  private seePeople(visit: Visit, { x, y }: Cell): void {
-    if (visit.people.size === 0) return;
-    for (const p of this.game.mapView(visit.grid.name)?.actors.people ?? []) {
-      const person = visit.people.get(p.localId);
-      if (person && p.loaded && onScreen({ x, y }, p)) Object.assign(person, { x: p.x, y: p.y });
-    }
+  private seePeople(visit: Visit, player: Cell): void {
+    for (const p of this.game.mapView(visit.grid.name)?.actors.people ?? []) if (p.loaded && onScreen(player, p)) this.seen(visit, p);
+  }
+
+  private seen(visit: Visit, { localId, graphics, x, y }: MapActors["people"][number]): AtlasPerson {
+    const person = visit.people.get(localId) ?? { localId, graphics, ...(graphics === RIVAL_GRAPHICS ? { rival: this.game.rivalName() } : {}), x, y, texts: [] };
+    Object.assign(person, { x, y });
+    visit.people.set(localId, person);
+    return person;
   }
 
   sight(): Sight {
@@ -229,6 +239,7 @@ function atlasMap({ grid, seen, entry, warpsTaken, edgesTaken, signTexts, people
       const to = edgesTaken.get(c.direction) ?? null;
       return to || edgeCells(grid, c.direction).some(isSeen) ? [{ side: c.direction, to }] : [];
     }),
+    hasEdges: edgesOf(grid).length > 0,
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
     entry,

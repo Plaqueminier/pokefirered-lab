@@ -61,7 +61,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Raw input**:

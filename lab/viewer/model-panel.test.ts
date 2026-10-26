@@ -11,13 +11,13 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go 1" ? "Mom is downstairs." : "" }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go A" ? "Mom is downstairs." : "" }),
   usage: { promptTokens: 1000, cachedTokens: 600, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
 async function modelRecord(): Promise<RunRecord> {
   const harness = await Harness.open();
-  const actions = ["go 1", "viewAtlas", "goTo 8 6"];
+  const actions = ["go A", "viewAtlas", "goTo 8 6"];
   let call = 0;
   await harness.play(modelBot({ costLimit: 2.5 * COST }, () => async () => reply(actions[Math.min(call++, actions.length - 1)]))).catch(() => {});
   return harness.record();
@@ -50,7 +50,7 @@ describe.skipIf(!ready)("the panel Model", () => {
     const record = await modelRecord();
     const view = modelPanelView(record.events, 4, 1);
     expect(view.thinking).toBe(true);
-    expect(view.rows.map((r) => r.action)).toEqual(["go 1", "viewAtlas", "goTo 8 6"]);
+    expect(view.rows.map((r) => r.action)).toEqual(["go A", "viewAtlas", "goTo 8 6"]);
     expect(view.selected).toBe(1);
     expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", note: "" });
     expect(view.call?.fields).toEqual({ Mission: "Get my first Pokémon", Objective: "Leave the house", Note: "–" });

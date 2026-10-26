@@ -1,4 +1,5 @@
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
+import type { Cell } from "../src/harness/path";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
@@ -9,13 +10,14 @@ import { approaches, interactCell, type Overworld, type Target } from "../src/mo
 const MAX_UNREADABLE = 3;
 // After this number of impossible actions in a row, a new conversation starts from a new prompt.
 const MAX_IMPOSSIBLE = 3;
+const MAX_WALKS = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "2",
+    version: "3",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -138,20 +140,43 @@ class ModelPlay {
   private async perform(action: PlayedAction, asked: Asked): Promise<ActionResult | null> {
     if (action.name !== "go") return this.harness.perform(action);
     if (asked.kind !== "walk") throw new Error("go is an action of a walk only");
-    return this.go(asked.view.targets[action.target - 1], asked.overworld);
+    return this.go(asked.view.targets[action.target], asked.overworld);
   }
 
   private async go(target: Target, overworld: Overworld): Promise<ActionResult | null> {
-    if (target.kind === "map") return this.harness.goTo(target.cell.x, target.cell.y, target.map);
-    const talkTo = target.kind === "person" || target.kind === "sign" ? target : null;
-    const here = talkTo && interactCell(talkTo, overworld.grid, overworld.player);
-    if (here) return this.harness.interact(here.x, here.y);
+    switch (target.kind) {
+      case "map":
+        return this.harness.goTo(target.cell.x, target.cell.y, target.map);
+      case "person":
+        return this.talkTo(target, overworld, (now) => now.people.find((p) => p.localId === target.localId && p.loaded) ?? null);
+      case "sign":
+        return this.talkTo(target, overworld, () => target.cell);
+      default:
+        return this.walkTo(target, overworld);
+    }
+  }
+
+  /** The first walk goes to the cell of the target in the prompt; `relocate` gives its cell after each walk, as a person can move. */
+  private async talkTo(target: Target & { kind: "person" | "sign" }, overworld: Overworld, relocate: (now: Overworld) => Cell | null): Promise<ActionResult | null> {
+    let result: ActionResult | null = null;
+    let now: Overworld | null = overworld;
+    for (let walks = 0; now; walks++) {
+      const cell = walks === 0 ? target.cell : relocate(now);
+      const at = cell && interactCell({ kind: target.kind, cell }, now.grid, now.player);
+      if (at) return this.harness.interact(at.x, at.y);
+      if (!cell || walks === MAX_WALKS) break;
+      result = await this.walkTo({ ...target, cell }, now);
+      const observation = result?.status === "done" ? this.harness.observe() : null;
+      now = observation?.mode === "overworld" ? observation : null;
+    }
+    return result;
+  }
+
+  private async walkTo(target: Exclude<Target, { kind: "map" }>, overworld: Overworld): Promise<ActionResult | null> {
     let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
       result = await this.harness.goTo(cell.x, cell.y);
-      if (result.status === "impossible") continue;
-      const at = result.status === "done" && talkTo && interactCell(talkTo, overworld.grid, cell);
-      return at ? this.harness.interact(at.x, at.y) : result;
+      if (result.status !== "impossible") return result;
     }
     return result;
   }

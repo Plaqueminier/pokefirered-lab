@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "2", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "3", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -370,18 +370,14 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe().milestones).toEqual([]);
   });
 
-  test("on the overworld, observe gives the people of the map with the name of their sprite, and the rival with its name from the save", async () => {
+  test("on the overworld, observe gives the people of the map with the name of their sprite; the Atlas gives the rival with its name from the save", async () => {
     const harness = await Harness.open();
     await toLab(harness);
     const observation = harness.observe();
     if (observation.mode !== "overworld") throw new Error("not on the overworld");
-    expect(observation.people).toEqual(
-      expect.arrayContaining([
-        { x: 6, y: 3, graphics: "PROF_OAK" },
-        { x: 9, y: 4, graphics: "ITEM_BALL" },
-        { x: 5, y: 4, graphics: "BLUE", rival: "BOB" },
-      ]),
-    );
+    expect(observation.people).toEqual(expect.arrayContaining([expect.objectContaining({ x: 6, y: 3, graphics: "PROF_OAK" }), expect.objectContaining({ x: 9, y: 4, graphics: "ITEM_BALL" })]));
+    const lab = observation.atlas.maps.find((m) => m.name === "PalletTown_ProfessorOaksLab");
+    expect(lab?.people).toContainEqual(expect.objectContaining({ x: 5, y: 4, graphics: "BLUE", rival: "BOB" }));
   });
 
   test("at a Poké Ball in the lab, the yes/no is a choice, and choose moves the cursor and selects", async () => {

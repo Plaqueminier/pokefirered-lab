@@ -15,6 +15,7 @@ const LAB: AtlasMap = {
     { x: 0, y: 1, behavior: "MB_WARP_DOOR", to: null },
   ],
   edges: [],
+  hasEdges: false,
   signs: [],
   people: [],
   entry: { x: 2, y: 2 },
@@ -22,7 +23,8 @@ const LAB: AtlasMap = {
 
 function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 }, people: Person[] = []): Overworld {
   const kinds = current.cells.replaceAll("?", ".");
-  const grid = { name: current.name, x0: 0, y0: 0, width: current.width, height: current.height, mapWidth: current.width, mapHeight: current.height, kinds, signs: [] } as unknown as MapGrid;
+  const size = current.width * current.height;
+  const grid = { name: current.name, x0: 0, y0: 0, width: current.width, height: current.height, mapWidth: current.width, mapHeight: current.height, kinds, behaviors: Array(size).fill(0), behaviorNames: { 0: "MB_NORMAL" }, connections: [], signs: [] } as unknown as MapGrid;
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
@@ -50,6 +52,7 @@ function chain(routes: number): AtlasMap[] {
       { side: "south", to: i === 0 ? null : names[i - 1] },
       { side: "north", to: names[i + 1] ?? null },
     ],
+    hasEdges: true,
     signs: [],
     people: [],
     entry: { x: 5, y: 5 },
@@ -57,27 +60,54 @@ function chain(routes: number): AtlasMap[] {
 }
 
 describe("the extract of the Atlas", () => {
-  test("the local view shows the seen cells only, ? for the others, the player and the numbers of the targets; an exit shows its destination only when the Run went through it", () => {
-    const view = atlasExtract(overworld(LAB, [], { x: 1, y: 2 }, [{ x: 1, y: 1, graphics: "PROF_OAK" }]));
+  test("the map block of a house: every row with ? for the cells not seen, the targets as letters in groups with their distance and direction, no edge that leads out, and no exit to the outside yet", () => {
+    const house: AtlasMap = {
+      name: "House",
+      width: 8,
+      height: 6,
+      cells: "########" + "#......#".repeat(3) + "?".repeat(16),
+      warps: [{ x: 6, y: 1, behavior: "MB_UP_RIGHT_STAIR_WARP", to: "House_2F" }],
+      edges: [],
+      hasEdges: false,
+      signs: [{ x: 3, y: 0, facing: "north", text: "It's a TV." }],
+      people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!"] }],
+      entry: { x: 6, y: 2 },
+    };
+    const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", to: "House" }], signs: [], people: [] };
+    const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true }]));
     expect(view.lines).toEqual([
-      "Map Lab, 5 × 4 cells. You are at (1, 2), facing north.",
-      "    0",
-      "    01234",
-      "  0 #####",
-      "  1 24.?#",
-      "  2 #@3?#",
-      "  3 ##1##",
+      "Map House: x from 0 to 7, y from 0 to 5. You are at (3, 1), facing north.",
+      'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, @ you, letters the targets.',
+      "      0",
+      "      01234567",
+      "y= 0  ###C####",
+      "y= 1  #..@..A#",
+      "y= 2  #......#",
+      "y= 3  #..B.D.#",
+      "y= 4  ????????",
+      "y= 5  ????????",
+      "Edges: no edge of this map leads to another map.",
       "",
-      "Targets:",
-      "1. exit mat at (2, 3), to Town",
-      "2. door at (0, 1), not taken",
-      "3. unseen cells east of (2, 2)",
-      "4. PROF OAK at (1, 1)",
+      "What the people of this map said to you:",
+      '- MOM, last seen at (5, 3): "MOM: Hi!"',
+      "",
+      "Maps one exit away:",
+      "- A (stairs) leads to House_2F. Its exits (cells of House_2F): stairs at (1, 1), to House.",
+      "",
+      "Exits of this map:",
+      "A. stairs at (6, 1), 3 east: to House_2F, taken",
+      "No exit to the outside is seen yet: explore B.",
+      "Unseen cells:",
+      "B. unseen cells south of (3, 3), 2 south",
+      "People and signs:",
+      'C. sign at (3, 0), adjacent north, you face it: read, "It\'s a TV."',
+      "D. MOM at (5, 3), 2 south, 2 east: talked",
     ]);
   });
 
   test("the people on the cells that the player did not see are not targets", () => {
-    const view = atlasExtract(overworld(LAB, [], { x: 1, y: 2 }, [{ x: 3, y: 1, graphics: "LASS" }]));
+    const lass = { localId: 3, graphics: "LASS", x: 3, y: 1, loaded: true };
+    const view = atlasExtract(overworld({ ...LAB, people: [{ ...lass, texts: [] }] }, [], { x: 1, y: 2 }, [lass]));
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("LASS"));
   });
 
@@ -85,19 +115,19 @@ describe("the extract of the Atlas", () => {
     const view = atlasExtract(overworld(LAB, chain(200)));
     const localOnly = atlasExtract(overworld(LAB, [])).lines.join("\n");
     expect(view.lines.join("\n").length - localOnly.length).toBeLessThanOrEqual(OTHER_MAPS_BUDGET);
-    expect(view.lines).toContain("- Town: south edge, not taken; north edge, to Route0");
+    expect(view.lines).toContain("- A (exit mat) leads to Town. Its exits (cells of Town): south edge, not taken; north edge, to Route0.");
     const maps = view.targets.flatMap((t) => (t.kind === "map" ? [t.map] : []));
     expect(maps.length).toBeGreaterThan(10);
     expect(maps).toEqual(Array.from({ length: maps.length }, (_, i) => `Route${i}`));
-    expect(view.lines).toContain("5. go to Route1 (3 exits away)");
+    expect(view.lines).toContain("E. Route1, 3 exits away");
   });
 
   test("a large map of the player does not remove the maps one exit away", () => {
     const size = 80;
     const city: AtlasMap = { ...LAB, name: "City", width: size, height: size, cells: ".".repeat(size * size), warps: [{ x: 2, y: 3, behavior: "MB_WARP_DOOR", to: "Town" }] };
     const view = atlasExtract(overworld(city, chain(3)));
-    expect(view.lines).toContain("- Town: south edge, not taken; north edge, to Route0");
-    expect(view.lines).toContain(` 79 ${".".repeat(size)}`);
+    expect(view.lines).toContain("- A (door) leads to Town. Its exits (cells of Town): south edge, not taken; north edge, to Route0.");
+    expect(view.lines).toContain(`y=79  ${".".repeat(size)}`);
   });
 
   test("the extract shows the texts of the people of the map of the player; the full Atlas shows the texts of the other maps", () => {
@@ -113,12 +143,12 @@ describe("the extract of the Atlas", () => {
 
   test("the full Atlas shows all the maps in detail up to its budget; past it, each far map has one line", () => {
     const complete = fullAtlas(overworld(LAB, chain(60))).join("\n");
-    expect(complete).toContain("Map Route59, 24 × 40 cells, 61 exits away.");
+    expect(complete).toContain("Map Route59: x from 0 to 23, y from 0 to 39, 61 exits away.");
     expect(complete).not.toContain("\n- Route");
 
     const appendix = fullAtlas(overworld(LAB, chain(200)));
-    expect(appendix).toContain("Map Town, 24 × 40 cells, 1 exit away. Exits: south edge, not taken; north edge, to Route0.");
-    expect(appendix).toContain(" 39 ........................");
+    expect(appendix).toContain("Map Town: x from 0 to 23, y from 0 to 39, 1 exit away. Exits: south edge, not taken; north edge, to Route0.");
+    expect(appendix).toContain("y=39  ........................");
     const oneLine = appendix.findIndex((line) => line.startsWith("- Route"));
     expect(appendix.slice(0, oneLine).join("\n").length).toBeLessThanOrEqual(FULL_ATLAS_BUDGET);
     expect(appendix.slice(oneLine).every((line) => line.startsWith("- Route"))).toBe(true);

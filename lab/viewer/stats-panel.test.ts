@@ -15,7 +15,7 @@ const reply = (action: string) => ({
   usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
-const ANSWERS = ["go 1", "fight 2", "goTo 0 0", "viewAtlas", "goTo 8 6"];
+const ANSWERS = ["go A", "fight 2", "goTo 0 0", "viewAtlas", "goTo 8 6"];
 
 async function modelRecord(): Promise<RunRecord> {
   const harness = await Harness.open();
