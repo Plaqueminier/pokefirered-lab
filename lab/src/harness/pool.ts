@@ -7,7 +7,8 @@ import type { ModelSettings, RunEvent, RunRecord } from "./record";
 // A choice, not a limit of the machine: it plays about 12 Runs at full speed.
 export const MAX_RUNS = 4;
 
-export type RunSpec = { bot: string; model?: ModelSettings } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
+/** `parent`: the Run record in lab/runs/ that the Run continues. */
+export type RunSpec = { bot: string; model?: ModelSettings; parent?: string } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
 
 export type RunEnd = { record: RunRecord | null; error: string | null };
 

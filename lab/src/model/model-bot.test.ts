@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { modelBot } from "../../bots/model";
 import { Harness } from "../harness/harness";
-import { type ModelEvent, modelTotals, type Prompt, type SummaryEvent } from "../harness/record";
+import { type ModelEvent, modelTotals, type Prompt, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-panel";
 import type { ModelClient } from "./openrouter";
@@ -225,6 +225,37 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[2].prompt.turns).toBeUndefined();
     expect(calls[2].prompt.user).toContain("Your answer could not be read: the answer is not JSON");
     expect(calls[4].prompt.turns?.map((t) => t.assistant)).toEqual(["{}", JSON.stringify({ ...JSON.parse(good), action: "dance" })]);
+  });
+
+  test("a Run continues a stopped Run: the replay gives the same game and events, the new model sees the Mission of the parent, and the cost limit and the unreadable answers count from the continuation", async () => {
+    const parent = await Harness.open();
+    const good = reply("goTo 8 6").content;
+    await expect(parent.play(modelBot({ costLimit: 1 }, () => answers(good, "x", "y", "z")))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const record = parent.record();
+
+    const harness = await Harness.open({ parent: { name: "parent.json", record } });
+    expect(harness.frame).toBe(parent.frame);
+    expect(harness.screenHash()).toBe(parent.screenHash());
+    expect(harness.events).toEqual(record.events);
+    expect(harness.observe()).toEqual(parent.observe());
+    const parentFrame = parent.frame;
+    const parentCalls = modelEvents(parent).length;
+    parent.close();
+
+    const { client, prompts } = { prompts: [] as Prompt[], client: answers("not JSON", good) };
+    const recording: ModelClient = async (prompt, format) => (prompts.push(prompt), client(prompt, format));
+    expect(await harness.play(modelBot({ id: "other/model", costLimit: 2.5 * COST }, () => recording))).toMatchObject({ endReason: "cost limit" });
+    const calls = modelEvents(harness).slice(parentCalls);
+    expect(calls.map((e) => [e.model, e.error === null])).toEqual([["other/model", false], ["other/model", true], ["other/model", true]]);
+    expect(prompts[0].user).toContain("Mission: Get my first Pokémon");
+
+    const continued = harness.record();
+    expect(continued.header).toMatchObject({ parent: "parent.json", bot: { model: { id: "other/model" } } });
+    expect(continued.events.slice(0, record.events.length)).toEqual(record.events);
+    expect(continued.result.frames).toBe(record.result.frames + harness.frame - parentFrame);
+    const replayed = await replay(continued);
+    expect([replayed.frame, replayed.screen]).toEqual([harness.frame, harness.screenHash()]);
+    await expect(Harness.open({ parent: { name: "parent.json", record: { ...record, header: { ...record.header, seed: 1 } } } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 
   test("viewAtlas runs no frames: the code continues the same conversation, the answer and the full Atlas in a new user message; a second viewAtlas is refused; the next frame starts a new conversation", async () => {

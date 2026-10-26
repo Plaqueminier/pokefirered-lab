@@ -1,6 +1,7 @@
 import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
 
 const VIEWER_RUN = "";
+const FROM_START = "";
 
 export function dollars(cost: number): string {
   return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
@@ -13,7 +14,7 @@ function runState(run: RunSummary): string {
 }
 
 function runLabel(run: RunSummary): string {
-  return `Run ${run.id} · ${run.bot} · ${runState(run)}`;
+  return `Run ${run.id} · ${run.bot}${run.parent ? ` (continues ${run.parent})` : ""} · ${runState(run)}`;
 }
 
 // A scripted Bot refuses any model option: a default value goes as no option.
@@ -33,6 +34,7 @@ export type RunsElements = {
   costLimit: HTMLInputElement;
   reasoning: HTMLSelectElement;
   starter: HTMLSelectElement;
+  from: HTMLSelectElement;
   start: HTMLButtonElement;
   stop: HTMLButtonElement;
   shownModel: HTMLElement;
@@ -53,6 +55,8 @@ export class RunsPanel {
       ui.runs.blur();
     });
     ui.bots.addEventListener("change", () => ui.bots.blur());
+    ui.from.addEventListener("change", () => ui.from.blur());
+    this.setRecords([]);
     ui.stop.addEventListener("click", () => {
       if (this.#shownRun !== null) send({ type: "stop-run", runId: this.#shownRun });
     });
@@ -65,8 +69,14 @@ export class RunsPanel {
         reasoning: option(ui.reasoning.value, DEFAULT_REASONING),
         starter: option(ui.starter.value, DEFAULT_STARTER),
       };
-      send({ type: "start-bot", name: ui.bots.value, model });
+      send({ type: "start-bot", name: ui.bots.value, model, ...(ui.from.value === FROM_START ? {} : { parent: ui.from.value }) });
     });
+  }
+
+  setRecords(names: string[]): void {
+    const chosen = this.ui.from.value;
+    this.ui.from.replaceChildren(new Option("from the Starting save", FROM_START), ...names.map((name) => new Option(`continue ${name}`, name)));
+    this.ui.from.value = names.includes(chosen) ? chosen : FROM_START;
   }
 
   setBots(names: string[]): void {

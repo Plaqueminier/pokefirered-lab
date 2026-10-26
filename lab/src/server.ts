@@ -289,6 +289,7 @@ function runSummary({ id, spec, end, events, modelCallsStarted, stopAsked }: Poo
   return {
     id,
     bot: spec.bot,
+    parent: spec.parent ?? null,
     playing: end === null,
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
@@ -307,8 +308,9 @@ function show(next: RunSource): void {
   sendSight();
 }
 
-async function startBot(name: string, given: ModelOptions): Promise<string> {
+async function startBot(name: string, given: ModelOptions, parent?: string): Promise<string> {
   if (!(await botNames()).includes(name)) return `No Bot ${name} in lab/bots/.`;
+  if (parent !== undefined && !(await recordNames()).includes(parent)) return `No Run record ${parent} in lab/runs/.`;
   if (pool.full) return `No new Run: ${pool.limit} Runs of Bots play now (${MAX_RUNS} emulators at most, with the Viewer Run).`;
   let bot: Bot;
   try {
@@ -317,10 +319,11 @@ async function startBot(name: string, given: ModelOptions): Promise<string> {
     return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
-  const started = pool.start({ bot: name, ...(model ? { model } : {}) });
+  const started = pool.start({ bot: name, ...(model ? { model } : {}), ...(parent === undefined ? {} : { parent }) });
   show(botRun(started));
   void started.done.then((end) => onBotEnd(started, end));
-  return `Run ${started.id}: the Bot ${name} plays${model ? ` with the model ${model.id} (limit ${model.costLimit} $)` : ""}.`;
+  const from = parent === undefined ? "" : ` from the end of ${parent}`;
+  return `Run ${started.id}: the Bot ${name} plays${from}${model ? ` with the model ${model.id} (limit ${model.costLimit} $)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
@@ -412,7 +415,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "notice", text: "End of the replay: the keyboard plays the Run from this frame." });
       break;
     case "start-bot":
-      send({ type: "notice", text: await startBot(message.name, message.model) });
+      send({ type: "notice", text: await startBot(message.name, message.model, message.parent) });
       break;
     case "stop-run": {
       const poolRun = pool.runs.find((r) => r.id === message.runId);

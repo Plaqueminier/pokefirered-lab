@@ -304,10 +304,11 @@
             <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
             <select id="reasoning" title="Reasoning effort of the model bot"></select>
             <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
+            <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
             <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses.</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
         </section>
         <section>
           <div class="panel-head">
@@ -477,7 +478,7 @@
           <h2>Run record and parallel Runs</h2>
           <p>
             A Run of a Bot has a Run record: origin (ROM, seed, save), Bot, keys at each frame, events and result. It goes to
-            <code>lab/runs/</code> at the end of the Run. The keys alone replay the Run: panel "Replay".
+            <code>lab/runs/</code> at the end of the Run. The keys alone replay the Run: panel "Replay". A Run can continue a stopped Run ("continue" in the panel "Runs"): the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot plays on. The new record has the old keys and events, then the new ones. Its cost limit counts the new Model calls only.
           </p>
           <p>
             The Harness plays 4 Runs at most: the Viewer Run, and 3 Runs of Bots in workers, at full speed and with no sound.

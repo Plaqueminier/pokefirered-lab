@@ -87,6 +87,10 @@ _Avoid_: flag (a flag is one bit of the save), achievement
 The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
+**Continued Run**:
+A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit counts its own **Model calls** only, and its model can be another one.
+_Avoid_: resumed run, restart, savestate
+
 **Run result**:
 What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**; N is an option of the **Harness**, with no default). A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
@@ -102,6 +106,7 @@ _Avoid_: emulator, web player
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
 - Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit.
+- A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.

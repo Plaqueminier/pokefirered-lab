@@ -62,6 +62,8 @@ export type RunSummary = {
   stopAsked: boolean;
   endReason: EndReason | null;
   error: string | null;
+  /** The Run record that the Run continues. */
+  parent: string | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
   model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { cost: number; callsStarted: number }) | null;
 };
@@ -103,6 +105,7 @@ export type ClientMessage =
   | { type: "write-start-save" }
   | { type: "replay"; name: string }
   | { type: "end-replay" }
-  | { type: "start-bot"; name: string; model: ModelOptions }
+  /** `parent`: continue this Run record of lab/runs/, not a Run from the Starting save. */
+  | { type: "start-bot"; name: string; model: ModelOptions; parent?: string }
   | { type: "stop-run"; runId: number }
   | { type: "show"; runId: number | null };

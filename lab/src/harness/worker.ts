@@ -1,8 +1,9 @@
+import { join } from "node:path";
 import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
-import { Harness, loadBot } from "./harness";
+import { Harness, loadBot, type ParentRecord } from "./harness";
 import type { WorkerMessage, WorkerStart } from "./pool";
-import type { RunEvent } from "./record";
+import { readRecord, type RunEvent, RUNS_DIR } from "./record";
 
 declare const self: Worker;
 
@@ -52,17 +53,25 @@ class ViewPoster {
   }
 }
 
+async function parentRecord(name: string): Promise<ParentRecord> {
+  const record = readRecord(await Bun.file(join(RUNS_DIR, name)).json());
+  if (!record) throw new Error(`${name} is not a Run record`);
+  return { name, record };
+}
+
 self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => {
   let opened: { harness: Harness; poster: ViewPoster } | null = null;
   let error: string | null = null;
   try {
-    const { bot: name, model, ...options } = spec;
+    const { bot: name, model, parent: parentName, ...options } = spec;
     const bot = await loadBot(name, model);
+    const parent = parentName === undefined ? undefined : await parentRecord(parentName);
     const run = await Run.open();
     const poster = new ViewPoster(run);
     const harness = await Harness.open(
       {
         ...options,
+        parent,
         stopAsked: () => Atomics.load(stop, 0) === 1,
         onFrame: (h) => poster.onFrame(h),
         onAction: (_, h) => poster.onEvents(h.events),
@@ -76,6 +85,9 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
       run,
     );
     opened = { harness, poster };
+    // The replay of a parent Run runs no Macro-action: post its events and its last screen now.
+    poster.postNow(harness);
+    poster.onEvents(harness.events);
     await harness.play(bot);
   } catch (e) {
     error = String(e);

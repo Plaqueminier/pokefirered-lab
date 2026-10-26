@@ -1,21 +1,20 @@
-import { relative } from "node:path";
+import { basename, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
 import { actionText, REASONING, STARTERS } from "../protocol";
-import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot } from "./harness";
-import { modelTotals, writeRecord } from "./record";
+import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
+import { modelTotals, readRecord, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full]
-       bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning ${REASONING.join("|")}] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}]`;
+       bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning ${REASONING.join("|")}] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
-  options: { "cost-limit": { type: "string" }, reasoning: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" } },
+  options: { "cost-limit": { type: "string" }, reasoning: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, continue: { type: "string" } },
 });
 const [name, ...rest] = positionals;
 const isLevel = (arg: string): arg is KnowledgeLevel => (KNOWLEDGE_LEVELS as readonly string[]).includes(arg);
-const knowledge = rest.find(isLevel) ?? "player";
 const ids = rest.filter((arg) => !isLevel(arg));
 if (!name || ids.length > 1) {
   console.error(USAGE);
@@ -28,8 +27,21 @@ const bot = await loadBot(name, model).catch((error: unknown) => {
   process.exit(1);
 });
 
+// A continued Run takes the Knowledge level of its parent when the command gives none.
+let parent: ParentRecord | undefined;
+if (values.continue !== undefined) {
+  const record = readRecord(await Bun.file(values.continue).json().catch(() => null));
+  if (!record) {
+    console.error(`${values.continue} is not a Run record`);
+    process.exit(1);
+  }
+  parent = { name: basename(values.continue), record };
+}
+
+const knowledge = rest.find(isLevel) ?? parent?.record.header.knowledge ?? "player";
 const harness = await Harness.open({
   knowledge,
+  parent,
   onAction: ({ action, result }) => {
     const call = actionText(action);
     const reason = "reason" in result ? `  ${result.reason}` : "";
@@ -42,7 +54,8 @@ const harness = await Harness.open({
   },
 });
 const settings = bot.model ? `, model ${bot.model.id} (cost limit ${bot.model.costLimit} $, reasoning ${bot.model.reasoning}, temperature ${bot.model.temperature ?? "of the model"}, starter ${bot.model.starter})` : "";
-console.log(`Bot ${bot.name} ${bot.version}${settings}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
+const from = parent ? `, continues ${parent.name}` : "";
+console.log(`Bot ${bot.name} ${bot.version}${settings}${from}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
 const error = await harness.play(bot).then(
   () => null,
   (e: unknown) => e,

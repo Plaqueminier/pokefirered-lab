@@ -68,6 +68,7 @@ const runsPanel = new RunsPanel(
     costLimit: $<HTMLInputElement>("cost-limit"),
     reasoning: $<HTMLSelectElement>("reasoning"),
     starter: $<HTMLSelectElement>("starter"),
+    from: $<HTMLSelectElement>("run-from"),
     start: $<HTMLButtonElement>("bot-start"),
     stop: $<HTMLButtonElement>("run-stop"),
     shownModel: $("shown-model"),
@@ -183,6 +184,7 @@ function onMessage(message: ServerMessage): void {
       break;
     case "records":
       replayPanel.setRecords(message.names);
+      runsPanel.setRecords(message.names);
       break;
     case "bots":
       runsPanel.setBots(message.bots.map((bot) => bot.name));

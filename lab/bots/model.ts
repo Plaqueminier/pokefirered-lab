@@ -28,6 +28,8 @@ type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean };
 class ModelPlay {
   readonly #system: string;
   #conversation: Conversation | null = null;
+  // A continued Run keeps the Model calls of its parent: the answers that the Bot cannot read count from this call.
+  #firstCall = 0;
 
   constructor(
     private readonly harness: Harness,
@@ -38,6 +40,7 @@ class ModelPlay {
   }
 
   async play(): Promise<void> {
+    this.#firstCall = modelEvents(this.harness.events).length;
     for (;;) {
       const kind = this.harness.waitingFor().kind;
       if (kind === "text" || kind === "busy") {
@@ -118,7 +121,7 @@ class ModelPlay {
   }
 
   private stopAtUnreadable(): void {
-    const calls = modelEvents(this.harness.events);
+    const calls = modelEvents(this.harness.events).slice(this.#firstCall);
     const unreadable = calls.length - 1 - calls.findLastIndex((e) => e.decision !== null);
     if (unreadable >= MAX_UNREADABLE) throw new Error(`${MAX_UNREADABLE} answers in a row that the Bot cannot read; the last one: ${calls.at(-1)?.error}`);
   }

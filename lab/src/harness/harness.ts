@@ -30,6 +30,8 @@ import {
   type ModelOptions,
   type ModelSettings,
   modelTotals,
+  originDifferences,
+  RecordPlayer,
   type RunEvent,
   type RunHeader,
   type RunRecord,
@@ -171,7 +173,11 @@ export type HarnessOptions = {
   noProgressLimit?: number;
   /** When it gives true, the Run ends with "user stop" after the Macro-action, the Raw input or the Model call that plays. */
   stopAsked?: () => boolean;
+  /** The Run continues this Run record: the Harness replays its buttons and keeps its events. `name` is its file in lab/runs/. */
+  parent?: ParentRecord;
 };
+
+export type ParentRecord = { name: string; record: RunRecord };
 
 export type Bot = {
   name: string;
@@ -189,8 +195,9 @@ class RunEnd extends Error {
 }
 
 class RunLimits {
-  #noProgress: NoProgress = { decisions: 0, since: 0, walks: 0 };
+  #noProgress: NoProgress;
 
+  /** The cost limit counts the Model calls from `firstEvent`: a continued Run does not count the calls of its parent. */
   constructor(
     private readonly goal: Milestone,
     private readonly lastFrame: number,
@@ -198,7 +205,10 @@ class RunLimits {
     private readonly costLimit: number,
     private progress: number,
     private exploration: number,
-  ) {}
+    private readonly firstEvent: number,
+  ) {
+    this.#noProgress = { decisions: 0, since: firstEvent, walks: 0 };
+  }
 
   beforeFrame(frame: number): void {
     if (frame >= this.lastFrame) throw new RunEnd("frame budget");
@@ -219,7 +229,7 @@ class RunLimits {
   }
 
   afterCall(events: readonly RunEvent[]): void {
-    if (modelTotals(events).cost > this.costLimit) throw new RunEnd("cost limit");
+    if (modelTotals(events.slice(this.firstEvent)).cost > this.costLimit) throw new RunEnd("cost limit");
   }
 }
 
@@ -242,11 +252,14 @@ export class Harness {
   readonly #atlas: AtlasWatch;
   readonly #events: RunEvent[] = [];
   readonly #menus: MenuDriver;
+  readonly #parent: string | null;
+  /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
+  #playStart: { frame: number; rawInputs: number } | null = null;
   #phase: Phase = { kind: "ready" };
 
   private constructor(run: Run, options: HarnessOptions) {
     this.#run = run;
-    this.#knowledge = options.knowledge ?? "player";
+    this.#knowledge = options.knowledge ?? options.parent?.record.header.knowledge ?? "player";
     this.#onAction = options.onAction;
     this.#onFrame = options.onFrame;
     this.#onModelCallStart = options.onModelCallStart;
@@ -255,6 +268,7 @@ export class Harness {
     this.#frameBudget = options.frameBudget;
     this.#noProgressLimit = options.noProgressLimit;
     this.#stopAsked = options.stopAsked ?? (() => false);
+    this.#parent = options.parent?.name ?? null;
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game);
     this.#menus = new MenuDriver(run.game, { advance: (keys) => this.advance(keys) });
@@ -270,6 +284,10 @@ export class Harness {
     const opened = run ?? (await Run.open(startSave));
     try {
       const harness = new Harness(opened, options);
+      if (options.parent) {
+        harness.replayParent(options.parent.record);
+        return harness;
+      }
       const interruption = harness.settle();
       if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
       return harness;
@@ -310,11 +328,12 @@ export class Harness {
 
   async play(bot: Bot): Promise<RunResult> {
     if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
-    const start = this.frame;
-    const rawInputs = this.rawInputs;
+    const { frame: start, rawInputs } = this.#playStart ?? { frame: this.frame, rawInputs: this.rawInputs };
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
-    const limits = new RunLimits(goal, start + frameBudget, this.#noProgressLimit ?? Number.POSITIVE_INFINITY, bot.model?.costLimit ?? Number.POSITIVE_INFINITY, this.#watch.progress, this.exploration());
+    const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
+    const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
+    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.#watch.progress, this.exploration(), this.#events.length);
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
     let result: RunResult | null = null;
@@ -348,7 +367,7 @@ export class Harness {
   record(): RunRecord {
     if (this.#phase.kind !== "ended") throw new Error("no Run record: play a Bot first");
     const { bot, result } = this.#phase;
-    const header = { ...this.#run.origin, knowledge: this.#knowledge, bot };
+    const header = { ...this.#run.origin, knowledge: this.#knowledge, bot, ...(this.#parent ? { parent: this.#parent } : {}) };
     return { header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
   }
 
@@ -571,6 +590,27 @@ export class Harness {
     if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.exploration(), this.#run.game.waitingFor().kind === "walk", this.#events.length);
     this.stopIfAsked();
     return result;
+  }
+
+  // The watches see the same frames and the same actions as in the parent Run, so the Atlas and the Memory tree go on from where the parent stopped.
+  private replayParent(record: RunRecord): void {
+    const differences = originDifferences(this.#run, record);
+    if (differences.length > 0) throw new Error(`the Run record does not replay here: different ${differences.join(", ")}`);
+    const player = new RecordPlayer(record);
+    const actions = record.events.filter((e) => e.type === "action");
+    let next = 0;
+    const actionsEnded = () => {
+      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) this.#atlas.onAction(actions[next]);
+    };
+    while (!player.ended) {
+      actionsEnded();
+      this.advance(player.next());
+    }
+    actionsEnded();
+    const gameEvents = record.events.filter((e) => e.type === "map" || e.type === "battle" || e.type === "milestone");
+    if (!Bun.deepEquals(this.#events, gameEvents)) throw new Error("the Run record does not replay the same game: its map, battle and Milestone events are different");
+    this.#events.splice(0, this.#events.length, ...record.events);
+    this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 
   private exploration(): number {

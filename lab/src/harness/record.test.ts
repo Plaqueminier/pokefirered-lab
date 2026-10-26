@@ -163,6 +163,30 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(walks).toEqual([1, 2, 0, 1, 2, 0, 1]);
   });
 
+  test("a continued Run replays the buttons of its parent: the same Atlas with the texts of the people, and a Run result for the whole Run", async () => {
+    const talker: Bot = {
+      name: "talker",
+      version: "1",
+      async play(h) {
+        must(await h.goTo(8, 5, "PalletTown_PlayersHouse_1F"));
+        must(await h.interact(8, 4));
+        while (h.observe().waitingFor.kind !== "walk") await h.readText();
+      },
+    };
+    const parent = await Harness.open();
+    await parent.play(talker);
+    const record = parent.record();
+    const harness = await Harness.open({ parent: { name: "talker.json", record } });
+    const atlas = harness.observe().atlas;
+    expect(atlas).toEqual(parent.observe().atlas);
+    expect(atlas.maps.flatMap((m) => m.people.flatMap((p) => p.texts)).length).toBeGreaterThan(0);
+    const parentFrame = parent.frame;
+    parent.close();
+    const presser: Bot = { name: "presser", version: "1", play: async (h) => void (await h.press("B")) };
+    expect(await harness.play(presser)).toEqual({ endReason: "bot stopped", frames: record.result.frames + harness.frame - parentFrame, milestones: [], rawInputs: 1 });
+    expect(harness.record().header.parent).toBe("talker.json");
+  });
+
   test("the frame budget ends the Run at its last frame, also in a Macro-action, and the Run record has the buttons to that frame", async () => {
     const harness = await Harness.open({ frameBudget: 2000 });
     const start = harness.frame;

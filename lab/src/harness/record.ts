@@ -79,7 +79,8 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
   return totals;
 }
 
-export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model"> };
+/** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
+export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
 
 export type RunRecord = { header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; result: RunResult };
 
