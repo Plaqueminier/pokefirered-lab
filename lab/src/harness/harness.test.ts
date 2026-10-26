@@ -534,12 +534,12 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     expect(harness.observe().party.map((m) => m.species)).toEqual(["SQUIRTLE", enemy.battle.enemy.species]);
   });
 
-  test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP", async () => {
+  test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP each time", async () => {
     const harness = await Harness.open({ startSave: TEST_BAG });
     expect(harness.availableActions()).toContainEqual({ name: "use", item: "POTION" });
     expect(harness.availableActions()).not.toContainEqual({ name: "use", item: "POKé BALL" });
     expect(await harness.use("POKé BALL")).toMatchObject({ status: "impossible", reason: "POKé BALL does not work outside a battle", frames: 0 });
-    expect(await harness.use("POTION", 0)).toMatchObject({ status: "impossible", reason: "the game refuses the POTION: It won't have any effect." });
+    for (let use = 0; use < 2; use++) expect(await harness.use("POTION", 0)).toMatchObject({ status: "impossible", reason: "the game refuses the POTION: It won't have any effect." });
     expect(harness.observe()).toMatchObject({ waitingFor: { kind: "walk" }, bag: [{ items: [{ name: "POTION", quantity: 5 }] }, expect.anything()] });
     harness.close();
 

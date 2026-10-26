@@ -6,11 +6,14 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
+const START_MENU_INPUT_STEP = 1;
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };
 
+// sStartMenuCallback keeps StartCB_HandleInput from the last Start menu: Task_StartMenuHandleInput (start_menu.c) reads the input only from its step 1.
 export function startMenu(mem: Memory, decode: Decode): Choice | null {
-  if (!activeTask(mem, "Task_StartMenuHandleInput") || functionName(mem.symbols, mem.global("sStartMenuCallback").pointer()) !== "StartCB_HandleInput") return null;
+  const task = activeTask(mem, "Task_StartMenuHandleInput");
+  if (task?.field("data").at(0).int() !== START_MENU_INPUT_STEP || functionName(mem.symbols, mem.global("sStartMenuCallback").pointer()) !== "StartCB_HandleInput") return null;
   const order = mem.global("sStartMenuOrder");
   const items = mem.global("sStartMenuActionTable");
   const options = Array.from({ length: mem.global("sNumStartMenuItems").int() }, (_, i) => menuText(mem, items.at(order.at(i).int()).field("text").pointer(), decode));

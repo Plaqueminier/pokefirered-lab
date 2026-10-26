@@ -303,6 +303,11 @@ export class MenuDriver {
       if (effect.status !== "done") return effect;
     }
     const text = game.waitingTexts();
+    // ESCAPE ROPE closes the Bag and shows its text on the field: after the text, the player goes to another map.
+    if (game.mode() === "overworld") {
+      const escaped = this.menuInput(Keys.A, () => game.waitingFor().kind !== "busy");
+      return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
+    }
     const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
     if (back.status !== "done") return withText(back, text);
     const closed = this.closeStartMenu();
