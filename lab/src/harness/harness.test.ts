@@ -681,7 +681,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
   });
 });
 
-// A test Starting save in Viridian City at (26, 28), after a visit to its Pokémon Center: SQUIRTLE has 1 HP and the poison, and the next step faints it.
 const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {

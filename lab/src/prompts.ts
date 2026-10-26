@@ -8,7 +8,6 @@ const YES_NO_TIMER = 2;
 const YES_NO_INPUT_DELAY = 5;
 // The field message box is window 0 (sStandardTextBox_WindowTemplates, new_menu_helpers.c); text printer n prints in window n.
 const FIELD_MESSAGE_WINDOW = 0;
-// After a whiteout, Task_RushInjuredPokemonToCenter (field_screen_effect.c) prints its text in its own window, tWindowId (data[1]).
 const WHITE_OUT_TASK = "Task_RushInjuredPokemonToCenter";
 const WHITE_OUT_WINDOW_DATA = 1;
 // B_WIN_MSG and B_WIN_OAK_OLD_MAN, Oak's box in the first battle (constants/battle.h).
@@ -114,7 +113,6 @@ export class Prompts {
     return { onScreen: shown ? windows : windows.slice(1), printing: this.printingIn(windows), boxClosed: !shown };
   }
 
-  // The field message box, then the window of the text after a whiteout while it shows.
   private fieldWindows(): number[] {
     const task = activeTask(this.mem, WHITE_OUT_TASK);
     const window = task?.field("data").at(WHITE_OUT_WINDOW_DATA).int();

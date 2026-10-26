@@ -16,7 +16,6 @@ export type Call = {
   situation: string;
   stuck: number | null;
   reflection: boolean;
-  /** The prompt tokens of its usage; null when the usage has none, for example a request that failed. */
   prompt: number | null;
   note: boolean;
   answer: { kind: "action"; name: string; text: string } | { kind: "unreadable"; error: string };

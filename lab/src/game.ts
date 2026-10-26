@@ -452,7 +452,6 @@ export class Game {
     return { held: main.field("heldKeysRaw").int(), pressed: main.field("newKeysRaw").int() };
   }
 
-  /** The columns of the choice on the screen: 1, or more for a grid menu. */
   choiceColumns(): number {
     return multichoiceGrid(this.mem, this.decode)?.columns ?? 1;
   }
@@ -515,7 +514,6 @@ export class Game {
     return this.context().callback2 === "BattleMainCB2";
   }
 
-  // After a lost battle or a faint from the poison on a walk, CB2_WhiteOut (overworld.c) warps the player to the last heal place.
   whitingOut(): boolean {
     return this.context().callback2 === "CB2_WhiteOut";
   }

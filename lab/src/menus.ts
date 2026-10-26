@@ -7,9 +7,8 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
-// The task of a grid menu keeps no multichoiceId. ScrCmd_multichoicegrid stops the script after its 5 bytes: left, top, multichoiceId, columns, ignoreBPress.
+// The script pointer is past the 5 bytes of the command: left, top, multichoiceId, columns, ignoreBPress.
 const GRID_MULTICHOICE_ID_OFFSET = 3;
-// CONTEXT_WAITING (script.c).
 const SCRIPT_CONTEXT_WAITING = 1;
 const START_MENU_INPUT_STEP = 1;
 // NAMING_SCREEN_* of the game. The two Pokémon templates (2 and 3) are not here: they name a Pokémon by its species.
@@ -54,8 +53,7 @@ export function multichoice(mem: Memory, decode: Decode): Choice | null {
   return { options: multichoiceOptions(mem, task.field("data").at(MULTICHOICE_ID).int(), decode), cursor: mem.global("sMenu").field("cursorPos").int() };
 }
 
-// The grid menu of a multichoicegrid script: the cursor goes left, right, up and down. Only the blackboard of the Viridian City school uses it.
-// The game draws the menu on more than one frame, after it starts the task: the menu is ready when ScrCmd_multichoicegrid stops the script.
+// The game draws the menu over several frames: it is ready when the script stops.
 export function multichoiceGrid(mem: Memory, decode: Decode): (Choice & { columns: number }) | null {
   if (!activeTask(mem, "Hask_MultichoiceGridMenu_HandleInput") || mem.global("sGlobalScriptContextStatus").int() !== SCRIPT_CONTEXT_WAITING) return null;
   const id = mem.u8(mem.global("sGlobalScriptContext").field("scriptPtr").pointer() - GRID_MULTICHOICE_ID_OFFSET);

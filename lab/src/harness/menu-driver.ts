@@ -66,7 +66,6 @@ function gridKey(cursor: number, target: number): number {
   return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
 }
 
-// A choice is a list (one column) or a grid: the cursor goes to the column of the target first, then to its row.
 function choiceKey(target: number, columns: number): (at: number) => number {
   const column = target % columns;
   return (at) => (at % columns === column ? toward(target, Keys.Down, Keys.Up)(at) : toward(column, Keys.Right, Keys.Left)(at % columns));
@@ -122,7 +121,6 @@ export class MessageReader {
     const before = this.messages.printing;
     this.messages = this.game.messages();
     for (const window of this.messages.printing) if (!before.includes(window)) this.push(window);
-    // A whiteout warps the player to the last heal place: the texts there continue the texts of the whiteout.
     if (this.game.whitingOut()) this.whitedOut = true;
     this.closedAfterPress = !this.whitedOut && (this.closedAfterPress || (this.pressedOnce && this.messages.boxClosed));
   }

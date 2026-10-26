@@ -212,7 +212,6 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
-// The separator that replaces a comma between the arguments, in action(a, b) and in action a, b: a space when the action is not here. A null keeps the text as one argument, with its commas: the text of name and the option of choose.
 const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null], ["choose", null]]);
 
 function withSpaces(action: string): string {
@@ -224,7 +223,6 @@ function withSpaces(action: string): string {
   return `${verb} ${written}`.trim();
 }
 
-// The form of each action and one example, for the reason of an answer that the Bot cannot read.
 const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
   go: ["go <letter>", "go B"],
   goTo: ["goTo <x> <y>", "goTo 9 42"],

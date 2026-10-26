@@ -90,7 +90,6 @@ const REFLECTION = [
 /** `happened`: the facts of importantEvents. */
 export type PromptState = { noProgress: NoProgress; reflection: boolean; happened: string[] };
 
-// The count can pass a multiple of REFLECTION_EVERY during a battle: the reflection turn then waits for the next walk of the same block.
 export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
   const block = Math.floor(stuck / REFLECTION_EVERY);
   const done = modelEvents(events.slice(since)).some((e) => e.reflection && Math.floor((e.stuck ?? 0) / REFLECTION_EVERY) === block);
