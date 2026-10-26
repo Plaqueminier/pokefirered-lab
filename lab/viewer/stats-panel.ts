@@ -6,7 +6,7 @@ import { isNewNote } from "../src/model/memory-tree";
 import { actionText, type ShownRun } from "../src/protocol";
 import { card, element, line, rows, showTooltip } from "./dom";
 import { dollars, runKey } from "./runs";
-import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel } from "./stats-lanes";
+import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel, tokens } from "./stats-lanes";
 
 type Count = { name: string; count: number };
 
@@ -16,6 +16,8 @@ export type Call = {
   situation: string;
   stuck: number | null;
   reflection: boolean;
+  /** The prompt tokens of its usage; null when the usage has none, for example a request that failed. */
+  prompt: number | null;
   note: boolean;
   answer: { kind: "action"; name: string; text: string } | { kind: "unreadable"; error: string };
 };
@@ -87,6 +89,7 @@ export function statsView(events: readonly RunEvent[], { now, areas, continued }
           situation: event.situation,
           stuck: event.stuck ?? null,
           reflection: event.reflection ?? false,
+          prompt: event.usage?.promptTokens || null,
           note: decision !== null && isNewNote(decision.note, lastNote),
           answer: decision ? { kind: "action", name: actionName(decision.action), text: decision.action } : { kind: "unreadable", error: event.error },
         });
@@ -130,6 +133,7 @@ type Selected = Span & {
   notes: number;
   stuck: { end: number; max: number } | null;
   reflections: number;
+  prompt: { min: number; max: number } | null;
   actions: Count[];
   impossible: Count[];
   unreadable: Count[];
@@ -150,6 +154,7 @@ export function selected(view: StatsView, selection: Selection | null): Selected
   const played = view.played.filter(inside);
   const summaries = view.summaries.filter(inside);
   const stucks = calls.flatMap((c) => (c.stuck === null ? [] : [c.stuck]));
+  const prompts = calls.flatMap((c) => (c.prompt === null ? [] : [c.prompt]));
   const chosen = counts(calls.flatMap((c) => (c.answer.kind === "action" ? [c.answer.name] : [])));
   return {
     from,
@@ -161,6 +166,7 @@ export function selected(view: StatsView, selection: Selection | null): Selected
     notes: calls.filter((c) => c.note).length,
     stuck: stucks.length > 0 ? { end: stucks[stucks.length - 1], max: Math.max(...stucks) } : null,
     reflections: calls.filter((c) => c.reflection).length,
+    prompt: prompts.length > 0 ? { min: Math.min(...prompts), max: Math.max(...prompts) } : null,
     actions: MODEL_ACTION_NAMES.map((name) => ({ name, count: chosen.find((c) => c.name === name)?.count ?? 0 })).sort((a, b) => b.count - a.count),
     impossible: counts(played.flatMap((p) => (p.status === "impossible" ? [withoutNumbers(`${p.name}: ${p.reason}`)] : []))),
     unreadable: counts(calls.flatMap((c) => (c.answer.kind === "unreadable" ? [withoutNumbers(c.answer.error)] : []))),
@@ -323,6 +329,7 @@ export class StatsPanel {
     add(element("span", `${part.notes} notes`));
     if (part.stuck) add(pill(`Stuck counter ${part.stuck.end}`, part.stuck.end), element("span", ` max ${part.stuck.max}`, `stuck-text ${stuckLevel(part.stuck.max)}`));
     if (part.stuck) add(element("span", `${part.reflections} Reflection turns`, "violet"));
+    if (part.prompt) add(element("span", `prompt ${tokens(part.prompt.min)} to ${tokens(part.prompt.max)} tokens`, "blue"));
     if (this.#selection) {
       const all = element("button", "select all");
       all.addEventListener("click", () => this.select(null));
