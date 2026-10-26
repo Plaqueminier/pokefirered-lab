@@ -105,6 +105,13 @@ export class AtlasWatch {
     if (interact && visit.grid.signs.some((s) => s.kind === "sign" && s.x === interact.x && s.y === interact.y)) visit.signTexts.set(cellKey(interact), result.text.join(" "));
   }
 
+  /** The number of different texts of the people that the player heard. */
+  get heard(): number {
+    let texts = 0;
+    for (const visit of this.#visits.values()) for (const person of visit.people.values()) texts += person.texts.length;
+    return texts;
+  }
+
   atlas(knowledge: KnowledgeLevel): Atlas {
     if (knowledge === "player") return { maps: [...this.#visits.values()].map(atlasMap) };
     const maps = this.game.allMapNames.flatMap((names, group) =>

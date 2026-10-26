@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type MapGrid } from "../game";
 import { type AtlasEdge, type AtlasMap, type AtlasWarp, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
@@ -88,10 +88,23 @@ export function approaches(target: Exclude<Target, { kind: "map" }>, { grid, pla
     case "sign": {
       const facing = target.kind === "sign" ? target.facing : "any";
       const sides = DIRECTION_STEPS.filter(([direction]) => facing === "any" || direction === OPPOSITE[facing]);
-      const cells = nearest(sides.map(([, [dx, dy]]) => ({ x: target.cell.x + dx, y: target.cell.y + dy })));
+      const { x, y } = target.cell;
+      const cells = nearest(sides.map(([, [dx, dy]]) => (target.kind === "person" && isCounter(grid, { x: x + dx, y: y + dy }) ? { x: x + 2 * dx, y: y + 2 * dy } : { x: x + dx, y: y + dy })));
       return cells.length > 0 ? cells : [target.cell];
     }
   }
+}
+
+/** The cell to interact with from `from`: the target next to it, or the counter between them (the game lets the player talk across a counter). */
+export function interactCell(target: { kind: Target["kind"]; cell: Cell }, grid: MapGrid, from: Cell): Cell | null {
+  if (nextTo(from, target.cell)) return target.cell;
+  const middle = { x: (from.x + target.cell.x) / 2, y: (from.y + target.cell.y) / 2 };
+  const across = target.kind === "person" && distance(from, target.cell) === 2 && (from.x === target.cell.x || from.y === target.cell.y);
+  return across && isCounter(grid, middle) ? middle : null;
+}
+
+function isCounter(grid: MapGrid, c: Cell): boolean {
+  return inside(grid, c) && grid.behaviorNames[grid.behaviors[(c.y - grid.y0) * grid.width + (c.x - grid.x0)]] === "MB_COUNTER";
 }
 
 export function nextTo(a: Cell, b: Cell): boolean {

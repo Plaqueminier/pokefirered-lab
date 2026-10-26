@@ -1,6 +1,6 @@
 // Follows OptMem: https://github.com/rafmyr/OptMem
 import type { NodeRange, Prompt, RunEvent } from "../harness/record";
-import { MAX_SENTENCE } from "./decision";
+import { MAX_SENTENCE, readJson } from "./decision";
 
 export type MemoryTree = { notes: string[]; summaries: Map<string, string> };
 
@@ -74,12 +74,7 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
 }
 
 export function readSummary(content: string): string {
-  let value: unknown;
-  try {
-    value = JSON.parse(content);
-  } catch {
-    throw new Error("the answer is not JSON");
-  }
+  const value = readJson(content);
   const summary = typeof value === "object" && value !== null ? (value as Record<string, unknown>).summary : undefined;
   if (typeof summary !== "string" || summary.trim() === "") throw new Error('the answer has no "summary"');
   return summary.trim().slice(0, MAX_SENTENCE);

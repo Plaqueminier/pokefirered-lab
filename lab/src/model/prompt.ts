@@ -23,10 +23,10 @@ const WAITS: Record<AskedKind, string> = {
   partyPick: "a Pokémon in the party menu of the battle",
   buyList: "the buy list of a Poké Mart",
 };
+const STUCK_WALKS = 50;
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
-  "has-pokedex": "Get the Pokédex from Professor Oak in Pallet Town.",
   "badge-1": "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
   "badge-2": "Earn the Cascade Badge from Misty, the Gym Leader of Cerulean City.",
   "badge-3": "Earn the Thunder Badge from Lt. Surge, the Gym Leader of Vermilion City.",
@@ -74,7 +74,15 @@ Advice of a good player:
 - Talk to the people: they tell you where to go and what to do.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
 - Train your Pokémon in the tall grass before you fight a Gym Leader.
-- Buy Poké Balls and Potions at a Poké Mart.`;
+- Buy Poké Balls and Potions at a Poké Mart.
+- When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
+- When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
+- Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
+}
+
+function walksLine(walks: number): string {
+  const line = `Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: ${walks}.`;
+  return walks >= STUCK_WALKS ? `${line} You are stuck: do not try the same things again. Read your Memory tree, then go to a map or talk to a person that you did not see yet.` : line;
 }
 
 export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], noProgress: NoProgress): string {
@@ -93,6 +101,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     `The game waits for ${now}.`,
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points with no progress: ${noProgress.decisions}.`,
+    walksLine(noProgress.walks),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress (a new cell or a new Milestone):", ...tried].join("\n"),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),

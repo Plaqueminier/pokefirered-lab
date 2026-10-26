@@ -43,7 +43,7 @@ let grid: MapGrid | null = null;
 let actors: MapActors | null = null;
 let camera: Camera | null = null;
 let sight: Sight = {};
-let soundOn = true;
+let soundOn = false;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
 const replayPanel = new ReplayPanel(

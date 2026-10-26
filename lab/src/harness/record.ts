@@ -98,12 +98,20 @@ export class GameWatch {
   #battle = false;
   #milestones = new Set<Milestone>();
   #cells = new Set<string>();
+  #maps = new Set<string>();
+  #levels = 0;
 
   constructor(private readonly game: Game) {}
 
   /** It increases with each new cell of the player and each new Milestone. */
   get progress(): number {
     return this.#cells.size + this.#milestones.size;
+  }
+
+  /** It increases with each new map, each new Milestone and each level up. The Harness adds the new texts of the people. */
+  get exploration(): number {
+    this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
+    return this.#maps.size + this.#milestones.size + this.#levels;
   }
 
   onFrame(frame: number): GameEvent[] {
@@ -115,6 +123,7 @@ export class GameWatch {
     if (mode === "other") return events;
     const map = this.game.map().name;
     if (map !== this.#map) events.push({ frame, type: "map", map });
+    this.#maps.add(map);
     this.#map = map;
     const player = mode === "overworld" ? this.game.player() : null;
     if (player) this.#cells.add(`${map} ${player.x} ${player.y}`);

@@ -103,14 +103,23 @@ export function askedOf(observation: Observation, atlasViewed: boolean): Asked |
   return kind === "battleAction" || kind === "battleMove" || kind === "partyPick" ? { kind, party, battle, items: battleItems(observation.bag, battle.kind) } : null;
 }
 
+// Some models write a stray "{" line or a code fence before the object, and copy it again after the error.
+export function readJson(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {}
+  const end = content.lastIndexOf("}");
+  for (let start = content.indexOf("{"); start !== -1 && start < end; start = content.indexOf("{", start + 1)) {
+    try {
+      return JSON.parse(content.slice(start, end + 1));
+    } catch {}
+  }
+  throw new Error("the answer is not JSON");
+}
+
 export function readDecision(content: string): Decision {
   if (content.trim() === "") throw new Error("the answer is empty");
-  let value: unknown;
-  try {
-    value = JSON.parse(content);
-  } catch {
-    throw new Error("the answer is not JSON");
-  }
+  const value = readJson(content);
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("the answer is not a JSON object");
   const fields = value as Record<string, unknown>;
   const decision = {} as Decision;

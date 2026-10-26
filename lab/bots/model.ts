@@ -1,10 +1,10 @@
-import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
+import { type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
 import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
 import { atlasMessage, B_PRESSES, errorMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
-import { approaches, nextTo, type Overworld, type Target } from "../src/model/targets";
+import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
@@ -137,16 +137,18 @@ class ModelPlay {
       await this.harness.goTo(target.cell.x, target.cell.y, target.map);
       return;
     }
-    const interactAt = target.kind === "person" || target.kind === "sign" ? target.cell : null;
-    if (interactAt && nextTo(overworld.player, interactAt)) {
-      await this.harness.interact(interactAt.x, interactAt.y);
+    const talkTo = target.kind === "person" || target.kind === "sign" ? target : null;
+    const here = talkTo && interactCell(talkTo, overworld.grid, overworld.player);
+    if (here) {
+      await this.harness.interact(here.x, here.y);
       return;
     }
-    let status: ActionResult["status"] = "impossible";
     for (const cell of approaches(target, overworld)) {
-      status = (await this.harness.goTo(cell.x, cell.y)).status;
-      if (status !== "impossible") break;
+      const { status } = await this.harness.goTo(cell.x, cell.y);
+      if (status === "impossible") continue;
+      const at = status === "done" && talkTo && interactCell(talkTo, overworld.grid, cell);
+      if (at) await this.harness.interact(at.x, at.y);
+      return;
     }
-    if (interactAt && status === "done") await this.harness.interact(interactAt.x, interactAt.y);
   }
 }

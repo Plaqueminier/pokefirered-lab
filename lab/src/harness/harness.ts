@@ -76,8 +76,8 @@ export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "f
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
-/** `since`: the number of events of the Run at the last progress. */
-export type NoProgress = { decisions: number; since: number };
+/** `since`: the number of events of the Run at the last progress. `walks`: the walk Decision points since a new map, a new Milestone, a level up or a new text of a person. */
+export type NoProgress = { decisions: number; since: number; walks: number };
 
 export type Interruption = GameInterruption | "map";
 
@@ -189,7 +189,7 @@ class RunEnd extends Error {
 }
 
 class RunLimits {
-  #noProgress: NoProgress = { decisions: 0, since: 0 };
+  #noProgress: NoProgress = { decisions: 0, since: 0, walks: 0 };
 
   constructor(
     private readonly goal: Milestone,
@@ -197,6 +197,7 @@ class RunLimits {
     private readonly noProgressLimit: number,
     private readonly costLimit: number,
     private progress: number,
+    private exploration: number,
   ) {}
 
   beforeFrame(frame: number): void {
@@ -207,10 +208,13 @@ class RunLimits {
     return this.#noProgress;
   }
 
-  atDecision(milestones: Milestone[], progress: number, events: number): void {
+  atDecision(milestones: Milestone[], progress: number, exploration: number, walk: boolean, events: number): void {
     if (milestones.includes(this.goal)) throw new RunEnd("goal");
-    this.#noProgress = progress > this.progress ? { decisions: 0, since: events } : { ...this.#noProgress, decisions: this.#noProgress.decisions + 1 };
+    const walks = exploration > this.exploration ? 0 : this.#noProgress.walks + (walk ? 1 : 0);
+    this.#noProgress = progress > this.progress ? { decisions: 0, since: events, walks } : { ...this.#noProgress, decisions: this.#noProgress.decisions + 1, walks };
     this.progress = progress;
+    // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
+    this.exploration = Math.max(this.exploration, exploration);
     if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
   }
 
@@ -310,7 +314,7 @@ export class Harness {
     const rawInputs = this.rawInputs;
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
-    const limits = new RunLimits(goal, start + frameBudget, this.#noProgressLimit ?? Number.POSITIVE_INFINITY, bot.model?.costLimit ?? Number.POSITIVE_INFINITY, this.#watch.progress);
+    const limits = new RunLimits(goal, start + frameBudget, this.#noProgressLimit ?? Number.POSITIVE_INFINITY, bot.model?.costLimit ?? Number.POSITIVE_INFINITY, this.#watch.progress, this.exploration());
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
     let result: RunResult | null = null;
@@ -564,9 +568,13 @@ export class Harness {
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#atlas.onAction(entry);
     this.#onAction?.(entry, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.#events.length);
+    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.exploration(), this.#run.game.waitingFor().kind === "walk", this.#events.length);
     this.stopIfAsked();
     return result;
+  }
+
+  private exploration(): number {
+    return this.#watch.exploration + this.#atlas.heard;
   }
 
   private callEnded<E extends ModelEvent | SummaryEvent>(event: E, listener?: (event: E, harness: Harness) => void): E {

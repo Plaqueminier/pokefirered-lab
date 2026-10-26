@@ -134,6 +134,35 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(harness.actions.map((e) => [e.action, e.result.status])).toEqual(Array.from({ length: 11 }, (_, i) => [{ name: "goTo", ...cell(i) }, "done"]));
   });
 
+  test("the walk Decision points since a new map, a new Milestone, a level up or a new text of a person: new cells and a text heard before do not reset them", async () => {
+    const harness = await Harness.open();
+    const walks: number[] = [];
+    const explorer: Bot = {
+      name: "explorer",
+      version: "1",
+      async play(h) {
+        const walk = async (x: number, y: number, map?: string) => {
+          must(await h.goTo(x, y, map));
+          walks.push(h.noProgress.walks);
+        };
+        const talkToMom = async () => {
+          must(await h.interact(8, 4));
+          while (h.observe().waitingFor.kind !== "walk") await h.readText();
+          walks.push(h.noProgress.walks);
+        };
+        await walk(6, 6);
+        await walk(6, 7);
+        await walk(8, 5, "PalletTown_PlayersHouse_1F");
+        await walk(8, 6);
+        await walk(8, 5);
+        await talkToMom();
+        await talkToMom();
+      },
+    };
+    await harness.play(explorer);
+    expect(walks).toEqual([1, 2, 0, 1, 2, 0, 1]);
+  });
+
   test("the frame budget ends the Run at its last frame, also in a Macro-action, and the Run record has the buttons to that frame", async () => {
     const harness = await Harness.open({ frameBudget: 2000 });
     const start = harness.frame;

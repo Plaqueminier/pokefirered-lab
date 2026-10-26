@@ -77,10 +77,9 @@ describe("the Mission", () => {
 describe("the next Milestone", () => {
   test("it is the first Milestone, in the order of the story, that the Run did not reach, with a name and a place only", () => {
     expect(nextMilestone([])).toBe("Get your first Pokémon from Professor Oak in Pallet Town.");
-    expect(nextMilestone(["has-pokemon", "first-rival-battle"])).toBe("Get the Pokédex from Professor Oak in Pallet Town.");
-    expect(nextMilestone(["has-pokemon", "has-pokedex"])).toBe("Battle your rival for the first time, in Professor Oak's lab in Pallet Town.");
-    expect(nextMilestone(["has-pokemon", "first-rival-battle", "has-pokedex"])).toBe("Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.");
-    expect(nextMilestone(["has-pokemon", "first-rival-battle", "has-pokedex", "badge-1", "badge-2", "badge-3", "badge-4", "badge-5", "badge-6", "badge-7"])).toBe(
+    expect(nextMilestone(["has-pokemon", "first-rival-battle"])).toBe("Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.");
+    expect(nextMilestone(["first-rival-battle"])).toBe("Get your first Pokémon from Professor Oak in Pallet Town.");
+    expect(nextMilestone(["has-pokemon", "first-rival-battle", "badge-1", "badge-2", "badge-3", "badge-4", "badge-5", "badge-6", "badge-7"])).toBe(
       "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
     );
   });
@@ -108,7 +107,12 @@ describe("the Bag", () => {
         enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", statStages: stages, movesSeen: [] },
       },
     } as Observation;
-    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0 });
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 0 });
+    expect(prompt).not.toContain("You are stuck");
+    expect(prompt).toContain("Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: 0.");
+    expect(userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 50 })).toContain(
+      "Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: 50. You are stuck: do not try the same things again. Read your Memory tree, then go to a map or talk to a person that you did not see yet.",
+    );
     expect(prompt).toContain(
       [
         "Money: 3080",
@@ -141,7 +145,7 @@ describe("the Bag", () => {
       atlas: { maps: [map] },
     } as unknown as Observation;
     const asked = askedOf(observation, false)!;
-    expect(userPrompt(observation, asked, [], { decisions: 0, since: 0 })).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon).");
+    expect(userPrompt(observation, asked, [], { decisions: 0, since: 0, walks: 0 })).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon).");
     expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
     expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION');
   });
@@ -158,7 +162,7 @@ describe("the Poké Mart", () => {
       milestones: [],
       atlas: { maps: [] },
     } as unknown as Observation;
-    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0 });
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 0 });
     expect(prompt).toContain("The game waits for the buy list of a Poké Mart.");
     expect(prompt).toContain("Money: 3080");
     expect(prompt).toContain(["The Poké Mart sells (the price of one item):", "- POKé BALL: 200", "- POTION: 300"].join("\n"));

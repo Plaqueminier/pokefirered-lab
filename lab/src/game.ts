@@ -29,14 +29,12 @@ const MAP_OFFSET = 7;
 const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
-const FLAG_SYS_POKEDEX_GET = 0x829;
 // EndRivalBattle sets it after the first rival battle, won or lost.
 const FLAG_BEAT_RIVAL_IN_OAKS_LAB = 0x258;
 const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const MILESTONE_FLAGS: [Milestone, number][] = [
   ["has-pokemon", FLAG_SYS_POKEMON_GET],
   ["first-rival-battle", FLAG_BEAT_RIVAL_IN_OAKS_LAB],
-  ["has-pokedex", FLAG_SYS_POKEDEX_GET],
   ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
 ];
 export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]) => milestone);
@@ -83,7 +81,7 @@ const SCRIPT_MODE_NATIVE = 2;
 const MAP_SCRIPT_ON_FRAME_TABLE = 2;
 const MAP_SCRIPT_ENTRY_SIZE = 5;
 const MAP_SCRIPT_ROW_SIZE = 8;
-export type Milestone = "has-pokemon" | "first-rival-battle" | "has-pokedex" | `badge-${(typeof BADGES)[number]}`;
+export type Milestone = "has-pokemon" | "first-rival-battle" | `badge-${(typeof BADGES)[number]}`;
 
 export type GameState = {
   map: { group: number; num: number; name: string };

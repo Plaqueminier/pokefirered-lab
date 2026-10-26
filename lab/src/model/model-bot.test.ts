@@ -152,7 +152,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect([...new Set(next)]).toEqual([
       "Get your first Pokémon from Professor Oak in Pallet Town.",
       "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
-      "Get the Pokédex from Professor Oak in Pallet Town.",
+      "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
     ]);
     expect(prompts).toHaveLength(calls.length);
     const totals = modelTotals(harness.events);
@@ -329,5 +329,24 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot wit
     expect(users.find((user) => user.includes("The game waits for a battle action."))).toContain("- switch <Pokémon>: take your Pokémon out of the battle and send this one. It can be SQUIRTLE.");
     expect(users.find((user) => user.includes("The game waits for a choice: YES, NO."))).toMatch(/^Battle against a wild Pokémon\.$/m);
     expect(users.find((user) => user.includes("The game waits for a Pokémon in the party menu"))).toContain("- send <Pokémon>: send this Pokémon into the battle. It can be SQUIRTLE.");
+  });
+});
+
+const MART_SAVE = join(SAVES_DIR, "test-mart.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("model bot at a counter", () => {
+  test("go to a person behind a counter walks to the front of the counter and talks across it", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    const prompts: Prompt[] = [];
+    const client: ModelClient = async (prompt) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) return reply("goTo 4 5");
+      if (prompts.length === 2) return reply(target(prompt, "CLERK"));
+      return reply("?");
+    };
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    // The counter of this Mart has an L shape: (3, 3) and (2, 4) are both counter cells next to the clerk.
+    expect(harness.actions.find(({ action }) => action.name === "interact")).toMatchObject({ action: { x: 2, y: 4 }, result: { status: "done" } });
+    expect(prompts.at(-1)?.user).toContain("The game waits for a choice: BUY, SELL, SEE YA!.");
   });
 });

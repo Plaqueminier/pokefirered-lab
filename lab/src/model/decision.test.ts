@@ -21,6 +21,11 @@ describe("readDecision", () => {
     expect(readDecision(answer({ objective: "x".repeat(MAX_SENTENCE + 10) })).objective).toHaveLength(MAX_SENTENCE);
   });
 
+  test("it reads the JSON object after text that is not JSON, as a stray brace or a code fence", () => {
+    expect(readDecision(`{\n${answer({ action: "go 7" })}`).action).toBe("go 7");
+    expect(readDecision(`\`\`\`json\n${answer({ action: "go 2" })}\n\`\`\``).action).toBe("go 2");
+  });
+
   test("it refuses an answer that is not JSON, or that has a field missing or not a string", () => {
     expect(() => readDecision("I go north")).toThrow("the answer is not JSON");
     expect(() => readDecision(" ")).toThrow("the answer is empty");
