@@ -57,7 +57,7 @@ The number of **Decision points** of a **Run** since its last progress. Progress
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Reflection turn**:
-A **Model call** of a model bot at each 30 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
+A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
 **Summary call**:

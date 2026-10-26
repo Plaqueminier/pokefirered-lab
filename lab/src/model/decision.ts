@@ -10,7 +10,7 @@ import { type Overworld, targetIndex, targetLetter } from "./targets";
 // The text that the model writes returns in each prompt: a cap keeps the prompt small.
 export const MAX_SENTENCE = 200;
 /** The model bot gets a Reflection turn at each REFLECTION_EVERY more Decision points on the Stuck counter. */
-export const REFLECTION_EVERY = 30;
+export const REFLECTION_EVERY = 20;
 const MAX_QUOTED_ACTION = 80;
 
 const FIELDS = ["reason", "action", "mission", "objective", "note"] as const satisfies readonly (keyof Decision)[];
