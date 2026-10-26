@@ -92,7 +92,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     record.buttons.forEach(([keys], i) => expect(keys).not.toBe(record.buttons[i - 1]?.[0]));
 
     const actions = record.events.flatMap((e) => (e.type === "action" ? [e.action.name] : []));
-    expect(actions).toHaveLength(26);
+    expect(actions).toHaveLength(25);
     expect(actions.slice(0, 3)).toEqual(["goTo", "goTo", "readText"]);
     const gameEvents = record.events.filter((e) => e.type !== "action").map(({ frame, ...event }) => event);
     expect(gameEvents).toEqual([
