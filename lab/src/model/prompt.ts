@@ -302,7 +302,6 @@ function context(asked: Asked): string[] {
   }
 }
 
-// The actions of actionsOf, with their help; zoom and press come after them.
 function actionLines(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk": {

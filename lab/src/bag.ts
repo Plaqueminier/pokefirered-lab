@@ -16,7 +16,6 @@ export type PocketName = (typeof POCKET_NAMES)[number];
 
 export type ItemUse = "pokemon" | "alone";
 
-/** `price`: the price of one item in a Poké Mart; 0 for an item that a Poké Mart does not buy, as the Key Items. */
 export type BagItem = { name: string; quantity: number; description: string; price: number; battle: ItemUse | null; walk: ItemUse | null };
 
 export type BagPocket = { pocket: PocketName; items: BagItem[] };
@@ -66,7 +65,6 @@ export function walkItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap((pocket) => pocket.items.filter((item) => item.walk));
 }
 
-/** The items that a Poké Mart buys: the items with a price, out of the TM Case and the Berry Pouch (their sale is not covered yet). */
 export function sellableItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap(({ pocket, items }) => (POCKET_NAMES.indexOf(pocket) < BATTLE_POCKETS ? items.filter((item) => item.price > 0) : []));
 }

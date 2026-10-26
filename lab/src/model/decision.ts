@@ -98,7 +98,6 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
   const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
-    // The buy list shows after an Interruption or a Raw input only: the actions of the shop menu work there too.
     if (waitingFor.kind === "shopMenu" || waitingFor.kind === "buyList") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
@@ -205,7 +204,6 @@ function plain(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
-// Some models write an action as a call: "press(Up)" or "buy(POTION, 2)" is the same as "press Up" or "buy POTION 2".
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/);
   return call ? `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(" ")}`.trim() : action;

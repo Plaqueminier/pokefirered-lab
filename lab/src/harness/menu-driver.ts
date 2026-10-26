@@ -199,7 +199,6 @@ export class MenuDriver {
     return row.status === "done" ? this.tradeAndReturn(quantity, () => game.bagMenu()?.screen === "list") : row;
   }
 
-  /** From the shop menu or the buy list, SEE YA!: the clerk then says goodbye. */
   leave(): Outcome {
     const menu = this.toShopMenu();
     return menu.status === "done" ? this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop") : menu;
@@ -302,7 +301,7 @@ export class MenuDriver {
       if (effect.status !== "done") return effect;
     }
     const text = game.waitingTexts();
-    // ESCAPE ROPE closes the Bag and shows its text on the field: after the text, the player goes to another map.
+    // ESCAPE ROPE closes the Bag and shows its text on the field, then warps to another map.
     if (game.mode() === "overworld") {
       const escaped = this.menuInput(Keys.A, () => game.waitingFor().kind !== "busy");
       return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
@@ -341,7 +340,6 @@ export class MenuDriver {
     return game.shopMenu() ? DONE : this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
   }
 
-  /** The trade ends at its list, also when the game refuses it: then B goes back to the shop menu. */
   private tradeAndReturn(quantity: number, atList: () => boolean): Outcome {
     const traded = this.trade(quantity);
     if (!atList()) return traded;

@@ -10,7 +10,7 @@ const START_MENU_INPUT_STEP = 1;
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };
 
-// sStartMenuCallback keeps StartCB_HandleInput from the last Start menu: Task_StartMenuHandleInput (start_menu.c) reads the input only from its step 1.
+// Task_StartMenuHandleInput reads input only at step 1; sStartMenuCallback keeps the callback of the last Start menu.
 export function startMenu(mem: Memory, decode: Decode): Choice | null {
   const task = activeTask(mem, "Task_StartMenuHandleInput");
   if (task?.field("data").at(0).int() !== START_MENU_INPUT_STEP || functionName(mem.symbols, mem.global("sStartMenuCallback").pointer()) !== "StartCB_HandleInput") return null;

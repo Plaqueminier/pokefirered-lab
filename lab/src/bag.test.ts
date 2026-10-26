@@ -10,7 +10,6 @@ const ELF_FILE = ROM_FILE.replace(/\.gba$/, ".elf");
 const ROM_START = 0x08000000;
 const ITEMS = { POKE_BALL: 4, POTION: 13, SUPER_REPEL: 83, MAX_REPEL: 84, ESCAPE_ROPE: 85, REPEL: 86 };
 
-// gItems is in the ROM: the ROM file alone gives the item data, with no emulator.
 async function romMemory(): Promise<Memory> {
   const rom = new Uint8Array(await Bun.file(ROM_FILE).arrayBuffer());
   const bus = { read: (address: number, length: number) => rom.subarray(address - ROM_START, address - ROM_START + length) };

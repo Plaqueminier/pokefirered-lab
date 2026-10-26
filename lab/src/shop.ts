@@ -7,12 +7,10 @@ const SELL_QUANTITY = 8;
 
 export type ShopItem = { name: string; price: number };
 
-/** The menu BUY, SELL, SEE YA!: `cursor` is the row of the option. */
 export type ShopMenu = { items: ShopItem[]; cursor: number };
 
 export type BuyList = { items: ShopItem[]; row: number };
 
-// CreatePokemartMenu (shop.c) sets the items for sale before it shows the shop menu.
 export function shopMenu(mem: Memory, decode: Decode): ShopMenu | null {
   if (!activeTask(mem, "Task_ShopMenu")) return null;
   return { items: itemsForSale(mem, decode), cursor: mem.global("sMenu").field("cursorPos").int() };
