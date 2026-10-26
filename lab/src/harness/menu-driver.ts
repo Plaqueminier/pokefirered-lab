@@ -100,6 +100,7 @@ export class MessageReader {
   private messages: Messages;
   private pressedOnce = false;
   private lastWindow: number | null = null;
+  private whitedOut = false;
   closedAfterPress = false;
 
   constructor(private readonly game: Game) {
@@ -115,7 +116,9 @@ export class MessageReader {
     const before = this.messages.printing;
     this.messages = this.game.messages();
     for (const window of this.messages.printing) if (!before.includes(window)) this.push(window);
-    if (this.pressedOnce && this.messages.boxClosed) this.closedAfterPress = true;
+    // A whiteout warps the player to the last heal place: the texts there continue the texts of the whiteout.
+    if (this.game.whitingOut()) this.whitedOut = true;
+    this.closedAfterPress = !this.whitedOut && (this.closedAfterPress || (this.pressedOnce && this.messages.boxClosed));
   }
 
   textBeforeWaitingText(): string[] {

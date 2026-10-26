@@ -680,3 +680,24 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     expect(harness.waitingFor().kind).toBe("walk");
   });
 });
+
+// A test Starting save in Viridian City at (26, 28), after a visit to its Pokémon Center: SQUIRTLE has 1 HP and the poison, and the next step faints it.
+const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {
+  test("after a whiteout, readText reads the texts through the warp to the Pokémon Center and ends at the walk there", async () => {
+    const harness = await Harness.open({ startSave: WHITEOUT_SAVE });
+    expect(await harness.goTo(26, 26)).toMatchObject({ status: "interrupted", reason: "script" });
+    expect(await harness.readText()).toMatchObject({
+      status: "done",
+      text: [
+        "SQUIRTLE fainted…",
+        "PLOK is out of usable POKéMON! PLOK panicked and lost ¥48… … … … … PLOK whited out!",
+        "PLOK scurried to a POKéMON CENTER, protecting the exhausted and fainted POKéMON from further harm…",
+        "First, you should restore your POKéMON to full health.",
+        "Your POKéMON have been healed to perfect health. If your POKéMON's energy, HP, is down, please come see us. If you're planning to go far in the field, you should buy some POTIONS at the POKéMON MART. We hope you excel!",
+      ],
+    });
+    expect(harness.observe()).toMatchObject({ map: { name: "ViridianCity_PokemonCenter_1F" }, waitingFor: { kind: "walk" }, party: [{ hp: 22, maxHp: 22, status: "none" }] });
+  });
+});
