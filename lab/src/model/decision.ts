@@ -211,7 +211,6 @@ function plain(text: string): string {
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/);
   if (!call) return action;
-  // A name keeps its commas.
   if (call[1].toLowerCase() === "name") return `name ${call[2]}`.trim();
   const separator = call[1].toLowerCase() === "use" ? " on " : " ";
   return `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(separator)}`.trim();

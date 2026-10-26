@@ -8,13 +8,11 @@ const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
 const START_MENU_INPUT_STEP = 1;
-// NAMING_SCREEN_* (naming_screen.h); the Pokémon templates name the species of monSpecies.
 const NAMING_SUBJECTS = ["the name of the player", "the name of a PC box", null, null, "the name of the rival"];
-// STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
+// Decomp STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
 const NAMING_INPUT_STATE = 2;
 const NAMING_PAGES = 3;
 
-/** `pages`: the rows of the keyboard pages, from the page on the screen, in the order of the Select presses. */
 export type NamingScreen = { subject: string; maxLength: number; ready: boolean; page: number; pages: string[][]; cursor: { x: number; y: number }; text: string };
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };

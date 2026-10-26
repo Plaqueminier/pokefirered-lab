@@ -521,7 +521,6 @@ export class Harness {
     return this.act<Texts>({ name: "leave" }, () => this.#menus.leave(), { text: [] });
   }
 
-  /** Types `text` on the naming screen, then presses OK. An empty text keeps the name that the game gives. */
   async name(text: string): Promise<TextResult> {
     return this.act<Texts>({ name: "name", text }, () => this.#menus.name(text), { text: [] });
   }

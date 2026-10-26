@@ -22,9 +22,8 @@ const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
-// The OK button is the third row of the button column, and the button column is at x = the number of columns (MoveCursorToOKButton).
+// Decomp MoveCursorToOKButton: the OK button is in the third row of the button column.
 const NAMING_OK_ROW = 2;
-// The cursor positions of the naming screen as one number: x is below 16.
 const NAMING_ROW_SIZE = 16;
 
 export type Outcome =
@@ -73,7 +72,6 @@ function sale(item: string, place: BagPlace | null): Sale {
   return refusal === null ? { place, refusal } : { place: null, refusal };
 }
 
-// The keyboard has “ and ”: an ASCII " opens, and the next one closes.
 function keyboardCharacters(text: string): string[] {
   let open = false;
   return Array.from(text, (char) => (char === '"' ? ((open = !open) ? "“" : "”") : char));
@@ -288,13 +286,11 @@ export class MenuDriver {
     return swapped.status === "done" ? this.closeStartMenu() : swapped;
   }
 
-  /** The naming screen when it reads the keys. */
   private namingScreen() {
     const screen = this.game.namingScreen();
     return screen?.ready ? screen : null;
   }
 
-  // Select shows the next page; the cursor goes to the key on the rows of the keys, and leaves the button column to the left.
   private typeCharacter(char: string): Outcome {
     for (let swaps = 0; ; swaps++) {
       const screen = this.namingScreen();

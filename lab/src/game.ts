@@ -276,7 +276,6 @@ export class Game {
   }
 
   waitingFor(): WaitingFor {
-    // The naming screen of a catch opens in a battle.
     const naming = this.namingScreen();
     if (naming) return naming.ready ? { kind: "naming", subject: naming.subject, maxLength: naming.maxLength } : { kind: "busy" };
     const { mode, callback1 } = this.context();
