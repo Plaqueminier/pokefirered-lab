@@ -51,7 +51,7 @@ describe("readAction", () => {
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
 
-  test("at a walk: a target, a cell of the map or of another map, or a Raw input", () => {
+  test("at a walk: a target, a cell of the map or of another map, or a Raw input, also in the form with parentheses", () => {
     expect(readAction("go C", walk(3))).toEqual({ name: "go", target: 2 });
     expect(readAction(" GO b ", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo 12 -1", walk(3))).toEqual({ name: "goTo", x: 12, y: -1 });
@@ -59,6 +59,9 @@ describe("readAction", () => {
     expect(readAction("press start", walk(3))).toEqual({ name: "press", button: "Start" });
     expect(readAction("zoom 1-8", walk(3))).toEqual({ name: "zoom", from: 1, to: 8 });
     expect(readAction("zoom #13", walk(3))).toEqual({ name: "zoom", from: 13, to: 13 });
+    expect(readAction("press(Up)", walk(3))).toEqual({ name: "press", button: "Up" });
+    expect(readAction("go(B)", walk(3))).toEqual({ name: "go", target: 1 });
+    expect(readAction("goTo(4, 7)", walk(3))).toEqual({ name: "goTo", x: 4, y: 7 });
   });
 
   test("at a choice: an option of the choice, in any case", () => {
@@ -92,6 +95,7 @@ describe("readAction", () => {
     const asked: Asked = { kind: "buyList", forSale: [{ name: "POKé BALL", price: 200 }], bag: [{ pocket: "ITEMS", items: [potion] }], party: [] };
     expect(readAction("buy Poke Ball 5", asked)).toEqual({ name: "buy", item: "POKé BALL", quantity: 5 });
     expect(readAction("sell potion 2", asked)).toEqual({ name: "sell", item: "POTION", quantity: 2 });
+    expect(readAction("buy(POTION, 2)", { ...asked, forSale: [{ name: "POTION", price: 300 }] })).toEqual({ name: "buy", item: "POTION", quantity: 2 });
     expect(() => readAction("buy POTION 1", asked)).toThrow('"POTION" is not an item of the buy list: POKé BALL');
     expect(() => readAction("sell ANTIDOTE 1", asked)).toThrow('"ANTIDOTE" is not an item of your Bag: POTION');
   });
