@@ -16,7 +16,7 @@ import {
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { multichoice, type PartyMenu, partyMenu, startMenu } from "./menus";
+import { multichoice, type NamingScreen, namingScreen, type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -102,6 +102,7 @@ export type WaitingFor =
   | { kind: "battleMove" }
   | { kind: "partyPick" }
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
+  | { kind: "naming"; subject: string; maxLength: number }
   | { kind: "busy" };
 
 export function isDecisionPoint({ kind }: WaitingFor): boolean {
@@ -275,6 +276,9 @@ export class Game {
   }
 
   waitingFor(): WaitingFor {
+    // The naming screen of a catch opens in a battle.
+    const naming = this.namingScreen();
+    if (naming) return naming.ready ? { kind: "naming", subject: naming.subject, maxLength: naming.maxLength } : { kind: "busy" };
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
     if (mode !== "overworld") return { kind: "busy" };
@@ -451,6 +455,10 @@ export class Game {
 
   startMenu(): Choice | null {
     return startMenu(this.mem, this.decode);
+  }
+
+  namingScreen(): NamingScreen | null {
+    return namingScreen(this.mem, this.decode);
   }
 
   partyMenu(): PartyMenu | null {

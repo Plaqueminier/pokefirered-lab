@@ -5,7 +5,7 @@ const TAIL_WHIP = 1;
 
 export default {
   name: "starter",
-  version: "3",
+  version: "4",
   goal: "first-rival-battle",
   frameBudget: 30_000,
   async play(harness) {
@@ -17,8 +17,8 @@ export default {
     must(await harness.readText());
     must(await harness.choose("YES"));
     must(await harness.readText());
-    must(await harness.choose("NO"));
-    must(await harness.readText());
+    must(await harness.choose("YES"));
+    must(await harness.name(""));
     await harness.goTo(6, 11);
     await harness.readText();
     let fights = 0;

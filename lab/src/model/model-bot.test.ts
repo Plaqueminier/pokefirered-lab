@@ -177,7 +177,7 @@ describe.skipIf(!ready)("model bot", () => {
     };
     expect(prompts[0].system).toContain("Become the Champion: earn the 8 gym badges, then beat the Elite Four");
     expect(prompts[0].system).toContain("Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer.");
-    expect(prompts[0].system).toContain("answer NO");
+    expect(prompts[0].system).not.toContain("nickname");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
     expect(prompts[0].system).toContain("heal your Pokémon at a Pokémon Center");
     expect(prompts[0].system).not.toMatch(/goal of this run|rival|Oak/i);

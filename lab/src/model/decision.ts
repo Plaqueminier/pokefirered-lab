@@ -43,7 +43,7 @@ export function isPlayed(action: ModelAction): action is PlayedAction {
   return action.name !== "viewAtlas" && action.name !== "zoom";
 }
 
-const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, leave: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
+const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, leave: 0, name: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
@@ -53,6 +53,7 @@ export type Asked = { party: PartyMon[] } & (
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
+  | { kind: "naming"; subject: string; maxLength: number }
 );
 
 export type AskedKind = Asked["kind"];
@@ -64,6 +65,7 @@ const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   battleMove: ["fight", "zoom", "press"],
   partyPick: ["send", "zoom", "press"],
   shopMenu: ["buy", "sell", "leave", "zoom"],
+  naming: ["name", "zoom"],
 };
 
 export function actionsOf(asked: Asked): ModelAction["name"][] {
@@ -96,6 +98,8 @@ const BUTTONS = Object.keys(Keys) as Button[];
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
 export function askedOf(observation: Observation, atlasShown: boolean): Asked | null {
   const { waitingFor, party } = observation;
+  if (waitingFor.kind === "naming") return { kind: "naming", party, subject: waitingFor.subject, maxLength: waitingFor.maxLength };
+  if (observation.mode === "naming") return null;
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
@@ -207,6 +211,8 @@ function plain(text: string): string {
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/);
   if (!call) return action;
+  // A name keeps its commas.
+  if (call[1].toLowerCase() === "name") return `name ${call[2]}`.trim();
   const separator = call[1].toLowerCase() === "use" ? " on " : " ";
   return `${call[1]} ${call[2].split(",").map((arg) => arg.trim()).join(separator)}`.trim();
 }
@@ -225,6 +231,7 @@ function parse(written: string): ParsedAction | null {
   if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };
   if (/^run$/i.test(action)) return { name: "run" };
   if (/^leave$/i.test(action)) return { name: "leave" };
+  if ((m = action.match(/^name(?:\s+(.*))?$/i))) return { name: "name", text: m[1] ?? "" };
   if (/^viewAtlas$/i.test(action)) return { name: "viewAtlas" };
   if ((m = action.match(/^zoom\s+#?(\d+)(?:-(\d+))?$/i))) return { name: "zoom", from: Number(m[1]), to: Number(m[2] ?? m[1]) };
   const button = action.match(/^press\s+(\w+)$/i)?.[1].toLowerCase();

@@ -22,6 +22,10 @@ const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
+// The OK button is the third row of the button column, and the button column is at x = the number of columns (MoveCursorToOKButton).
+const NAMING_OK_ROW = 2;
+// The cursor positions of the naming screen as one number: x is below 16.
+const NAMING_ROW_SIZE = 16;
 
 export type Outcome =
   | { status: "done" }
@@ -67,6 +71,12 @@ function sale(item: string, place: BagPlace | null): Sale {
   if (!place) return { place, refusal: `there is no ${item} in the Bag` };
   const refusal = sellRefusal(place.pocket, place.price, item);
   return refusal === null ? { place, refusal } : { place: null, refusal };
+}
+
+// The keyboard has “ and ”: an ASCII " opens, and the next one closes.
+function keyboardCharacters(text: string): string[] {
+  let open = false;
+  return Array.from(text, (char) => (char === '"' ? ((open = !open) ? "“" : "”") : char));
 }
 
 export class MessageReader {
@@ -209,6 +219,26 @@ export class MenuDriver {
     return left.status === "done" ? this.readText() : withText(left);
   }
 
+  name(text: string): Outcome & Texts {
+    const screen = this.namingScreen();
+    if (!screen) throw new Error("name is available only at the naming screen");
+    const characters = keyboardCharacters(text);
+    if (characters.length > screen.maxLength) return withText(impossible(`"${text}" has ${characters.length} characters: ${screen.subject} has ${screen.maxLength} at most`));
+    const missing = characters.find((char) => !screen.pages.some((page) => page.some((row) => row.includes(char))));
+    if (missing !== undefined) return withText(impossible(`"${missing}" is not on the keyboard of the naming screen`));
+    for (const char of characters) {
+      const typed = this.typeCharacter(char);
+      if (typed.status !== "done") return withText(typed);
+    }
+    const onOk = this.menuInput(Keys.Start, () => {
+      const now = this.namingScreen();
+      return now !== null && now.cursor.x === now.pages[0][0].length && now.cursor.y === NAMING_OK_ROW;
+    });
+    if (onOk.status !== "done") return withText(onOk);
+    const pressed = this.pressUntilRead(Keys.A);
+    return pressed.status === "done" ? this.readText() : withText(pressed);
+  }
+
   readText(): Outcome & Texts {
     const reader = new MessageReader(this.game);
     for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
@@ -256,6 +286,42 @@ export class MenuDriver {
     if (moved.status !== "done") return moved;
     const swapped = this.menuInput(Keys.A, () => this.pickMenu()?.swapping === false);
     return swapped.status === "done" ? this.closeStartMenu() : swapped;
+  }
+
+  /** The naming screen when it reads the keys. */
+  private namingScreen() {
+    const screen = this.game.namingScreen();
+    return screen?.ready ? screen : null;
+  }
+
+  // Select shows the next page; the cursor goes to the key on the rows of the keys, and leaves the button column to the left.
+  private typeCharacter(char: string): Outcome {
+    for (let swaps = 0; ; swaps++) {
+      const screen = this.namingScreen();
+      if (!screen) return impossible("the naming screen reads no input");
+      const y = screen.pages[0].findIndex((row) => row.includes(char));
+      if (y < 0) {
+        if (swaps === screen.pages.length) return impossible(`no page of the keyboard has "${char}"`);
+        const swapped = this.menuInput(Keys.Select, () => (this.namingScreen()?.page ?? screen.page) !== screen.page);
+        if (swapped.status !== "done") return swapped;
+        continue;
+      }
+      const x = screen.pages[0][y].indexOf(char);
+      const columns = screen.pages[0][0].length;
+      const cursor = () => {
+        const now = this.namingScreen();
+        return now && now.cursor.y * NAMING_ROW_SIZE + now.cursor.x;
+      };
+      const key = (at: number) => {
+        const [atX, atY] = [at % NAMING_ROW_SIZE, Math.floor(at / NAMING_ROW_SIZE)];
+        if (atX === columns) return Keys.Left;
+        return atY !== y ? toward(y, Keys.Down, Keys.Up)(atY) : toward(x, Keys.Right, Keys.Left)(atX);
+      };
+      const moved = this.moveMenuCursor(y * NAMING_ROW_SIZE + x, cursor, key);
+      if (moved.status !== "done") return moved;
+      const length = screen.text.length;
+      return this.menuInput(Keys.A, () => (this.namingScreen()?.text.length ?? length) > length);
+    }
   }
 
   private missingPokemon(slot: number): Outcome | null {

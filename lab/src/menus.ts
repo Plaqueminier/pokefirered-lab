@@ -1,4 +1,5 @@
 import type { Memory } from "./memory";
+import { nameAt } from "./party";
 import { activeTask, type Choice, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -7,6 +8,14 @@ const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
 const START_MENU_INPUT_STEP = 1;
+// NAMING_SCREEN_* (naming_screen.h); the Pokémon templates name the species of monSpecies.
+const NAMING_SUBJECTS = ["the name of the player", "the name of a PC box", null, null, "the name of the rival"];
+// STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
+const NAMING_INPUT_STATE = 2;
+const NAMING_PAGES = 3;
+
+/** `pages`: the rows of the keyboard pages, from the page on the screen, in the order of the Select presses. */
+export type NamingScreen = { subject: string; maxLength: number; ready: boolean; page: number; pages: string[][]; cursor: { x: number; y: number }; text: string };
 
 export type PartyMenu = { kind: "pick"; cursor: number; swapping: boolean } | ({ kind: "actions" } & Choice) | { kind: "refusal"; text: string } | { kind: "busy" };
 
@@ -55,4 +64,27 @@ export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {
 
 function menuText(mem: Memory, address: number, decode: Decode): string {
   return decode(mem.bus.read(address, MAX_MENU_TEXT));
+}
+
+export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
+  if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_NamingScreen") return null;
+  const screen = mem.global("sNamingScreen").deref();
+  const template = screen.field("template").deref();
+  const page = screen.field("currentPage").int();
+  const pages = Array.from({ length: NAMING_PAGES }, (_, i) => {
+    const keyboard = mem.global("sPageToKeyboardId").at((page + i) % NAMING_PAGES).int();
+    const columns = mem.global("sPageColumnCounts").at(keyboard).int();
+    const rows = mem.global("sKeyboardChars").at(keyboard);
+    return Array.from({ length: rows.length }, (_, row) => decode(rows.at(row).bytes()).slice(0, columns));
+  });
+  const cursor = mem.global("gSprites").at(screen.field("cursorSpriteId").int()).field("data");
+  return {
+    subject: NAMING_SUBJECTS[screen.field("templateNum").int()] ?? `a nickname for ${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
+    maxLength: template.field("maxChars").int(),
+    ready: screen.field("state").int() === NAMING_INPUT_STATE,
+    page,
+    pages,
+    cursor: { x: cursor.at(0).int(), y: cursor.at(1).int() },
+    text: decode(screen.field("textBuffer").bytes()),
+  };
 }

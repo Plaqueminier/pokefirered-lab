@@ -83,7 +83,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     const { harness, result } = await playStarter();
     const record = harness.record();
 
-    expect(record.header).toMatchObject({ seed: 0x4c41, knowledge: "player", bot: { name: "starter", version: "3" } });
+    expect(record.header).toMatchObject({ seed: 0x4c41, knowledge: "player", bot: { name: "starter", version: "4" } });
     expect(record.header.rom).toMatch(/^[0-9a-f]{64}$/);
     expect(record.header.startSave).toMatch(/^[0-9a-f]{64}$/);
     expect(record.result).toEqual(result);

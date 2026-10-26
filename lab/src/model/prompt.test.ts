@@ -186,6 +186,31 @@ describe("the Poké Mart", () => {
   });
 });
 
+describe("the naming screen", () => {
+  test("the prompt tells what the screen names and the maximum length, and gives name <text> and name, with no press", () => {
+    const observation = {
+      mode: "naming",
+      waitingFor: { kind: "naming", subject: "a nickname for BULBASAUR", maxLength: 10 },
+      party: [],
+      money: 0,
+      bag: [],
+      milestones: [],
+      atlas: { maps: [], lastTalk: null },
+    } as unknown as Observation;
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("The game waits for a name on the naming screen.");
+    expect(prompt).toContain("The naming screen asks for a nickname for BULBASAUR, 10 characters at most.");
+    expect(prompt).toContain(
+      [
+        "Actions:",
+        "- name <text>: type the text and press OK, for example name Sparky. The keys are the letters A to Z and a to z, the digits, the space and . , ! ? ♂ ♀ / - … \" '.",
+        "- name: keep the name that the game gives.",
+      ].join("\n"),
+    );
+    expect(prompt).not.toContain("- press");
+  });
+});
+
 describe("the stuck counter and the reflection turn", () => {
   test(`the first walk at ${REFLECTION_EVERY} Decision points with no progress, and at each ${REFLECTION_EVERY} more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective`, () => {
     const observation = route1(22, [POTION]);

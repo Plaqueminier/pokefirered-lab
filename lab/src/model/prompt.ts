@@ -23,6 +23,7 @@ const WAITS: Record<AskedKind, string> = {
   battleMove: "a move",
   partyPick: "a Pokémon in the party menu of the battle",
   shopMenu: "the shop menu of a Poké Mart",
+  naming: "a name on the naming screen",
 };
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
@@ -63,7 +64,6 @@ Answer with JSON:
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
-- At the nickname question, answer NO: the program cannot type names yet.
 - When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
@@ -297,6 +297,8 @@ function context(asked: Asked): string[] {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
       return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];
     }
+    case "naming":
+      return [`The naming screen asks for ${asked.subject}, ${asked.maxLength} characters at most.`];
     default:
       return battleLines(asked.battle);
   }
@@ -333,6 +335,11 @@ function actionLines(asked: Asked): string[] {
         "- buy <item> <quantity>: buy items for sale, for example buy POTION 2. Your money must pay the price of all the items.",
         ...(actionsOf(asked).includes("sell") ? ["- sell <item> <quantity>: sell items of your Bag that the Poké Mart buys, for example sell POTION 1."] : []),
         "- leave: say goodbye to the clerk and walk again.",
+      ];
+    case "naming":
+      return [
+        `- name <text>: type the text and press OK, for example name Sparky. The keys are the letters A to Z and a to z, the digits, the space and . , ! ? ♂ ♀ / - … " '.`,
+        "- name: keep the name that the game gives.",
       ];
   }
 }

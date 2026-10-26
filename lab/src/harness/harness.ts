@@ -55,6 +55,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   battleMove: ["fight"],
   partyPick: ["send"],
   shopMenu: ["buy", "sell", "leave"],
+  naming: ["name"],
   busy: ["readText"],
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
@@ -70,7 +71,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded">;
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState });
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress";
 
@@ -102,13 +103,13 @@ export type MacroAction =
   | { name: "use"; item: string; on?: number }
   | { name: "buy"; item: string; quantity: number }
   | { name: "sell"; item: string; quantity: number }
-  | { name: "leave" };
+  | { name: "leave" }
+  | { name: "name"; text: string };
 
 export type AvailableAction =
-  | { name: "goTo" }
-  | { name: "swap" }
+  | { name: "goTo" | "swap" | "name" }
   | { name: "use" | "buy" | "sell"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "swap" | "use" | "buy" | "sell" }>;
+  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "buy" | "sell" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -387,6 +388,7 @@ export class Harness {
       milestones: game.milestones(),
       atlas: this.#atlas.atlas(this.#knowledge),
     };
+    if (base.waitingFor.kind === "naming") return { ...base, mode: "naming" };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
@@ -402,6 +404,7 @@ export class Harness {
         case "goTo":
         case "readText":
         case "leave":
+        case "name":
           return [{ name }];
         case "swap":
           return game.party().length > 1 ? [{ name }] : [];
@@ -518,6 +521,11 @@ export class Harness {
     return this.act<Texts>({ name: "leave" }, () => this.#menus.leave(), { text: [] });
   }
 
+  /** Types `text` on the naming screen, then presses OK. An empty text keeps the name that the game gives. */
+  async name(text: string): Promise<TextResult> {
+    return this.act<Texts>({ name: "name", text }, () => this.#menus.name(text), { text: [] });
+  }
+
   async switch(slot: number): Promise<TextResult> {
     return this.act<Texts>({ name: "switch", slot }, () => this.#menus.switch(slot), { text: [] });
   }
@@ -559,6 +567,8 @@ export class Harness {
         return this.sell(action.item, action.quantity);
       case "leave":
         return this.leave();
+      case "name":
+        return this.name(action.text);
       case "press":
         return this.press(action.button);
     }

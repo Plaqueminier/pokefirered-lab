@@ -106,16 +106,16 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
         null,
         ["This POKéMON is really quite energetic!", "PLOK received the SQUIRTLE from PROF. OAK!", "Do you want to give a nickname to this SQUIRTLE?"],
       ],
-      [{ name: "choose", option: "NO" }, "done", null, null],
-      [{ name: "readText" }, "done", null, ["BOB: I'll take this one, then!", "BOB received the BULBASAUR from PROF. OAK!"]],
+      [{ name: "choose", option: "YES" }, "done", null, null],
+      [{ name: "name", text: "" }, "done", null, ["BOB: I'll take this one, then!", "BOB received the BULBASAUR from PROF. OAK!"]],
       [{ name: "goTo", x: 6, y: 11 }, "interrupted", "trigger", null],
       [{ name: "readText" }, "interrupted", "battle", ["BOB: Wait, PLOK! Let's check out our POKéMON! Come on, I'll take you on!"]],
       [{ name: "readText" }, "done", null, BATTLE_INTRO_TEXTS],
-      [{ name: "fight", move: 1 }, "done", null, ["Foe BULBASAUR used GROWL!", "SQUIRTLE's ATTACK fell!", "SQUIRTLE used TAIL WHIP!", "Foe BULBASAUR's DEFENSE fell!"]],
+      [{ name: "fight", move: 1 }, "done", null, ["Foe BULBASAUR used TACKLE!", "SQUIRTLE used TAIL WHIP!", "Foe BULBASAUR's DEFENSE fell!"]],
       [{ name: "readText" }, "done", null, ["OAK: Lowering the foe's stats will put you at an advantage."]],
       [{ name: "fight", move: 0 }, "done", null, ["Foe BULBASAUR used TACKLE!", "SQUIRTLE used TACKLE!"]],
       [{ name: "readText" }, "done", null, ["OAK: Inflicting damage on the foe is the key to any battle."]],
-      ...[1, 2, 3, 4].map(() => [{ name: "fight" as const, move: 0 }, "done", null, ["Foe BULBASAUR used TACKLE!", "SQUIRTLE used TACKLE!"]]),
+      ...[1, 2, 3].map(() => [{ name: "fight" as const, move: 0 }, "done", null, ["Foe BULBASAUR used TACKLE!", "SQUIRTLE used TACKLE!"]]),
       [
         { name: "readText" },
         "done",
@@ -176,7 +176,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
       readText,
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
-      readText,
+      [{ name: "name" }],
       // BOB stops at (8, 5) after he takes BULBASAUR.
       [goTo, { name: "interact", x: 8, y: 5 }],
       readText,
@@ -188,14 +188,13 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       fights,
       fights,
       fights,
-      fights,
       readText,
       readText,
       [goTo],
     ]);
     harness.actions.forEach(({ action }, i) => {
       if (action.name === "press") throw new Error("the scripted bot uses a Raw input");
-      expect(seen[i]).toContainEqual(action.name === "goTo" ? goTo : action);
+      expect(seen[i]).toContainEqual(action.name === "goTo" || action.name === "name" ? { name: action.name } : action);
     });
   });
 
@@ -284,8 +283,8 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const harness = await Harness.open();
     await starter.play(harness);
     expect(await harness.goTo(12, 0, "Route1")).toMatchObject({ status: "interrupted", reason: "battle" });
-    expect(await harness.readText()).toMatchObject({ status: "done", text: ["Wild RATTATA appeared!", "Go! SQUIRTLE!"] });
-    expect(battleOf(harness)).toMatchObject({ kind: "wild", enemy: { species: "RATTATA", level: 3, hpPercent: 100 } });
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["Wild PIDGEY appeared!", "Go! SQUIRTLE!"] });
+    expect(battleOf(harness)).toMatchObject({ kind: "wild", enemy: { species: "PIDGEY", level: 2, hpPercent: 100 } });
     expect(harness.availableActions()).toEqual([{ name: "fight", move: 0 }, { name: "fight", move: 1 }, { name: "run" }]);
     expect(await harness.run()).toMatchObject({ status: "done", text: [] });
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Got away safely!"] });
@@ -297,7 +296,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     await starter.play(harness);
     await harness.goTo(12, 0, "Route1");
     await harness.readText();
-    expect(await harness.fight(1)).toMatchObject({ status: "done", text: expect.arrayContaining(["Wild RATTATA used TACKLE!"]) });
+    expect(await harness.fight(1)).toMatchObject({ status: "done", text: expect.arrayContaining(["Wild PIDGEY used TACKLE!"]) });
     while (harness.observe().waitingFor.kind !== "battleAction") await harness.readText();
     expect(await harness.run()).toMatchObject({ status: "done" });
     await harness.readText();
@@ -519,7 +518,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     expect(harness.observe().bag[0].items[0].quantity).toBe(4);
   });
 
-  test("use POKé BALL throws a ball in a wild battle; a caught Pokémon joins the party after NO at the nickname question", async () => {
+  test("use POKé BALL throws a ball in a wild battle; after YES at the nickname question, name types the nickname on two pages of the keyboard, and the caught Pokémon joins the party with it", async () => {
     const harness = await toWildBattle();
     const enemy = harness.observe();
     if (enemy.mode !== "battle") throw new Error("not in a battle");
@@ -529,9 +528,14 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
       await toNextAction(harness);
     }
     expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["YES", "NO"] } });
-    expect(await harness.choose("NO")).toMatchObject({ status: "done" });
+    expect(await harness.choose("YES")).toMatchObject({ status: "done" });
+    expect(harness.waitingFor()).toEqual({ kind: "naming", subject: `a nickname for ${enemy.battle.enemy.species}`, maxLength: 10 });
+    expect(await harness.name("Bird")).toMatchObject({ status: "done" });
     while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") await harness.readText();
-    expect(harness.observe().party.map((m) => m.species)).toEqual(["SQUIRTLE", enemy.battle.enemy.species]);
+    expect(harness.observe().party.map((m) => [m.species, m.nickname])).toEqual([
+      ["SQUIRTLE", "SQUIRTLE"],
+      [enemy.battle.enemy.species, "Bird"],
+    ]);
   });
 
   test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP each time", async () => {

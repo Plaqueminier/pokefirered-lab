@@ -103,6 +103,14 @@ describe("readAction", () => {
     expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use buy, sell, leave or zoom');
   });
 
+  test("at the naming screen: name with the rest of the line as the text, with its spaces and its case, or name alone to keep the name; no press", () => {
+    const naming: Asked = { kind: "naming", party, subject: "a nickname for BULBASAUR", maxLength: 10 };
+    expect(readAction("name Mr Bulb", naming)).toEqual({ name: "name", text: "Mr Bulb" });
+    expect(readAction("name", naming)).toEqual({ name: "name", text: "" });
+    expect(readAction("name(Bulby, Jr.)", naming)).toEqual({ name: "name", text: "Bulby, Jr." });
+    expect(() => readAction("press A", naming)).toThrow('"press" is not an action now: use name or zoom');
+  });
+
   test("it refuses an action that it cannot read, a target that is not in the list and an action of another Decision point", () => {
     expect(() => readAction("walk north", walk(3))).toThrow('"walk north" is not an action');
     expect(() => readAction("go D", walk(3))).toThrow("there is no target D: the targets are A to C");
