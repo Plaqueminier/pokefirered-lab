@@ -56,7 +56,7 @@ describe("readAction", () => {
     expect(readAction(" GO b ", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo 12 -1", walk(3))).toEqual({ name: "goTo", x: 12, y: -1 });
     expect(readAction("goTo 3 4 Route1", walk(3))).toEqual({ name: "goTo", x: 3, y: 4, map: "Route1" });
-    expect(readAction("press start", walk(3))).toEqual({ name: "press", button: "Start" });
+    expect(readAction("press select", walk(3))).toEqual({ name: "press", button: "Select" });
     expect(readAction("zoom 1-8", walk(3))).toEqual({ name: "zoom", from: 1, to: 8 });
     expect(readAction("zoom #13", walk(3))).toEqual({ name: "zoom", from: 13, to: 13 });
     expect(readAction("press(Up)", walk(3))).toEqual({ name: "press", button: "Up" });
@@ -76,6 +76,12 @@ describe("readAction", () => {
     expect(readAction("run", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "run" });
     expect(readAction("press A", { kind: "partyPick", party, battle, items: [] })).toEqual({ name: "press", button: "A" });
     expect(() => readAction("fight 1", { kind: "partyPick", party, battle, items: [] })).toThrow('"fight" is not an action now: use zoom or press');
+  });
+
+  test("press Start is not read: its reason tells that there is no Start menu, names use and the items of the Bag that work now, or tells that none works", () => {
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
+    expect(() => readAction("press Start", { kind: "battleAction", party, battle, items: [potion] })).toThrow("there is no Start menu: write use <item> to use an item of your Bag; the items that work now: POTION");
+    expect(() => readAction("press(start)", walk(3))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag is empty or has no item that works now");
   });
 
   test("in a battle: use an item that works now, on a Pokémon of the party for an item that needs one", () => {

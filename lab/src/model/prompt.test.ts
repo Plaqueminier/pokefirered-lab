@@ -143,12 +143,14 @@ describe("the Bag", () => {
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
   });
 
-  test("on a walk, the use line lists only the items that work outside a battle; the model uses POTION on a Pokémon of the party, and REPEL alone", () => {
+  test("on a walk, the use line lists only the items that work outside a battle; the model uses POTION on a Pokémon of the party, and REPEL alone; the press line has no Start", () => {
     const repel = { name: "REPEL", quantity: 1, description: "Prevents weak wild POKéMON from appearing for 100 steps.", price: 350, battle: null, walk: "alone" };
     const observation = route1(10, [POTION, repel]);
     observation.bag.push({ pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", price: 200, battle: "alone", walk: null }] });
     const asked = askedOf(observation, false)!;
-    expect(userPrompt(observation, asked, [], NO_TURN)).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), REPEL.");
+    const prompt = userPrompt(observation, asked, [], NO_TURN);
+    expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), REPEL.");
+    expect(prompt).toContain("- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.");
     expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
     expect(readAction("use repel", asked)).toEqual({ name: "use", item: "REPEL" });
     expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION, REPEL');
