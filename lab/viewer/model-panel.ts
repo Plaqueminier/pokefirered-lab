@@ -6,7 +6,7 @@ import { runKey } from "./runs";
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
   [/^Memory tree/, "Memory tree"],
-  [/^The game waits/, "Situation"],
+  [/^The game waits|^The game asks/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Something important happened/, "Events"],
   [/^Party/, "Party"],

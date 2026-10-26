@@ -26,12 +26,16 @@ function target(prompt: Prompt, ...labels: string[]): string {
   throw new Error(`no target "${labels.join('" or "')}" in the prompt:\n${prompt.user}`);
 }
 
+function waitedFor({ user }: Prompt): string {
+  return /^The game asks: /m.test(user) ? "a choice" : (user.match(/^The game waits for (.+)$/m)?.[1] ?? "");
+}
+
 function fakeModel(): { client: ModelClient; prompts: Prompt[] } {
   const prompts: Prompt[] = [];
   let fights = 0;
   const client: ModelClient = async (prompt) => {
     prompts.push(prompt);
-    const now = prompt.user.match(/^The game waits for (.+)$/m)?.[1] ?? "";
+    const now = waitedFor(prompt);
     const texts = [...prompt.user.matchAll(/^ +"(.*)"$/gm)].map((m) => m[1]);
     if (now.startsWith("a choice")) return reply(texts.at(-1)?.includes("nickname") ? "choose NO" : "choose YES");
     if (now.startsWith("a battle action") || now.startsWith("a move")) return reply(fights++ === 0 ? "fight 1" : "fight 0");
@@ -98,7 +102,7 @@ function partyPlayer(): { client: ModelClient; prompts: Prompt[] } {
   let sent = false;
   const client: ModelClient = async (prompt) => {
     prompts.push(prompt);
-    const now = prompt.user.match(/^The game waits for (.+)$/m)?.[1] ?? "";
+    const now = waitedFor(prompt);
     if (sent) return { ...reply("go 1"), content: "I stop here." };
     if (now.startsWith("a walk")) {
       if (swapped) return reply(walks++ % 2 ? "goTo 12 2 Route1" : "goTo 12 30 Route1");
@@ -168,7 +172,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(harness.actions.filter((e) => e.action.name === "readText").length).toBeGreaterThan(10);
     const titles = calls.flatMap((_, i) => modelPanelView(harness.events, 0, i).call?.blocks.map((b) => b.title) ?? []);
     expect(titles).not.toContain("Other");
-    expect(titles).toEqual(expect.arrayContaining(["Local view", "Question", "Battle", "Actions", "Rules"]));
+    expect(titles).toEqual(expect.arrayContaining(["Local view", "Battle", "Actions", "Rules"]));
 
     const first = (pattern: RegExp) => {
       const prompt = prompts.find((p) => pattern.test(p.user));
@@ -187,12 +191,12 @@ describe.skipIf(!ready)("model bot", () => {
     expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F, taken$/m);
     expect(pallet).toMatch(/^[A-Z]\. unseen cells north of \(\d+, \d+\), /m);
     expect(pallet).toMatch(/^- A \(door\) leads to PalletTown_PlayersHouse_1F\. /m);
-    const choice = first(/^The game waits for a choice: YES, NO\.$/m);
+    const choice = first(/^The game asks: "Hm! SQUIRTLE is your choice\..*SQUIRTLE\?" Choose YES or NO\.$/m);
     expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
     expect(choice).toContain("Objective: Get a Pokémon");
     expect(choice).toMatch(/^Mission: Get my first Pokémon \(the same for \d+ decisions\)\.$/m);
     expect(choice).toContain("Memory tree: none yet.");
-    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: .*\n- press <button>/);
+    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: .*$/);
     expect(choice).not.toContain("goTo <x> <y>");
     const battle = first(/^The game waits for a battle action\.$/m);
     expect(battle).toContain("- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)");
@@ -201,7 +205,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "5", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "6", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
@@ -399,7 +403,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot wit
     const users = prompts.map((p) => p.user);
     expect(users[0]).toContain("- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party.");
     expect(users.find((user) => user.includes("The game waits for a battle action."))).toContain("- switch <Pokémon>: take your Pokémon out of the battle and send this one. It can be SQUIRTLE.");
-    expect(users.find((user) => user.includes("The game waits for a choice: YES, NO."))).toMatch(/^Battle against a wild Pokémon\.$/m);
+    expect(users.find((user) => user.includes('" Choose YES or NO.'))).toMatch(/^Battle against a wild Pokémon\.$/m);
     expect(users.find((user) => user.includes("The game waits for a Pokémon in the party menu"))).toContain("- send <Pokémon>: send this Pokémon into the battle. It can be SQUIRTLE.");
   });
 });

@@ -60,7 +60,7 @@ export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   walk: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"],
-  choice: ["choose", "zoom", "press"],
+  choice: ["choose", "zoom"],
   battleAction: ["fight", "switch", "run", "use", "zoom", "press"],
   battleMove: ["fight", "zoom", "press"],
   partyPick: ["send", "zoom", "press"],
