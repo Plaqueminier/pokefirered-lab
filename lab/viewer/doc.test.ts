@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { modelBot } from "../bots/model";
 import { MACRO_ACTIONS, type RawInput } from "../src/harness/harness";
 
 const PAGE = join(import.meta.dir, "index.html");
+const README = join(import.meta.dir, "..", "README.md");
 
 async function texts(selector: string): Promise<string[]> {
   const found: string[] = [];
@@ -24,4 +26,8 @@ test("the Macro-action table of the Doc has one line for each Macro-action of th
 test("the Doc names the Raw input", async () => {
   const raw: RawInput["name"] = "press";
   expect(await texts("#doc code")).toContainEqual(expect.stringMatching(new RegExp(`^${raw}\\(`)));
+});
+
+test("the README gives the version of the model bot", async () => {
+  expect(await Bun.file(README).text()).toContain(`(\`bots/model.ts\`, version ${modelBot().version}, no goal)`);
 });
