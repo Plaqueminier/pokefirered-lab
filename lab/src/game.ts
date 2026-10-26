@@ -510,6 +510,11 @@ export class Game {
     return this.context().callback2 === "BattleMainCB2";
   }
 
+  // After a lost battle or a faint from the poison on a walk, CB2_WhiteOut (overworld.c) warps the player to the last heal place.
+  whitingOut(): boolean {
+    return this.context().callback2 === "CB2_WhiteOut";
+  }
+
   private context(): GameState["context"] {
     const main = this.mem.global("gMain");
     const name = (field: string) => {
