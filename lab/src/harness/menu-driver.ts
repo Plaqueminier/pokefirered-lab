@@ -184,8 +184,7 @@ export class MenuDriver {
     const cost = items[row].price * quantity;
     if (cost > game.money()) return impossible(`${quantity} ${item} cost ${cost} and the money is ${game.money()}`);
     if (quantity < 1 || quantity > MAX_TRADE) return impossible(`the quantity of ${item} to buy is 1 to ${MAX_TRADE}`);
-    const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the buy list");
-    const moved = this.moveCursor(row, () => list()?.row ?? null, toward(row, Keys.Down, Keys.Up), inList);
+    const moved = this.moveMenuCursor(row, () => list()?.row ?? null);
     return moved.status === "done" ? this.trade(quantity) : moved;
   }
 
@@ -336,8 +335,7 @@ export class MenuDriver {
   private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
     const { game } = this;
     const cursor = () => game.shopMenu()?.cursor ?? null;
-    const inMenu = (keys: number) => this.tapUntil(keys, () => cursor() !== null, "the shop menu");
-    const moved = this.moveCursor(option, cursor, toward(option, Keys.Down, Keys.Up), inMenu);
+    const moved = this.moveMenuCursor(option, cursor);
     return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
   }
 
@@ -347,10 +345,9 @@ export class MenuDriver {
       const menu = game.bagMenu();
       return menu?.screen === "list" ? menu : null;
     };
-    const inList = (keys: number) => this.tapUntil(keys, () => list() !== null, "the Bag list");
-    const pocket = this.moveCursor(place.pocket, () => list()?.pocket ?? null, toward(place.pocket, Keys.Right, Keys.Left), inList);
+    const pocket = this.moveMenuCursor(place.pocket, () => list()?.pocket ?? null, toward(place.pocket, Keys.Right, Keys.Left));
     if (pocket.status !== "done") return pocket;
-    return this.moveCursor(place.row, () => list()?.row ?? null, toward(place.row, Keys.Down, Keys.Up), inList);
+    return this.moveMenuCursor(place.row, () => list()?.row ?? null);
   }
 
   private trade(quantity: number): Outcome {
@@ -460,11 +457,11 @@ export class MenuDriver {
     return { status: "done" };
   }
 
-  private moveMenuCursor(target: number, cursor: () => number | null): Outcome {
+  private moveMenuCursor(target: number, cursor: () => number | null, key = toward(target, Keys.Down, Keys.Up)): Outcome {
     for (let at = cursor(); at !== target; ) {
       if (at === null) return impossible("the menu reads no input");
       const from = at;
-      const moved = this.menuInput(target > at ? Keys.Down : Keys.Up, () => {
+      const moved = this.menuInput(key(at), () => {
         const now = cursor();
         return now !== null && now !== from;
       });
