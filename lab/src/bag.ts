@@ -7,7 +7,7 @@ const ITEM_NONE = 0;
 const MAX_STRING = 256;
 const BATTLE_USAGE: Record<number, ItemUse> = { 1: "pokemon", 2: "alone" };
 const UNSUPPORTED_BATTLE_FUNCS = new Set(["BattleUseFunc_Ether", "ItemUseInBattle_EnigmaBerry"]);
-const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon" };
+const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon", FieldUseFunc_Repel: "alone", ItemUseOutOfBattle_EscapeRope: "alone" };
 const ITEM_ANIM_KEY_STATE = 12;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
@@ -27,7 +27,7 @@ export type BagMenu = { screen: "list" | "context"; pocket: number; row: number;
 
 export function readBag(mem: Memory, decode: Decode): BagPocket[] {
   return pocketSlots(mem).flatMap((slots, pocket) => {
-    const items = slots.map(({ item, quantity }): BagItem => ({ ...itemInfo(mem, item, decode, pocket), quantity }));
+    const items = slots.map(({ item, quantity }): BagItem => ({ ...itemInfo(mem, item, decode), quantity }));
     return items.length === 0 ? [] : [{ pocket: POCKET_NAMES[pocket], items }];
   });
 }
@@ -37,7 +37,7 @@ export function findInBag(mem: Memory, name: string, decode: Decode): BagPlace |
     const row = slots.findIndex(({ item }) => itemName(mem, item, decode) === name);
     if (row < 0) continue;
     const { item } = slots[row];
-    return { item, pocket, row, price: mem.global("gItems").at(item).field("price").int(), ...itemUses(mem, item, pocket) };
+    return { item, pocket, row, price: mem.global("gItems").at(item).field("price").int(), ...itemUses(mem, item) };
   }
   return null;
 }
@@ -46,9 +46,10 @@ export function bagQuantity(mem: Memory, item: number): number {
   return pocketSlots(mem).flat().find((slot) => slot.item === item)?.quantity ?? 0;
 }
 
-function itemUses(mem: Memory, item: number, pocket: number): Pick<BagItem, "battle" | "walk"> {
-  if (pocket >= BATTLE_POCKETS) return { battle: null, walk: null };
-  return { battle: itemBattleUse(mem, item), walk: WALK_USE_FUNCS[functionName(mem.symbols, mem.global("gItems").at(item).field("fieldUseFunc").pointer()) ?? ""] ?? null };
+export function itemUses(mem: Memory, item: number): Pick<BagItem, "battle" | "walk"> {
+  const data = mem.global("gItems").at(item);
+  if (data.field("pocket").int() - 1 >= BATTLE_POCKETS) return { battle: null, walk: null };
+  return { battle: itemBattleUse(mem, item), walk: WALK_USE_FUNCS[functionName(mem.symbols, data.field("fieldUseFunc").pointer()) ?? ""] ?? null };
 }
 
 function itemBattleUse(mem: Memory, item: number): ItemUse | null {
@@ -106,8 +107,8 @@ function itemName(mem: Memory, item: number, decode: Decode): string {
   return decode(mem.global("gItems").at(item).field("name").bytes());
 }
 
-function itemInfo(mem: Memory, item: number, decode: Decode, pocket: number): Omit<BagItem, "quantity"> {
+function itemInfo(mem: Memory, item: number, decode: Decode): Omit<BagItem, "quantity"> {
   const data = mem.global("gItems").at(item);
   const description = oneLine(decode(mem.bus.read(data.field("description").pointer(), MAX_STRING)));
-  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, item, pocket) };
+  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, item) };
 }
