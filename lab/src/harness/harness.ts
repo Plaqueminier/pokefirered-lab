@@ -7,6 +7,7 @@ import {
   DIRECTION_STEP,
   DIRECTION_STEPS,
   type Direction,
+  isDecisionPoint,
   type GameInterruption,
   type GameState,
   type MapActors,
@@ -19,9 +20,9 @@ import {
 import { type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
-import { type Atlas, AtlasWatch, type Sight } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
 import { MenuDriver, MessageReader, type Outcome, sellableItems, type Texts } from "./menu-driver";
-import { destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, pastEdge, type Place, type RouteMap, reached } from "./path";
+import { type BlockOf, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
   GameWatch,
@@ -76,8 +77,8 @@ export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "f
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
 
-/** `since`: the number of events of the Run at the last progress. `walks`: the walk Decision points since a new map, a new Milestone, a level up or a new text of a person. */
-export type NoProgress = { decisions: number; since: number; walks: number };
+/** `since`: the number of events of the Run at the last progress. */
+export type NoProgress = { stuck: number; since: number };
 
 export type Interruption = GameInterruption | "map";
 
@@ -202,10 +203,9 @@ class RunLimits {
     private readonly noProgressLimit: number,
     private readonly costLimit: number,
     private progress: number,
-    private exploration: number,
     private readonly firstEvent: number,
   ) {
-    this.#noProgress = { decisions: 0, since: firstEvent, walks: 0 };
+    this.#noProgress = { stuck: 0, since: firstEvent };
   }
 
   beforeFrame(frame: number): void {
@@ -216,14 +216,13 @@ class RunLimits {
     return this.#noProgress;
   }
 
-  atDecision(milestones: Milestone[], progress: number, exploration: number, walk: boolean, events: number): void {
+  atAction(milestones: Milestone[], progress: number, decisionPoint: boolean, events: number): void {
     if (milestones.includes(this.goal)) throw new RunEnd("goal");
-    const walks = exploration > this.exploration ? 0 : this.#noProgress.walks + (walk ? 1 : 0);
-    this.#noProgress = progress > this.progress ? { decisions: 0, since: events, walks } : { ...this.#noProgress, decisions: this.#noProgress.decisions + 1, walks };
-    this.progress = progress;
+    if (progress > this.progress) this.#noProgress = { stuck: 0, since: events };
+    else if (decisionPoint) this.#noProgress = { ...this.#noProgress, stuck: this.#noProgress.stuck + 1 };
     // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
-    this.exploration = Math.max(this.exploration, exploration);
-    if (this.#noProgress.decisions >= this.noProgressLimit) throw new RunEnd("no progress");
+    this.progress = Math.max(this.progress, progress);
+    if (this.#noProgress.stuck >= this.noProgressLimit) throw new RunEnd("no progress");
   }
 
   afterCall(events: readonly RunEvent[]): void {
@@ -331,7 +330,7 @@ export class Harness {
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
     const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
-    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.#watch.progress, this.exploration(), this.#events.length);
+    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.progress(), this.#events.length);
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
     let result: RunResult | null = null;
@@ -432,7 +431,7 @@ export class Harness {
     return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
       const asked = { map: map ?? this.place().map, x, y };
       const destination = destinationOf(asked, map === undefined, this.routeMaps());
-      const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), map === undefined);
+      const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), map === undefined, this.#atlas.blockOf);
       if (outside) return { status: "impossible", reason: outside };
       let tries = 0;
       let stuckAt: Place | null = null;
@@ -588,7 +587,7 @@ export class Harness {
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#atlas.onAction(entry);
     this.#onAction?.(entry, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.atDecision(this.#run.game.milestones(), this.#watch.progress, this.exploration(), this.#run.game.waitingFor().kind === "walk", this.#events.length);
+    if (this.#phase.kind === "playing") this.#phase.limits.atAction(this.#run.game.milestones(), this.progress(), isDecisionPoint(this.#run.game.waitingFor()), this.#events.length);
     this.stopIfAsked();
     return result;
   }
@@ -614,8 +613,8 @@ export class Harness {
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 
-  private exploration(): number {
-    return this.#watch.exploration + this.#atlas.heard;
+  private progress(): number {
+    return this.#watch.gameProgress + this.#atlas.heard + this.#atlas.exits;
   }
 
   private callEnded<E extends ModelEvent | SummaryEvent>(event: E, listener?: (event: E, harness: Harness) => void): E {
@@ -761,13 +760,16 @@ export class Harness {
   }
 }
 
-function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean): string | null {
+function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, blockOf: BlockOf): string | null {
   if (!map || inside(map, cell)) return null;
   const range = `the cells of ${map.name} are x from 0 to ${map.mapWidth - 1}, y from 0 to ${map.mapHeight - 1}`;
   const side = pastEdge(map, cell);
-  if (side && canExit) return `no map connects to the ${side} edge of ${map.name}; ${range}`;
-  if (side) return `(${cell.x}, ${cell.y}) is outside ${map.name}, and a cell past an edge crosses it only in a goTo with no map; ${range}`;
-  return `(${cell.x}, ${cell.y}) is outside ${map.name}; ${range}`;
+  if (!side) return `(${cell.x}, ${cell.y}) is outside ${map.name}; ${range}`;
+  if (!canExit) return `(${cell.x}, ${cell.y}) is outside ${map.name}, and a cell past an edge crosses it only in a goTo with no map; ${range}`;
+  const block = blockOf(map.name, side);
+  if (block) return blockedText(map.name, side, block);
+  if (map.connections.some((c) => c.direction === side)) return `(${cell.x}, ${cell.y}) leads to a cell of the next map where the player cannot stand: cross the ${side} edge at another cell`;
+  return `no map connects to the ${side} edge of ${map.name}; ${range}`;
 }
 
 function withoutPeople(map: RouteMap | null): RouteMap | null {

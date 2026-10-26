@@ -1,4 +1,4 @@
-import { DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type WarpExit } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
 export type Place = Cell & { map: string };
@@ -125,19 +125,37 @@ function arrivalOf(warp: WarpExit, load: MapSource): Place | null {
   return arrival ? { map: warp.to, x: arrival.x, y: arrival.y } : null;
 }
 
-// The arrival cell follows SetPositionFromConnection in fieldmap.c.
 function acrossConnection(map: RouteMap, outside: Place, direction: Direction, load: MapSource): Place | null {
   const connection = map.connections.find((c) => c.direction === direction);
   const next = connection && load(connection.map);
   if (!connection || !next) return null;
-  const { offset } = connection;
-  const place =
+  const arrival = { map: next.name, ...arrivalCell(next, connection.offset, direction, outside) };
+  return inside(next, arrival) && free(next, arrival) ? arrival : null;
+}
+
+// The arrival cell follows SetPositionFromConnection in fieldmap.c.
+function arrivalCell(next: Pick<MapCells, "mapWidth" | "mapHeight">, offset: number, direction: Direction, outside: Cell): Cell {
+  return (
     direction === "north" ? { x: outside.x - offset, y: next.mapHeight - 1 }
     : direction === "south" ? { x: outside.x - offset, y: 0 }
     : direction === "west" ? { x: next.mapWidth - 1, y: outside.y - offset }
-    : { x: 0, y: outside.y - offset };
-  const arrival = { map: next.name, ...place };
-  return inside(next, arrival) && free(next, arrival) ? arrival : null;
+    : { x: 0, y: outside.y - offset }
+  );
+}
+
+export type EdgeBlock = "water";
+
+export type BlockOf = (map: string, side: Direction) => EdgeBlock | null;
+
+export function edgeBlock(map: MapCells & Pick<RouteMap, "connections">, side: Direction, load: (name: string) => MapCells | null): EdgeBlock | null {
+  const connection = map.connections.find((c) => c.direction === side);
+  const next = connection && load(connection.map);
+  if (!connection || !next) return null;
+  const [dx, dy] = DIRECTION_STEP[side];
+  const crossings = edgeCells(map, side).map((from) => ({ from, to: arrivalCell(next, connection.offset, side, { x: from.x + dx, y: from.y + dy }) }));
+  const water = (cells: MapCells, c: Cell) => inside(cells, c) && kindAt(cells, c) === KIND.water;
+  if (crossings.some(({ from, to }) => walkable(map, from) && walkable(next, to))) return null;
+  return crossings.some(({ from, to }) => water(map, from) || water(next, to)) ? "water" : null;
 }
 
 export function inside(map: Pick<MapCells, "mapWidth" | "mapHeight">, c: Cell): boolean {

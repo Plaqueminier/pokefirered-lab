@@ -20,7 +20,7 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go B\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    note: { type: "string", description: `A new fact to keep in your Memory tree, in one line of ${MAX_SENTENCE} characters at most, or an empty string. Nobody changes it later.` },
+    note: { type: "string", description: `A fact that the game proved, or a lesson (what works, what fails and why), in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never a guess, never HP values. Nobody changes it later.` },
   },
   required: FIELDS,
   additionalProperties: false,
@@ -47,7 +47,7 @@ const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
 
 export type Asked = { party: PartyMon[] } & (
-  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasViewed: boolean; items: BagItem[] }
+  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[] }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[] }
   | { kind: "buyList"; forSale: ShopItem[]; bag: BagPocket[] }
@@ -68,7 +68,7 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
   return ACTIONS[asked.kind].filter((name) => {
     switch (name) {
       case "viewAtlas":
-        return !(asked.kind === "walk" && asked.atlasViewed);
+        return !(asked.kind === "walk" && asked.atlasShown);
       case "swap":
         return asked.party.length > 1;
       case "switch":
@@ -90,10 +90,10 @@ export function sendable(asked: Asked): PartyMon[] {
 const BUTTONS = Object.keys(Keys) as Button[];
 
 /** Null when the game waits for no decision of the model: a text, or a busy game. */
-export function askedOf(observation: Observation, atlasViewed: boolean): Asked | null {
+export function askedOf(observation: Observation, atlasShown: boolean): Asked | null {
   const { waitingFor, party } = observation;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasViewed, items: walkItems(observation.bag) };
+    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag) };
     if (waitingFor.kind === "buyList") return { kind: "buyList", party, forSale: waitingFor.items, bag: observation.bag };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }

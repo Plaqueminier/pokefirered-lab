@@ -52,6 +52,14 @@ _Avoid_: prompt, turn, step
 The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something, and that nobody changes later. Two neighbour nodes of the same size get a parent node: a short summary of the two. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
+**Stuck counter**:
+The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, or a text of a person that the player did not hear before. A new cell is not progress.
+_Avoid_: no-progress count, walk count (the two old counts that it replaces)
+
+**Reflection turn**:
+A **Model call** of a model bot at each 30 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
+_Avoid_: stuck message, reflection call
+
 **Summary call**:
 One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost counts in the cost of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
@@ -61,7 +69,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, and all the different texts that each person said when the player talked to them. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Raw input**:
@@ -80,7 +88,7 @@ One emulator instance that plays the game from a **Starting save**. The **Harnes
 _Avoid_: game, instance, session
 
 **Milestone**:
-A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over" or a badge. It is the unit of progress of a **Run**. The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
+A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:
@@ -92,7 +100,7 @@ A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness
 _Avoid_: resumed run, restart, savestate
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Bot** made N **Decision points** in a row with no new cell and no new **Milestone**; N is an option of the **Harness**, with no default). A model bot has no frame budget and no limit of **Decision points** with no progress.
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default). A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Viewer**:

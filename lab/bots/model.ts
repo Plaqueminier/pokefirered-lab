@@ -1,10 +1,12 @@
+import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
 import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
-import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
+import { importantEvents } from "../src/model/important-events";
+import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, reflectionTurn, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
@@ -17,7 +19,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "3",
+    version: "4",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -27,11 +29,12 @@ function starterRule(starter: Starter): string {
   return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
 }
 
-type Conversation = { user: string; turns: Turn[]; atlasViewed: boolean; impossible: number };
+type Conversation = { user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; reflection: boolean };
 
 class ModelPlay {
   readonly #system: string;
   #conversation: Conversation | null = null;
+  #promptObservation: Observation | null = null;
   // A continued Run keeps the Model calls of its parent: the answers that the Bot cannot read count from this call.
   #firstCall = 0;
 
@@ -46,15 +49,22 @@ class ModelPlay {
   async play(): Promise<void> {
     this.#firstCall = modelEvents(this.harness.events).length;
     for (;;) {
-      const kind = this.harness.waitingFor().kind;
-      if (kind === "text" || kind === "busy") {
+      const waiting = this.harness.waitingFor();
+      const { kind } = waiting;
+      if (!isDecisionPoint(waiting)) {
         await this.readText();
         continue;
       }
       const observation = this.harness.observe();
-      const asked = askedOf(observation, this.#conversation?.atlasViewed ?? false);
+      const reflection = this.#conversation?.reflection ?? reflectionTurn(kind, this.harness.events, this.harness.noProgress);
+      const asked = askedOf(observation, this.#conversation?.atlasShown ?? reflection);
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
-      const action = await this.harness.modelCall(() => this.answer(observation, asked));
+      if (!this.#conversation) {
+        this.#conversation = this.newConversation(observation, asked, reflection);
+        this.#promptObservation = observation;
+      }
+      const conversation = this.#conversation;
+      const action = await this.harness.modelCall(() => this.answer(conversation, asked));
       this.stopAtUnreadable();
       await this.summarize();
       if (action && isPlayed(action)) {
@@ -75,11 +85,9 @@ class ModelPlay {
     for (let i = 0; i < B_PRESSES; i++) await this.harness.press("B");
   }
 
-  private async answer(observation: Observation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
-    const conversation = this.#conversation ?? { user: userPrompt(observation, asked, this.harness.events, this.harness.noProgress), turns: [], atlasViewed: false, impossible: 0 };
-    this.#conversation = conversation;
+  private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
     const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
-    const request = { model: this.settings.id, situation: situation(asked), prompt };
+    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, reflection: conversation.reflection };
     const reply = await this.tryAsk(prompt);
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
     const replied = { ...request, answer: reply.content, usage: reply.usage };
@@ -87,7 +95,7 @@ class ModelPlay {
       const decision = readDecision(reply.content);
       const action = readAction(decision.action, asked);
       if (action.name === "viewAtlas" && asked.kind === "walk") {
-        conversation.atlasViewed = true;
+        conversation.atlasShown = true;
         conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
       }
       if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(memoryTree(this.harness.events), action, asked) });
@@ -96,6 +104,12 @@ class ModelPlay {
       conversation.turns.push({ assistant: reply.content, user: errorMessage(errorText(error), asked) });
       return { answer: { ...replied, decision: null, error: errorText(error) }, action: null };
     }
+  }
+
+  private newConversation(observation: Observation, asked: Asked, reflection: boolean): Conversation {
+    const { events, noProgress } = this.harness;
+    const happened = importantEvents(this.#promptObservation, observation, events);
+    return { user: userPrompt(observation, asked, events, { noProgress, reflection, happened }), turns: [], atlasShown: reflection, impossible: 0, stuck: noProgress.stuck, reflection };
   }
 
   private async summarize(): Promise<void> {

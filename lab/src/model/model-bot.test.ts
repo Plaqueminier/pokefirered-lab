@@ -201,7 +201,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "3", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "4", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
@@ -295,7 +295,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[3].prompt.turns).toBeUndefined();
   });
 
-  test("the prompt lists the tries since the last progress: three talks to the same Poké Ball are one line with ×3 and the text; the rival has its name from the save", async () => {
+  test("the prompt lists the tries since the last progress: after the first talk to a Poké Ball (a new text), the next two talks are one line with ×2 and the text; the rival has its name from the save", async () => {
     const harness = await Harness.open();
     const { client, prompts } = ballTalker();
     await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
@@ -303,8 +303,9 @@ describe.skipIf(!ready)("model bot", () => {
     expect(lab.filter((user) => /^[A-Z]+\. BOB \(your rival\) at \(5, 4\), /m.test(user)).length).toBeGreaterThan(0);
     expect(lab.filter((user) => user.includes("BLUE"))).toEqual([]);
     const afterTalks = lab.findLast((user) => /^- interact\(9, 4\)/m.test(user)) ?? "";
-    expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×3: ".+"$/)]);
-    expect(afterTalks).toMatch(/^Decision points with no progress: [1-9]\d*\.$/m);
+    expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×2: ".+"$/)]);
+    expect(afterTalks).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 2.");
+    expect(modelEvents(harness).find((e) => e.prompt.user === afterTalks)).toMatchObject({ stuck: 2, reflection: false });
   });
 
   test("each merge of the Memory tree makes one Summary call at the same Decision point, a summary event whose cost counts against the cost limit; the prompt shows the top nodes", async () => {

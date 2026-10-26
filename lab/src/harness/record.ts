@@ -34,8 +34,8 @@ export type Usage = { promptTokens: number; cachedTokens?: number; completionTok
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
 
-// answer is null when the request failed.
-export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage } & (
+// answer is null when the request failed. A record from before the model bot version 4 has no stuck and no reflection.
+export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; stuck?: number; reflection?: boolean } & (
   | { decision: Decision; error: null }
   | { decision: null; error: string }
 );
@@ -98,19 +98,12 @@ export class GameWatch {
   #map: string | null = null;
   #battle = false;
   #milestones = new Set<Milestone>();
-  #cells = new Set<string>();
   #maps = new Set<string>();
   #levels = 0;
 
   constructor(private readonly game: Game) {}
 
-  /** It increases with each new cell of the player and each new Milestone. */
-  get progress(): number {
-    return this.#cells.size + this.#milestones.size;
-  }
-
-  /** It increases with each new map, each new Milestone and each level up. The Harness adds the new texts of the people. */
-  get exploration(): number {
+  get gameProgress(): number {
     this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
     return this.#maps.size + this.#milestones.size + this.#levels;
   }
@@ -126,8 +119,6 @@ export class GameWatch {
     if (map !== this.#map) events.push({ frame, type: "map", map });
     this.#maps.add(map);
     this.#map = map;
-    const player = mode === "overworld" ? this.game.player() : null;
-    if (player) this.#cells.add(`${map} ${player.x} ${player.y}`);
     for (const milestone of this.game.milestones()) {
       if (this.#milestones.has(milestone)) continue;
       this.#milestones.add(milestone);

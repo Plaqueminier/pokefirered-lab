@@ -116,7 +116,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     await expect(replay({ ...record, header: { ...record.header, seed: 1 } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 
-  test("a Bot that walks in a loop ends with no progress after N Decision points with no new cell and no new Milestone", async () => {
+  test("a Bot that walks in a loop ends with no progress after N Decision points with no progress: a new cell is not progress", async () => {
     const harness = await Harness.open({ noProgressLimit: 10 });
     const cell = (i: number) => ({ x: 6, y: i % 2 ? 6 : 7 });
     const loop: Bot = {
@@ -127,24 +127,24 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
       },
     };
     expect(await harness.play(loop)).toMatchObject({ endReason: "no progress", milestones: [], rawInputs: 0 });
-    expect(harness.actions.map((e) => [e.action, e.result.status])).toEqual(Array.from({ length: 11 }, (_, i) => [{ name: "goTo", ...cell(i) }, "done"]));
+    expect(harness.actions.map((e) => [e.action, e.result.status])).toEqual(Array.from({ length: 10 }, (_, i) => [{ name: "goTo", ...cell(i) }, "done"]));
   });
 
-  test("the walk Decision points since a new map, a new Milestone, a level up or a new text of a person: new cells and a text heard before do not reset them", async () => {
+  test("the stuck counter: a new map and a new text of a person make it 0 again; a new cell and a text heard before do not", async () => {
     const harness = await Harness.open();
-    const walks: number[] = [];
+    const stuck: number[] = [];
     const explorer: Bot = {
       name: "explorer",
       version: "1",
       async play(h) {
         const walk = async (x: number, y: number, map?: string) => {
           must(await h.goTo(x, y, map));
-          walks.push(h.noProgress.walks);
+          stuck.push(h.noProgress.stuck);
         };
         const talkToMom = async () => {
           must(await h.interact(8, 4));
           while (h.observe().waitingFor.kind !== "walk") await h.readText();
-          walks.push(h.noProgress.walks);
+          stuck.push(h.noProgress.stuck);
         };
         await walk(6, 6);
         await walk(6, 7);
@@ -156,7 +156,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
       },
     };
     await harness.play(explorer);
-    expect(walks).toEqual([1, 2, 0, 1, 2, 0, 1]);
+    expect(stuck).toEqual([1, 2, 0, 1, 2, 0, 1]);
   });
 
   test("a continued Run replays the buttons of its parent: the same Atlas with the texts of the people, and a Run result for the whole Run", async () => {

@@ -1,6 +1,6 @@
 import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
-import { type Cell, cellKey, edgeCells, inside, kindAt, type Place, walkable } from "./path";
+import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
 // The camera keeps the player at screen cell (7, 5) of the 15 x 10 cells of the screen (field_camera.c).
 const SCREEN_LEFT = 7;
@@ -11,7 +11,7 @@ const RIVAL_GRAPHICS = "BLUE";
 
 export type AtlasWarp = { x: number; y: number; behavior: string; to: string | null };
 
-export type AtlasEdge = { side: Direction; to: string | null };
+export type AtlasEdge = { side: Direction; to: string | null; blocked?: EdgeBlock };
 
 export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null };
 
@@ -33,9 +33,15 @@ export type AtlasMap = {
   entry: Cell | null;
 };
 
-export type Atlas = { maps: AtlasMap[] };
+export type Atlas = { maps: AtlasMap[]; lastTalk: { map: string; localId: number } | null };
 
 const UNSEEN = "?";
+
+const BLOCK_REASONS: Record<EdgeBlock, string> = { water: "is water. Only a Pokémon that knows SURF can cross water, and you have none" };
+
+export function blockedText(map: string, side: Direction, block: EdgeBlock): string {
+  return `you cannot go there now: the ${side} edge of ${map} ${BLOCK_REASONS[block]}`;
+}
 
 export function cellAt(map: AtlasMap, { x, y }: Cell): string {
   return map.cells[y * map.width + x];
@@ -71,9 +77,11 @@ type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 export class AtlasWatch {
   readonly #visits = new Map<string, Visit>();
   readonly #grids = new Map<string, MapGrid | null>();
+  readonly #blocks = new Map<string, EdgeBlock | null>();
   #place: Place | null = null;
   #lastAction: ActionEntry | null = null;
   #talk: Talk | null = null;
+  #lastTalk: Atlas["lastTalk"] = null;
 
   constructor(private readonly game: Game) {}
 
@@ -102,6 +110,7 @@ export class AtlasWatch {
     if (action.name !== "readText") {
       const talked = action.name === "interact" && result.status === "done";
       this.#talk = visit && this.#place && talked ? this.talkWith(visit, action, this.#place) : null;
+      if (this.#talk && this.#place) this.#lastTalk = { map: this.#place.map, localId: this.#talk.person.localId };
     }
     if (!visit || action.name !== "readText" || !("text" in result) || result.text.length === 0) return;
     if (this.#talk) told(this.#talk, result.text.join(" "));
@@ -116,6 +125,12 @@ export class AtlasWatch {
     return texts;
   }
 
+  get exits(): number {
+    let exits = 0;
+    for (const visit of this.#visits.values()) exits += seenWarps(visit).length + seenEdges(visit).length;
+    return exits;
+  }
+
   lookAround(): void {
     const place = this.#place;
     const visit = place && this.#visits.get(place.map);
@@ -123,15 +138,27 @@ export class AtlasWatch {
   }
 
   atlas(knowledge: KnowledgeLevel): Atlas {
-    if (knowledge === "player") return { maps: [...this.#visits.values()].map(atlasMap) };
+    const blocked = this.blockOf;
+    const lastTalk = this.#lastTalk;
+    if (knowledge === "player") return { maps: [...this.#visits.values()].map((visit) => atlasMap(visit, blocked)), lastTalk };
     const maps = this.game.allMapNames.flatMap((names, group) =>
       names.flatMap((name, num) => {
         const grid = this.grid(name, group, num);
-        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name)))] : [];
+        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name)), blocked)] : [];
       }),
     );
-    return { maps };
+    return { maps, lastTalk };
   }
+
+  readonly blockOf: BlockOf = (map, side) => {
+    const key = `${map} ${side}`;
+    if (!this.#blocks.has(key)) {
+      const load = (name: string) => this.game.mapView(name)?.grid ?? null;
+      const grid = load(map);
+      this.#blocks.set(key, grid && edgeBlock(grid, side, load));
+    }
+    return this.#blocks.get(key)!;
+  };
 
   // A person behind a counter talks across it: the cell after the counter counts too.
   private talkWith(visit: Visit, { x, y }: Cell, player: Cell): Talk | null {
@@ -224,20 +251,35 @@ function edgesOf(grid: MapGrid): Edge[] {
   return grid.connections.filter((c): c is Edge => c.direction in DIRECTION_STEP);
 }
 
-function atlasMap({ grid, seen, entry, warpsTaken, edgesTaken, signTexts, people }: Visit): AtlasMap {
-  const isSeen = ({ x, y }: Cell) => seen[y * grid.mapWidth + x] === 1;
+function seenOn(visit: Visit): (cell: Cell) => boolean {
+  return ({ x, y }) => visit.seen[y * visit.grid.mapWidth + x] === 1;
+}
+
+function seenWarps(visit: Visit): AtlasWarp[] {
+  const isSeen = seenOn(visit);
+  return visit.grid.warps.flatMap((w) => {
+    const to = visit.warpsTaken.get(cellKey(w)) ?? null;
+    return w.how !== "none" && (to || isSeen(w)) ? [{ x: w.x, y: w.y, behavior: w.behavior, to }] : [];
+  });
+}
+
+function seenEdges(visit: Visit): Edge[] {
+  const isSeen = seenOn(visit);
+  return edgesOf(visit.grid).filter((c) => visit.edgesTaken.has(c.direction) || edgeCells(visit.grid, c.direction).some(isSeen));
+}
+
+function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
+  const { grid, seen, entry, edgesTaken, signTexts, people } = visit;
+  const isSeen = seenOn(visit);
   return {
     name: grid.name,
     width: grid.mapWidth,
     height: grid.mapHeight,
     cells: Array.from(seen, (s, i) => (s ? kindAt(grid, { x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) }) : UNSEEN)).join(""),
-    warps: grid.warps.flatMap((w) => {
-      const to = warpsTaken.get(cellKey(w)) ?? null;
-      return w.how !== "none" && (to || isSeen(w)) ? [{ x: w.x, y: w.y, behavior: w.behavior, to }] : [];
-    }),
-    edges: edgesOf(grid).flatMap((c) => {
-      const to = edgesTaken.get(c.direction) ?? null;
-      return to || edgeCells(grid, c.direction).some(isSeen) ? [{ side: c.direction, to }] : [];
+    warps: seenWarps(visit),
+    edges: seenEdges(visit).map(({ direction: side }) => {
+      const block = blocked(grid.name, side);
+      return { side, to: edgesTaken.get(side) ?? null, ...(block ? { blocked: block } : {}) };
     }),
     hasEdges: edgesOf(grid).length > 0,
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),

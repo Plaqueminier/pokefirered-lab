@@ -1,5 +1,5 @@
 import type { Direction } from "../game";
-import { type Atlas, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
 import { EXITS_GROUP, edgeLabel, isExit, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
@@ -67,7 +67,8 @@ const CROSS: Record<Direction, (map: AtlasMap) => string> = {
 };
 
 function edgeLines(here: AtlasMap): string[] {
-  if (here.edges.length > 0) return ["Edges that lead to another map:", ...here.edges.map((e) => `- ${edgeLabel(e)}: ${CROSS[e.side](here)}`)];
+  const line = (e: AtlasEdge) => `- ${edgeLabel(e, here.name)}${e.blocked ? "." : `: ${CROSS[e.side](here)}`}`;
+  if (here.edges.length > 0) return ["Edges that lead to another map:", ...here.edges.map(line)];
   return [here.hasEdges ? "Edges: no edge that you saw leads to another map yet." : "Edges: no edge of this map leads to another map."];
 }
 
@@ -119,7 +120,7 @@ function gridLines(map: AtlasMap, cell: (c: Cell) => string): string[] {
 }
 
 function exitsText(map: AtlasMap): string {
-  return [...map.warps.map(warpLabel), ...map.edges.map(edgeLabel)].join("; ") || "none";
+  return [...map.warps.map(warpLabel), ...map.edges.map((e) => edgeLabel(e, map.name))].join("; ") || "none";
 }
 
 function signsText(map: AtlasMap): string {

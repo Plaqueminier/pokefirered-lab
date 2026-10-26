@@ -104,6 +104,10 @@ export type WaitingFor =
   | { kind: "buyList"; items: ShopItem[] }
   | { kind: "busy" };
 
+export function isDecisionPoint({ kind }: WaitingFor): boolean {
+  return kind !== "text" && kind !== "busy";
+}
+
 export type Direction = "south" | "north" | "west" | "east";
 
 export type PlayerPosition = { x: number; y: number; facing: Direction };

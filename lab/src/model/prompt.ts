@@ -1,5 +1,5 @@
 import type { BagItem, BagPocket } from "../bag";
-import { type Milestone, MILESTONES } from "../game";
+import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
 import { type ActionEntry, type BattleState, type NoProgress, type Observation } from "../harness/harness";
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
@@ -24,7 +24,7 @@ const WAITS: Record<AskedKind, string> = {
   partyPick: "a Pokémon in the party menu of the battle",
   buyList: "the buy list of a Poké Mart",
 };
-const STUCK_WALKS = 50;
+export const REFLECTION_EVERY = 30;
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
@@ -49,7 +49,7 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, your last decisions with what the program played and the texts of the game, and the actions that you can choose now. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -60,7 +60,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new fact to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters, for example "A person blocks the north exit of the town". Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note only when you learn something useful, and never write a note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note is never a guess, and never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -81,12 +81,24 @@ Advice of a good player:
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
 }
 
-function walksLine(walks: number): string {
-  const line = `Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: ${walks}.`;
-  return walks >= STUCK_WALKS ? `${line} You are stuck: do not try the same things again. Read your Memory tree, then go to a map or talk to a person that you did not see yet.` : line;
+const REFLECTION = [
+  "Reflection turn: stop and think before you act.",
+  "- Read your Memory tree above and the full Atlas below. Use zoom freely to see the details of a node: zoom does not end this turn.",
+  '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
+  '- Set a new "objective" that follows this lesson.',
+];
+
+/** `happened`: the facts of importantEvents. */
+export type PromptState = { noProgress: NoProgress; reflection: boolean; happened: string[] };
+
+// The count can pass a multiple of 30 during a battle: the reflection turn then waits for the next walk of the same block of 30.
+export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
+  const block = Math.floor(stuck / REFLECTION_EVERY);
+  const done = modelEvents(events.slice(since)).some((e) => e.reflection && Math.floor((e.stuck ?? 0) / REFLECTION_EVERY) === block);
+  return kind === "walk" && block > 0 && !done;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], noProgress: NoProgress): string {
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, happened }: PromptState): string {
   const now = asked.kind === "choice" ? `${WAITS.choice}: ${asked.options.join(", ")}` : WAITS[asked.kind];
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
@@ -101,17 +113,19 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     `The game waits for ${now}.`,
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
-    `Decision points with no progress: ${noProgress.decisions}.`,
-    walksLine(noProgress.walks),
-    tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress (a new cell or a new Milestone):", ...tried].join("\n"),
+    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
+    ...(reflection ? REFLECTION : []),
+    tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
+    ...(happened.length === 0 ? [] : [...happened.map((fact) => `Something important happened: ${fact}.`), "Write a note if it can help you later.", ""]),
     partyText(observation.party),
     `Money: ${observation.money}`,
     bagText(observation.bag),
     "",
     ...context(asked),
+    ...(reflection && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     "Actions:",
     ...actionLines(asked),
@@ -121,7 +135,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
 }
 
 export function atlasMessage(asked: Asked & { kind: "walk" }): string {
-  return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasViewed: true })].join("\n");
+  return [...fullAtlas(asked.overworld).slice(1), "", chooseAgain({ ...asked, atlasShown: true })].join("\n");
 }
 
 export function zoomMessage(tree: MemoryTree, node: NodeRange, asked: Asked): string {

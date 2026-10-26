@@ -191,6 +191,7 @@
       .model-call { padding: 3px 6px; border-radius: 4px; cursor: pointer; }
       .model-call:hover { background: var(--code-bg); }
       .model-call.on { background: var(--line); }
+      .model-reflection { color: var(--accent); font-weight: 600; }
       .model-answer { position: sticky; top: 0; background: var(--panel); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
       .model-action { font-size: 18px; font-weight: 600; color: var(--accent); }
       .model-error { color: var(--bad); }
@@ -419,7 +420,7 @@
             <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
             <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
-            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts. At the <code>full</code> level: all the maps</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, and the edges blocked by water. At the <code>full</code> level: all the maps</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>
@@ -471,7 +472,7 @@
             <dt><code>user stop</code></dt><dd>"Stop the Run", after the current action</dd>
             <dt><code>cost limit</code></dt><dd>the Model calls cost more than the cost limit (model bot)</dd>
             <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000)</dd>
-            <dt><code>no progress</code></dt><dd>N Decision points with no new cell and no new Milestone, when the Run gives N</dd>
+            <dt><code>no progress</code></dt><dd>the stuck counter reaches N, when the Run gives N</dd>
           </dl>
         </section>
         <section class="w4">
@@ -502,7 +503,7 @@
               menu and at the buy list of a Poké Mart. The code reads the texts alone; the model sees text and gives an action, its reason, its <b>Mission</b> (the
               story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (its map and the texts of its people in full, 1 500 characters for the other maps). The map is a grid of all its rows, with <code>?</code> for the cells not seen and the targets as letters (<code>go B</code>). The extract lists the edges that go to another map, and the targets in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction and the marks talked, read or taken. When a person moves during a <code>go</code>, the code finds the person again and walks again (2 times at most). It can ask for the full Atlas one
               time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
-              progress, the walk Decision points since a new map, Milestone, level up or text of a person (from 50, the prompt tells it that it is stuck), and the top nodes of its Memory tree: it adds a note when it learns something, a Summary call merges two
+              progress, the stuck counter, the important events, and the top nodes of its Memory tree: it adds a note after an important event or a lesson, a Summary call merges two
               nodes of the same size, and <code>zoom &lt;a-b&gt;</code> opens a node. After an impossible action, the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). The panel "Model" shows each Model call in full; the panel "Stats" counts the actions, the calls and the cost for each Milestone. The panel "Memory tree" shows the top nodes with zoom, and the Summary calls.
             </dd>
           </dl>
@@ -511,6 +512,18 @@
             <thead><tr><th>Name</th><th>Kind</th><th>Version</th><th>Goal</th></tr></thead>
             <tbody><tr><td colspan="4" class="muted">loading…</td></tr></tbody>
           </table>
+        </section>
+        <section>
+          <h2>Model bot: progress, reflection and notes</h2>
+          <dl>
+            <dt>Stuck counter</dt><dd>the Decision points since the last progress (<code>harness.noProgress.stuck</code>). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The prompt shows it at each call; <code>noProgressLimit</code> ends a Run on it.</dd>
+            <dt>Progress</dt><dd>a new map, a new Milestone, a new exit in the Atlas (a warp or an edge seen for the first time), a level up, or a new text of a person. A text heard before from the same person and a new cell are not progress.</dd>
+            <dt>Reflection turn</dt><dd>the first walk at 30 on the stuck counter, then at 60, 90… A normal Model call, with the full Atlas after the extract and an instruction: read the Memory tree and the Atlas, zoom freely, write a lesson in <code>note</code> (what failed, why, what next) and set a new <code>objective</code>. No <code>viewAtlas</code> there.</dd>
+            <dt>Events that ask for a note</dt><dd>since the last Model call: a new map, a lost battle, a heal (all HP full again with no battle and no item use; the line names the map and the last person talked to), a new item, 2 impossible actions or more in a row. One line "Something important happened: …" each, then "Write a note if it can help you later." The model decides.</dd>
+            <dt>Notes</dt><dd>a fact that the game proved, or a lesson: what works, what fails and why. Never a guess, never HP values.</dd>
+            <dt>Blocked edge</dt><dd>an edge with water between the two maps: only SURF crosses it. The extract and the full Atlas say "you cannot go there now" with the reason, the edge is not a target, and a <code>goTo</code> past it gives the same reason. A <code>goTo</code> past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell.</dd>
+            <dt>Run record</dt><dd>each Model call has <code>stuck</code> and <code>reflection</code>. The panel "Model" shows them in the list and in the title of a call.</dd>
+          </dl>
         </section>
       </div>
     </article>

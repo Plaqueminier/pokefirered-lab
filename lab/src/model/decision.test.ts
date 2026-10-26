@@ -46,7 +46,7 @@ describe("readAction", () => {
     party: mons,
     overworld,
     view: { lines: [], targets: Array.from({ length: targets }, () => edge) },
-    atlasViewed: false,
+    atlasShown: false,
     items: [],
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };

@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
-import type { RunEvent } from "../harness/record";
+import type { ModelEvent, RunEvent } from "../harness/record";
 import { askedOf, readAction } from "./decision";
-import { MAX_TRIES, missionLine, nextMilestone, tries, userPrompt } from "./prompt";
+import { importantEvents } from "./important-events";
+import { MAX_TRIES, missionLine, nextMilestone, REFLECTION_EVERY, reflectionTurn, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
-function call(action: string, mission = ""): RunEvent {
+function call(action: string, mission = "", note = ""): ModelEvent {
   return {
     type: "model",
     frame: 0,
@@ -16,9 +18,30 @@ function call(action: string, mission = ""): RunEvent {
     prompt: { system: "", user: "" },
     answer: "",
     usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 },
-    decision: { reason: "", action, mission, objective: "", note: "" },
+    decision: { reason: "", action, mission, objective: "", note },
     error: null,
   };
+}
+
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, happened: [] };
+const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" };
+
+function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
+  const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
+  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, entry: null };
+  return {
+    mode: "overworld",
+    waitingFor: { kind: "walk" },
+    party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 }],
+    money: 3080,
+    bag: [{ pocket: "ITEMS", items }],
+    milestones: [],
+    map: { group: 0, num: 0, name: "Route1" },
+    player: { x: 1, y: 1, facing: "north" },
+    grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
+    people: [],
+    atlas: { maps: [map], lastTalk: people[0] ? { map: "Route1", localId: people[0].localId } : null },
+  } as unknown as Observation;
 }
 
 function played(action: ActionEntry["action"], result: ActionEntry["result"]): RunEvent {
@@ -100,19 +123,14 @@ describe("the Bag", () => {
         { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone", walk: null }] },
       ],
       milestones: [],
-      atlas: { maps: [] },
+      atlas: { maps: [], lastTalk: null },
       battle: {
         kind: "wild",
         player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", stats, moves: [], statStages: stages, partyIndex: 0 },
         enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", statStages: stages, movesSeen: [] },
       },
     } as Observation;
-    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 0 });
-    expect(prompt).not.toContain("You are stuck");
-    expect(prompt).toContain("Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: 0.");
-    expect(userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 50 })).toContain(
-      "Walk Decision points since a new map, a new Milestone, a level up or a new text of a person: 50. You are stuck: do not try the same things again. Read your Memory tree, then go to a map or talk to a person that you did not see yet.",
-    );
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain(
       [
         "Money: 3080",
@@ -126,26 +144,10 @@ describe("the Bag", () => {
   });
 
   test("on a walk, the use line lists only the items that work outside a battle, and the model uses them on a Pokémon of the party", () => {
-    const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-    const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people: [], entry: null };
-    const observation = {
-      mode: "overworld",
-      waitingFor: { kind: "walk" },
-      party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp: 10, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 }],
-      money: 3080,
-      bag: [
-        { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" }] },
-        { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone", walk: null }] },
-      ],
-      milestones: [],
-      map: { group: 0, num: 0, name: "Route1" },
-      player: { x: 1, y: 1, facing: "north" },
-      grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
-      people: [],
-      atlas: { maps: [map] },
-    } as unknown as Observation;
+    const observation = route1(10, [POTION]);
+    observation.bag.push({ pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON.", battle: "alone", walk: null }] });
     const asked = askedOf(observation, false)!;
-    expect(userPrompt(observation, asked, [], { decisions: 0, since: 0, walks: 0 })).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon).");
+    expect(userPrompt(observation, asked, [], NO_TURN)).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon).");
     expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
     expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION');
   });
@@ -160,9 +162,9 @@ describe("the Poké Mart", () => {
       money: 3080,
       bag: [{ pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", battle: "pokemon", walk: "pokemon" }] }],
       milestones: [],
-      atlas: { maps: [] },
+      atlas: { maps: [], lastTalk: null },
     } as unknown as Observation;
-    const prompt = userPrompt(observation, askedOf(observation, false)!, [], { decisions: 0, since: 0, walks: 0 });
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain("The game waits for the buy list of a Poké Mart.");
     expect(prompt).toContain("Money: 3080");
     expect(prompt).toContain(["The Poké Mart sells (the price of one item):", "- POKé BALL: 200", "- POTION: 300"].join("\n"));
@@ -172,5 +174,65 @@ describe("the Poké Mart", () => {
         "- sell <item> <quantity>: sell items of your Bag. The shop pays half of the price of each item. It does not buy the KEY ITEMS.",
       ].join("\n"),
     );
+  });
+});
+
+describe("the stuck counter and the reflection turn", () => {
+  test(`the first walk at ${REFLECTION_EVERY} Decision points with no progress, and at each ${REFLECTION_EVERY} more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective`, () => {
+    const observation = route1(22, [POTION]);
+    const at = (stuck: number, events: RunEvent[] = []) => reflectionTurn("walk", events, { stuck, since: 0 });
+    const reflected = { ...call("go A"), stuck: 31, reflection: true };
+    expect([at(29), at(30), at(31), at(59, [reflected]), at(61, [reflected])]).toEqual([false, true, true, false, true]);
+    expect(reflectionTurn("battleAction", [], { stuck: 30, since: 0 })).toBe(false);
+
+    const noted = [call("go A", "", "fact 1")];
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 30, since: 0 }, reflection: true });
+    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 30.");
+    expect(prompt).toContain(
+      [
+        "Reflection turn: stop and think before you act.",
+        "- Read your Memory tree above and the full Atlas below. Use zoom freely to see the details of a node: zoom does not end this turn.",
+        '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
+        '- Set a new "objective" that follows this lesson.',
+      ].join("\n"),
+    );
+    expect(prompt).toContain("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1: fact 1");
+    expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
+    expect(prompt).not.toContain("- viewAtlas");
+    const normal = userPrompt(observation, askedOf(observation, false)!, noted, NO_TURN);
+    expect(normal).not.toContain("Reflection turn");
+    expect(normal).not.toContain("Full Atlas");
+  });
+});
+
+describe("the events that ask for a note", () => {
+  test("a new map, a heal with the person who healed, a new item, a lost battle and impossible actions in a row each give a line, then the prompt asks for a note", () => {
+    const before = route1(10, [POTION]);
+    const now = route1(22, [POTION, { ...POTION, name: "ANTIDOTE" }], [{ localId: 1, graphics: "MOM", x: 1, y: 0, texts: ["MOM: You should rest."] }]);
+    const events: RunEvent[] = [
+      { type: "map", frame: 0, map: "PalletTown" },
+      call("go A"),
+      { type: "map", frame: 0, map: "Route1" },
+      played({ name: "interact", x: 1, y: 0 }, { status: "done", frames: 10 }),
+      played({ name: "readText" }, { status: "done", frames: 50, text: ["MOM: You should rest."] }),
+    ];
+    const happened = importantEvents(before, now, events);
+    expect(happened).toEqual(["you entered the map Route1 for the first time", "your party was healed on Route1, after you talked to MOM", "you got ANTIDOTE"]);
+    expect(userPrompt(now, askedOf(now, false)!, events, { ...NO_TURN, happened })).toContain(
+      [
+        "Something important happened: you entered the map Route1 for the first time.",
+        "Something important happened: your party was healed on Route1, after you talked to MOM.",
+        "Something important happened: you got ANTIDOTE.",
+        "Write a note if it can help you later.",
+      ].join("\n"),
+    );
+
+    const battle: RunEvent = { type: "battle", frame: 0, state: "start" };
+    const lost = played({ name: "readText" }, { status: "done", frames: 50, text: ["BOB whited out!"] });
+    expect(importantEvents(before, now, [call("go A"), battle, lost])).toEqual(["you lost a battle", "you got ANTIDOTE"]);
+    const outside = played({ name: "goTo", x: 9, y: 9 }, { status: "impossible", reason: "outside", frames: 0 });
+    expect(importantEvents(now, now, [call("goTo 9 9"), outside, call("zoom 1-2"), call("goTo 9 9"), outside])).toEqual(["your last 2 actions were impossible: they changed nothing in the game"]);
+    expect(importantEvents(now, now, [call("goTo 9 9"), outside])).toEqual([]);
+    expect(importantEvents({ ...now, party: [] }, now, [call("choose NO")])).toEqual([]);
   });
 });

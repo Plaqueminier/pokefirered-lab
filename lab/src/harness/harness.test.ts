@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "3", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "4", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -377,6 +377,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe()).toMatchObject({ map: { name: "PalletTown_PlayersHouse_1F" } });
     expect(await harness.goTo(4, 8)).toMatchObject({ status: "done" });
     expect(harness.observe()).toMatchObject({ map: { name: "PalletTown" } });
+    expect(await harness.goTo(4, 20)).toEqual({ status: "impossible", reason: "you cannot go there now: the south edge of PalletTown is water. Only a Pokémon that knows SURF can cross water, and you have none", frames: 0 });
     expect(await harness.goTo(15, 7)).toMatchObject({ status: "done" });
     expect(harness.observe()).toMatchObject({ map: { name: "PalletTown_RivalsHouse" } });
     expect(await harness.goTo(12, -1, "PalletTown")).toMatchObject({ status: "impossible", frames: 0 });
@@ -421,7 +422,10 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const pallet = mapNamed(atlas, "PalletTown");
     expect(pallet.cells).not.toContain("?");
     expect(pallet.warps).toContainEqual(expect.objectContaining({ x: 15, y: 7, to: "PalletTown_RivalsHouse" }));
-    expect(pallet.edges).toContainEqual({ side: "north", to: "Route1" });
+    expect(pallet.edges).toEqual([
+      { side: "north", to: "Route1" },
+      { side: "south", to: "Route21_North", blocked: "water" },
+    ]);
     const route3 = mapNamed(atlas, "Route3");
     expect(route3.warps).toEqual([]);
     expect(route3.entry).not.toBeNull();

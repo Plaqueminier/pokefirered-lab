@@ -36,7 +36,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     player: { ...player, facing: "north" },
     grid,
     people,
-    atlas: { maps: [current, ...others] },
+    atlas: { maps: [current, ...others], lastTalk: null },
   };
 }
 
@@ -103,6 +103,13 @@ describe("the extract of the Atlas", () => {
       'C. sign at (3, 0), adjacent north, you face it: read, "It\'s a TV."',
       "D. MOM at (5, 3), 2 south, 2 east: talked",
     ]);
+  });
+
+  test("a water edge says that the player cannot go there now and why, and it is not a target", () => {
+    const [town] = chain(0);
+    const view = atlasExtract(overworld({ ...town, edges: [{ side: "south", to: null, blocked: "water" }, ...town.edges.slice(1)] }, []));
+    expect(view.lines).toContain("- south edge: you cannot go there now: the south edge of Town is water. Only a Pokémon that knows SURF can cross water, and you have none.");
+    expect(view.targets.filter((t) => t.kind === "edge").map((t) => t.label)).toEqual(["north edge, 3 north: not taken"]);
   });
 
   test("the people on the cells that the player did not see are not targets", () => {

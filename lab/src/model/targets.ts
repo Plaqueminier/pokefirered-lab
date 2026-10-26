@@ -1,5 +1,5 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type MapGrid } from "../game";
-import { type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, seenIn } from "../harness/atlas";
+import { type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
 
@@ -64,8 +64,8 @@ export function warpLabel(w: AtlasWarp): string {
   return `${exitPlace(w)}, ${destination(w.to)}`;
 }
 
-export function edgeLabel(e: AtlasEdge): string {
-  return `${edgeName(e.side)}, ${destination(e.to)}`;
+export function edgeLabel(e: AtlasEdge, map: string): string {
+  return e.blocked ? `${edgeName(e.side)}: ${blockedText(map, e.side, e.blocked)}` : `${edgeName(e.side)}, ${destination(e.to)}`;
 }
 
 export function targetLetter(index: number): string {
@@ -102,7 +102,7 @@ export function localTargets(overworld: Overworld, here: AtlasMap): Target[] {
   const present = new Set(people.map((p) => p.localId));
   const targets = [
     ...here.warps.map((w) => exitTarget(w, player)),
-    ...here.edges.map((e) => edgeTarget(e, here, player)),
+    ...here.edges.filter((e) => !e.blocked).map((e) => edgeTarget(e, here, player)),
     ...frontier(cells, grid, seen, player),
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map((p) => personTarget(p, player, behindCounter(p))),
     ...here.signs.map((s) => signTarget(s, player)),
