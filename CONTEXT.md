@@ -20,6 +20,34 @@ _Avoid_: emulator, AI
 The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model, and it continues a walk that a wild battle stopped when the party is healthy, or that a trigger stopped when the game showed no text. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
+**Genetic bot**:
+A **Bot** that plays with a **Genome**: at each **Decision point**, its code gives a score to each action that it can play, with the weights of the **Genome**, and plays the action with the best score. It asks no AI model. It is one **Bot**: the **Genomes** change from **Run** to **Run**, its code does not.
+_Avoid_: GA bot, evolved bot, case B
+
+**Genome**:
+The weights of a **Genetic bot**: how much it likes each property of an action, for example "an exit that the player did not take". The same **Genome** plays on any seed. It is not a list of actions to play in order.
+_Avoid_: chromosome, plan, individual
+
+**Fitness**:
+The number that tells how far a **Run** of a **Genetic bot** went in the game: its **Milestones**, what it discovered and the levels of its party. It has a version, as a **Bot** has.
+_Avoid_: score, reward
+
+**Population**:
+The **Genomes** of one **Generation**. Each one plays one **Run** and gets its **Fitness**.
+_Avoid_: swarm, batch
+
+**Generation**:
+One step of an **Evolution**: its **Population** plays, then the best **Genomes** make the **Population** of the next **Generation**.
+_Avoid_: epoch, iteration
+
+**Evolution**:
+The whole search of a **Genetic bot** for better **Genomes**: its **Generations** in order, with one version of the **Fitness**. It can stop and continue later.
+_Avoid_: training, learning
+
+**Neural bot**:
+A **Bot** that a neural network controls. The lab does not have it yet.
+_Avoid_: case C, RL bot
+
 **Agent**:
 An AI coding assistant that writes or changes the code of a **Bot**. It does not play.
 _Avoid_: bot
@@ -300,7 +328,8 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Run** of a model bot has one AI model, and at most one **Coach** on the same **Model provider**. Only the **Coach** writes a **Coach advice**.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - An **Extended Run** has one **Run record**: each new part replaces the file, and only an **Extended Run** changes a **Run record** after its **Run** ended (`bun run migrate` adds only data from the replay).
-- The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
+- The lab has three kinds of **Bot** that grow with the story: the model bot, the **Genetic bot** and the **Neural bot**. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
+- A **Genetic bot** plays one **Genome** in each **Run**.
 - The **Viewer** shows several **Runs** in its **Grid**, and one **Run** in detail: the shown **Run**. The **Harness** owns all **Runs**.
 - A **Race** holds many **Run records**. Each of its **Ghosts** is one **Run**. A **Run** that another **Run** of the **Race** continues has no **Ghost**: the **Continued Run** already holds its play. The **Viewer** plays a **Race** in the browser: no **Run** plays in the **Harness** for it.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
