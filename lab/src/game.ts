@@ -16,7 +16,7 @@ import {
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { multichoice, type NamingScreen, namingScreen, type PartyMenu, partyMenu, startMenu } from "./menus";
+import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -285,8 +285,8 @@ export class Game {
     if (list) return { kind: "shopMenu", items: list.items, screen: "buyList" };
     const shop = this.shopMenu();
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
-    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode);
-    if (choice) return { kind: "choice", ...choice };
+    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode) ?? multichoiceGrid(this.mem, this.decode);
+    if (choice) return { kind: "choice", options: choice.options, cursor: choice.cursor };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
   }
@@ -450,6 +450,11 @@ export class Game {
   keysRead(): { held: number; pressed: number } {
     const main = this.mem.global("gMain");
     return { held: main.field("heldKeysRaw").int(), pressed: main.field("newKeysRaw").int() };
+  }
+
+  /** The columns of the choice on the screen: 1, or more for a grid menu. */
+  choiceColumns(): number {
+    return multichoiceGrid(this.mem, this.decode)?.columns ?? 1;
   }
 
   startMenu(): Choice | null {

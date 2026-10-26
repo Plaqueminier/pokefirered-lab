@@ -7,6 +7,10 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
+// The task of a grid menu keeps no multichoiceId. ScrCmd_multichoicegrid stops the script after its 5 bytes: left, top, multichoiceId, columns, ignoreBPress.
+const GRID_MULTICHOICE_ID_OFFSET = 3;
+// CONTEXT_WAITING (script.c).
+const SCRIPT_CONTEXT_WAITING = 1;
 const START_MENU_INPUT_STEP = 1;
 // NAMING_SCREEN_* of the game. The two Pokémon templates (2 and 3) are not here: they name a Pokémon by its species.
 const NAMING_SUBJECTS = new Map([
@@ -47,10 +51,22 @@ export function startMenu(mem: Memory, decode: Decode): Choice | null {
 export function multichoice(mem: Memory, decode: Decode): Choice | null {
   const task = activeTask(mem, "Task_MultichoiceMenu_HandleInput");
   if (!task || mem.global("sDelay").int() !== 0 || mem.global("gPaletteFade").field("active").int()) return null;
-  const menu = mem.global("sMultichoiceLists").at(task.field("data").at(MULTICHOICE_ID).int());
+  return { options: multichoiceOptions(mem, task.field("data").at(MULTICHOICE_ID).int(), decode), cursor: mem.global("sMenu").field("cursorPos").int() };
+}
+
+// The grid menu of a multichoicegrid script: the cursor goes left, right, up and down. Only the blackboard of the Viridian City school uses it.
+// The game draws the menu on more than one frame, after it starts the task: the menu is ready when ScrCmd_multichoicegrid stops the script.
+export function multichoiceGrid(mem: Memory, decode: Decode): (Choice & { columns: number }) | null {
+  if (!activeTask(mem, "Hask_MultichoiceGridMenu_HandleInput") || mem.global("sGlobalScriptContextStatus").int() !== SCRIPT_CONTEXT_WAITING) return null;
+  const id = mem.u8(mem.global("sGlobalScriptContext").field("scriptPtr").pointer() - GRID_MULTICHOICE_ID_OFFSET);
+  const menu = mem.global("sMenu");
+  return { options: multichoiceOptions(mem, id, decode), cursor: menu.field("cursorPos").int(), columns: menu.field("columns").int() };
+}
+
+function multichoiceOptions(mem: Memory, id: number, decode: Decode): string[] {
+  const menu = mem.global("sMultichoiceLists").at(id);
   const list = menu.field("list");
-  const options = Array.from({ length: menu.field("count").int() }, (_, i) => menuText(mem, list.at(i).field("text").pointer(), decode));
-  return { options, cursor: mem.global("sMenu").field("cursorPos").int() };
+  return Array.from({ length: menu.field("count").int() }, (_, i) => menuText(mem, list.at(i).field("text").pointer(), decode));
 }
 
 export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {

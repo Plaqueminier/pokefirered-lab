@@ -66,6 +66,12 @@ function gridKey(cursor: number, target: number): number {
   return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
 }
 
+// A choice is a list (one column) or a grid: the cursor goes to the column of the target first, then to its row.
+function choiceKey(target: number, columns: number): (at: number) => number {
+  const column = target % columns;
+  return (at) => (at % columns === column ? toward(target, Keys.Down, Keys.Up)(at) : toward(column, Keys.Right, Keys.Left)(at % columns));
+}
+
 type Sale = { place: BagPlace; refusal: null } | { place: null; refusal: string };
 
 function sale(item: string, place: BagPlace | null): Sale {
@@ -164,7 +170,7 @@ export class MenuDriver {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
-    const moved = this.moveCursor(target, cursor, toward(target, Keys.Down, Keys.Up));
+    const moved = this.moveCursor(target, cursor, choiceKey(target, game.choiceColumns()));
     return moved.status === "done" ? this.input(Keys.A) : moved;
   }
 

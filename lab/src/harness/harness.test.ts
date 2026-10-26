@@ -701,3 +701,19 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on
     expect(harness.observe()).toMatchObject({ map: { name: "ViridianCity_PokemonCenter_1F" }, waitingFor: { kind: "walk" }, party: [{ hp: 22, maxHp: 22, status: "none" }] });
   });
 });
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at the school of Viridian City", () => {
+  test("the blackboard of the school asks with a grid menu: it is a choice with its 6 options, and choose FRZ moves the cursor right and down and reads the topic", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    must(await harness.goTo(5, 2, "ViridianCity_School"));
+    must(await harness.interact(5, 1));
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["The blackboard lists POKéMON STATUS problems during battles.", "Which topic do you want to read?"] });
+    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["SLP", "PSN", "PAR", "BRN", "FRZ", "EXIT"], cursor: 0 });
+    must(await harness.choose("FRZ"));
+    expect(await harness.readText()).toMatchObject({
+      status: "done",
+      text: ["A frozen POKéMON becomes helplessly immobile. It stays frozen even after the battle ends. Use ICE HEAL to thaw out the suffering POKéMON.", "Which topic do you want to read?"],
+    });
+    expect(harness.waitingFor()).toMatchObject({ kind: "choice", cursor: 0 });
+  });
+});
