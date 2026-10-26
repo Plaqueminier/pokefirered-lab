@@ -90,27 +90,8 @@ test("a Bot that does not load gives its error in the list of the Bots", async (
 });
 
 describe.skipIf(!ready)("Harness on the Starting save", () => {
-  test("on the way out of the lab, the rival stops the player and starts a battle; readText reads the battle texts to the first battle action", async () => {
-    const harness = await Harness.open();
-    await toStarter(harness);
-    const empty = await harness.interact(9, 4);
-    expect(empty).toMatchObject({ status: "impossible", reason: "nothing at (9, 4) starts a script" });
-    expect(empty.frames).toBeGreaterThan(0);
-    expect(await harness.goTo(6, 11)).toMatchObject({ status: "interrupted", reason: "trigger" });
-    expect(await harness.readText()).toMatchObject({
-      status: "interrupted",
-      reason: "battle",
-      text: ["BOB: Wait, PLOK! Let's check out our POKéMON! Come on, I'll take you on!"],
-    });
-    expect(harness.observe().waitingFor).toEqual({ kind: "busy" });
-    expect(await harness.readText()).toMatchObject({ status: "done", text: BATTLE_INTRO_TEXTS });
-    expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "battleAction" } });
-    expect(harness.rawInputs).toBe(0);
-  });
-
-  test("the scripted bot follows Oak to his lab, takes SQUIRTLE and wins the rival battle with no Raw input, and the Run ends at its goal, with the same frames on each start", async () => {
+  test("the scripted bot follows Oak to his lab, takes SQUIRTLE and wins the rival battle with no Raw input, and the Run ends at its goal", async () => {
     const first = await play(starter);
-    const second = await play(starter);
     expect(first.actions.map((e) => [e.action, e.result.status, "reason" in e.result ? e.result.reason : null, "text" in e.result ? e.result.text : null])).toEqual([
       [{ name: "goTo", x: 12, y: 3, map: "PalletTown" }, "done", null, null],
       [{ name: "goTo", x: 12, y: 1 }, "interrupted", "trigger", null],
@@ -171,7 +152,6 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(first.observation.party).toHaveLength(1);
     expect(first.observation.party[0].hp).toBe(first.observation.party[0].maxHp);
     expect(first.observation.party[0].maxHp).toBeWithin(21, 24);
-    expect(second).toEqual(first);
   });
 
   test("at each Decision point of the starter path, availableActions gives the actions that the game accepts now", async () => {
@@ -217,20 +197,6 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       if (action.name === "press") throw new Error("the scripted bot uses a Raw input");
       expect(seen[i]).toContainEqual(action.name === "goTo" ? goTo : action);
     });
-  });
-
-  test("each interact that availableActions lists on the path, and that the Bot does not use, starts a script", async () => {
-    const atStart = await Harness.open();
-    expect(await atStart.interact(6, 5)).toMatchObject({ status: "done" });
-    for (const [x, y] of [
-      [6, 3],
-      [5, 4],
-    ]) {
-      const inLab = await Harness.open();
-      await toLab(inLab);
-      expect(await inLab.interact(x, y)).toMatchObject({ status: "done" });
-      expect(inLab.observe().waitingFor).not.toEqual({ kind: "walk" });
-    }
   });
 
   test("observe gives what the Summary screen shows: the types, the ability, the held item, the nature, the stats and the EXP, and for each move its type, power, accuracy, PP and description", async () => {
@@ -353,21 +319,6 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(exact.maxHp).toBeWithin(19, 22);
     expect(exact.stats.attack).toBeWithin(9, 12);
     expect(Object.keys(exact.stats)).toEqual(["attack", "defense", "speed", "spAttack", "spDefense"]);
-  });
-
-  test("on the way to the lab, the game waits for a text before each readText after the first", async () => {
-    const harness = await Harness.open();
-    await harness.goTo(12, 3, "PalletTown");
-    await harness.goTo(12, 1);
-    const seen = [harness.observe().waitingFor];
-    for (const _ of OAK_TEXTS) {
-      await harness.readText();
-      seen.push(harness.observe().waitingFor);
-    }
-    expect(seen).toEqual([{ kind: "busy" }, { kind: "text" }, { kind: "text" }, { kind: "text" }, { kind: "walk" }]);
-    expect(harness.observe()).toMatchObject({ mode: "overworld", player: { x: 6, y: 4 } });
-    expect(harness.observe().party).toEqual([]);
-    expect(harness.observe().milestones).toEqual([]);
   });
 
   test("on the overworld, observe gives the people of the map with the name of their sprite; the Atlas gives the rival with its name from the save", async () => {

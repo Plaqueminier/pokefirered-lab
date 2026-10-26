@@ -79,7 +79,7 @@ describe("isRunRecord", () => {
 });
 
 describe.skipIf(!ready)("Run record on the Starting save", () => {
-  test("the Run record of the scripted bot has its header, its buttons at each frame and its events", async () => {
+  test("the Run record of the scripted bot has its header, its buttons at each frame and its events; the replay of the buttons alone gives the same map changes, battles and Milestones, the same frames and the same screen", async () => {
     const { harness, result } = await playStarter();
     const record = harness.record();
 
@@ -107,11 +107,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     ]);
     const frames = record.events.map((e) => e.frame);
     expect(frames).toEqual(frames.toSorted((a, b) => a - b));
-  });
 
-  test("the replay of the buttons alone gives the same map changes, battles and Milestones, the same frames and the same screen", async () => {
-    const { harness } = await playStarter();
-    const record = harness.record();
     const replayed = await replay(record);
     expect(replayed.events).toEqual(record.events.filter((e) => e.type === "map" || e.type === "battle" || e.type === "milestone"));
     expect(replayed.events.length).toBeGreaterThan(0);
