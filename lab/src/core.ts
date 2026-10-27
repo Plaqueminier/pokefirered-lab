@@ -61,7 +61,7 @@ export class Core implements MemoryBus {
   private readonly frame: Uint8Array;
   private readonly audio = new Int16Array(2 * 8192);
 
-  private constructor(private handle: Pointer) {
+  private constructor(private handle: Pointer | bigint) {
     const f = lib!.symbols;
     this.width = f.lab_width(handle);
     this.height = f.lab_height(handle);

@@ -1,7 +1,7 @@
 import type { BagItem, BagPocket } from "../bag";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
-import { type ActionEntry, type BattleState, type NoProgress, type Observation } from "../harness/harness";
+import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { PartyMon, PartyMove } from "../party";
 import { actionText } from "../protocol";

@@ -1,6 +1,6 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
-import type { ConnectionSide, Direction, MapActors, MapGrid, Warp } from "../src/game";
+import type { ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
 export type View = { x: number; y: number; cell: number };
@@ -14,13 +14,6 @@ const KIND_FILL: Record<Style, Record<string, string | null>> = {
 const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
 const NEVER_SEEN = "rgba(150, 155, 165, 0.8)";
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
-
-export function kindAt(grid: MapGrid, x: number, y: number): string {
-  const gx = x - grid.x0;
-  const gy = y - grid.y0;
-  if (gx < 0 || gy < 0 || gx >= grid.width || gy >= grid.height) return " ";
-  return grid.kinds[gy * grid.width + gx];
-}
 
 export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string): void {
   const { width, height } = ctx.canvas;
