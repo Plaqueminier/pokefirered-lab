@@ -2,7 +2,7 @@ import type { BagItem, BagPocket } from "../bag";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
-import type { ActionEntry, BattleState, NoProgress, Observation, Owned } from "../harness/harness";
+import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import { isHmMove, type PartyMon, type PartyMove } from "../party";
 import { actionText } from "../protocol";
@@ -164,7 +164,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
-    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item picked up or a new species caught): ${noProgress.stuck}.`,
+    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): ${noProgress.stuck}.`,
     ...(turn === "reflection" ? REFLECTION : turn === "review" ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     ...loopWarning(answers),
@@ -374,7 +374,7 @@ function context(asked: Asked): string[] {
     case "walk":
       return asked.view.lines;
     case "choice":
-      if ("battle" in asked) return battleLines(asked.battle);
+      if ("battle" in asked) return battleLines(asked.battle, asked.party);
       return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), [])];
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
@@ -397,7 +397,7 @@ function context(asked: Asked): string[] {
       ];
     }
     default:
-      return battleLines(asked.battle);
+      return battleLines(asked.battle, asked.party);
   }
 }
 
@@ -414,7 +414,7 @@ function actionLines(asked: Asked): string[] {
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
-        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle. ${pokemonHelp(asked.party, asked.party.keys())}`] : []),
+        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle.${pokemonHelp(asked.party)}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
     }
@@ -467,17 +467,19 @@ function keyList(keys: string[]): string {
 function useLine(asked: Asked & { items: BagItem[] }): string[] {
   if (asked.items.length === 0) return [];
   const names = asked.items.map((item) => (itemUse(item, asked) === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
-  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}. ${pokemonHelp(asked.party, asked.party.keys())}`];
+  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}.${pokemonHelp(asked.party)}`];
 }
 
 function partyLine(asked: Asked, name: "switch" | "send", help: string): string[] {
   const slots = sendable(asked);
-  return slots.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}. ${pokemonHelp(asked.party, slots)}`];
+  return slots.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}.${pokemonHelp(asked.party, slots)}`];
 }
 
-function pokemonHelp(party: PartyMon[], slots: Iterable<number>): string {
+/** The help for `<Pokémon>`, with a space before it. No help when there is no place to name. */
+function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()): string {
   const mons = [...slots].map((slot) => `${slot + 1} ${party[slot].nickname}`);
-  return `<Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
+  if (mons.length === 0) return "";
+  return ` <Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
 }
 
 function fights({ player, fights: facts }: BattleState): string[] {
@@ -500,21 +502,21 @@ function rangeText(min: number, max: number, unit = ""): string {
   return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
 }
 
-function battleLines(battle: BattleState): string[] {
-  const { kind, player, enemy, lastTurn, foeTurns } = battle;
+function battleLines(battle: BattleState, party: PartyMon[]): string[] {
+  const { player, enemy, lastTurn, foeTurns } = battle;
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
-    `Battle against ${kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
+    `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
     `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
     `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
-    ...(battle.kind === "wild" ? [ownedLine(enemy.species, battle.owned)] : []),
+    ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
   ];
 }
 
-function ownedLine(species: string, { party, pc }: Owned): string {
-  return party + pc === 0 ? `You own no ${species}.` : `You own ${party + pc} ${species}: ${party} in the party, ${pc} in the PC.`;
+function ownedLine(species: string, inParty: number, inPc: number): string {
+  return inParty + inPc === 0 ? `You own no ${species}.` : `You own ${inParty + inPc} ${species}: ${inParty} in the party, ${inPc} in the PC.`;
 }
 
 function turnLine({ moves, player, foe }: BattleTurn): string {

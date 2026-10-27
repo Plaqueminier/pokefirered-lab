@@ -69,8 +69,8 @@ const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
 const TRAINER_FLAGS_START = 0x500;
 const FLAG_HIDDEN_ITEMS_START = 0x3e8;
-const FLAG_HIDDEN_ITEMS_END = 0x4b0;
-const TRAINER_FLAGS_END = 0x800;
+const FLAG_HIDDEN_ITEMS_COUNT = 200;
+const TRAINER_FLAGS_COUNT = 768;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
@@ -200,14 +200,30 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
+type MapObjects = { object_events?: { graphics_id: string; flag: string }[] };
+
 // People have hide flags too, so the item ball flags come from the map data, not from a flag range.
 async function readItemBallFlags(): Promise<number[]> {
   const flagsText = await Bun.file(join(REPO_DIR, "include/constants/flags.h")).text();
   const ids = new Map([...flagsText.matchAll(/^#define (FLAG_\w+)\s+(0x[0-9A-Fa-f]+)\b/gm)].map((m) => [m[1], Number(m[2])]));
   const paths = await Array.fromAsync(new Bun.Glob("data/maps/*/map.json").scan(REPO_DIR));
-  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<{ object_events?: { graphics_id: string; flag: string }[] }>));
+  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<MapObjects>));
   const flags = maps.flatMap((map) => (map.object_events ?? []).filter((o) => o.graphics_id === "OBJ_EVENT_GFX_ITEM_BALL").map((o) => ids.get(o.flag)));
   return [...new Set(flags.filter((id) => id !== undefined))];
+}
+
+// The ROM data does not change in a process, and the tests open many Games.
+let itemBallFlagsOnce: Promise<number[]> | undefined;
+
+function bitAt(bytes: Uint8Array, id: number): number {
+  return (bytes[id >> 3] >> (id & 7)) & 1;
+}
+
+/** The number of set bits in `count` bits of a flag array, from bit `first`. */
+function countSet(bytes: Uint8Array, first: number, count: number): number {
+  let total = 0;
+  for (let id = first; id < first + count; id++) total += bitAt(bytes, id);
+  return total;
 }
 
 type MapArea = { area: string; place: string | null };
@@ -280,7 +296,7 @@ export class Game {
       Bun.file(join(REPO_DIR, "include/constants/event_objects.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/map_types.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
-      readItemBallFlags(),
+      (itemBallFlagsOnce ??= readItemBallFlags()),
     ]);
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
@@ -614,8 +630,9 @@ export class Game {
     return readParty(this.mem, this.decode);
   }
 
-  pcSpecies(): string[] {
-    return readPcSpecies(this.mem, this.decode);
+  /** The number of Pokémon of a species in the boxes of the PC. */
+  pcCount(species: string): number {
+    return readPcSpecies(this.mem, this.decode).filter((name) => name === species).length;
   }
 
   /** The party in the order of the screen: the party menu of a battle lists the Pokémon in the battle order. */
@@ -629,14 +646,12 @@ export class Game {
     return MILESTONE_FLAGS.filter(([, flag]) => this.flag(flag)).map(([milestone]) => milestone);
   }
 
+  /** Trainers beaten, items found and species owned. */
   flagProgress(): number {
     const flags = this.saveBlock1.field("flags").bytes();
-    const set = (id: number) => (flags[id >> 3] >> (id & 7)) & 1;
-    let count = this.itemBallFlags.reduce((sum, id) => sum + set(id), 0);
-    for (let id = FLAG_HIDDEN_ITEMS_START; id < FLAG_HIDDEN_ITEMS_END; id++) count += set(id);
-    for (let id = TRAINER_FLAGS_START; id < TRAINER_FLAGS_END; id++) count += set(id);
-    for (const byte of this.mem.global("gSaveBlock2Ptr").deref().field("pokedex").field("owned").bytes()) for (let bit = 0; bit < 8; bit++) count += (byte >> bit) & 1;
-    return count;
+    const owned = this.mem.global("gSaveBlock2Ptr").deref().field("pokedex").field("owned").bytes();
+    const itemBalls = this.itemBallFlags.reduce((sum, id) => sum + bitAt(flags, id), 0);
+    return countSet(flags, TRAINER_FLAGS_START, TRAINER_FLAGS_COUNT) + itemBalls + countSet(flags, FLAG_HIDDEN_ITEMS_START, FLAG_HIDDEN_ITEMS_COUNT) + countSet(owned, 0, owned.length * 8);
   }
 
   /** Metatile attributes of a tileset, read once per tileset. */

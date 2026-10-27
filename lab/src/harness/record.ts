@@ -99,12 +99,14 @@ export class GameWatch {
   #milestones = new Set<Milestone>();
   #maps = new Set<string>();
   #levels = 0;
+  #flags = 0;
 
   constructor(private readonly game: Game) {}
 
   get gameProgress(): number {
     this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
-    return this.#maps.size + this.#milestones.size + this.#levels + this.game.flagProgress();
+    this.#flags = Math.max(this.#flags, this.game.flagProgress());
+    return this.#maps.size + this.#milestones.size + this.#levels + this.#flags;
   }
 
   onFrame(frame: number): GameEvent[] {

@@ -322,7 +322,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(lab.filter((user) => user.includes("BLUE"))).toEqual([]);
     const afterTalks = lab.findLast((user) => /^- interact\(9, 4\)/m.test(user)) ?? "";
     expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×2: ".+"$/)]);
-    expect(afterTalks).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item picked up or a new species caught): 2.");
+    expect(afterTalks).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 2.");
     expect(modelEvents(harness).find((e) => e.prompt.user === afterTalks)).toMatchObject({ stuck: 2, reflection: false });
   });
 

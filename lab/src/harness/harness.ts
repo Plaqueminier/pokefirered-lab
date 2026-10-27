@@ -67,9 +67,7 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type Owned = { party: number; pc: number };
-
-export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; owned: Owned });
+export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -696,9 +694,8 @@ export class Harness {
     const { kind, player, enemy } = battle;
     const game = this.#run.game;
     const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => game.moveName(move));
-    const count = (species: string[]) => species.filter((s) => s === enemy.species).length;
     return {
-      ...(kind === "wild" ? { kind, owned: { party: count(game.party().map((mon) => mon.species)), pc: count(game.pcSpecies()) } } : { kind }),
+      ...(kind === "wild" ? { kind, inPc: game.pcCount(enemy.species) } : { kind }),
       player,
       enemy: enemyView(enemy, movesSeen, this.#knowledge === "full"),
       fights: fightFacts(battle, game.typeChart(), game.milestones()),

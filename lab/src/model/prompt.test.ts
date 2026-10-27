@@ -122,13 +122,14 @@ describe("the next Milestone", () => {
   });
 });
 
-function wildPidgey(owned = { party: 0, pc: 0 }): Observation {
+function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
   const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
+  const pidgey = { nickname: "PIDGEY", species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hp: 10, maxHp: 10, status: "none", moves: [], ability: { name: "KEEN EYE", description: "" }, heldItem: null, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 };
   return {
     mode: "battle",
     waitingFor: { kind: "battleAction" },
-    party: [],
+    party: Array.from({ length: party }, () => pidgey),
     money: 3080,
     bag: [
       { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" }] },
@@ -141,7 +142,7 @@ function wildPidgey(owned = { party: 0, pc: 0 }): Observation {
       kind: "wild",
       player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", stats, moves: [], statStages: stages, partyIndex: 0 },
       enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", statStages: stages, movesSeen: [] },
-      owned,
+      inPc: pc,
       fights: [],
       lastTurn: null,
       foeTurns: [],
@@ -306,7 +307,7 @@ describe("the stuck counter and the reflection turn", () => {
 
     const noted = [call("go A", "", "fact 1")];
     const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection" });
-    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item picked up or a new species caught): 20.");
+    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 20.");
     expect(prompt).toContain(
       [
         "Reflection turn: stop and think before you act.",

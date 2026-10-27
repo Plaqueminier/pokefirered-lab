@@ -65,11 +65,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     const mon = party.at(i);
     const box = mon.field("box");
     const personality = box.field("personality").int();
-    const substructs = decryptSubstructs(box.field("secure").bytes(SUBSTRUCT_SIZE * 4), (personality ^ box.field("otId").int()) >>> 0);
-    const positions = SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length];
-    const growth = Number(positions[0]) * SUBSTRUCT_SIZE;
-    const attacks = Number(positions[1]) * SUBSTRUCT_SIZE;
-    const misc = Number(positions[3]) * SUBSTRUCT_SIZE;
+    const { substructs, growth, attacks, misc } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
     const ppBonuses = substructs.getUint8(growth + GROWTH_PP_BONUSES);
     const moves = readMoves(mem, decode, ppBonuses, (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
     const species = substructs.getUint16(growth, true);
@@ -109,15 +105,11 @@ export function readPcSpecies(mem: Memory, decode: Decode): string[] {
   const species: string[] = [];
   for (let mon = 0; mon < raw.byteLength; mon += first.size) {
     const personality = view.getUint32(mon + personalityAt, true);
-    const substructs = decryptSubstructs(raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4), (personality ^ view.getUint32(mon + otIdAt, true)) >>> 0);
-    const id = substructs.getUint16(growthOffset(personality), true);
+    const { substructs, growth } = decryptMon(personality, view.getUint32(mon + otIdAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
+    const id = substructs.getUint16(growth, true);
     if (id !== SPECIES_NONE) species.push(nameAt(mem, "gSpeciesNames", id, decode));
   }
   return species;
-}
-
-function growthOffset(personality: number): number {
-  return Number(SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length][0]) * SUBSTRUCT_SIZE;
 }
 
 export function isHmMove(move: string): boolean {
@@ -159,10 +151,13 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
   };
 }
 
-function decryptSubstructs(raw: Uint8Array, key: number): DataView {
-  const words = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-  for (let offset = 0; offset < raw.byteLength; offset += 4) words.setUint32(offset, (words.getUint32(offset, true) ^ key) >>> 0, true);
-  return words;
+/** The decrypted substructs of a Pokémon (`secure` is changed in place) and the offsets of the growth, attacks and misc substructs. */
+function decryptMon(personality: number, otId: number, secure: Uint8Array): { substructs: DataView; growth: number; attacks: number; misc: number } {
+  const key = (personality ^ otId) >>> 0;
+  const substructs = new DataView(secure.buffer, secure.byteOffset, secure.byteLength);
+  for (let offset = 0; offset < secure.byteLength; offset += 4) substructs.setUint32(offset, (substructs.getUint32(offset, true) ^ key) >>> 0, true);
+  const positions = SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length];
+  return { substructs, growth: Number(positions[0]) * SUBSTRUCT_SIZE, attacks: Number(positions[1]) * SUBSTRUCT_SIZE, misc: Number(positions[3]) * SUBSTRUCT_SIZE };
 }
 
 export function statusOf(status1: number): Status {

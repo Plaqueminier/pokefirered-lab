@@ -336,25 +336,23 @@ function parse(written: string): ParsedAction | null {
 }
 
 function partySlot(pokemon: string, party: PartyMon[]): number {
-  if (/^\d+$/.test(pokemon)) {
-    const place = Number(pokemon);
-    if (place < 1 || place > party.length) throw new Error(`there is no Pokémon ${place}: the places in the party are 1 to ${party.length}`);
-    return place - 1;
-  }
+  const placed = placeOf(pokemon);
   const slots = party.flatMap((mon, slot) => (mon.nickname.toLowerCase() === pokemon.toLowerCase() ? [slot] : []));
-  if (slots.length === 1) return slots[0];
-  const placed = placedName(pokemon);
-  if (placed) {
+  // A nickname that is the whole text wins over a place in the text, as in "Pidgey 2".
+  if (placed && !(placed.name !== undefined && slots.length === 1)) {
     const mon = party[placed.place - 1];
     if (!mon) throw new Error(`there is no Pokémon ${placed.place}: the places in the party are 1 to ${party.length}`);
-    if (mon.nickname.toLowerCase() !== placed.name.toLowerCase()) throw new Error(`the Pokémon ${placed.place} of your party is ${mon.nickname}, not ${quoted(placed.name)}`);
+    if (placed.name !== undefined && mon.nickname.toLowerCase() !== placed.name.toLowerCase()) throw new Error(`the Pokémon ${placed.place} of your party is ${mon.nickname}, not ${quoted(placed.name)}`);
     return placed.place - 1;
   }
+  if (slots.length === 1) return slots[0];
   if (slots.length === 0) throw new Error(`"${quoted(pokemon)}" is not a Pokémon of your party: ${party.map((mon) => mon.nickname).join(", ")}`);
   throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
 }
 
-function placedName(pokemon: string): { name: string; place: number } | null {
+/** The place in the text: "2", "Pidgey 2", "Pidgey (2)", "Pidgey (place 2)" or "2 Pidgey". Null when the text has no place. */
+function placeOf(pokemon: string): { name?: string; place: number } | null {
+  if (/^\d+$/.test(pokemon)) return { place: Number(pokemon) };
   const after = pokemon.match(/^(.+?)\s*(?:\(\s*(?:(?:position|place)\s*)?(\d+)\s*\)|\s(\d+))$/i);
   if (after) return { name: after[1], place: Number(after[2] ?? after[3]) };
   const before = pokemon.match(/^(\d+)\s+(.+)$/);

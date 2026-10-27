@@ -53,7 +53,7 @@ The memory that a model bot writes itself. Each note is one short line that the 
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
 **Stuck counter**:
-The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player picks up (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is not progress.
+The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is not progress.
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Reflection turn**:
