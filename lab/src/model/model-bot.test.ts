@@ -156,7 +156,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect([...new Set(next)]).toEqual([
       "Get your first Pokémon from Professor Oak in Pallet Town.",
       "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
-      "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
+      "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.",
     ]);
     expect(prompts).toHaveLength(calls.length);
     const totals = modelTotals(harness.events);

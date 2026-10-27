@@ -28,6 +28,7 @@ const WAITS: Record<AskedKind, string> = {
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
+  pokedex: "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.",
   "badge-1": "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
   "badge-2": "Earn the Cascade Badge from Misty, the Gym Leader of Cerulean City.",
   "badge-3": "Earn the Thunder Badge from Lt. Surge, the Gym Leader of Vermilion City.",
