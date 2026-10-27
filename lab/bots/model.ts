@@ -4,7 +4,7 @@ import type { Cell } from "../src/harness/path";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt } from "../src/model/memory-tree";
-import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, SUMMARY_FORMAT } from "../src/model/openrouter";
+import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter, summaryFormat } from "../src/model/openrouter";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, reflectionTurn, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
@@ -19,7 +19,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "7",
+    version: "8",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -126,10 +126,10 @@ class ModelPlay {
   private async summary(tree: MemoryTree, node: NodeRange): Promise<SummaryAnswer> {
     const prompt = summaryPrompt(tree, node);
     const request = { model: this.settings.id, prompt, ...node };
-    const reply = await this.tryAsk(prompt, SUMMARY_FORMAT);
+    const reply = await this.tryAsk(prompt, summaryFormat(node));
     if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
     try {
-      return { ...request, answer: reply.content, usage: reply.usage, summary: readSummary(reply.content), error: null };
+      return { ...request, answer: reply.content, usage: reply.usage, summary: readSummary(reply.content, node), error: null };
     } catch (error) {
       return { ...request, answer: reply.content, usage: reply.usage, summary: null, error: errorText(error) };
     }

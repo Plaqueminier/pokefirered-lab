@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunEvent } from "../harness/record";
-import { dueMerges, memoryLines, memoryTree, zoomLines } from "./memory-tree";
+import { dueMerges, memoryLines, memoryTree, readSummary, summaryPrompt, zoomLines } from "./memory-tree";
 
 function call(note: string): RunEvent {
   return {
@@ -61,5 +61,14 @@ describe("the Memory tree", () => {
     expect(zoomLines(tree, { from: 13, to: 13 })).toBeNull();
     expect(zoomLines(tree, { from: 3, to: 9 })).toBeNull();
     expect(zoomLines(tree, { from: 13, to: 14 })).toBeNull();
+  });
+
+  test("the summary prompt of a node of 4 notes gives 600 characters and asks for the newest facts first", () => {
+    expect(summaryPrompt(memoryTree(notes(4).events), { from: 1, to: 4 }).user).toStartWith("Write the summary of these two parts of the memory, newest facts first, in short sentences, in one line of 600 characters at most.");
+  });
+
+  test("a too long summary is cut at the end of its last full sentence that fits", () => {
+    const fits = `Got the Pokédex from Oak. ${"Viridian City is north of Pallet Town. ".repeat(9)}`.trim();
+    expect(readSummary(JSON.stringify({ summary: `${fits} The old man in Viridian City blocks the north road.` }), { from: 1, to: 2 })).toBe(fits);
   });
 });
