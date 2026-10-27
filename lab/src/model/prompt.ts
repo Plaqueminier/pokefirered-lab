@@ -2,7 +2,7 @@ import type { BagItem, BagPocket } from "../bag";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
-import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
+import type { ActionEntry, BattleState, NoProgress, Observation, Owned } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import { isHmMove, type PartyMon, type PartyMove } from "../party";
 import { actionText } from "../protocol";
@@ -100,6 +100,7 @@ Advice of a good player:
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
 - Buy Poké Balls and Potions at a Poké Mart.
+- Each Pokémon Center has a PC. It keeps your items, and the Pokémon that you catch when your party has 6 Pokémon. You cannot take a Pokémon from the PC yet.
 - When the game asks for a name or a nickname, choose freely: keep the name of the game, or give a name that you like, serious or funny.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
@@ -373,7 +374,8 @@ function context(asked: Asked): string[] {
     case "walk":
       return asked.view.lines;
     case "choice":
-      return "battle" in asked ? battleLines(asked.battle) : localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), []);
+      if ("battle" in asked) return battleLines(asked.battle);
+      return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld, mapNamed(asked.overworld.atlas, asked.overworld.map.name), [])];
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
       return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];
@@ -397,6 +399,10 @@ function context(asked: Asked): string[] {
     default:
       return battleLines(asked.battle);
   }
+}
+
+function pcLine(storage: string): string {
+  return `This is a PC: the PC with your name has ITEM STORAGE, which keeps your items. ${storage} is the Pokémon storage: it is not possible yet.`;
 }
 
 function actionLines(asked: Asked): string[] {
@@ -494,15 +500,21 @@ function rangeText(min: number, max: number, unit = ""): string {
   return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
 }
 
-function battleLines({ kind, player, enemy, lastTurn, foeTurns }: BattleState): string[] {
+function battleLines(battle: BattleState): string[] {
+  const { kind, player, enemy, lastTurn, foeTurns } = battle;
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
     `Battle against ${kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
     `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
     `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
+    ...(battle.kind === "wild" ? [ownedLine(enemy.species, battle.owned)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
   ];
+}
+
+function ownedLine(species: string, { party, pc }: Owned): string {
+  return party + pc === 0 ? `You own no ${species}.` : `You own ${party + pc} ${species}: ${party} in the party, ${pc} in the PC.`;
 }
 
 function turnLine({ moves, player, foe }: BattleTurn): string {

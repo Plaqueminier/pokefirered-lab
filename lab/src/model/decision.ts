@@ -52,7 +52,7 @@ export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
 
 export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[]; bagEmpty?: boolean }
-  | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
+  | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld; storage?: number } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; bagEmpty?: boolean }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
   | { kind: "itemPc"; pcItems: PcItem[]; depositable: BagItem[] }
@@ -116,7 +116,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag), bagEmpty };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     if (waitingFor.kind === "itemPc") return { kind: "itemPc", party, pcItems: waitingFor.items, depositable: depositableItems(observation.bag) };
-    return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
+    return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options, storage: waitingFor.storage } : null;
   }
   const { battle } = observation;
   if (waitingFor.kind === "choice") return { kind: "choice", party, battle, options: waitingFor.options };

@@ -67,7 +67,11 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] };
+/** The Pokémon of the foe species that the player owns. */
+export type Owned = { party: number; pc: number };
+
+/** Only a wild battle has an owned count: the player cannot catch the Pokémon of a trainer. */
+export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; owned: Owned });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -694,8 +698,9 @@ export class Harness {
     const { kind, player, enemy } = battle;
     const game = this.#run.game;
     const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => game.moveName(move));
+    const count = (species: string[]) => species.filter((s) => s === enemy.species).length;
     return {
-      kind,
+      ...(kind === "wild" ? { kind, owned: { party: count(game.party().map((mon) => mon.species)), pc: count(game.pcSpecies()) } } : { kind }),
       player,
       enemy: enemyView(enemy, movesSeen, this.#knowledge === "full"),
       fights: fightFacts(battle, game.typeChart(), game.milestones()),
