@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "8", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "9", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -468,20 +468,20 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
 const TEST_BAG = join(SAVES_DIR, "test-bag.sav");
 const TAIL_WHIP = 1;
 
-describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the test Starting save with the Bag", () => {
-  async function toWildBattle(): Promise<Harness> {
-    const harness = await Harness.open({ startSave: TEST_BAG });
-    const observation = harness.observe();
-    if (observation.mode !== "overworld") throw new Error("the test Starting save is not on the overworld");
-    const { x, y } = observation.player;
-    for (let step = 0; harness.waitingFor().kind === "walk"; step++) {
-      if (step === 100) throw new Error("no wild battle in 100 steps");
-      await harness.goTo(x, step % 2 === 0 ? y - 1 : y);
-    }
-    while (harness.waitingFor().kind !== "battleAction") await harness.readText();
-    return harness;
+async function toWildBattle(startSave = TEST_BAG): Promise<Harness> {
+  const harness = await Harness.open({ startSave });
+  const observation = harness.observe();
+  if (observation.mode !== "overworld") throw new Error("the test Starting save is not on the overworld");
+  const { x, y } = observation.player;
+  for (let step = 0; harness.waitingFor().kind === "walk"; step++) {
+    if (step === 100) throw new Error("no wild battle in 100 steps");
+    await harness.goTo(x, step % 2 === 0 ? y - 1 : y);
   }
+  while (harness.waitingFor().kind !== "battleAction") await harness.readText();
+  return harness;
+}
 
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the test Starting save with the Bag", () => {
   async function toNextAction(harness: Harness): Promise<void> {
     while (harness.observe().mode === "battle" && !["battleAction", "choice"].includes(harness.waitingFor().kind)) await harness.readText();
   }
@@ -728,5 +728,22 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
       text: ["A frozen POKéMON becomes helplessly immobile. It stays frozen even after the battle ends. Use ICE HEAL to thaw out the suffering POKéMON.", "Which topic do you want to read?"],
     });
     expect(harness.waitingFor()).toMatchObject({ kind: "choice", cursor: 0 });
+  });
+});
+
+const LEARN_MOVE_SAVE = join(SAVES_DIR, "test-learn-move.sav");
+const WATER_GUN = 3;
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(LEARN_MOVE_SAVE))("Harness on the test Starting save before a level-up with 4 moves", () => {
+  test("at level 7, SQUIRTLE tries to learn BUBBLE: the game waits for learnMove, and forget TAIL WHIP puts BUBBLE in its place", async () => {
+    const harness = await toWildBattle(LEARN_MOVE_SAVE);
+    for (let action = 0; harness.waitingFor().kind !== "learnMove"; action++) {
+      if (action === 20) throw new Error("no learnMove after 20 actions");
+      must(harness.waitingFor().kind === "battleAction" ? await harness.fight(WATER_GUN) : await harness.readText());
+    }
+    expect(harness.waitingFor()).toMatchObject({ kind: "learnMove", slot: 0, move: { name: "BUBBLE", type: "WATER", power: 20, accuracy: 100, pp: 30, maxPp: 30 } });
+    must(await harness.forget("TAIL WHIP"));
+    while (harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk") must(await harness.readText());
+    expect(harness.observe().party[0].moves.map((move) => move.name)).toEqual(["TACKLE", "BUBBLE", "WITHDRAW", "WATER GUN"]);
   });
 });

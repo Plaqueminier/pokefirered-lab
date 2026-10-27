@@ -17,7 +17,7 @@ The program that runs the emulator and gives a **Bot** one interface to the game
 _Avoid_: emulator, AI
 
 **Bot**:
-The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart or a name, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
+The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
 **Agent**:
@@ -33,7 +33,7 @@ An event of the game that stops a **Macro-action**: a coord trigger, a trainer w
 _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
 **Decision point**:
-A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
+A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step
 
 **Mission**:
@@ -45,7 +45,7 @@ A short sentence that a model bot sets itself: what it does now for its **Missio
 _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 
 **Model call**:
-One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart or a name. Thus a **Run** usually has fewer model calls than **Decision points**.
+One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
 **Memory tree**:
