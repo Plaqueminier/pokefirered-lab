@@ -14,3 +14,11 @@ A change to one of these parts updates its docs in the same diff:
 | A term of the domain | `CONTEXT.md` |
 
 Each sentence of these docs must stay true after the diff. A sentence that describes the old behaviour is a finding.
+
+## The Viewer uses its design system
+
+A UI change in `lab/viewer` builds its parts from the components that the Components tab of the Viewer shows, with the tokens of the theme (ADR 0004). These are findings:
+
+- a part with its own colors, sizes, radius or motion when a component or a token already gives them;
+- a new component that the Components tab does not show in all its states;
+- a new component that the user did not ask for or agree to.
