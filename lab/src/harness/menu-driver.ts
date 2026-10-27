@@ -1,5 +1,5 @@
-// The menus of the game: the keys that a Macro-action presses in the battle menus, the Bag, the Poké Mart and the party menu.
-import { type BagPlace, BATTLE_POCKETS, POKE_BALLS_POCKET, sellRefusal } from "../bag";
+// The menus of the game: the keys that a Macro-action presses in the battle menus, the Bag, the Poké Mart, the item PC and the party menu.
+import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
 import type { BattleMenu } from "../battle";
 import type { Game } from "../game";
 import type { NamingScreen } from "../menus";
@@ -16,6 +16,11 @@ const SHOP_BUY = 0;
 const SHOP_SELL = 1;
 const SHOP_QUIT = 2;
 const MAX_TRADE = 99;
+const PC_WITHDRAW = 0;
+const PC_DEPOSIT = 1;
+const WITHDRAW_MENU_WITHDRAW = 0;
+// The first option of the PC menu of a Pokémon Center opens the Pokémon Storage System: the Harness does not cover the boxes.
+const POKEMON_STORAGE_OPTIONS = ["SOMEONE'S PC", "BILL'S PC"];
 const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
@@ -177,12 +182,15 @@ export class MenuDriver {
     if (choice.kind !== "choice") throw new Error("choose is available only at a choice");
     const target = choice.options.indexOf(option);
     if (target < 0) return impossible(`no option "${option}" in ${choice.options.join(", ")}`);
+    if (POKEMON_STORAGE_OPTIONS.includes(option)) return impossible(`${option} opens the Pokémon storage (the boxes), and the program does not cover it: choose another option`);
     const cursor = () => {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
-    const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns));
-    return moved.status === "done" ? this.input(Keys.A) : moved;
+    // The wireless tasks of a Pokémon Center make some frames skip the keys: press until the game reads them.
+    const press = (keys: number) => this.menuInput(keys, () => game.waitingFor().kind !== "busy");
+    const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns), press);
+    return moved.status === "done" ? press(Keys.A) : moved;
   }
 
   fight(move: number): Outcome & Partial<Texts> {
@@ -248,7 +256,40 @@ export class MenuDriver {
     return this.backToShopMenu(this.trade(quantity));
   }
 
+  withdraw(item: string, quantity: number): Outcome {
+    const { game } = this;
+    const items = game.pcItems();
+    const row = items.findIndex((i) => i.name === item);
+    if (row < 0) return impossible(`there is no ${item} in the PC`);
+    const most = items[row].quantity;
+    if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to withdraw is 1 to ${most}`);
+    const opened = this.itemStorageOption(PC_WITHDRAW, () => game.withdrawRow() !== null);
+    if (opened.status !== "done") return opened;
+    const moved = this.moveMenuCursor(row, () => game.withdrawRow());
+    if (moved.status !== "done") return moved;
+    const menu = this.tapUntil(Keys.A, () => game.withdrawMenuCursor() !== null, "the menu of the item");
+    if (menu.status !== "done") return menu;
+    const withdrawn = this.moveMenuCursor(WITHDRAW_MENU_WITHDRAW, () => game.withdrawMenuCursor());
+    if (withdrawn.status !== "done") return withdrawn;
+    return this.backToItemStorage(this.transfer(item, quantity, "the Bag"));
+  }
+
+  deposit(item: string, quantity: number): Outcome {
+    const { game } = this;
+    const place = game.findInBag(item);
+    if (!place) return impossible(`there is no ${item} in the Bag`);
+    if (place.pocket !== ITEMS_POCKET) return impossible("only the items of the ITEMS pocket go into the PC");
+    const most = game.bagQuantity(place.item);
+    if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to deposit is 1 to ${most}`);
+    const opened = this.itemStorageOption(PC_DEPOSIT, () => game.bagMenu()?.screen === "list");
+    if (opened.status !== "done") return opened;
+    const row = this.toBagItem(place);
+    if (row.status !== "done") return row;
+    return this.backToItemStorage(this.transfer(item, quantity, "the PC"));
+  }
+
   leave(): Outcome & Texts {
+    if (this.game.waitingFor().kind === "itemPc") return withText(this.menuInput(Keys.B, () => this.game.waitingFor().kind !== "busy"));
     const menu = this.toShopMenu();
     if (menu.status !== "done") return withText(menu);
     const left = this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop");
@@ -506,6 +547,38 @@ export class MenuDriver {
     const refusal = game.tradeDone() ? null : game.menuMessage();
     const back = this.tapUntil(Keys.A, () => game.buyList() !== null || game.bagMenu()?.screen === "list", "the list");
     return back.status !== "done" || refusal === null ? back : impossible(`the game refuses: ${refusal}`);
+  }
+
+  private itemStorageOption(option: number, shown: () => boolean): Outcome {
+    const moved = this.moveMenuCursor(option, () => this.game.itemStorageCursor());
+    return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
+  }
+
+  // A refused withdraw or deposit goes back to its list too: go back to the item PC menu also then.
+  private backToItemStorage(moved: Outcome): Outcome {
+    if (moved.status === "interrupted") return moved;
+    const { game } = this;
+    const back = game.itemStorageCursor() !== null ? DONE : this.menuInput(Keys.B, () => game.itemStorageCursor() !== null);
+    return moved.status === "done" || back.status !== "done" ? back : moved;
+  }
+
+  // A presses WITHDRAW in the menu of the item, or selects the item in the Bag of the PC. With one item only, the game asks no quantity.
+  private transfer(item: string, quantity: number, place: string): Outcome {
+    const { game } = this;
+    const box = this.tapUntil(Keys.A, () => game.pcQuantity() !== null || game.pcTransfer() !== null, "the quantity box");
+    if (box.status !== "done") return box;
+    const count = () => game.pcQuantity();
+    if (count() !== null) {
+      const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
+      const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
+      if (moved.status !== "done") return moved;
+      const chosen = this.tapUntil(Keys.A, () => game.pcTransfer() !== null, "the end of the transfer");
+      if (chosen.status !== "done") return chosen;
+    }
+    const refused = game.pcTransfer() === "refused";
+    // The message reads the keys on the frames after it shows: wait until the game reads the release of the last A.
+    const back = this.menuInput(Keys.A, () => game.withdrawRow() !== null || game.bagMenu()?.screen === "list");
+    return back.status !== "done" || !refused ? back : impossible(`${place} has no room for ${quantity} ${item}`);
   }
 
   private sendOut(menuSlot: number): Outcome & Texts {

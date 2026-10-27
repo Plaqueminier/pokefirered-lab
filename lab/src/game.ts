@@ -16,8 +16,9 @@ import {
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
+import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
+import { itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor, withdrawRow } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
@@ -102,6 +103,7 @@ export type WaitingFor =
   | { kind: "battleMove" }
   | { kind: "partyPick" }
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
+  | { kind: "itemPc"; items: PcItem[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
   | { kind: "busy" };
 
@@ -294,7 +296,8 @@ export class Game {
     if (list) return { kind: "shopMenu", items: list.items, screen: "buyList" };
     const shop = this.shopMenu();
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
-    const menu = this.prompts.choice() ?? multichoice(this.mem, this.decode);
+    if (itemStorageCursor(this.mem) !== null) return { kind: "itemPc", items: this.pcItems() };
+    const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? multichoice(this.mem, this.decode, (id) => this.flag(id));
     if (menu) return { kind: "choice", ...menu, columns: 1 };
     const grid = multichoiceGrid(this.mem, this.decode);
     if (grid) return { kind: "choice", ...grid };
@@ -402,6 +405,30 @@ export class Game {
 
   tradeDone(): boolean {
     return tradeDone(this.mem);
+  }
+
+  pcItems(): PcItem[] {
+    return pcItems(this.mem, this.decode);
+  }
+
+  itemStorageCursor(): number | null {
+    return itemStorageCursor(this.mem);
+  }
+
+  withdrawRow(): number | null {
+    return withdrawRow(this.mem);
+  }
+
+  withdrawMenuCursor(): number | null {
+    return withdrawMenuCursor(this.mem);
+  }
+
+  pcQuantity(): number | null {
+    return pcQuantity(this.mem);
+  }
+
+  pcTransfer(): "done" | "refused" | null {
+    return pcTransfer(this.mem);
   }
 
   menuMessage(): string {

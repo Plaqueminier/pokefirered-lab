@@ -23,6 +23,7 @@ const WAITS: Record<AskedKind, string> = {
   battleMove: "a move",
   partyPick: "a Pokémon in the party menu of the battle",
   shopMenu: "the shop menu of a Poké Mart",
+  itemPc: "the item storage of a PC",
   naming: "a name on the naming screen",
 };
 const MILESTONE_TEXTS: Record<Milestone, string> = {
@@ -306,6 +307,11 @@ function context(asked: Asked): string[] {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
       return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];
     }
+    case "itemPc": {
+      const stored = asked.pcItems.length === 0 ? ["The PC has no items."] : ["The items in the PC:", ...asked.pcItems.map((item) => `- ${item.name} ×${item.quantity}`)];
+      const bag = asked.depositable.length === 0 ? ["The ITEMS pocket of your Bag is empty."] : ["The items of the ITEMS pocket of your Bag (only these go into the PC):", ...asked.depositable.map((item) => `- ${item.name} ×${item.quantity}`)];
+      return [...stored, "", ...bag];
+    }
     case "naming":
       return [`The naming screen asks for ${asked.subject}, ${asked.maxLength} characters at most.`];
     default:
@@ -344,6 +350,12 @@ function actionLines(asked: Asked): string[] {
         "- buy <item> <quantity>: buy items for sale, for example buy POTION 2. Your money must pay the price of all the items.",
         ...(actionsOf(asked).includes("sell") ? ["- sell <item> <quantity>: sell items of your Bag that the Poké Mart buys, for example sell POTION 1."] : []),
         "- leave: say goodbye to the clerk and walk again.",
+      ];
+    case "itemPc":
+      return [
+        ...(actionsOf(asked).includes("withdraw") ? ["- withdraw <item> [quantity]: take items from the PC and put them in your Bag, for example withdraw POTION 2. The quantity is 1 when you do not give it."] : []),
+        ...(actionsOf(asked).includes("deposit") ? ["- deposit <item> [quantity]: put items of your Bag into the PC, for example deposit POTION 1. The quantity is 1 when you do not give it."] : []),
+        "- leave: go back to the menu of the PC, where you can turn the PC off.",
       ];
     case "naming":
       return [

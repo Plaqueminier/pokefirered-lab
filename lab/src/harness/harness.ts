@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { type BagPocket, battleItems, sellableItems, walkItems } from "../bag";
+import { type BagPocket, battleItems, depositableItems, sellableItems, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
 import {
   DIRECTION_STEP,
@@ -55,6 +55,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   battleMove: ["fight"],
   partyPick: ["send"],
   shopMenu: ["buy", "sell", "leave"],
+  itemPc: ["withdraw", "deposit", "leave"],
   naming: ["name"],
   busy: ["readText"],
 };
@@ -103,13 +104,14 @@ export type MacroAction =
   | { name: "use"; item: string; on?: number }
   | { name: "buy"; item: string; quantity: number }
   | { name: "sell"; item: string; quantity: number }
+  | { name: "withdraw" | "deposit"; item: string; quantity: number }
   | { name: "leave" }
   | { name: "name"; text: string };
 
 export type AvailableAction =
   | { name: "goTo" | "swap" | "name" }
-  | { name: "use" | "buy" | "sell"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "buy" | "sell" }>;
+  | { name: "use" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
+  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "buy" | "sell" | "withdraw" | "deposit" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -428,6 +430,10 @@ export class Harness {
           return waiting.kind === "shopMenu" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
         case "sell":
           return sellableItems(game.bag()).map((item) => ({ name, item: item.name }));
+        case "withdraw":
+          return waiting.kind === "itemPc" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
+        case "deposit":
+          return depositableItems(game.bag()).map((item) => ({ name, item: item.name }));
       }
     });
   }
@@ -518,6 +524,14 @@ export class Harness {
     return this.act({ name: "sell", item, quantity }, () => this.#menus.sell(item, quantity));
   }
 
+  async withdraw(item: string, quantity: number): Promise<ActionResult> {
+    return this.act({ name: "withdraw", item, quantity }, () => this.#menus.withdraw(item, quantity));
+  }
+
+  async deposit(item: string, quantity: number): Promise<ActionResult> {
+    return this.act({ name: "deposit", item, quantity }, () => this.#menus.deposit(item, quantity));
+  }
+
   async leave(): Promise<TextResult> {
     return this.act<Texts>({ name: "leave" }, () => this.#menus.leave(), { text: [] });
   }
@@ -565,6 +579,10 @@ export class Harness {
         return this.buy(action.item, action.quantity);
       case "sell":
         return this.sell(action.item, action.quantity);
+      case "withdraw":
+        return this.withdraw(action.item, action.quantity);
+      case "deposit":
+        return this.deposit(action.item, action.quantity);
       case "leave":
         return this.leave();
       case "name":

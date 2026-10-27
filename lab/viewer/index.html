@@ -502,7 +502,7 @@
               <tr><td><code>goTo(x, y, map?)</code></td><td>walk</td><td>Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell, it takes the exit.</td></tr>
               <tr><td><code>interact(x, y)</code></td><td>walk</td><td>Turns to the next cell and presses A: a person, a sign, an item.</td></tr>
               <tr><td><code>readText()</code></td><td>text, busy game</td><td>Reads the texts to the end of the box or to a choice. After a whiteout, it reads to the walk in the Pokémon Center or the house.</td></tr>
-              <tr><td><code>choose(option)</code></td><td>yes/no, nickname after a catch, script menu, grid menu of the school blackboard</td><td>Moves the cursor to the option and presses A.</td></tr>
+              <tr><td><code>choose(option)</code></td><td>yes/no, nickname after a catch, script menu, grid menu of the school blackboard, menus of the PC</td><td>Moves the cursor to the option and presses A. Impossible for SOMEONE'S PC or BILL'S PC: the Pokémon storage is not covered.</td></tr>
               <tr><td><code>fight(move)</code></td><td>battle</td><td>Uses the move 0 to 3, and gives the messages of the turn.</td></tr>
               <tr><td><code>switch(slot)</code></td><td>battle</td><td>Sends another Pokémon of the party into the battle.</td></tr>
               <tr><td><code>send(slot)</code></td><td>party menu of a battle</td><td>Sends a Pokémon, for example after a faint.</td></tr>
@@ -511,7 +511,9 @@
               <tr><td><code>use(item, on?)</code></td><td>battle, walk</td><td>Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. On a walk, the medicines work on a Pokémon, and REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE work alone (ESCAPE ROPE goes to another map). Impossible, with the reason of the game, when the item does nothing.</td></tr>
               <tr><td><code>buy(item, quantity)</code></td><td>shop menu of a Poké Mart</td><td>Selects BUY, the item, the quantity and YES, then returns to the shop menu. Impossible when the money does not pay the items.</td></tr>
               <tr><td><code>sell(item, quantity)</code></td><td>shop menu of a Poké Mart</td><td>Sells items of the Bag for half of their price, then returns to the shop menu.</td></tr>
-              <tr><td><code>leave()</code></td><td>shop menu of a Poké Mart</td><td>Selects SEE YA! and reads the texts of the clerk until the walk.</td></tr>
+              <tr><td><code>withdraw(item, quantity)</code></td><td>item PC</td><td>Takes items from the PC and puts them in the Bag, then returns to the item PC. Impossible for an item that is not in the PC.</td></tr>
+              <tr><td><code>deposit(item, quantity)</code></td><td>item PC</td><td>Puts items of the ITEMS pocket of the Bag into the PC, then returns to the item PC.</td></tr>
+              <tr><td><code>leave()</code></td><td>shop menu of a Poké Mart, item PC</td><td>At the shop menu: selects SEE YA! and reads the texts of the clerk until the walk. At the item PC: selects CANCEL and goes back to the menu of the PC.</td></tr>
               <tr><td><code>name(text)</code></td><td>naming screen</td><td>Types the text on the pages of the keyboard, selects OK and reads the texts. An empty text keeps the name. Impossible for a character that is not on the keyboard or a text that is too long.</td></tr>
             </tbody>
           </table>
@@ -561,7 +563,7 @@
         <section class="w5 doc-warn">
           <h2>Not yet</h2>
           <dl>
-            <dt>Menus</dt><dd>PC, the Bag outside use and sell: the Harness sees a busy game.</dd>
+            <dt>Menus</dt><dd>the Pokémon storage and the mailbox of the PC, the Bag outside use, sell and deposit: the Harness sees a busy game.</dd>
           </dl>
         </section>
         <section class="w7">
@@ -579,7 +581,7 @@
         <section>
           <h2>Model bot: prompt and actions</h2>
           <dl>
-            <dt>Model call</dt><dd>at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart and at the naming screen.</dd>
+            <dt>Model call</dt><dd>at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC and at the naming screen.</dd>
             <dt>Answer</dt><dd>an action, its reason, the <b>Mission</b> (the story step, kept until it is reached) and the <b>Objective</b> (what the model does now) (ADR 0003).</dd>
             <dt>Each prompt</dt><dd>the Milestones and the next one (a name and a place only), the Mission, the top nodes of the Memory tree, what the game waits for, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the party, the money and the Bag. Then the part of the Decision point: at a walk, the extract of the Atlas below.</dd>
             <dt>Walk</dt><dd>an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: <code>?</code> is a cell not seen, a letter is a target (<code>go B</code>).</dd>
@@ -589,8 +591,9 @@
             <dt>Choice</dt><dd>one line with the question and the options, for example <code>The game asks: "Do you want to give a nickname to this BULBASAUR?" Choose YES or NO.</code> A <code>zoom</code> or a <code>viewAtlas</code> does not hide the question. The actions are <code>choose &lt;option&gt;</code> and <code>zoom</code>, also in a battle.</dd>
             <dt><code>use</code></dt><dd>at a walk: a medicine on a Pokémon, or REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone.</dd>
             <dt>Shop menu</dt><dd>the items for sale with their prices, the items of the Bag that the Mart buys, and the money. The actions are <code>buy &lt;item&gt; &lt;quantity&gt;</code>, <code>sell &lt;item&gt; &lt;quantity&gt;</code> and <code>leave</code>. The code does all the menus of the Mart.</dd>
+            <dt>Item PC</dt><dd>the items in the PC and the items of the ITEMS pocket of the Bag, with their quantities. The actions are <code>withdraw &lt;item&gt; [quantity]</code>, <code>deposit &lt;item&gt; [quantity]</code> (1 with no quantity) and <code>leave</code> (back to the menu of the PC). The code does the lists and the quantity.</dd>
             <dt>Naming screen</dt><dd>what the screen names and the maximum length. The actions are <code>name &lt;text&gt;</code>, and <code>name</code> alone to keep the name. The model is free to give a nickname.</dd>
-            <dt><code>press</code></dt><dd>only at a walk, in a battle and in the party menu, never at a choice, the shop menu or the naming screen. It has no Start: the model bot does not know the Start menu. The reason of a <code>press Start</code> answer tells to <code>use &lt;item&gt;</code>, with the items that work now, or that the Bag is empty.</dd>
+            <dt><code>press</code></dt><dd>only at a walk, in a battle and in the party menu, never at a choice, the shop menu, the item PC or the naming screen. It has no Start: the model bot does not know the Start menu. The reason of a <code>press Start</code> answer tells to <code>use &lt;item&gt;</code>, with the items that work now, or that the Bag is empty.</dd>
             <dt>Forms of an action</dt><dd>a call is read too: <code>press(Up)</code> is <code>press Up</code>, <code>use(POTION, SQUIRTLE)</code> is <code>use POTION on SQUIRTLE</code>. A comma between the arguments is a space: <code>goTo 9, 42</code> is <code>goTo 9 42</code>. The commas of <code>choose</code> and <code>name</code> stay in the text.</dd>
             <dt>Impossible action</dt><dd>the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example.</dd>
             <dt>Panels</dt><dd>"Model" shows each Model call in full. "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, prompt tokens, Model calls, played actions, Summary calls, battles); a drag or a click selects a part of the Run, with the smallest and the largest prompt in tokens. "Memory tree" shows the top nodes with zoom, and the Summary calls.</dd>

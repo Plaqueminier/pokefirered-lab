@@ -13,6 +13,8 @@ const ITEM_ANIM_KEY_STATE = 12;
 const FIRST_ITEM_POCKET = 1;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
+// The Bag of the item PC opens at the ITEMS pocket and does not change pockets (pocketSwitchMode 1, item_menu.c).
+export const ITEMS_POCKET = POCKET_NAMES.indexOf("ITEMS");
 
 type PocketName = (typeof POCKET_NAMES)[number];
 
@@ -74,6 +76,10 @@ export function sellRefusal(pocket: number, price: number, item: string): string
 
 export function sellableItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap(({ pocket, items }) => items.filter((item) => sellRefusal(POCKET_NAMES.indexOf(pocket), item.price, item.name) === null));
+}
+
+export function depositableItems(bag: BagPocket[]): BagItem[] {
+  return bag.find(({ pocket }) => pocket === POCKET_NAMES[ITEMS_POCKET])?.items ?? [];
 }
 
 export function bagMenu(mem: Memory): BagMenu | null {
