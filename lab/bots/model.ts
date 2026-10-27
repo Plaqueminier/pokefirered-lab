@@ -13,7 +13,6 @@ const MAX_UNREADABLE = 3;
 // After this number of impossible actions in a row, a new conversation starts from a new prompt.
 const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
-// After this number of screens in a row that no action covers, with no Model call between them, the Run ends.
 const MAX_UNCOVERED = 3;
 const WHITEOUT_RULE = "If all your Pokémon faint, the Run ends.";
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
@@ -28,7 +27,6 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   };
 }
 
-/** The model bot pressed B for MAX_UNCOVERED screens that no action covers, with no Model call between them: it makes a Model call at each Decision point. */
 export function unknownScreen(events: readonly RunEvent[]): boolean {
   const since = events.slice(events.findLastIndex((e) => e.type === "model") + 1);
   return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;

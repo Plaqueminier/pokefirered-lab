@@ -196,7 +196,6 @@ describe("the battle facts", () => {
       battle: { kind: "trainer", player: squirtle, enemy: enemyView(bulbasaur, [], false), fights: fightFacts(now, chart, []), lastTurn: turn, foeTurns: [turn] },
     } as unknown as Observation;
     const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
-    // BUBBLE: (11 × 20 × 4 / 13 / 50) + 2 = 3, STAB 3 × 1.5 = 4, ×½ = 2, random 85% to 100%: 1 to 2 damage on 20 HP.
     expect(prompt).toContain(
       [
         "- fight 0: BUBBLE (WATER, power 20, accuracy 100, PP 29/30). On the foe: not very effective ×½, STAB, 5% to 10% of its HP now, 10 to 20 hits to KO.",

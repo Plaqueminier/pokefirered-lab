@@ -66,7 +66,6 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-/** `fights`: the facts of each move of the player, in the order of its moves. `foeTurns`: the turns of the battle against the current foe. */
 export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] };
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
@@ -78,7 +77,6 @@ export type Observation = ObservationBase &
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
-/** `lastText`: the last text of the game, at the end reason `unknown screen`. */
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number; lastText?: string };
 
 /** `since`: the number of events of the Run at the last progress. */
@@ -225,7 +223,7 @@ class RunLimits {
     if (frame >= this.lastFrame) throw new RunEnd("frame budget");
   }
 
-  // The battle and the field poison both white out through CB2_WhiteOut. The Run ends after the action, at the walk in the Pokémon Center.
+  // Battle poison and field poison both white out through CB2_WhiteOut.
   afterFrame(whitingOut: boolean): void {
     this.#whitedOut ||= whitingOut;
   }
@@ -367,7 +365,6 @@ export class Harness {
     return result;
   }
 
-  /** A Bot ends its Run at a screen that it cannot play. The Run result keeps the last text of the game. */
   end(reason: "unknown screen"): never {
     const texts = this.#events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
     throw new RunEnd(reason, texts.at(-1) ?? "");

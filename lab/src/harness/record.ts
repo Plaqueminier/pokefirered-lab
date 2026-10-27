@@ -34,7 +34,6 @@ export type Usage = { promptTokens: number; cachedTokens?: number; completionTok
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
 
-// answer is null when the request failed. A record from before the model bot version 4 has no stuck and no reflection, and a record from before the Review turn has no review.
 export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; stuck?: number; reflection?: boolean; review?: boolean } & (
   | { decision: Decision; error: null }
   | { decision: null; error: string }

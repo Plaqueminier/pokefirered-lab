@@ -22,12 +22,10 @@ const YES_NO_READS_INPUT = 1;
 const YES_NO_CURSOR = 1;
 const YES_NO_COMMANDS = new Set(["Cmd_yesnobox", "Cmd_trygivecaughtmonnick"]);
 const DEX_PAGE_KEY_STATE = 11;
-// include/constants/pokemon.h and include/battle_main.h.
 const TYPE_MYSTERY = 9;
 const TYPE_FORESIGHT = 0xfe;
 const TYPE_ENDTABLE = 0xff;
 const TYPE_MUL_NORMAL = 10;
-// ApplyRandomDmgMultiplier: 100 - (Random() % 16) percent.
 const MIN_RANDOM_PERCENT = 85;
 const USED_TEXT = /^(.+) used (.+)!$/;
 const TURN_RESULTS: [RegExp, string][] = [
@@ -38,11 +36,8 @@ const TURN_RESULTS: [RegExp, string][] = [
   [/'s attack missed!$/, "missed"],
   [/^But it failed!$/, "failed"],
 ];
-// The two yes/no boxes of the learn-move flow: "Delete a move to make room for …?" (learn) and "Stop learning …?" (stop).
 const LEARN_MOVE_COMMANDS: Record<string, LearnMoveQuestion> = { Cmd_yesnoboxlearnmove: "learn", Cmd_yesnoboxstoplearningmove: "stop" };
-// Both commands read the keys in this gBattleScripting.learnMoveState.
 const LEARN_MOVE_READS_INPUT = 1;
-// Task_EvolutionScene (evolution_scene.c): tState is data[0], tLearnMoveState data[6], tLearnMoveYesState data[7], tPartyId data[10].
 const EVOLUTION_TASK = "Task_EvolutionScene";
 const EVO_STATE = 0;
 const EVO_LEARN_MOVE_STATE = 6;
@@ -50,9 +45,7 @@ const EVO_LEARN_MOVE_YES_STATE = 7;
 const EVO_PARTY_ID = 10;
 const EVOSTATE_REPLACE_MOVE = 22;
 const MVSTATE_HANDLE_YES_NO = 4;
-// After YES, the yes/no of the "learn" question opens the moves; the "stop" question cancels.
 const MVSTATE_SHOW_MOVE_SELECT = 5;
-// Task_InputHandler_SelectOrForgetMove (pokemon_summary_screen.c) reads the keys in this selectMoveInputHandlerState.
 const SUMMARY_TASK = "Task_InputHandler_SelectOrForgetMove";
 const SUMMARY_READS_INPUT = 2;
 
@@ -60,7 +53,6 @@ export type BattleMenu = "battleAction" | "battleMove";
 
 type LearnMoveQuestion = "learn" | "stop";
 
-/** A yes/no box of the learn-move flow that reads the keys: `slot` is the Pokémon in the party, `move` the move to learn. */
 export type LearnMoveBox = { question: LearnMoveQuestion; cursor: number; slot: number; move: number };
 
 export type PrintedMove = { partyIndex: number; move: number };
@@ -119,11 +111,10 @@ export function dexPageWaits(mem: Memory): boolean {
   return activeTask(mem, "Task_DexScreen_RegisterMonToPokedex") !== null && mem.global("sPokedexScreenData").deref().field("state").int() === DEX_PAGE_KEY_STATE;
 }
 
-/** The learn-move flow of a battle (a level up) or of the evolution scene after it, at a yes/no that reads the keys. */
 export function learnMoveBox(mem: Memory): LearnMoveBox | null {
   const cursor = mem.global("gBattleCommunication").at(YES_NO_CURSOR).int();
   const move = mem.global("gMoveToLearn").int();
-  // The evolution after a battle runs before the game leaves the battle mode.
+  // The evolution scene runs before the battle mode ends.
   const evolution = activeTask(mem, EVOLUTION_TASK)?.field("data");
   if (evolution) {
     if (evolution.at(EVO_STATE).int() !== EVOSTATE_REPLACE_MOVE || evolution.at(EVO_LEARN_MOVE_STATE).int() !== MVSTATE_HANDLE_YES_NO) return null;
@@ -135,9 +126,8 @@ export function learnMoveBox(mem: Memory): LearnMoveBox | null {
   return reads ? { question, cursor, slot: mem.global("gBattleStruct").deref().field("expGetterMonId").int(), move } : null;
 }
 
-/** The cursor of the summary screen that chooses the move to forget, 0 to 3 for the known moves and 4 for the new move; null while it reads no keys. */
 export function forgetMoveCursor(mem: Memory): number | null {
-  // sMonSummaryScreen keeps its old address when the screen closes: read it only while its task runs.
+  // sMonSummaryScreen keeps its old address after the screen closes.
   if (!activeTask(mem, SUMMARY_TASK)) return null;
   const reads = mem.global("sMonSummaryScreen").deref().field("selectMoveInputHandlerState").int() === SUMMARY_READS_INPUT;
   return reads ? mem.global("sMoveSelectionCursorPos").int() : null;
@@ -175,7 +165,6 @@ export class BattleWatch {
     return [...(this.moves.get(partyIndex) ?? [])];
   }
 
-  /** A turn starts with a battle action that the game took, and ends at the next Decision point of the battle. */
   onAction(before: Battle | null, texts: string[], now: Battle | null, decision: boolean): void {
     if (before) this.open = { before, texts: [] };
     if (!this.open) return;
@@ -227,7 +216,6 @@ function battleMon(mem: Memory, mon: Ref, decode: Decode): BattleMon {
   };
 }
 
-/** gTypeEffectiveness in the order of the game, with the type names; `special`: the move types that use the special stats. */
 export type TypeChart = { effects: { attack: string; defense: string; multiplier: number }[]; special: string[] };
 
 export type FightFacts = { effect: number; stab: boolean; estimate: { minPercent: number; maxPercent: number; minHits: number; maxHits: number } | null };
@@ -239,10 +227,9 @@ type MoveUse = { user: string; move: string; results: string[] };
 export type BattleTurn = { moves: MoveUse[]; player: TurnSide; foe: TurnSide };
 
 export function readTypeChart(mem: Memory, decode: Decode): TypeChart {
-  // The debug info gives the table as signed bytes: the bytes are read raw, so that TYPE_ENDTABLE is 0xff.
+  // The debug info gives signed bytes: read them raw so that TYPE_ENDTABLE is 0xff.
   const table = mem.global("gTypeEffectiveness").bytes();
   const effects: TypeChart["effects"] = [];
-  // The game skips the Foresight marker and applies the entries after it when the foe has no Foresight status.
   for (let i = 0; i + 2 < table.length && table[i] !== TYPE_ENDTABLE; i += 3) {
     if (table[i] === TYPE_FORESIGHT) continue;
     effects.push({ attack: typeName(mem, table[i], decode), defense: typeName(mem, table[i + 1], decode), multiplier: table[i + 2] });
@@ -251,7 +238,6 @@ export function readTypeChart(mem: Memory, decode: Decode): TypeChart {
   return { effects, special: Array.from({ length: types - TYPE_MYSTERY - 1 }, (_, i) => typeName(mem, TYPE_MYSTERY + 1 + i, decode)) };
 }
 
-/** The facts of each move of the player against the foe, with no critical hit; null for a move with no power. Abilities, held items, weather, screens and fixed damage are not in the estimate. */
 export function fightFacts({ player, enemy }: Battle, chart: TypeChart, milestones: readonly string[]): (FightFacts | null)[] {
   return player.moves.map(({ type, power }) => {
     if (power === null) return null;
@@ -259,7 +245,6 @@ export function fightFacts({ player, enemy }: Battle, chart: TypeChart, mileston
     const effects = chart.effects.filter((e) => e.attack === type && enemy.types.includes(e.defense));
     const effect = effects.reduce((product, e) => (product * e.multiplier) / TYPE_MUL_NORMAL, 1);
     if (effect === 0 || enemy.hp === 0) return { effect, stab, estimate: null };
-    // Cmd_damagecalc (CalculateBaseDamage), then Cmd_typecalc (STAB, then each entry of the chart), then Cmd_adjustnormaldamage (85% to 100%).
     let damage = baseDamage(player, enemy, power, chart.special.includes(type), milestones);
     if (stab) damage = Math.floor((damage * 15) / 10);
     for (const { multiplier } of effects) damage = Math.max(Math.floor((damage * multiplier) / TYPE_MUL_NORMAL), multiplier === 0 ? 0 : 1);
@@ -283,12 +268,10 @@ function baseDamage(attacker: BattleMon, defender: BattleMon, power: number, spe
   return damage + 2;
 }
 
-// gStatStageRatios: 10/40 at -6 to 40/10 at +6.
 function staged(stat: number, stage: number): number {
   return Math.floor((stat * (10 + 5 * Math.max(0, stage))) / (10 + 5 * Math.max(0, -stage)));
 }
 
-/** A turn from the texts of the game between two Decision points of the battle, and the HP before and after. */
 export function battleTurn(before: Battle, after: Battle, texts: string[]): BattleTurn {
   const moves: MoveUse[] = [];
   for (const text of texts) {
@@ -297,7 +280,6 @@ export function battleTurn(before: Battle, after: Battle, texts: string[]): Batt
     const result = TURN_RESULTS.find(([pattern]) => pattern.test(text));
     if (result && moves.length > 0) moves.at(-1)!.results.push(result[1]);
   }
-  // A foe that fainted leaves its place to the next one before the next Decision point.
   const foeAfter = after.enemy.partyIndex === before.enemy.partyIndex ? after.enemy : { ...before.enemy, hp: 0 };
   const playerHp = (mon: BattleMon) => ({ name: mon.nickname, hp: `${mon.hp}/${mon.maxHp}` });
   const foeHp = (mon: BattleMon) => ({ name: mon.species, hp: `${hpPercent(mon.hp, mon.maxHp)}%` });

@@ -110,7 +110,6 @@ export type WaitingFor =
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
   | { kind: "itemPc"; items: PcItem[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
-  /** The Pokémon of the party at `slot` knows 4 moves and tries to learn `move`. */
   | { kind: "learnMove"; slot: number; move: PartyMove }
   | { kind: "busy" };
 
@@ -148,7 +147,6 @@ export type MapGrid = {
   mapHeight: number;
   /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), . open. */
   kinds: string;
-  /** The map type of the ROM is a town, a city or a route. */
   outside: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
@@ -370,7 +368,6 @@ export class Game {
     return box?.question === "learn" ? { kind: "learnMove", slot: box.slot, move: newMove(this.mem, this.decode, box.move) } : null;
   }
 
-  /** The yes/no boxes of the learn-move flow, in a battle or in the evolution scene after it. */
   learnMoveBox(): LearnMoveBox | null {
     return learnMoveBox(this.mem);
   }
@@ -536,7 +533,6 @@ export class Game {
     return battleMenuSlot(this.mem, partyIndex);
   }
 
-  /** The ROM never changes the type chart, so the first read serves the whole Run. */
   typeChart(): TypeChart {
     this.#typeChart ??= readTypeChart(this.mem, this.decode);
     return this.#typeChart;

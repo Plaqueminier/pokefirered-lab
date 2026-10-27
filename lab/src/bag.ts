@@ -13,7 +13,6 @@ const ITEM_ANIM_KEY_STATE = 12;
 const FIRST_ITEM_POCKET = 1;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
-// The Bag of the item PC opens at the ITEMS pocket and does not change pockets (pocketSwitchMode 1, item_menu.c).
 export const ITEMS_POCKET = POCKET_NAMES.indexOf("ITEMS");
 
 type PocketName = (typeof POCKET_NAMES)[number];

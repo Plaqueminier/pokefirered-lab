@@ -28,7 +28,6 @@ export type AtlasMap = {
   edges: AtlasEdge[];
   /** An edge of the map goes to another map, seen or not: a building has none. */
   hasEdges: boolean;
-  /** The map type of the ROM is a town, a city or a route. */
   outside: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];

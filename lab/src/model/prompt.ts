@@ -49,7 +49,6 @@ const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory t
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
-/** `rules`: the rules of this Run, for example the starter and the stop at a whiteout. */
 export function systemPrompt(rules: string): string {
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
@@ -110,7 +109,6 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
-/** `happened`: the facts of importantEvents. When `reflection` and `review` are both true, only the Reflection turn shows. */
 export type PromptState = { noProgress: NoProgress; reflection: boolean; review: boolean; happened: string[] };
 
 // The count can pass a multiple of REFLECTION_EVERY during a battle. The Reflection turn then waits for the next walk in the same block.
@@ -120,7 +118,6 @@ export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEve
   return kind === "walk" && block > 0 && !done;
 }
 
-/** A decision is a Model call after which the program played an action: a zoom, a viewAtlas or an answer that the Bot cannot read is not one. */
 export function reviewTurn(kind: WaitingFor["kind"], events: readonly RunEvent[]): boolean {
   const turns = callTurns(events);
   const last = turns.findLastIndex((turn) => turn.call?.review || turn.call?.reflection);
@@ -271,7 +268,6 @@ function answerTries(events: readonly RunEvent[], keep: (event: RunEvent) => boo
   }));
 }
 
-/** One line when the last LOOP_AFTER decisions that played an action played the same actions with the same results. A zoom or a viewAtlas plays nothing, so it does not count. */
 function loopWarning(events: readonly RunEvent[]): string[] {
   const last = callTurns(events)
     .flatMap((turn) => (turn.call ? [answerTries(turn.events).map((t) => `${t.action}: ${outcome(t)}`).join("; ")] : []))

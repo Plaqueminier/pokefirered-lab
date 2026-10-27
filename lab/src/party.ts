@@ -107,7 +107,6 @@ export function readMoves(mem: Memory, decode: Decode, ppBonuses: number, slot: 
   return moves;
 }
 
-/** A move that a Pokémon does not know yet: its PP are full, with no PP Up. */
 export function newMove(mem: Memory, decode: Decode, move: number): PartyMove {
   const pp = mem.global("gBattleMoves").at(move).field("pp").int();
   return partyMove(mem, decode, move, pp, pp);

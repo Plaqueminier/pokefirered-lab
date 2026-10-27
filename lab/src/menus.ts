@@ -7,9 +7,8 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
-// CreatePCMenu draws its own window and gives the task MULTICHOICE_NONE: sMultichoiceLists has no list for it.
 const MULTICHOICE_NONE = 255;
-// The script waits after `special CreatePCMenu` and `waitstate`: the id of the special is the u16 3 bytes before the script pointer.
+// While the script waits, the id of the special is the u16 3 bytes before the script pointer.
 const SPECIAL_ID_OFFSET = 3;
 const FLAG_SYS_POKEDEX_GET = 0x829;
 const FLAG_SYS_GAME_CLEAR = 0x82c;
@@ -71,7 +70,6 @@ function pcMenuSpecial(mem: Memory): boolean {
   return functionName(mem.symbols, mem.global("gSpecials").at(special).pointer()) === "CreatePCMenu";
 }
 
-// The options of CreatePCMenuWindow (script_menu.c), in the order of its rows.
 function pcMenuOptions(mem: Memory, decode: Decode, flag: (id: number) => boolean): string[] {
   const text = (name: string) => decode(mem.global(name).bytes());
   const player = decode(mem.global("gSaveBlock2Ptr").deref().field("playerName").bytes());
@@ -80,7 +78,6 @@ function pcMenuOptions(mem: Memory, decode: Decode, flag: (id: number) => boolea
   return [text(flag(FLAG_SYS_NOT_SOMEONES_PC) ? "gText_BillSPc" : "gText_SomeoneSPc"), `${player}'s PC`, ...oak, ...hallOfFame, text("gText_LogOff")];
 }
 
-/** The top menu of the player's PC (BedroomPC and PlayerPC in player_pc.c): ITEM STORAGE, MAILBOX, TURN OFF. */
 export function playerPcMenu(mem: Memory, decode: Decode): Choice | null {
   if (!activeTask(mem, "Task_TopMenuHandleInput") || mem.global("gPaletteFade").field("active").int()) return null;
   const order = mem.global("sItemOrder");

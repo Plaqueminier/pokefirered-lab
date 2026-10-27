@@ -362,7 +362,6 @@ describe.skipIf(!ready)("model bot", () => {
     await harness.readText();
     await harness.choose("ITEM STORAGE");
     let calls = 0;
-    // No action of the model opens the withdraw list: at the first Model call, a Raw input of the test opens it.
     const client: ModelClient = async () => {
       if (calls++ > 0) return reply("goTo 8 6");
       await harness.press("A");

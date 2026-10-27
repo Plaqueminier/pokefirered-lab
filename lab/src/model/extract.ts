@@ -184,7 +184,6 @@ function byDistance(atlas: Atlas, from: string): MapDistance[] {
     .toSorted((a, b) => a.distance - b.distance);
 }
 
-/** One line for each outdoor map of the Atlas (a town, a city or a route of the ROM), in the order of the first visit. */
 export function knownWorld(atlas: Atlas): string[] {
   const lines = atlas.maps.filter((m) => m.outside).map((map) => knownMapLine(atlas, map));
   return lines.length === 0 ? [] : ["Known world, the outdoor maps that you visited, the first visit first:", ...lines];
@@ -214,7 +213,6 @@ function knownMapLine(atlas: Atlas, map: AtlasMap): string {
   ].join(" ");
 }
 
-/** The indoor maps after the first one that the exits taken reach from `first`, and the outdoor maps other than `from` at their end. */
 function beyond(atlas: Atlas, from: string, first: string): { through: string[]; outdoor: string[] } {
   const maps = new Map(atlas.maps.map((m) => [m.name, m]));
   if (maps.get(first)?.outside) return { through: [], outdoor: [first] };

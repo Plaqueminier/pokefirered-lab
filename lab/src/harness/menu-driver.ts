@@ -1,4 +1,3 @@
-// The menus of the game: the keys that a Macro-action presses in the battle menus, the Bag, the Poké Mart, the item PC and the party menu.
 import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
 import type { BattleMenu } from "../battle";
 import type { Game } from "../game";
@@ -19,7 +18,6 @@ const MAX_TRADE = 99;
 const PC_WITHDRAW = 0;
 const PC_DEPOSIT = 1;
 const WITHDRAW_MENU_WITHDRAW = 0;
-// The first option of the PC menu of a Pokémon Center opens the Pokémon Storage System: the Harness does not cover the boxes.
 const POKEMON_STORAGE_OPTIONS = ["SOMEONE'S PC", "BILL'S PC"];
 const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
@@ -191,7 +189,7 @@ export class MenuDriver {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
-    // The wireless tasks of a Pokémon Center make some frames skip the keys: press until the game reads them.
+    // Wireless tasks in a Pokémon Center make some frames skip the keys.
     const press = (keys: number) => this.menuInput(keys, () => game.waitingFor().kind !== "busy");
     const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns), press);
     return moved.status === "done" ? press(Keys.A) : moved;
@@ -321,7 +319,6 @@ export class MenuDriver {
     return pressed.status === "done" ? this.readText() : withText(pressed);
   }
 
-  /** At the "Delete a move?" question: YES, then the move on the summary screen. It ends at the first text after the summary screen. */
   forget(move: string): Outcome {
     const { game } = this;
     const learn = game.waitingFor();
@@ -338,13 +335,11 @@ export class MenuDriver {
     return moved.status === "done" ? this.input(Keys.A) : moved;
   }
 
-  /** At the "Delete a move?" question: NO, then YES at "Stop learning …?". It ends at the text that the Pokémon did not learn the move. */
   keep(): Outcome {
     const no = this.answerLearnMove(NO);
     if (no.status !== "done") return no;
     const asked = this.tapUntil(Keys.A, () => this.game.learnMoveBox()?.question === "stop", "the question to stop learning the move");
     if (asked.status !== "done") return asked;
-    // The game shows the cursor of this yes/no on YES.
     return this.input(Keys.A);
   }
 
@@ -589,7 +584,6 @@ export class MenuDriver {
     return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
   }
 
-  // A refused withdraw or deposit goes back to its list too: go back to the item PC menu also then.
   private backToItemStorage(moved: Outcome): Outcome {
     if (moved.status === "interrupted") return moved;
     const { game } = this;
@@ -597,7 +591,6 @@ export class MenuDriver {
     return moved.status === "done" || back.status !== "done" ? back : moved;
   }
 
-  // A presses WITHDRAW in the menu of the item, or selects the item in the Bag of the PC. With one item only, the game asks no quantity.
   private transfer(item: string, quantity: number, place: string): Outcome {
     const { game } = this;
     const box = this.tapUntil(Keys.A, () => game.pcQuantity() !== null || game.pcTransfer() !== null, "the quantity box");
@@ -611,7 +604,7 @@ export class MenuDriver {
       if (chosen.status !== "done") return chosen;
     }
     const refused = game.pcTransfer() === "refused";
-    // The message reads the keys on the frames after it shows: wait until the game reads the release of the last A.
+    // The message reads the keys on the frames after it shows.
     const back = this.menuInput(Keys.A, () => game.withdrawRow() !== null || game.bagMenu()?.screen === "list");
     return back.status !== "done" || !refused ? back : impossible(`${place} has no room for ${quantity} ${item}`);
   }
