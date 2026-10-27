@@ -13,32 +13,37 @@ function botRow(bot: BotInfo): HTMLTableRowElement {
   return row;
 }
 
-export type DocElements = {
-  labButton: HTMLButtonElement;
-  docButton: HTMLButtonElement;
-  lab: HTMLElement;
-  doc: HTMLElement;
+const TABS = ["lab", "doc", "components"] as const;
+
+type Tab = (typeof TABS)[number];
+
+export type TabElements = {
+  buttons: Record<Tab, HTMLButtonElement>;
+  tabs: Record<Tab, HTMLElement>;
   bots: HTMLTableSectionElement;
 };
 
-export class DocTab {
+export class ViewerTabs {
+  #shown: Tab = "lab";
+
   constructor(
-    private readonly ui: DocElements,
-    onOpen: () => void,
+    private readonly ui: TabElements,
+    onLeaveLab: () => void,
   ) {
-    const select = (open: boolean) => {
-      ui.lab.hidden = open;
-      ui.doc.hidden = !open;
-      ui.labButton.classList.toggle("on", !open);
-      ui.docButton.classList.toggle("on", open);
-      if (open) onOpen();
-    };
-    ui.labButton.addEventListener("click", () => select(false));
-    ui.docButton.addEventListener("click", () => select(true));
+    for (const tab of TABS) {
+      ui.buttons[tab].addEventListener("click", () => {
+        this.#shown = tab;
+        for (const other of TABS) {
+          ui.tabs[other].hidden = other !== tab;
+          ui.buttons[other].classList.toggle("on", other === tab);
+        }
+        if (tab !== "lab") onLeaveLab();
+      });
+    }
   }
 
-  get open(): boolean {
-    return !this.ui.doc.hidden;
+  get labShown(): boolean {
+    return this.#shown === "lab";
   }
 
   setBots(bots: BotInfo[]): void {

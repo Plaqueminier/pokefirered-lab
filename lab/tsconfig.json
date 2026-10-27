@@ -8,7 +8,9 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
   "include": ["src", "viewer", "bots"]
 }

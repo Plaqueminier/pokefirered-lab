@@ -2,7 +2,8 @@
 import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
-import { DocTab } from "./doc";
+import { mountComponentsTab } from "./components-tab";
+import { ViewerTabs } from "./doc";
 import { showTooltip } from "./dom";
 import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
@@ -87,16 +88,15 @@ const modelPanel = new ModelPanel({
 });
 const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip });
 const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
-const docTab = new DocTab(
+const tabs = new ViewerTabs(
   {
-    labButton: $<HTMLButtonElement>("tab-lab"),
-    docButton: $<HTMLButtonElement>("tab-doc"),
-    lab: $("lab"),
-    doc: $("doc"),
+    buttons: { lab: $<HTMLButtonElement>("tab-lab"), doc: $<HTMLButtonElement>("tab-doc"), components: $<HTMLButtonElement>("tab-components") },
+    tabs: { lab: $("lab"), doc: $("doc"), components: $("components") },
     bots: $<HTMLTableElement>("doc-bots").tBodies[0],
   },
   releaseKeys,
 );
+mountComponentsTab($("components"));
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -194,7 +194,7 @@ function onMessage(message: ServerMessage): void {
       break;
     case "bots":
       runsPanel.setBots(message.bots.map((bot) => bot.name));
-      docTab.setBots(message.bots);
+      tabs.setBots(message.bots);
       break;
     case "events":
       replayPanel.onEvents(message.events);
@@ -531,7 +531,7 @@ function keyOf(event: KeyboardEvent): number | undefined {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.metaKey || event.ctrlKey || event.target instanceof HTMLInputElement || docTab.open) return;
+  if (event.metaKey || event.ctrlKey || event.target instanceof HTMLInputElement || !tabs.labShown) return;
   startSound();
   const bit = keyOf(event);
   if (bit !== undefined) {

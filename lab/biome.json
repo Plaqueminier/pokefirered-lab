@@ -38,5 +38,10 @@
         "useIterableCallbackReturn": "off"
       }
     }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }
