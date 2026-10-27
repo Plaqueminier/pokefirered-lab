@@ -7,6 +7,13 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
+// CreatePCMenu draws its own window and gives the task MULTICHOICE_NONE: sMultichoiceLists has no list for it.
+const MULTICHOICE_NONE = 255;
+// The script waits after `special CreatePCMenu` and `waitstate`: the id of the special is the u16 3 bytes before the script pointer.
+const SPECIAL_ID_OFFSET = 3;
+const FLAG_SYS_POKEDEX_GET = 0x829;
+const FLAG_SYS_GAME_CLEAR = 0x82c;
+const FLAG_SYS_NOT_SOMEONES_PC = 0x834;
 // The script pointer is past the command multichoicegrid: the id of the menu is the third of its five bytes, so it is 3 bytes before the pointer.
 const GRID_MULTICHOICE_ID_OFFSET = 3;
 // The enum in script.c is RUNNING, WAITING, SHUTDOWN.
@@ -51,10 +58,35 @@ export function startMenu(mem: Memory, decode: Decode): Choice | null {
 }
 
 // Task_MultichoiceMenu_HandleInput reads no input while sDelay counts down or the palette fades.
-export function multichoice(mem: Memory, decode: Decode): Choice | null {
+export function multichoice(mem: Memory, decode: Decode, flag: (id: number) => boolean): Choice | null {
   const task = activeTask(mem, "Task_MultichoiceMenu_HandleInput");
   if (!task || mem.global("sDelay").int() !== 0 || mem.global("gPaletteFade").field("active").int()) return null;
-  return { options: multichoiceOptions(mem, task.field("data").at(MULTICHOICE_ID).int(), decode), cursor: mem.global("sMenu").field("cursorPos").int() };
+  const id = task.field("data").at(MULTICHOICE_ID).int();
+  const options = id !== MULTICHOICE_NONE ? multichoiceOptions(mem, id, decode) : pcMenuSpecial(mem) ? pcMenuOptions(mem, decode, flag) : null;
+  return options && { options, cursor: mem.global("sMenu").field("cursorPos").int() };
+}
+
+function pcMenuSpecial(mem: Memory): boolean {
+  const special = mem.u16(mem.global("sGlobalScriptContext").field("scriptPtr").pointer() - SPECIAL_ID_OFFSET);
+  return functionName(mem.symbols, mem.global("gSpecials").at(special).pointer()) === "CreatePCMenu";
+}
+
+// The options of CreatePCMenuWindow (script_menu.c), in the order of its rows.
+function pcMenuOptions(mem: Memory, decode: Decode, flag: (id: number) => boolean): string[] {
+  const text = (name: string) => decode(mem.global(name).bytes());
+  const player = decode(mem.global("gSaveBlock2Ptr").deref().field("playerName").bytes());
+  const oak = flag(FLAG_SYS_POKEDEX_GET) || flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_ProfOakSPc")] : [];
+  const hallOfFame = flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_HallOfFame_2")] : [];
+  return [text(flag(FLAG_SYS_NOT_SOMEONES_PC) ? "gText_BillSPc" : "gText_SomeoneSPc"), `${player}'s PC`, ...oak, ...hallOfFame, text("gText_LogOff")];
+}
+
+/** The top menu of the player's PC (BedroomPC and PlayerPC in player_pc.c): ITEM STORAGE, MAILBOX, TURN OFF. */
+export function playerPcMenu(mem: Memory, decode: Decode): Choice | null {
+  if (!activeTask(mem, "Task_TopMenuHandleInput") || mem.global("gPaletteFade").field("active").int()) return null;
+  const order = mem.global("sItemOrder");
+  const actions = mem.global("sMenuActions_TopMenu");
+  const options = Array.from({ length: mem.global("sTopMenuItemCount").int() }, (_, i) => menuText(mem, actions.at(order.at(i).int()).field("text").pointer(), decode));
+  return { options, cursor: mem.global("sMenu").field("cursorPos").int() };
 }
 
 // The game draws the menu over several frames: it is ready when the script stops.

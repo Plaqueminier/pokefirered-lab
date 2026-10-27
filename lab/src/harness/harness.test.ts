@@ -464,6 +464,18 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(result).toMatchObject({ status: "impossible", frames: 0 });
     expect(harness.frame).toBe(frame);
   });
+
+  test("the bedroom PC is a choice, and withdraw POTION at the item PC puts the POTION of the PC in the Bag", async () => {
+    const harness = await Harness.open();
+    must(await harness.goTo(1, 2, "PalletTown_PlayersHouse_2F"));
+    must(await harness.interact(1, 1));
+    must(await harness.readText());
+    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["ITEM STORAGE", "MAILBOX", "TURN OFF"], cursor: 0, columns: 1 });
+    must(await harness.choose("ITEM STORAGE"));
+    expect(harness.waitingFor()).toEqual({ kind: "itemPc", items: [{ name: "POTION", quantity: 1 }] });
+    must(await harness.withdraw("POTION", 1));
+    expect(harness.observe()).toMatchObject({ waitingFor: { kind: "itemPc", items: [] }, bag: [{ pocket: "ITEMS", items: [{ name: "POTION", quantity: 1 }] }] });
+  });
 });
 
 const TEST_BAG = join(SAVES_DIR, "test-bag.sav");

@@ -355,15 +355,24 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[4].prompt.turns?.[1].user).toContain("There is no node #5-6 with two halves");
   });
 
-  test("on a screen that no Macro-action covers, as the PC, the code presses B three times and tells the model", async () => {
+  test("on a screen that no Macro-action covers, as the withdraw list of the PC, the code presses B three times and tells the model", async () => {
     const harness = await Harness.open({ noProgressLimit: 30 });
-    const bot = modelBot({ costLimit: 1 }, () => answers(reply("go C").content, reply("goTo 8 6").content));
-    await harness.play(bot).catch(() => {});
-    const calls = modelEvents(harness);
-    expect(calls[1].prompt.user).toContain("The game showed a screen that no action covers: the program pressed B 3 times.");
-    expect(harness.actions.slice(0, 6).map((e) => e.action)).toEqual([
-      { name: "goTo", x: 1, y: 2 },
-      { name: "interact", x: 1, y: 1 },
+    await harness.goTo(1, 2);
+    await harness.interact(1, 1);
+    await harness.readText();
+    await harness.choose("ITEM STORAGE");
+    let calls = 0;
+    // No action of the model opens the withdraw list: at the first Model call, a Raw input of the test opens it.
+    const client: ModelClient = async () => {
+      if (calls++ > 0) return reply("goTo 8 6");
+      await harness.press("A");
+      return reply("leave");
+    };
+    await harness.play(modelBot({ costLimit: 1 }, () => client)).catch(() => {});
+    expect(modelEvents(harness)[1].prompt.user).toContain("The game showed a screen that no action covers: the program pressed B 3 times.");
+    expect(harness.actions.slice(4, 10).map((e) => e.action)).toEqual([
+      { name: "press", button: "A" },
+      { name: "leave" },
       { name: "readText" },
       { name: "press", button: "B" },
       { name: "press", button: "B" },

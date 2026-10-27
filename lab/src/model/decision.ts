@@ -1,7 +1,8 @@
-import { type BagItem, battleItems, type ItemUse, sellableItems, walkItems } from "../bag";
+import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
 import { type PartyMon, sendableSlots } from "../party";
+import type { PcItem } from "../pc";
 import { Keys } from "../protocol";
 import type { ShopItem } from "../shop";
 import { atlasExtract, type AtlasView } from "./extract";
@@ -45,7 +46,7 @@ export function isPlayed(action: ModelAction): action is PlayedAction {
   return action.name !== "viewAtlas" && action.name !== "zoom";
 }
 
-const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, leave: 0, name: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
+const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
@@ -55,6 +56,7 @@ export type Asked = { party: PartyMon[] } & (
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; bagEmpty?: boolean }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
+  | { kind: "itemPc"; pcItems: PcItem[]; depositable: BagItem[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
 );
 
@@ -67,6 +69,7 @@ const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   battleMove: ["fight", "zoom", "press"],
   partyPick: ["send", "zoom", "press"],
   shopMenu: ["buy", "sell", "leave", "zoom"],
+  itemPc: ["withdraw", "deposit", "leave", "zoom"],
   naming: ["name", "zoom"],
 };
 
@@ -84,6 +87,10 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
         return "items" in asked && asked.items.length > 0;
       case "sell":
         return asked.kind === "shopMenu" && asked.sellable.length > 0;
+      case "withdraw":
+        return asked.kind === "itemPc" && asked.pcItems.length > 0;
+      case "deposit":
+        return asked.kind === "itemPc" && asked.depositable.length > 0;
       default:
         return true;
     }
@@ -105,6 +112,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
   if (observation.mode === "overworld") {
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag), bagEmpty };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
+    if (waitingFor.kind === "itemPc") return { kind: "itemPc", party, pcItems: waitingFor.items, depositable: depositableItems(observation.bag) };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options } : null;
   }
   const { battle } = observation;
@@ -146,7 +154,7 @@ type Written =
   | { name: "go"; target: string }
   | { name: "switch" | "send" | "swap"; pokemon: string }
   | { name: "use"; item: string; on?: string }
-  | { name: "buy" | "sell"; item: string; quantity: number };
+  | { name: "buy" | "sell" | "withdraw" | "deposit"; item: string; quantity: number };
 type ParsedAction = Exclude<ModelAction, { name: Written["name"] }> | Written;
 
 export function readAction(text: string, asked: Asked): ModelAction {
@@ -178,6 +186,9 @@ export function readAction(text: string, asked: Asked): ModelAction {
     case "buy":
     case "sell":
       return readTrade(action.name, action.item, action.quantity, asked);
+    case "withdraw":
+    case "deposit":
+      return readTransfer(action.name, action.item, action.quantity, asked);
     case "press":
       if (action.button === "Start") throw new Error(noStartMenu(asked));
       return action;
@@ -188,7 +199,7 @@ export function readAction(text: string, asked: Asked): ModelAction {
 
 function noStartMenu(asked: Asked): string {
   const hint = "there is no Start menu: write use <item> to use an item of your Bag";
-  if (asked.kind === "shopMenu" || asked.kind === "choice" || asked.kind === "naming") return hint;
+  if (asked.kind === "shopMenu" || asked.kind === "itemPc" || asked.kind === "choice" || asked.kind === "naming") return hint;
   if (asked.items.length > 0) return `${hint}; the items that work now: ${asked.items.map((i) => i.name).join(", ")}`;
   return `${hint}; ${asked.bagEmpty ? "your Bag is empty" : "your Bag has no item that works now"}`;
 }
@@ -209,6 +220,13 @@ function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: 
   const names = (asked.kind !== "shopMenu" ? [] : name === "buy" ? asked.forSale : asked.sellable).map((i) => i.name);
   const found = names.find((n) => plain(n) === plain(item));
   if (!found) throw new Error(`"${quoted(item)}" is not an item ${name === "buy" ? "for sale" : "of your Bag that the Poké Mart buys"}: ${names.join(", ") || "none"}`);
+  return { name, item: found, quantity };
+}
+
+function readTransfer(name: "withdraw" | "deposit", item: string, quantity: number, asked: Asked): ModelAction {
+  const names = (asked.kind !== "itemPc" ? [] : name === "withdraw" ? asked.pcItems : asked.depositable).map((i) => i.name);
+  const found = names.find((n) => plain(n) === plain(item));
+  if (!found) throw new Error(`"${quoted(item)}" is not an item ${name === "withdraw" ? "in the PC" : "of the ITEMS pocket of your Bag"}: ${names.join(", ") || "none"}`);
   return { name, item: found, quantity };
 }
 
@@ -244,6 +262,8 @@ const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
   use: ["use <item> [on <Pokémon>]", "use POTION on 1"],
   buy: ["buy <item> <quantity>", "buy POTION 2"],
   sell: ["sell <item> <quantity>", "sell POTION 2"],
+  withdraw: ["withdraw <item> [quantity]", "withdraw POTION 2"],
+  deposit: ["deposit <item> [quantity]", "deposit POTION 2"],
   leave: ["leave", "leave"],
   name: ["name <text>", "name Sparky"],
   press: ["press <button>", "press A"],
@@ -269,6 +289,7 @@ function parse(written: string): ParsedAction | null {
   let m: RegExpMatchArray | null;
   if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
   if ((m = action.match(/^(buy|sell)\s+(.+?)\s+(\d+)$/i))) return { name: m[1].toLowerCase() as "buy" | "sell", item: m[2], quantity: Number(m[3]) };
+  if ((m = action.match(/^(withdraw|deposit)\s+(.+?)(?:\s+(\d+))?$/i))) return { name: m[1].toLowerCase() as "withdraw" | "deposit", item: m[2], quantity: Number(m[3] ?? 1) };
   if ((m = action.match(/^switch\s+(.+)$/i))) return { name: "switch", pokemon: m[1] };
   if ((m = action.match(/^send\s+(.+)$/i))) return { name: "send", pokemon: m[1] };
   if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };

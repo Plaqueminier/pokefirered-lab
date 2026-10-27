@@ -188,7 +188,7 @@ export type FightFacts = { effect: number; stab: boolean; estimate: { minPercent
 
 type TurnSide = { before: { name: string; hp: string }; after: { name: string; hp: string } };
 
-export type MoveUse = { user: string; move: string; results: string[] };
+type MoveUse = { user: string; move: string; results: string[] };
 
 export type BattleTurn = { moves: MoveUse[]; player: TurnSide; foe: TurnSide };
 
