@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type WarpExit } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type Obstacle, type WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
 export type Place = Cell & { map: string };
@@ -7,6 +7,7 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   warps: WarpExit[];
   connections: Pick<MapGrid["connections"][number], "direction" | "offset" | "map">[];
   people: Cell[];
+  obstacles: Obstacle[];
 };
 
 export type Move = { direction: Direction; kind: "walk" | "jump" | "push" };
@@ -22,12 +23,30 @@ const WARP_COST = 4;
 export const MAX_ROUTE_MAPS = 32;
 
 type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
-type Link = { from: string; move: Move; leaves: boolean; to: string };
+type Link = { from: string; move: Move; leaves: boolean; to: Place };
 
 /** With `exit`, the destination is the arrival of an exit: it can be a cell where the player cannot stand (the arrival of a door is a blocked cell), and the player reaches it when it arrives on its map. */
 export type Destination = Place & { exit?: boolean };
 
 export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[] | null {
+  const links = search(from, to, mapOf);
+  return links && legsOf(links, from.map);
+}
+
+/** The first fixed obstacle on a route that passes through the people and the fixed obstacles. */
+export function obstacleOnRoute(from: Place, to: Destination, mapOf: MapSource): (Obstacle & { map: string }) | null {
+  const open: MapSource = (name) => {
+    const map = mapOf(name);
+    return map && { ...map, people: [], obstacles: [] };
+  };
+  for (const { to: place } of search(from, to, open) ?? []) {
+    const obstacle = mapOf(place.map)?.obstacles.find((o) => o.x === place.x && o.y === place.y);
+    if (obstacle) return { ...obstacle, map: place.map };
+  }
+  return null;
+}
+
+function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
   const maps = new Map<string, RouteMap | null>();
   const load = (name: string) => {
     if (!maps.has(name)) maps.set(name, maps.size < MAX_ROUTE_MAPS ? mapOf(name) : null);
@@ -45,14 +64,14 @@ export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[]
 
   for (let place = open.pop(); place; place = open.pop()) {
     const here = id(place);
-    if (here === id(to)) return legsTo(here, from.map, cameFrom);
+    if (here === id(to)) return linksTo(here, cameFrom);
     const spent = cost.get(here)!;
     for (const edge of edges(place, load)) {
       const next = id(edge.to);
       const total = spent + edge.cost;
       if (cost.has(next) && cost.get(next)! <= total) continue;
       cost.set(next, total);
-      cameFrom.set(next, { from: here, move: edge.move, leaves: edge.leaves, to: edge.to.map });
+      cameFrom.set(next, { from: here, move: edge.move, leaves: edge.leaves, to: edge.to });
       open.push(edge.to, total + estimate(edge.to));
     }
   }
@@ -182,17 +201,22 @@ export function walkable(map: MapCells, c: Cell): boolean {
   return inside(map, c) && WALKABLE.has(kindAt(map, c));
 }
 
-export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {
-  return walkable(map, c) && !map.people.some((p) => p.x === c.x && p.y === c.y);
+export function free(map: MapCells & Pick<RouteMap, "people" | "obstacles">, c: Cell): boolean {
+  const on = (o: Cell) => o.x === c.x && o.y === c.y;
+  return walkable(map, c) && !map.people.some(on) && !map.obstacles.some(on);
 }
 
-function legsTo(end: string, start: string, cameFrom: Map<string, Link>): Leg[] {
+function linksTo(end: string, cameFrom: Map<string, Link>): Link[] {
   const links: Link[] = [];
   for (let link = cameFrom.get(end); link; link = cameFrom.get(link.from)) links.push(link);
+  return links.reverse();
+}
+
+function legsOf(links: Link[], start: string): Leg[] {
   const legs: Leg[] = [{ map: start, moves: [] }];
-  for (const link of links.reverse()) {
+  for (const link of links) {
     legs.at(-1)!.moves.push(link.move);
-    if (link.leaves) legs.push({ map: link.to, moves: [] });
+    if (link.leaves) legs.push({ map: link.to.map, moves: [] });
   }
   return legs;
 }

@@ -28,7 +28,7 @@ const POTION = { name: "POTION", quantity: 5, description: "It restores the HP o
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, entry: null };
+  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, obstacles: [], entry: null };
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
@@ -40,6 +40,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     player: { x: 1, y: 1, facing: "north" },
     grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
     people: [],
+    obstacles: [],
     atlas: { maps: [map], lastTalk: people[0] ? { map: "Route1", localId: people[0].localId } : null },
   } as unknown as Observation;
 }

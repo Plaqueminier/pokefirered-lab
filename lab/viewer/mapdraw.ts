@@ -149,6 +149,9 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
     const ring = p.trainer ? (p.trainer.defeated ? "rgba(150, 150, 150, 0.9)" : "rgba(255, 60, 60, 0.95)") : "rgba(240, 200, 40, 0.95)";
     person(p.x, p.y, p.facing, p.loaded ? "rgba(240, 200, 40, 0.75)" : null, ring);
   }
+  // Fixed obstacles: a filled square, not a person
+  ctx.fillStyle = "rgba(60, 170, 80, 0.85)";
+  for (const o of actors?.obstacles ?? []) ctx.fillRect(px(o.x) + inset, py(o.y) + inset, c - 2 * inset, c - 2 * inset);
   if (actors?.player) person(actors.player.x, actors.player.y, actors.player.facing, "rgba(255, 255, 255, 0.95)", "rgba(232, 100, 60, 1)");
 
   // Connections, as labels on the edges
@@ -224,6 +227,7 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
     }
     if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) lines.push(`in the sight of trainer ${p.trainer.id}`);
   }
+  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) lines.push(`fixed obstacle: ${o.graphics.replaceAll("_", " ")} (${o.move} removes it)`);
   if (actors?.player && actors.player.x === x && actors.player.y === y) lines.push("player");
   return lines.filter(Boolean).join("\n");
 }

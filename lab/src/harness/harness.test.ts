@@ -683,6 +683,17 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
   });
 });
 
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save near a cut tree", () => {
+  test("a goTo past the cut tree of Viridian City is impossible at once, and the reason names the tree, its cell and the move", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    expect(await harness.goTo(8, 25, "ViridianCity")).toEqual({
+      status: "impossible",
+      reason: "you cannot go there now: a CUT TREE at ViridianCity (11, 24) blocks the way. Only a Pokémon that knows CUT can remove it",
+      frames: 0,
+    });
+  });
+});
+
 const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {

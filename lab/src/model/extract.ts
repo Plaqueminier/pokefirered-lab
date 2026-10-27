@@ -1,5 +1,5 @@
-import type { Direction } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
+import { type Direction, KIND } from "../game";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasObstacle, type AtlasPerson, cellAt, mapNamed, obstacleName, obstacleRemedy, seenIn } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
 import { EXITS_GROUP, edgeLabel, isExit, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
@@ -15,7 +15,7 @@ type MapDistance = { map: AtlasMap; distance: number };
 export function atlasExtract(overworld: Overworld): AtlasView {
   const here = mapNamed(overworld.atlas, overworld.map.name);
   const local = localTargets(overworld, here);
-  const view = [...localView(overworld, here, local), ...edgeLines(here), ...peopleLines(here)];
+  const view = [...localView(overworld, here, local), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
   const outside = outsideLine(overworld.atlas, here, local);
   let neighbours: string[] = [];
   let targets = [...local];
@@ -35,7 +35,7 @@ export function atlasExtract(overworld: Overworld): AtlasView {
 
 export function localView({ grid, player }: Overworld, here: AtlasMap, targets: Target[]): string[] {
   const seen = seenIn(here);
-  const marks = new Map<string, string>();
+  const marks = new Map<string, string>(here.obstacles.map((o) => [cellKey(o), KIND.blocked]));
   targets.forEach((t, i) => {
     const letter = targetLetter(i);
     if (t.kind !== "edge" && t.kind !== "map") marks.set(cellKey(t.cell), letter.length === 1 ? letter : LONG_MARK);
@@ -94,7 +94,7 @@ export function fullAtlas(overworld: Overworld): string[] {
   let detailed = true;
   for (const { map, distance } of byDistance(overworld.atlas, overworld.map.name)) {
     const talked = talkedPeople(map);
-    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}${talked.length === 0 ? "" : ` People: ${talked.map(personText).join("; ")}.`}`;
+    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}${talked.length === 0 ? "" : ` People: ${talked.map(personText).join("; ")}.`}${obstaclesText(map)}`;
     const block = [`Map ${map.name}: ${ranges(map)}, ${about}`, ...gridLines(map, (c) => cellAt(map, c))];
     const blockSize = block.join("\n").length + 1;
     if (detailed && size + blockSize <= FULL_ATLAS_BUDGET) {
@@ -135,6 +135,18 @@ function talkedPeople(map: AtlasMap): AtlasPerson[] {
 function peopleLines(map: AtlasMap): string[] {
   const talked = talkedPeople(map);
   return talked.length === 0 ? [] : ["", "What the people of this map said to you:", ...talked.map((p) => `- ${personText(p)}`)];
+}
+
+function obstacleText(obstacle: AtlasObstacle): string {
+  return `${obstacleName(obstacle)} at (${obstacle.x}, ${obstacle.y}). ${obstacleRemedy(obstacle.move)}.`;
+}
+
+function obstacleLines(map: AtlasMap): string[] {
+  return map.obstacles.length === 0 ? [] : ["", "Fixed obstacles of this map, not targets:", ...map.obstacles.map((o) => `- ${obstacleText(o)}`)];
+}
+
+function obstaclesText(map: AtlasMap): string {
+  return map.obstacles.length === 0 ? "" : ` Fixed obstacles: ${map.obstacles.map(obstacleText).join(" ")}`;
 }
 
 function personText(person: AtlasPerson): string {

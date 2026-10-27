@@ -490,7 +490,7 @@
             <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
             <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
-            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, and the edges blocked by water. At the <code>full</code> level: all the maps</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>
@@ -525,7 +525,7 @@
           <p>
             <code>observe()</code>: what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it
             (types, ability, held item, nature, stats, EXP; for each move its type, power, accuracy, PP and description). On the
-            map: the grid and the people. The Atlas gives the rival with its name from the save. In a battle: the player's Pokémon, and the enemy
+            map: the grid, the people and the fixed obstacles. The Atlas gives the rival with its name from the save. In a battle: the player's Pokémon, and the enemy
             as the player sees it, with its types. <code>availableActions()</code>: the Macro-actions accepted now.
           </p>
         </section>
@@ -605,6 +605,7 @@
             <dt>Events that ask for a note</dt><dd>since the last Model call: a new map, a lost battle, a heal (all HP full again with no battle and no item use; the line names the map and the last person talked to), a new item, 2 impossible actions or more in a row. One line "Something important happened: …" each, then "Write a note if it can help you later." The model decides.</dd>
             <dt>Notes</dt><dd>a fact that the game proved, or a lesson: what works, what fails and why. Never a guess, never HP values.</dd>
             <dt>Blocked edge</dt><dd>an edge with water between the two maps: only SURF crosses it. The extract and the full Atlas say "you cannot go there now" with the reason, the edge is not a target, and a <code>goTo</code> past it gives the same reason. A <code>goTo</code> past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell.</dd>
+            <dt>Fixed obstacle</dt><dd>the cut tree, the rock of ROCK SMASH and the boulder of STRENGTH: not people. Their cell is blocked, and <code>goTo</code> never waits for them. A <code>goTo</code> that only a fixed obstacle stops is impossible at once, and the reason names the obstacle, its cell and the move. The extract and the full Atlas list them with the move and no letter.</dd>
             <dt>Run record</dt><dd>each Model call has <code>stuck</code> and <code>reflection</code>. The panel "Model" shows them in the list and in the title of a call.</dd>
           </dl>
         </section>

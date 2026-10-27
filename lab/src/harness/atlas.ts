@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction, type Game, KIND, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -18,6 +18,8 @@ export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text:
 /** x and y: where the player last saw the person on the screen, not where the person is now. */
 export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
 
+export type AtlasObstacle = Omit<Obstacle, "localId">;
+
 export type AtlasMap = {
   name: string;
   width: number;
@@ -30,6 +32,8 @@ export type AtlasMap = {
   hasEdges: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];
+  /** The fixed obstacles that the player saw. They are not people and not targets. */
+  obstacles: AtlasObstacle[];
   entry: Cell | null;
 };
 
@@ -41,6 +45,14 @@ const BLOCK_REASONS: Record<EdgeBlock, string> = { water: "is water. Only a Pok√
 
 export function blockedText(map: string, side: Direction, block: EdgeBlock): string {
   return `you cannot go there now: the ${side} edge of ${map} ${BLOCK_REASONS[block]}`;
+}
+
+export function obstacleName({ graphics }: { graphics: string }): string {
+  return graphics.replaceAll("_", " ");
+}
+
+export function obstacleRemedy(move: string): string {
+  return `Only a Pok√©mon that knows ${move} can remove it`;
 }
 
 export function cellAt(map: AtlasMap, { x, y }: Cell): string {
@@ -70,6 +82,8 @@ type Visit = {
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
   people: Map<number, AtlasPerson>;
+  /** By cellKey: a fixed obstacle never moves by itself. */
+  obstacles: Map<string, AtlasObstacle>;
 };
 
 type Talk = { person: AtlasPerson; text: string | null; index: number | null };
@@ -171,7 +185,9 @@ export class AtlasWatch {
   }
 
   private seePeople(visit: Visit, player: Cell): void {
-    for (const p of this.game.mapView(visit.grid.name)?.actors.people ?? []) if (p.loaded && onScreen(player, p)) this.seen(visit, p);
+    const actors = this.game.mapView(visit.grid.name)?.actors;
+    for (const p of actors?.people ?? []) if (p.loaded && onScreen(player, p)) this.seen(visit, p);
+    for (const { localId, ...obstacle } of actors?.obstacles ?? []) if (onScreen(player, obstacle)) visit.obstacles.set(cellKey(obstacle), obstacle);
   }
 
   private seen(visit: Visit, { localId, graphics, x, y }: MapActors["people"][number]): AtlasPerson {
@@ -195,7 +211,7 @@ export class AtlasWatch {
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), edgesTaken: new Map(), signTexts: new Map(), people: new Map() };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), edgesTaken: new Map(), signTexts: new Map(), people: new Map(), obstacles: new Map() };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -269,13 +285,16 @@ function seenEdges(visit: Visit): Edge[] {
 }
 
 function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
-  const { grid, seen, entry, edgesTaken, signTexts, people } = visit;
+  const { grid, seen, entry, edgesTaken, signTexts, people, obstacles } = visit;
   const isSeen = seenOn(visit);
   return {
     name: grid.name,
     width: grid.mapWidth,
     height: grid.mapHeight,
-    cells: Array.from(seen, (s, i) => (s ? kindAt(grid, { x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) }) : UNSEEN)).join(""),
+    cells: Array.from(seen, (s, i) => {
+      const cell = { x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) };
+      return !s ? UNSEEN : obstacles.has(cellKey(cell)) ? KIND.blocked : kindAt(grid, cell);
+    }).join(""),
     warps: seenWarps(visit),
     edges: seenEdges(visit).map(({ direction: side }) => {
       const block = blocked(grid.name, side);
@@ -284,6 +303,7 @@ function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
     hasEdges: edgesOf(grid).length > 0,
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
+    obstacles: [...obstacles.values()],
     entry,
   };
 }
@@ -298,6 +318,7 @@ function fullVisit(grid: MapGrid, visit: Visit | undefined): Visit {
     edgesTaken: new Map(edgesOf(grid).map((c) => [c.direction, c.map])),
     signTexts: visit?.signTexts ?? new Map(),
     people: visit?.people ?? new Map(),
+    obstacles: visit?.obstacles ?? new Map(),
   };
 }
 

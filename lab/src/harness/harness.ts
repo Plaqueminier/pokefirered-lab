@@ -14,15 +14,16 @@ import {
   type MapGrid,
   MILESTONES,
   type Milestone,
+  type Obstacle,
   type PlayerPosition,
   type WaitingFor,
 } from "../game";
 import { type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
-import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, obstacleName, obstacleRemedy, type Sight } from "./atlas";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type BlockOf, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, pastEdge, type Place, type RouteMap, reached } from "./path";
+import { type BlockOf, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
   GameWatch,
@@ -71,7 +72,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded">;
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; obstacles: Obstacle[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress";
 
@@ -394,7 +395,7 @@ export class Harness {
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded }): Person => ({ localId, x, y, graphics, loaded }));
-    return { ...base, mode: "overworld", map: game.map(), player, grid, people };
+    return { ...base, mode: "overworld", map: game.map(), player, grid, people, obstacles: actors.obstacles };
   }
 
   availableActions(): AvailableAction[] {
@@ -446,6 +447,8 @@ export class Harness {
         const maps = this.routeMaps();
         const route = findRoute(here, destination, maps);
         if (!route && !findRoute(here, destination, (name) => withoutPeople(maps(name)))) {
+          const obstacle = obstacleOnRoute(here, destination, maps);
+          if (obstacle) return { status: "impossible", reason: `you cannot go there now: a ${obstacleName(obstacle)} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}` };
           return { status: "impossible", reason: `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps` };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
@@ -673,7 +676,7 @@ export class Harness {
     return (name) => {
       if (!maps.has(name)) {
         const view = this.#run.game.mapView(name);
-        maps.set(name, view && { ...view.grid, people: view.actors.people });
+        maps.set(name, view && { ...view.grid, people: view.actors.people, obstacles: view.actors.obstacles });
       }
       return maps.get(name)!;
     };

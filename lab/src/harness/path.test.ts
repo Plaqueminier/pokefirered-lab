@@ -5,7 +5,7 @@ import { type Cell, findRoute, type Leg, type MapSource, type RouteMap } from ".
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
   const height = rows.length;
-  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], ...more };
+  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], ...more };
 }
 
 function world(...maps: RouteMap[]): MapSource {
