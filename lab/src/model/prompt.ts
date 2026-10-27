@@ -66,7 +66,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at a walk or a battle action: the request to write a lesson and a new objective, and at a walk the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -107,12 +107,14 @@ Advice of a good player:
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
 }
 
-const REFLECTION = [
-  "Reflection turn: stop and think before you act.",
-  "- Read your Memory tree above and the full Atlas below. Use zoom freely to see the details of a node: zoom does not end this turn.",
-  '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
-  '- Set a new "objective" that follows this lesson.',
-];
+function reflection(atWalk: boolean): string[] {
+  return [
+    "Reflection turn: stop and think before you act.",
+    `- Read your Memory tree above${atWalk ? " and the full Atlas below" : ""}. Use zoom freely to see the details of a node: zoom does not end this turn.`,
+    '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
+    '- Set a new "objective" that follows this lesson.',
+  ];
+}
 
 const REVIEW = [
   "Review turn: check your plan against the facts before you act.",
@@ -124,18 +126,17 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
-/** A reflection or a review turn happens at a walk, and adds the full Atlas. A reflection turn has the priority. */
+/** A reflection turn happens at a walk or a battle action, a review turn at a walk only. At a walk, both add the full Atlas. A reflection turn has the priority. */
 export type TurnKind = "normal" | "reflection" | "review";
 
 export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[] };
 
 export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], noProgress: NoProgress): TurnKind {
-  if (kind !== "walk") return "normal";
-  if (reflectionDue(events, noProgress)) return "reflection";
-  return reviewDue(events) ? "review" : "normal";
+  if ((kind === "walk" || kind === "battleAction") && reflectionDue(events, noProgress)) return "reflection";
+  return kind === "walk" && reviewDue(events) ? "review" : "normal";
 }
 
-// The count can pass a multiple of REFLECTION_EVERY during a battle. The Reflection turn then waits for the next walk in the same block.
+// The count can pass a multiple of REFLECTION_EVERY at another Decision point. The Reflection turn then waits for the next walk or battle action in the same block.
 function reflectionDue(events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
   const block = Math.floor(stuck / REFLECTION_EVERY);
   const done = modelEvents(events.slice(since)).some((e) => e.reflection && Math.floor((e.stuck ?? 0) / REFLECTION_EVERY) === block);
@@ -166,7 +167,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): ${noProgress.stuck}.`,
-    ...(turn === "reflection" ? REFLECTION : turn === "review" ? REVIEW : []),
+    ...(turn === "reflection" ? reflection(asked.kind === "walk") : turn === "review" ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     ...loopWarning(answers),
     "",
