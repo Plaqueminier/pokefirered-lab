@@ -1,0 +1,4 @@
+cd lab
+bunx lint-staged
+bun run typecheck
+bun run knip

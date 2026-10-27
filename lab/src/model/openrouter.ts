@@ -12,7 +12,7 @@ export type ModelReply = { content: string; usage: Usage };
 
 export type AnswerFormat = { name: "decision" | "summary"; schema: object };
 
-export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
+const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 
 export type ModelClient = (prompt: Prompt, format?: AnswerFormat) => Promise<ModelReply>;
 

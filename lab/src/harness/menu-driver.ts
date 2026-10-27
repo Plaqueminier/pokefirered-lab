@@ -111,7 +111,7 @@ function isOnOk({ cursor, columns }: NamingScreen): boolean {
   return cursor.x === columns && cursor.y === NAMING_OK_ROW;
 }
 
-export class MessageReader {
+class MessageReader {
   readonly text: string[] = [];
   private messages: Messages;
   private pressedOnce = false;

@@ -27,7 +27,7 @@ export type BattleMenu = "battleAction" | "battleMove";
 
 export type PrintedMove = { partyIndex: number; move: number };
 
-export type StatStages = Record<(typeof STAGE_NAMES)[number], number>;
+type StatStages = Record<(typeof STAGE_NAMES)[number], number>;
 
 export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { statStages: StatStages };
 

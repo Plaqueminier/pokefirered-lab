@@ -51,7 +51,7 @@ export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 
 export type Speed = 1 | 4 | "max";
 
-export type BotKind = "scripted" | "model";
+type BotKind = "scripted" | "model";
 
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null } | { error: string });

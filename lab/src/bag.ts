@@ -14,7 +14,7 @@ const FIRST_ITEM_POCKET = 1;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
 
-export type PocketName = (typeof POCKET_NAMES)[number];
+type PocketName = (typeof POCKET_NAMES)[number];
 
 export type ItemUse = "pokemon" | "alone";
 

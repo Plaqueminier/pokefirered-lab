@@ -198,7 +198,7 @@ function buildSymbols(dies: Map<string, Die>, elfSymbols: Map<string, number>): 
         types[id] = info;
         for (const childId of die.children) {
           const child = dies.get(childId);
-          if (!child || child.tag !== "DW_TAG_member") continue;
+          if (child?.tag !== "DW_TAG_member") continue;
           const member: Member = {
             name: child.attrs.DW_AT_name ? unquote(child.attrs.DW_AT_name) : null,
             off: num(child.attrs.DW_AT_data_member_location),
