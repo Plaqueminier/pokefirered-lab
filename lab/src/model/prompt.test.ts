@@ -88,6 +88,17 @@ describe("the tries since the last progress", () => {
   });
 });
 
+describe("the loop warning", () => {
+  test("when the last 3 decisions played the same action with the same result, the prompt shows one warning line", () => {
+    const observation = route1(22, []);
+    const asked = askedOf(observation, false)!;
+    const blocked = [call("goTo 3 3"), played({ name: "goTo", x: 3, y: 3 }, { status: "blocked", reason: "a person", frames: 60 })];
+    const warning = 'Warning: your last 3 decisions played the same action with the same result: goTo(3, 3): blocked (a person). If it does not bring you closer to your objective, choose another action.';
+    expect(userPrompt(observation, asked, [...blocked, call("zoom 1-2"), ...blocked, ...blocked], NO_TURN)).toContain(warning);
+    expect(userPrompt(observation, asked, [...blocked, ...blocked], NO_TURN)).not.toContain("Warning:");
+  });
+});
+
 describe("the Mission", () => {
   test("the prompt shows the last Mission that the model gave, and for how many decisions it did not change", () => {
     expect(missionLine([])).toBe("Mission: none yet.");

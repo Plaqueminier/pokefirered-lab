@@ -24,7 +24,7 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go B\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    note: { type: "string", description: `A fact that the game proved, or a lesson (what works, what fails and why), in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never a guess, never HP values. Nobody changes it later.` },
+    note: { type: "string", description: `A fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:", in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never HP values. Nobody changes it later.` },
   },
   required: FIELDS,
   additionalProperties: false,

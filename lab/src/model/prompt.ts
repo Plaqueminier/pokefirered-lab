@@ -15,6 +15,7 @@ const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat th
 const MAX_PAST_CALLS = 15;
 const MAX_CALL_LINES = 30;
 export const MAX_TRIES = 20;
+const LOOP_AFTER = 3;
 const MAX_OUTCOME = 200;
 const WAITS: Record<AskedKind, string> = {
   walk: "a walk",
@@ -61,7 +62,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note is never a guess, and never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town". When the game proves or disproves a guess, write a new note with the result. A note is never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -72,9 +73,14 @@ Rules of the program:
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
 Advice of a good player:
-- Talk to the people: they tell you where to go and what to do.
+- Read the signs and talk to the people: they often tell you the way and what to do.
+- Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
-- Train your Pokémon in the tall grass before you fight a Gym Leader.
+- Keep your POTIONS for when they are necessary, for example before a difficult battle.
+- You can use more than one Pokémon: catch more Pokémon and make a balanced team, with different types.
+- When a wild battle goes badly, run.
+- Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
+- When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - Buy Poké Balls and Potions at a Poké Mart.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
@@ -134,6 +140,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
     ...(reflection ? REFLECTION : review ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
+    ...loopWarning(events),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
@@ -232,18 +239,7 @@ type Try = { action: string; result: ActionEntry["result"]; texts: string[] };
 export function tries(events: readonly RunEvent[], since: number): string[] {
   const recent = new Set(events.slice(since));
   const start = events.findLastIndex((e, i) => i <= since && e.type === "model");
-  const played = callTurns(events.slice(Math.max(0, start))).flatMap((turn): Try[] => {
-    if (!turn.call) return [];
-    const actions = turn.events.flatMap((e) => (e.type === "action" ? [e] : []));
-    const read = actions.findIndex((a) => a.action.name === "readText");
-    const answer = (read === -1 ? actions : actions.slice(0, read)).filter((a) => recent.has(a));
-    const textsAfter = actions.slice(read === -1 ? actions.length : read).flatMap((a) => (a.action.name === "readText" && "text" in a.result ? a.result.text : []));
-    return answer.map((a, i) => ({
-      action: actionText(a.action),
-      result: a.result,
-      texts: [...("text" in a.result ? a.result.text : []), ...(i === answer.length - 1 ? textsAfter : [])],
-    }));
-  });
+  const played = callTurns(events.slice(Math.max(0, start))).flatMap((turn) => (turn.call ? answerTries(turn.events, (a) => recent.has(a)) : []));
   const grouped = new Map<string, { action: string; outcome: string; times: number }>();
   for (const t of played) {
     const result = outcome(t);
@@ -254,6 +250,29 @@ export function tries(events: readonly RunEvent[], since: number): string[] {
   }
   const lines = [...grouped.values()].map((g) => `- ${g.action} ×${g.times}: ${g.outcome}`);
   return lines.length <= MAX_TRIES ? lines : [`- … and ${lines.length - MAX_TRIES} other tries before`, ...lines.slice(-MAX_TRIES)];
+}
+
+function answerTries(events: readonly RunEvent[], keep: (event: RunEvent) => boolean = () => true): Try[] {
+  const actions = events.flatMap((e) => (e.type === "action" ? [e] : []));
+  const read = actions.findIndex((a) => a.action.name === "readText");
+  const answer = (read === -1 ? actions : actions.slice(0, read)).filter(keep);
+  const textsAfter = actions.slice(read === -1 ? actions.length : read).flatMap((a) => (a.action.name === "readText" && "text" in a.result ? a.result.text : []));
+  return answer.map((a, i) => ({
+    action: actionText(a.action),
+    result: a.result,
+    texts: [...("text" in a.result ? a.result.text : []), ...(i === answer.length - 1 ? textsAfter : [])],
+  }));
+}
+
+/** One line when the last LOOP_AFTER decisions that played an action played the same actions with the same results. A zoom or a viewAtlas plays nothing, so it does not count. */
+function loopWarning(events: readonly RunEvent[]): string[] {
+  const last = callTurns(events)
+    .flatMap((turn) => (turn.call ? [answerTries(turn.events).map((t) => `${t.action}: ${outcome(t)}`).join("; ")] : []))
+    .filter(Boolean)
+    .slice(-LOOP_AFTER);
+  return last.length === LOOP_AFTER && last.every((played) => played === last[0])
+    ? [`Warning: your last ${LOOP_AFTER} decisions played the same action with the same result: ${last[0]}. If it does not bring you closer to your objective, choose another action.`]
+    : [];
 }
 
 function outcome({ result, texts }: Try): string {
