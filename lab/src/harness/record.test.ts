@@ -1,7 +1,8 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import starter from "./scripted-bot";
-import { ROM_FILE, START_SAVE } from "../run";
+import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
 import { isRunRecord, type ModelAnswer, type ModelEvent, RecordPlayer, replay, type RunRecord } from "./record";
 
@@ -252,5 +253,29 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     const { result, events } = harness.record();
     expect(result).toEqual({ endReason: "bot stopped", frames: 0, milestones: [], rawInputs: 0 });
     expect(events.at(-1)).toMatchObject({ type: "action", action: { name: "goTo", x: 8, y: 2 }, result: { status: "impossible" } });
+  });
+});
+
+const HIDDEN_ITEM_SAVE = join(SAVES_DIR, "test-hidden-item.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(HIDDEN_ITEM_SAVE))("Run record on the test Starting save next to a hidden item", () => {
+  test("the stuck counter: a hidden item that the player finds makes it 0 again", async () => {
+    const harness = await Harness.open({ startSave: HIDDEN_ITEM_SAVE });
+    const stuck: number[] = [];
+    const finder: Bot = {
+      name: "finder",
+      version: "1",
+      async play(h) {
+        must(await h.goTo(4, 23));
+        stuck.push(h.noProgress.stuck);
+        must(await h.goTo(3, 23));
+        stuck.push(h.noProgress.stuck);
+        must(await h.interact(3, 22));
+        while (h.observe().waitingFor.kind !== "walk") await h.readText();
+        stuck.push(h.noProgress.stuck);
+      },
+    };
+    await harness.play(finder);
+    expect(stuck).toEqual([1, 2, 0]);
   });
 });

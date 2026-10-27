@@ -69,6 +69,9 @@ const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
 const TRAINER_FLAGS_START = 0x500;
 const FLAG_HIDDEN_ITEMS_START = 0x3e8;
+// The flags of the bosses start after the hidden item flags; the system flags start after the trainer flags.
+const FLAG_HIDDEN_ITEMS_END = 0x4b0;
+const TRAINER_FLAGS_END = 0x800;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
@@ -198,6 +201,16 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
+// The game hides an item ball with its hide flag when the player picks up its item. People have hide flags too, so the item ball flags come from the map data.
+async function readItemBallFlags(): Promise<number[]> {
+  const flagsText = await Bun.file(join(REPO_DIR, "include/constants/flags.h")).text();
+  const ids = new Map([...flagsText.matchAll(/^#define (FLAG_\w+)\s+(0x[0-9A-Fa-f]+)\b/gm)].map((m) => [m[1], Number(m[2])]));
+  const paths = await Array.fromAsync(new Bun.Glob("data/maps/*/map.json").scan(REPO_DIR));
+  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<{ object_events?: { graphics_id: string; flag: string }[] }>));
+  const flags = maps.flatMap((map) => (map.object_events ?? []).filter((o) => o.graphics_id === "OBJ_EVENT_GFX_ITEM_BALL").map((o) => ids.get(o.flag)));
+  return [...new Set(flags.filter((id) => id !== undefined))];
+}
+
 type MapArea = { area: string; place: string | null };
 
 export type Areas = Readonly<Record<string, MapArea>>;
@@ -244,12 +257,13 @@ export class Game {
   private readonly graphicsNames: Map<number, string>;
   private readonly outsideTypes: Set<number>;
   private readonly mapNames: string[][];
+  private readonly itemBallFlags: number[];
   private readonly attributeCache = new Map<number, Uint32Array>();
   private chart: TypeChart | null = null;
 
   private constructor(
     private readonly mem: Memory,
-    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; outsideTypes: Set<number>; mapNames: string[][] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; outsideTypes: Set<number>; mapNames: string[][]; itemBallFlags: number[] },
   ) {
     this.decode = tables.decode;
     this.prompts = new Prompts(mem, tables.decode);
@@ -257,15 +271,17 @@ export class Game {
     this.graphicsNames = tables.graphicsNames;
     this.outsideTypes = tables.outsideTypes;
     this.mapNames = tables.mapNames;
+    this.itemBallFlags = tables.itemBallFlags;
   }
 
   static async create(mem: Memory): Promise<Game> {
-    const [charmapText, behaviorsText, graphicsText, mapTypesText, groups] = await Promise.all([
+    const [charmapText, behaviorsText, graphicsText, mapTypesText, groups, itemBallFlags] = await Promise.all([
       Bun.file(join(REPO_DIR, "charmap.txt")).text(),
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/event_objects.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/map_types.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
+      readItemBallFlags(),
     ]);
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
@@ -273,7 +289,7 @@ export class Game {
     for (const m of graphicsText.matchAll(/^#define OBJ_EVENT_GFX_(\w+)\s+(\d+)\s*$/gm)) graphicsNames.set(Number(m[2]), m[1]);
     const outsideTypes = new Set([...mapTypesText.matchAll(/^#define (MAP_TYPE_\w+)\s+(\d+)/gm)].flatMap((m) => (OUTSIDE_MAP_TYPES.has(m[1]) ? [Number(m[2])] : [])));
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, outsideTypes, mapNames });
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, outsideTypes, mapNames, itemBallFlags });
   }
 
   private get saveBlock1(): Ref {
@@ -612,6 +628,17 @@ export class Game {
 
   milestones(): Milestone[] {
     return MILESTONE_FLAGS.filter(([, flag]) => this.flag(flag)).map(([milestone]) => milestone);
+  }
+
+  /** The trainers beaten, the items picked up (hidden items and item balls) and the species caught (owned in the Pokédex). */
+  flagProgress(): number {
+    const flags = this.saveBlock1.field("flags").bytes();
+    const set = (id: number) => (flags[id >> 3] >> (id & 7)) & 1;
+    let count = this.itemBallFlags.reduce((sum, id) => sum + set(id), 0);
+    for (let id = FLAG_HIDDEN_ITEMS_START; id < FLAG_HIDDEN_ITEMS_END; id++) count += set(id);
+    for (let id = TRAINER_FLAGS_START; id < TRAINER_FLAGS_END; id++) count += set(id);
+    for (const byte of this.mem.global("gSaveBlock2Ptr").deref().field("pokedex").field("owned").bytes()) for (let bit = 0; bit < 8; bit++) count += (byte >> bit) & 1;
+    return count;
   }
 
   /** Metatile attributes of a tileset, read once per tileset. */

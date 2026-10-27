@@ -164,7 +164,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
-    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
+    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item picked up or a new species caught): ${noProgress.stuck}.`,
     ...(turn === "reflection" ? REFLECTION : turn === "review" ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     ...loopWarning(answers),
