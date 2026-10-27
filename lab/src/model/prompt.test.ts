@@ -4,7 +4,7 @@ import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
-import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, systemPrompt, tries, userPrompt } from "./prompt";
+import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, reviewTurn, systemPrompt, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -23,7 +23,7 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, happened: [] };
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, review: false, happened: [] };
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
@@ -85,6 +85,17 @@ describe("the tries since the last progress", () => {
     expect(lines).toHaveLength(MAX_TRIES + 1);
     expect(lines[0]).toBe("- … and 5 other tries before");
     expect(lines.at(-1)).toBe(`- goTo(${MAX_TRIES + 4}, 0) ×1: blocked (a person)`);
+  });
+});
+
+describe("the loop warning", () => {
+  test("when the last 3 decisions played the same action with the same result, the prompt shows one warning line", () => {
+    const observation = route1(22, []);
+    const asked = askedOf(observation, false)!;
+    const blocked = [call("goTo 3 3"), played({ name: "goTo", x: 3, y: 3 }, { status: "blocked", reason: "a person", frames: 60 })];
+    const warning = 'Warning: your last 3 decisions played the same action with the same result: goTo(3, 3): blocked (a person). If it does not bring you closer to your objective, choose another action.';
+    expect(userPrompt(observation, asked, [...blocked, call("zoom 1-2"), ...blocked, ...blocked], NO_TURN)).toContain(warning);
+    expect(userPrompt(observation, asked, [...blocked, ...blocked], NO_TURN)).not.toContain("Warning:");
   });
 });
 
@@ -256,6 +267,31 @@ describe("the stuck counter and the reflection turn", () => {
     const normal = userPrompt(observation, askedOf(observation, false)!, noted, NO_TURN);
     expect(normal).not.toContain("Reflection turn");
     expect(normal).not.toContain("Full Atlas");
+  });
+});
+
+describe("the review turn", () => {
+  test("the first walk after 20 decisions since the last Review or Reflection turn is a review turn: the prompt adds the full Atlas and the check of the Mission", () => {
+    const observation = route1(22, [POTION]);
+    const decided = (n: number) => Array.from({ length: n }, () => [call("go A"), played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })]).flat();
+    const reviewed = [{ ...call("go A"), review: true }, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+    expect([reviewTurn("walk", decided(19)), reviewTurn("walk", [...decided(19), call("zoom 1-2")]), reviewTurn("walk", decided(20))]).toEqual([false, false, true]);
+    expect([reviewTurn("battleAction", decided(20)), reviewTurn("walk", [...decided(5), ...reviewed, ...decided(19)])]).toEqual([false, false]);
+    expect(systemPrompt("")).toContain("Every 20 decisions, you get a review turn");
+
+    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, review: true });
+    expect(prompt).toContain(
+      [
+        "Review turn: check your plan against the facts before you act.",
+        "- Where are you on the way to the next Milestone?",
+        "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+        "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+        "- Which exits, edges and unseen cells are left to explore?",
+        '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
+      ].join("\n"),
+    );
+    expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
+    expect(userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, reflection: true, review: true })).not.toContain("Review turn");
   });
 });
 
