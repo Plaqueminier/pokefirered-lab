@@ -53,7 +53,8 @@ const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory t
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
-const WHITEOUT_RULE = "If all your Pokémon faint, the Run ends.";
+const WHITEOUT_RULE =
+  "If all your Pokémon faint, the Run ends, and you cannot try again. Play safe: heal before your Pokémon are weak, switch or `run` when a battle goes badly, and catch more Pokémon, so that one lost Pokémon does not end the Run.";
 
 function starterRule(starter: ModelSettings["starter"]): string {
   return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;

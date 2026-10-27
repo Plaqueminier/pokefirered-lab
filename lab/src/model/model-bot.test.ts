@@ -225,7 +225,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     expect(harness.record().result.endReason).toBe("cost limit");
     expect(modelEvents(harness)).toHaveLength(3);
-    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends.");
+    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends, and you cannot try again.");
   });
 
   test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {
