@@ -1,4 +1,5 @@
 import type { BagItem, BagPocket } from "../bag";
+import type { BattleTurn, FightFacts } from "../battle";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
@@ -40,6 +41,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
   "badge-8": "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
 };
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
+const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
@@ -57,6 +59,8 @@ At each decision, you get your Milestones, the next Milestone (the next big step
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
 At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
+
+In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. You also get the last turn and the moves that you used on this foe, with their results.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -410,16 +414,46 @@ function partyLine(asked: Asked, name: "switch" | "send", help: string): string[
   return mons.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}. It can be ${mons.map((mon) => mon.nickname).join(", ")}. ${POKEMON}`];
 }
 
-function fights({ player }: BattleState): string[] {
-  return player.moves.map((move, i) => `- fight ${i}: ${move.name} (${moveText(move)})`);
+function fights({ player, fights: facts }: BattleState): string[] {
+  return player.moves.map((move, i) => {
+    const fact = facts[i];
+    return `- fight ${i}: ${move.name} (${moveText(move)})${fact ? `. On the foe: ${fightText(fact)}.` : ""}`;
+  });
 }
 
-function battleLines({ kind, player, enemy }: BattleState): string[] {
+function fightText({ effect, stab, estimate }: FightFacts): string {
+  const name = effect === 0 ? "no effect" : effect < 1 ? "not very effective" : effect > 1 ? "super effective" : "normal effect";
+  const hits = estimate && range(estimate.minHits, estimate.maxHits);
+  return [
+    `${name} ×${MULTIPLIERS[effect] ?? effect}`,
+    ...(stab ? ["STAB"] : []),
+    ...(estimate ? [`${range(estimate.minPercent, estimate.maxPercent, "%")} of its HP now`, `${hits} hit${hits === "1" ? "" : "s"} to KO`] : []),
+  ].join(", ");
+}
+
+function range(min: number, max: number, unit = ""): string {
+  return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
+}
+
+function battleLines({ kind, player, enemy, lastTurn, foeTurns }: BattleState): string[] {
+  const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
     `Battle against ${kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
     `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
     `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
+    ...(lastTurn ? [turnLine(lastTurn)] : []),
+    ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
   ];
+}
+
+function turnLine({ moves, player, foe }: BattleTurn): string {
+  const first = moves.length > 1 ? [`${moves[0].user} moved first.`] : [];
+  const used = moves.map((m) => `${m.user} used ${m.move}${m.results.length > 0 ? `: ${m.results.join(", ")}` : ""}.`);
+  return ["Last turn:", ...first, ...used, `Your ${sideText(player)}.`, `Foe ${sideText(foe)}.`].join(" ");
+}
+
+function sideText({ before, after }: BattleTurn["player"]): string {
+  return before.name === after.name ? `${before.name}: HP ${before.hp} → ${after.hp}` : `${before.name}: HP ${before.hp}, then ${after.name}: HP ${after.hp}`;
 }
 
 function stagesText(stages: Record<string, number>): string {

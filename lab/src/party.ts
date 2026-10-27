@@ -143,7 +143,7 @@ export function nameAt(mem: Memory, table: string, id: number, decode: Decode): 
 }
 
 /** gTypeNames has a name at id 0: TYPE_NORMAL. */
-function typeName(mem: Memory, type: number, decode: Decode): string {
+export function typeName(mem: Memory, type: number, decode: Decode): string {
   const names = mem.global("gTypeNames");
   return type < names.length ? decode(names.at(type).bytes()) : `#${type}`;
 }
