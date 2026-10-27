@@ -100,6 +100,7 @@ Advice of a good player:
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - Buy Poké Balls and Potions at a Poké Mart.
+- When the game asks for a name or a nickname, choose freely: keep the name of the game, or give a name that you like, serious or funny.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
