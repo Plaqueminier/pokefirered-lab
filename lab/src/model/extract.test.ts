@@ -130,6 +130,16 @@ describe("the extract of the Atlas", () => {
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("LASS"));
   });
 
+  test("a trainer that the player did not beat yet has a mark in its target; a beaten trainer has none", () => {
+    const lass = { localId: 3, graphics: "LASS", x: 2, y: 1, loaded: true, unbeatenTrainer: true };
+    const youngster = { localId: 4, graphics: "YOUNGSTER", x: 1, y: 1, loaded: true };
+    const view = atlasExtract(overworld({ ...LAB, people: [lass, youngster].map((p) => ({ ...p, texts: [] })) }, [], { x: 1, y: 2 }, [lass, youngster]));
+    expect(view.targets.flatMap((t) => (t.kind === "person" ? [t.label] : []))).toEqual([
+      "YOUNGSTER at (1, 1), adjacent north, you face it",
+      "LASS at (2, 1), 1 north, 1 east, a trainer that you did not beat yet: a talk starts a battle",
+    ]);
+  });
+
   test("a direct neighbour has a line with its exits; the other maps are targets, and past their budget, the far maps lose their line first", () => {
     const view = atlasExtract(overworld(LAB, chain(200)));
     const localOnly = atlasExtract(overworld(LAB, [])).lines.join("\n");

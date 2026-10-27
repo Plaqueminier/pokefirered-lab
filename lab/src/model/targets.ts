@@ -99,12 +99,12 @@ export function localTargets(overworld: Overworld, here: AtlasMap): Target[] {
     const from = talkFrom(grid, p, step);
     return from.across && reached.has(cellKey(from.cell));
   });
-  const present = new Set(people.map((p) => p.localId));
+  const present = new Map(people.map((p) => [p.localId, p]));
   const targets = [
     ...here.warps.map((w) => exitTarget(w, player)),
     ...here.edges.filter((e) => !e.blocked).map((e) => edgeTarget(e, here, player)),
     ...frontier(cells, grid, seen, player),
-    ...here.people.filter((p) => present.has(p.localId) && seen(p)).map((p) => personTarget(p, player, behindCounter(p))),
+    ...here.people.filter((p) => present.has(p.localId) && seen(p)).map((p) => personTarget(p, player, behindCounter(p), present.get(p.localId)?.unbeatenTrainer === true)),
     ...here.signs.map((s) => signTarget(s, player)),
   ];
   const group = (t: LocalTarget) => TARGET_GROUPS.findIndex((g) => g.kinds.includes(t.kind));
@@ -121,10 +121,11 @@ function edgeTarget(e: AtlasEdge, here: AtlasMap, player: Overworld["player"]): 
   return { kind: "edge", name, label: `${name}, ${edgeSteps(here, player, e.side)} ${e.side}: ${taken(e.to)}`, side: e.side, to: e.to };
 }
 
-function personTarget(p: AtlasPerson, player: Overworld["player"], behindCounter: boolean): LocalTarget {
+function personTarget(p: AtlasPerson, player: Overworld["player"], behindCounter: boolean, unbeatenTrainer: boolean): LocalTarget {
   const counter = behindCounter ? ", behind a counter: go talks across it" : "";
+  const trainer = unbeatenTrainer ? ", a trainer that you did not beat yet: a talk starts a battle" : "";
   const talked = p.texts.length > 0 ? `: talked, "${p.texts.at(-1)}"` : "";
-  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${whereFrom(player, p)}${counter}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
+  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${whereFrom(player, p)}${counter}${trainer}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
 }
 
 function signTarget(s: AtlasSign, player: Overworld["player"]): LocalTarget {

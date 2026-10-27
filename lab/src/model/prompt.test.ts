@@ -324,13 +324,13 @@ describe("the naming screen", () => {
 });
 
 describe("the stuck counter and the reflection turn", () => {
-  test("the first walk at 20 Decision points with no progress, and at each 20 more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective", () => {
+  test("the first walk or battle action at 20 Decision points with no progress, and at each 20 more, is a reflection turn: the prompt asks for a lesson and a new objective, and adds the full Atlas at a walk", () => {
     const observation = route1(22, [POTION]);
     const at = (stuck: number, events: RunEvent[] = []) => turnKind("walk", events, { stuck, since: 0 });
     const reflected = { ...call("go A"), stuck: 21, reflection: true };
     expect([at(19), at(20), at(21), at(39, [reflected]), at(40, [reflected])]).toEqual(["normal", "reflection", "reflection", "normal", "reflection"]);
-    expect(turnKind("battleAction", [], { stuck: 20, since: 0 })).toBe("normal");
-    expect(systemPrompt(SYSTEM)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn");
+    expect([turnKind("battleAction", [], { stuck: 20, since: 0 }), turnKind("battleMove", [], { stuck: 20, since: 0 })]).toEqual(["reflection", "normal"]);
+    expect(systemPrompt(SYSTEM)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn at a walk or a battle action");
 
     const noted = [call("go A", "", "fact 1")];
     const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection" });
@@ -349,6 +349,10 @@ describe("the stuck counter and the reflection turn", () => {
     const normal = userPrompt(observation, askedOf(observation, false)!, noted, NO_TURN);
     expect(normal).not.toContain("Reflection turn");
     expect(normal).not.toContain("Full Atlas");
+    const battle = wildPidgey();
+    const inBattle = userPrompt(battle, askedOf(battle, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection" });
+    expect(inBattle).toContain("Reflection turn: stop and think before you act.\n- Read your Memory tree above. Use zoom freely");
+    expect(inBattle).not.toContain("Full Atlas");
   });
 });
 
