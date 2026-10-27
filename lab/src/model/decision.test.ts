@@ -144,4 +144,10 @@ describe("readAction", () => {
     expect(() => readAction("switch RATTATA", { kind: "battleAction", party: three, battle, items: [] })).toThrow('"RATTATA" is not a Pokémon of your party: SQUIRTLE, SHELL, PIDGEY');
     expect(() => readAction("send 4", { kind: "partyPick", party: three, battle, items: [] })).toThrow("there is no Pokémon 4: the places in the party are 1 to 3");
   });
+
+  test("a Pokémon argument can give a place with the name, to choose one of two Pokémon with the same name", () => {
+    const mon = (nickname: string) => ({ nickname, hp: 10 }) as PartyMon;
+    const twins = [mon("IVYSAUR"), mon("CATERPIE"), mon("CATERPIE")];
+    expect(readAction("switch CATERPIE (position 2)", { kind: "battleAction", party: twins, battle, items: [] })).toEqual({ name: "switch", slot: 1 });
+  });
 });

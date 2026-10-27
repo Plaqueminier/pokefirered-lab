@@ -98,9 +98,10 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
   });
 }
 
-export function sendable(asked: Asked): PartyMon[] {
+/** The places of the Pokémon that a switch or a send can take. */
+export function sendable(asked: Asked): number[] {
   if (!("battle" in asked)) return [];
-  return sendableSlots(asked.party, asked.battle.player.partyIndex).map((slot) => asked.party[slot]);
+  return sendableSlots(asked.party, asked.battle.player.partyIndex);
 }
 
 const BUTTONS = Object.keys(Keys) as Button[];
@@ -343,8 +344,23 @@ function partySlot(pokemon: string, party: PartyMon[]): number {
   }
   const slots = party.flatMap((mon, slot) => (mon.nickname.toLowerCase() === pokemon.toLowerCase() ? [slot] : []));
   if (slots.length === 1) return slots[0];
+  const placed = placedName(pokemon);
+  if (placed) {
+    const mon = party[placed.place - 1];
+    if (!mon) throw new Error(`there is no Pokémon ${placed.place}: the places in the party are 1 to ${party.length}`);
+    if (mon.nickname.toLowerCase() !== placed.name.toLowerCase()) throw new Error(`the Pokémon ${placed.place} of your party is ${mon.nickname}, not ${quoted(placed.name)}`);
+    return placed.place - 1;
+  }
   if (slots.length === 0) throw new Error(`"${quoted(pokemon)}" is not a Pokémon of your party: ${party.map((mon) => mon.nickname).join(", ")}`);
   throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
+}
+
+/** A name with a place: "<name> (position <n>)", "<name> (<n>)", "<name> <n>" or "<n> <name>" ("place" is also accepted). */
+function placedName(pokemon: string): { name: string; place: number } | null {
+  const after = pokemon.match(/^(.+?)\s*(?:\(\s*(?:(?:position|place)\s*)?(\d+)\s*\)|\s(\d+))$/i);
+  if (after) return { name: after[1], place: Number(after[2] ?? after[3]) };
+  const before = pokemon.match(/^(\d+)\s+(.+)$/);
+  return before ? { name: before[2], place: Number(before[1]) } : null;
 }
 
 function swapOf(pokemons: string, party: PartyMon[]): ModelAction {

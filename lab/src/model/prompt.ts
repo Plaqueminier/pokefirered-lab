@@ -51,7 +51,6 @@ const TRANSFERS = [
 ] as const;
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
-const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
 const WHITEOUT_RULE =
   "If all your Pokémon faint, the Run ends, and you cannot try again. Play safe: heal before your Pokémon are weak, switch or `run` when a battle goes badly, and catch more Pokémon, so that one lost Pokémon does not end the Run.";
@@ -80,7 +79,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town". When the game proves or disproves a guess, write a new note with the result. A note is never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -99,6 +98,7 @@ Advice of a good player:
 - When a wild battle goes badly, run.
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
+- To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
 - Buy Poké Balls and Potions at a Poké Mart.
 - When the game asks for a name or a nickname, choose freely: keep the name of the game, or give a name that you like, serious or funny.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
@@ -336,10 +336,10 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
 
 function partyText(party: PartyMon[]): string {
   if (party.length === 0) return "Party: none.";
-  const mon = (m: PartyMon) => {
+  const mon = (m: PartyMon, slot: number) => {
     const name = m.nickname === m.species ? m.species : `${m.nickname} (${m.species})`;
     const about = [
-      `- ${name}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
+      `${slot + 1}. ${name}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
       `Type ${m.types.join(", ")}`,
       `Ability ${m.ability.name}: ${m.ability.description.replace(/\.$/, "")}`,
       `Held item ${m.heldItem ?? "none"}`,
@@ -408,7 +408,7 @@ function actionLines(asked: Asked): string[] {
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
-        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle. ${POKEMON}`] : []),
+        ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle. ${pokemonHelp(asked.party, asked.party.keys())}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
     }
@@ -461,12 +461,17 @@ function keyList(keys: string[]): string {
 function useLine(asked: Asked & { items: BagItem[] }): string[] {
   if (asked.items.length === 0) return [];
   const names = asked.items.map((item) => (itemUse(item, asked) === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
-  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}. ${POKEMON}`];
+  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}. ${pokemonHelp(asked.party, asked.party.keys())}`];
 }
 
 function partyLine(asked: Asked, name: "switch" | "send", help: string): string[] {
-  const mons = sendable(asked);
-  return mons.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}. It can be ${mons.map((mon) => mon.nickname).join(", ")}. ${POKEMON}`];
+  const slots = sendable(asked);
+  return slots.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}. ${pokemonHelp(asked.party, slots)}`];
+}
+
+function pokemonHelp(party: PartyMon[], slots: Iterable<number>): string {
+  const mons = [...slots].map((slot) => `${slot + 1} ${party[slot].nickname}`);
+  return `<Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
 }
 
 function fights({ player, fights: facts }: BattleState): string[] {

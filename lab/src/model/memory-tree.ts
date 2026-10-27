@@ -70,7 +70,7 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   return {
     system: SUMMARY_SYSTEM,
     user: [
-      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When two facts do not agree, keep the newest.`,
+      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When a later note makes a fact false or ends it, drop this fact and keep the later one.`,
       "",
       ...parts,
       "",

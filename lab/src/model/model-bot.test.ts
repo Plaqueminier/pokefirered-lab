@@ -192,7 +192,7 @@ describe.skipIf(!ready)("model bot", () => {
     };
     expect(prompts[0].system).toContain("Become the Champion: earn the 8 gym badges, then beat the Elite Four");
     expect(prompts[0].system).toContain("Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer.");
-    expect(prompts[0].system).not.toContain("nickname");
+    expect(prompts[0].system).not.toContain("answer NO");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
     expect(prompts[0].system).toContain("heal your Pokémon at a Pokémon Center");
     expect(prompts[0].system).not.toMatch(/goal of this run|rival|Oak/i);
@@ -212,11 +212,11 @@ describe.skipIf(!ready)("model bot", () => {
     const battle = first(/^The game waits for a battle action\.$/m);
     expect(battle).toContain("- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)");
     expect(battle).toContain("Foe BULBASAUR (GRASS, POISON): level 5, HP 100%");
-    expect(battle).toMatch(/^- SQUIRTLE: level 5, HP \d+\/\d+, status none\. Type WATER\. Ability TORRENT: Ups WATER moves in a pinch\. Held item none\. Nature [A-Z]+\. Stats: attack \d+, defense \d+, speed \d+, special attack \d+, special defense \d+\. EXP 135, 44 to the next level\.$/m);
+    expect(battle).toMatch(/^1\. SQUIRTLE: level 5, HP \d+\/\d+, status none\. Type WATER\. Ability TORRENT: Ups WATER moves in a pinch\. Held item none\. Nature [A-Z]+\. Stats: attack \d+, defense \d+, speed \d+, special attack \d+, special defense \d+\. EXP 135, 44 to the next level\.$/m);
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "9", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "10", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
@@ -425,9 +425,9 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("model bot wit
     expect(harness.rawInputs).toBe(0);
     const users = prompts.map((p) => p.user);
     expect(users[0]).toContain("- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party.");
-    expect(users.find((user) => user.includes("The game waits for a battle action."))).toContain("- switch <Pokémon>: take your Pokémon out of the battle and send this one. It can be SQUIRTLE.");
+    expect(users.find((user) => user.includes("The game waits for a battle action."))).toContain("- switch <Pokémon>: take your Pokémon out of the battle and send this one. <Pokémon> can be 2 SQUIRTLE.");
     expect(users.find((user) => user.includes('" Choose YES or NO.'))).toMatch(/^Battle against a wild Pokémon\.$/m);
-    expect(users.find((user) => user.includes("The game waits for a Pokémon in the party menu"))).toContain("- send <Pokémon>: send this Pokémon into the battle. It can be SQUIRTLE.");
+    expect(users.find((user) => user.includes("The game waits for a Pokémon in the party menu"))).toContain("- send <Pokémon>: send this Pokémon into the battle. <Pokémon> can be 2 SQUIRTLE.");
   });
 });
 
