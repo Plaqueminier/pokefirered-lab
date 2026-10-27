@@ -336,7 +336,8 @@ async function startBot(name: string, given: ModelOptions, parent?: string): Pro
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
   const failure = error ? ` · error: ${error}` : "";
   try {
-    const end = record ? `end: ${record.result.endReason}, Run record runs/${basename(await writeRecord(record))}` : "no Run record";
+    const lastText = record?.result.lastText === undefined ? "" : ` (last text "${record.result.lastText}")`;
+    const end = record ? `end: ${record.result.endReason}${lastText}, Run record runs/${basename(await writeRecord(record))}` : "no Run record";
     send({ type: "notice", text: `Run ${id} (${spec.bot}): ${end}${failure}.` });
     send({ type: "records", names: await recordNames() });
   } catch (writeError) {
