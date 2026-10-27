@@ -98,13 +98,12 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
-/** The species of each Pokémon in the boxes of the PC. A box Pokémon has the same encryption as a party Pokémon. */
 export function readPcSpecies(mem: Memory, decode: Decode): string[] {
   const boxes = mem.global("gPokemonStoragePtr").deref().field("boxes");
   const first = boxes.at(0).at(0);
   const offset = (name: string) => first.field(name).addr - first.addr;
   const [personalityAt, otIdAt, secureAt] = [offset("personality"), offset("otId"), offset("secure")];
-  // One read of all the boxes: a read for each of the 420 places is slow.
+  // One read of all the boxes: 420 separate reads are slow.
   const raw = boxes.bytes();
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   const species: string[] = [];

@@ -98,7 +98,6 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
   });
 }
 
-/** The places of the Pokémon that a switch or a send can take. */
 export function sendable(asked: Asked): number[] {
   if (!("battle" in asked)) return [];
   return sendableSlots(asked.party, asked.battle.player.partyIndex);
@@ -355,7 +354,6 @@ function partySlot(pokemon: string, party: PartyMon[]): number {
   throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
 }
 
-/** A name with a place: "<name> (position <n>)", "<name> (<n>)", "<name> <n>" or "<n> <name>" ("place" is also accepted). */
 function placedName(pokemon: string): { name: string; place: number } | null {
   const after = pokemon.match(/^(.+?)\s*(?:\(\s*(?:(?:position|place)\s*)?(\d+)\s*\)|\s(\d+))$/i);
   if (after) return { name: after[1], place: Number(after[2] ?? after[3]) };

@@ -67,10 +67,8 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-/** The Pokémon of the foe species that the player owns. */
 export type Owned = { party: number; pc: number };
 
-/** Only a wild battle has an owned count: the player cannot catch the Pokémon of a trainer. */
 export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; owned: Owned });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };

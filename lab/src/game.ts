@@ -69,7 +69,6 @@ const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
 const TRAINER_FLAGS_START = 0x500;
 const FLAG_HIDDEN_ITEMS_START = 0x3e8;
-// The flags of the bosses start after the hidden item flags; the system flags start after the trainer flags.
 const FLAG_HIDDEN_ITEMS_END = 0x4b0;
 const TRAINER_FLAGS_END = 0x800;
 const VARS_START = 0x4000;
@@ -201,7 +200,7 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
-// The game hides an item ball with its hide flag when the player picks up its item. People have hide flags too, so the item ball flags come from the map data.
+// People have hide flags too, so the item ball flags come from the map data, not from a flag range.
 async function readItemBallFlags(): Promise<number[]> {
   const flagsText = await Bun.file(join(REPO_DIR, "include/constants/flags.h")).text();
   const ids = new Map([...flagsText.matchAll(/^#define (FLAG_\w+)\s+(0x[0-9A-Fa-f]+)\b/gm)].map((m) => [m[1], Number(m[2])]));
@@ -630,7 +629,6 @@ export class Game {
     return MILESTONE_FLAGS.filter(([, flag]) => this.flag(flag)).map(([milestone]) => milestone);
   }
 
-  /** The trainers beaten, the items picked up (hidden items and item balls) and the species caught (owned in the Pokédex). */
   flagProgress(): number {
     const flags = this.saveBlock1.field("flags").bytes();
     const set = (id: number) => (flags[id >> 3] >> (id & 7)) & 1;
