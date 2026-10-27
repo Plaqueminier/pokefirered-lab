@@ -66,7 +66,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -120,6 +120,7 @@ const REVIEW = [
   "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
   "- What do the signs and the people tell you? Which of your guesses do they confirm?",
   "- Which exits, edges and unseen cells are left to explore?",
+  "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 

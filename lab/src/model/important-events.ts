@@ -15,6 +15,7 @@ export function importantEvents(before: Observation | null, now: Observation, ev
     ...(textsOf(recent).some((t) => /whited out/i.test(t)) ? ["you lost a battle"] : []),
     ...(before && healed(before, now, recent) ? [healFact(now)] : []),
     ...(before ? newItems(before, now).map((item) => `you got ${item}`) : []),
+    ...(recent.some((e) => e.type === "battle" && e.state === "end") ? careFact(now.party) : []),
     ...(impossible >= 2 ? [`your last ${impossible} actions were impossible: they changed nothing in the game`] : []),
   ];
 }
@@ -34,6 +35,19 @@ function healFact(now: Observation): string {
   const { lastTalk } = now.atlas;
   const person = lastTalk && mapNamed(now.atlas, lastTalk.map).people.find((p) => p.localId === lastTalk.localId);
   return `your party was healed on ${now.map.name}${person ? `, after you talked to ${personName(person)}` : ""}`;
+}
+
+// Only the problems: a healthy party after a battle gives no line.
+function careFact(party: PartyMon[]): string[] {
+  const needs = party.flatMap((mon, slot) => {
+    const problems = [
+      ...(mon.hp * 2 < mon.maxHp ? [`HP ${mon.hp}/${mon.maxHp}`] : []),
+      ...(mon.status === "none" ? [] : [`status ${mon.status}`]),
+      ...mon.moves.filter((move) => move.pp * 4 <= move.maxPp).map((move) => `${move.name} PP ${move.pp}/${move.maxPp}`),
+    ];
+    return problems.length === 0 ? [] : [`${slot + 1} ${mon.nickname} ${problems.join(", ")}`];
+  });
+  return needs.length === 0 ? [] : [`the battle ended, and your party needs care: ${needs.join("; ")}`];
 }
 
 function newItems(before: Observation, now: Observation): string[] {

@@ -343,6 +343,7 @@ describe("the review turn", () => {
         "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
         "- What do the signs and the people tell you? Which of your guesses do they confirm?",
         "- Which exits, edges and unseen cells are left to explore?",
+        "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
         '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
       ].join("\n"),
     );
@@ -379,5 +380,7 @@ describe("the events that ask for a note", () => {
     expect(importantEvents(now, now, [call("goTo 9 9"), outside, call("zoom 1-2"), call("goTo 9 9"), outside])).toEqual(["your last 2 actions were impossible: they changed nothing in the game"]);
     expect(importantEvents(now, now, [call("goTo 9 9"), outside])).toEqual([]);
     expect(importantEvents({ ...now, party: [] }, now, [call("choose NO")])).toEqual([]);
+    const ended: RunEvent = { type: "battle", frame: 0, state: "end" };
+    expect(importantEvents(now, route1(5, []), [call("fight 1"), ended])).toEqual(["the battle ended, and your party needs care: 1 SQUIRTLE HP 5/22"]);
   });
 });

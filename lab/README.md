@@ -207,7 +207,7 @@ In the tests, a fake model answers: `bun test` never calls the network.
 - A reflection turn is the first walk **Decision point** at 20 on the counter, then at 40, 60… (`REFLECTION_EVERY` in `src/model/decision.ts`). A battle or a choice at 20 moves it to the next walk. It is a normal decision: the same **Model call**, with no separate request.
 - Its prompt adds the full **Atlas** after the extract, and the instruction: read the **Memory tree** and the full **Atlas**, use `zoom` freely (`zoom` stays in the same conversation), write a lesson in `note` (what the model tried, why it failed, what it will do now), and set a new `objective`. `viewAtlas` is not an action in a reflection turn. The notes and the **Objective** are the only things that stay after the action: the conversation ends.
 - A review turn is the first walk **Decision point** after 20 decisions since the last review turn or reflection turn (`REVIEW_EVERY` in `src/model/decision.ts`, `turnKind` in `src/model/prompt.ts`), also with progress. A decision is a **Model call** after which the program played an action: `zoom`, `viewAtlas` and an answer that the Bot cannot read do not count. When a reflection turn and a review turn are both due at the same decision, only the reflection turn shows.
-- Its prompt adds the full **Atlas** after the extract, and a short check: where the player is on the way to the next **Milestone**, whether the facts still agree with the **Mission**, the guesses from the signs and the people, and the exits, edges and unseen cells left to explore. The model writes the result in `mission`, `objective` and `note`, and chooses its action as usual. `viewAtlas` is not an action in a review turn.
+- Its prompt adds the full **Atlas** after the extract, and a short check: where the player is on the way to the next **Milestone**, whether the facts still agree with the **Mission**, the guesses from the signs and the people, the exits, edges and unseen cells left to explore, and the team: the levels, the HP, the status and the PP, a weak Pokémon to train, a Pokémon Center or a Poké Mart. The model writes the result in `mission`, `objective` and `note`, and chooses its action as usual. `viewAtlas` is not an action in a review turn.
 
 ### The events that ask for a note
 
@@ -217,6 +217,7 @@ The code compares the game now with the game at the last new conversation, and r
 - a lost battle (a text of the game says "whited out"; a battle lost with no white-out gives no line);
 - a heal: the HP of the party were not all full, and now they are all full, with no battle and no `use` between. The line names the map and the last person that the player talked to (`atlas.lastTalk`);
 - an item that was not in the Bag;
+- a battle that ended with a problem in the party: a Pokémon with less than half of its HP, a status, or a move with a quarter of its PP or less. The line gives the place, the name and each problem, for example "1 IVYSAUR HP 12/45, status poison, TACKLE PP 3/35". A party with no problem gives no line;
 - 2 actions or more in a row that were `impossible` (a **Model call** with no action, as `zoom`, does not stop the count).
 
 ### The rules for notes
