@@ -71,7 +71,8 @@ export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
-export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded">;
+/** `unbeatenTrainer`: a trainer that the player did not beat yet. A talk or its sight starts a battle. */
+export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
@@ -415,7 +416,7 @@ export class Harness {
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
-    const people = actors.people.map(({ localId, x, y, graphics, loaded }): Person => ({ localId, x, y, graphics, loaded }));
+    const people = actors.people.map(({ localId, x, y, graphics, loaded, trainer }): Person => ({ localId, x, y, graphics, loaded, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
     return { ...base, mode: "overworld", map: game.map(), player, grid, people };
   }
 
