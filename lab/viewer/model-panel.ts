@@ -25,11 +25,11 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Answer with JSON again/, "Request"],
 ];
 
-export type Answer = Decision | { error: string; raw: string | null };
+type Answer = Decision | { error: string; raw: string | null };
 
-export type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
+type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
-export type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; reflection?: boolean };
+type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; reflection?: boolean };
 
 export type ModelPanelView = { rows: CallRow[]; selected: number | null; thinking: boolean; call: CallView | null };
 

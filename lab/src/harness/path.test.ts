@@ -35,7 +35,7 @@ function walk(from: Cell, path: Direction[]): Cell {
 }
 
 function summary(legs: Leg[] | null): string[] | null {
-  return legs && legs.map((leg) => `${leg.map}: ${leg.moves.map((m) => `${m.kind} ${m.direction}`).join(", ")}`);
+  return legs?.map((leg) => `${leg.map}: ${leg.moves.map((m) => `${m.kind} ${m.direction}`).join(", ")}`) ?? null;
 }
 
 describe("findRoute on one map", () => {

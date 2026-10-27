@@ -16,7 +16,7 @@ export type GameEvent = { frame: number } & (
   | { type: "milestone"; milestone: Milestone }
 );
 
-export type Reasoning = (typeof REASONING)[number];
+type Reasoning = (typeof REASONING)[number];
 
 export type Starter = (typeof STARTERS)[number];
 

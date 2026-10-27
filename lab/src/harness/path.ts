@@ -9,7 +9,7 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   people: Cell[];
 };
 
-export type Move = { direction: Direction; kind: "walk" | "jump" | "push" };
+type Move = { direction: Direction; kind: "walk" | "jump" | "push" };
 
 export type Leg = { map: string; moves: Move[] };
 

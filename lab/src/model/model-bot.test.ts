@@ -247,7 +247,10 @@ describe.skipIf(!ready)("model bot", () => {
     parent.close();
 
     const { client, prompts } = { prompts: [] as Prompt[], client: answers("not JSON", good) };
-    const recording: ModelClient = async (prompt, format) => (prompts.push(prompt), client(prompt, format));
+    const recording: ModelClient = async (prompt, format) => {
+      prompts.push(prompt);
+      return client(prompt, format);
+    };
     expect(await harness.play(modelBot({ id: "other/model", costLimit: 2.5 * COST }, () => recording))).toMatchObject({ endReason: "cost limit" });
     const calls = modelEvents(harness).slice(parentCalls);
     expect(calls.map((e) => [e.model, e.error === null])).toEqual([["other/model", false], ["other/model", true], ["other/model", true]]);

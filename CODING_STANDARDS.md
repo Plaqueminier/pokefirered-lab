@@ -1,6 +1,6 @@
 # Coding standards
 
-The reviewer applies these rules to each diff. The checks (`cd lab && bunx tsc --noEmit && bun test`) cover the mechanical rules; these rules need judgement.
+The reviewer applies these rules to each diff. The checks (`cd lab && bun run lint && bun run knip && bun run typecheck && bun test`) cover the mechanical rules; these rules need judgement.
 
 ## The docs follow the code
 

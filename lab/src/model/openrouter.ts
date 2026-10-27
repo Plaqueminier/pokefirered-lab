@@ -13,7 +13,7 @@ export type ModelReply = { content: string; usage: Usage };
 
 export type AnswerFormat = { name: "decision" | "summary"; schema: object };
 
-export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
+const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 
 export const SUMMARY_FORMAT: AnswerFormat = { name: "summary", schema: SUMMARY_SCHEMA };
 

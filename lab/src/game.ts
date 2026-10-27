@@ -182,7 +182,7 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
-export type MapArea = { area: string; place: string | null };
+type MapArea = { area: string; place: string | null };
 
 export type Areas = Readonly<Record<string, MapArea>>;
 

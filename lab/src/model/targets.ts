@@ -220,7 +220,7 @@ function isCounter(grid: MapGrid, c: Cell): boolean {
   return inside(grid, c) && grid.behaviorNames[grid.behaviors[(c.y - grid.y0) * grid.width + (c.x - grid.x0)]] === "MB_COUNTER";
 }
 
-export function nextTo(a: Cell, b: Cell): boolean {
+function nextTo(a: Cell, b: Cell): boolean {
   return distance(a, b) === 1;
 }
 

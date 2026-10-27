@@ -64,7 +64,7 @@ export function clock(frame: number): string {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${mmss}` : mmss;
 }
 
-export function spanText({ from, to }: Span): string {
+function spanText({ from, to }: Span): string {
   return `${clock(from)} → ${clock(to)} (${clock(to - from)})`;
 }
 
