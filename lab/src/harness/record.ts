@@ -104,7 +104,7 @@ export class GameWatch {
 
   get gameProgress(): number {
     this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
-    return this.#maps.size + this.#milestones.size + this.#levels;
+    return this.#maps.size + this.#milestones.size + this.#levels + this.game.flagProgress();
   }
 
   onFrame(frame: number): GameEvent[] {

@@ -295,7 +295,7 @@ describe("the stuck counter and the reflection turn", () => {
 
     const noted = [call("go A", "", "fact 1")];
     const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection" });
-    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 20.");
+    expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item picked up or a new species caught): 20.");
     expect(prompt).toContain(
       [
         "Reflection turn: stop and think before you act.",
