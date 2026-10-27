@@ -10,6 +10,7 @@ const BLOCK_TITLES: [RegExp, string][] = [
   [/^Your last decisions/, "History"],
   [/^Something important happened/, "Events"],
   [/^Party/, "Party"],
+  [/^Known world/, "Known world"],
   [/^Map /, "Local view"],
   [/^What the people/, "People"],
   [/^Maps one exit away/, "Atlas"],

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MapGrid } from "../game";
 import type { AtlasMap } from "../harness/atlas";
 import type { Person } from "../harness/harness";
-import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, OTHER_MAPS_BUDGET } from "./extract";
+import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, knownWorld, OTHER_MAPS_BUDGET } from "./extract";
 import type { Overworld } from "./targets";
 
 const LAB: AtlasMap = {
@@ -16,6 +16,7 @@ const LAB: AtlasMap = {
   ],
   edges: [],
   hasEdges: false,
+  outside: false,
   signs: [],
   people: [],
   obstacles: [],
@@ -54,6 +55,7 @@ function chain(routes: number): AtlasMap[] {
       { side: "north", to: names[i + 1] ?? null },
     ],
     hasEdges: true,
+    outside: true,
     signs: [],
     people: [],
     obstacles: [],
@@ -71,6 +73,7 @@ describe("the extract of the Atlas", () => {
       warps: [{ x: 6, y: 1, behavior: "MB_UP_RIGHT_STAIR_WARP", to: "House_2F" }],
       edges: [],
       hasEdges: false,
+      outside: false,
       signs: [{ x: 3, y: 0, facing: "north", text: "It's a TV." }],
       people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!", "MOM: Take care!"] }],
       obstacles: [],
@@ -169,5 +172,32 @@ describe("the extract of the Atlas", () => {
     expect(appendix.slice(0, oneLine).join("\n").length).toBeLessThanOrEqual(FULL_ATLAS_BUDGET);
     expect(appendix.slice(oneLine).every((line) => line.startsWith("- Route"))).toBe(true);
     expect(appendix.at(-1)).toBe("- Route199, 201 exits away. Exits: south edge, to Route198; north edge, not taken.");
+  });
+
+  test("the Known world has one line for each outdoor map, in the order of the first visit: its edges, its passages to other outdoor maps, the buildings entered, the doors not entered, the unseen cells left and the obstacles", () => {
+    const map = (name: string, outside: boolean, warps: AtlasMap["warps"], edges: AtlasMap["edges"] = []): AtlasMap => ({ ...LAB, name, outside, warps, edges, hasEdges: edges.length > 0 });
+    const door = (x: number, to: string | null) => ({ x, y: 4, behavior: "MB_WARP_DOOR", to });
+    const town = map("Town", true, [door(3, "Town_Mart"), door(6, null)], [
+      { side: "north", to: "Route1" },
+      { side: "south", to: null, blocked: "water" },
+      { side: "east", to: null },
+    ]);
+    const atlas = {
+      maps: [
+        { ...town, obstacles: [{ x: 2, y: 2, name: "CUT TREE", move: "CUT" }] },
+        map("Town_Mart", false, [door(1, "Town")]),
+        map("Route1", true, [door(5, "Route1_Gate")], [{ side: "south", to: "Town" }]),
+        map("Route1_Gate", false, [door(1, "Route1"), door(2, "Route1_Gate_2F")]),
+        map("Route1_Gate_2F", false, [door(1, "Route1_Gate"), door(2, "Forest")]),
+        map("Forest", true, [door(1, "Route1_Gate_2F")]),
+      ],
+      lastTalk: null,
+    };
+    expect(knownWorld(atlas)).toEqual([
+      "Known world, the outdoor maps that you visited, the first visit first:",
+      "- Town: edges: north to Route1, south blocked (water), east not visited. Buildings entered: door at (3, 4), to Town_Mart. 1 door not entered. 2 unseen cells left. Fixed obstacles: CUT TREE at (2, 2).",
+      "- Route1: edges: south to Town. Passages: door at (5, 4), to Route1_Gate, a passage through Route1_Gate_2F to Forest. 2 unseen cells left.",
+      "- Forest: edges: none seen. Passages: door at (1, 4), to Route1_Gate_2F, a passage through Route1_Gate to Route1. 2 unseen cells left.",
+    ]);
   });
 });

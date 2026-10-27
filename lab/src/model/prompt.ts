@@ -6,7 +6,7 @@ import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent 
 import type { PartyMon, PartyMove } from "../party";
 import { actionText } from "../protocol";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, sendable } from "./decision";
-import { fullAtlas, localView } from "./extract";
+import { fullAtlas, knownWorld, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, targetLines } from "./targets";
 
@@ -54,7 +54,7 @@ At each decision, you get your Milestones, the next Milestone (the next big step
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it.
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -102,6 +102,8 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
+  const known = asked.kind === "walk" ? knownWorld(asked.overworld.atlas) : [];
+  const world = known.length === 0 ? [] : [...known, ""];
   // The facts that change little come first, so that the providers cache more of the prompt.
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
@@ -123,6 +125,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     `Money: ${observation.money}`,
     bagText(observation.bag),
     "",
+    ...world,
     ...context(asked),
     ...(reflection && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",

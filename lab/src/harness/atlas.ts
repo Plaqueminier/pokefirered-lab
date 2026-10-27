@@ -28,6 +28,8 @@ export type AtlasMap = {
   edges: AtlasEdge[];
   /** An edge of the map goes to another map, seen or not: a building has none. */
   hasEdges: boolean;
+  /** The map type of the ROM is a town, a city or a route. */
+  outside: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];
   obstacles: Obstacle[];
@@ -36,7 +38,7 @@ export type AtlasMap = {
 
 export type Atlas = { maps: AtlasMap[]; lastTalk: { map: string; localId: number } | null };
 
-const UNSEEN = "?";
+export const UNSEEN = "?";
 
 const BLOCK_REASONS: Record<EdgeBlock, string> = { water: "is water. Only a Pokémon that knows SURF can cross water, and you have none" };
 
@@ -289,6 +291,7 @@ function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
       return { side, to: edgesTaken.get(side) ?? null, ...(block ? { blocked: block } : {}) };
     }),
     hasEdges: edgesOf(grid).length > 0,
+    outside: grid.outside,
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
     obstacles: [...obstacles.values()],

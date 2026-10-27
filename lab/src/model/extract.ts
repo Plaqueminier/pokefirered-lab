@@ -1,5 +1,5 @@
 import type { Direction, Obstacle } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn, UNSEEN } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
 import { obstacleRemedy } from "../protocol";
 import { EXITS_GROUP, edgeLabel, isExit, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
@@ -182,6 +182,53 @@ function byDistance(atlas: Atlas, from: string): MapDistance[] {
     .filter((m) => m.name !== from)
     .map((map) => ({ map, distance: distances.get(map.name) ?? Number.POSITIVE_INFINITY }))
     .toSorted((a, b) => a.distance - b.distance);
+}
+
+/** One line for each outdoor map of the Atlas (a town, a city or a route of the ROM), in the order of the first visit. */
+export function knownWorld(atlas: Atlas): string[] {
+  const lines = atlas.maps.filter((m) => m.outside).map((map) => knownMapLine(atlas, map));
+  return lines.length === 0 ? [] : ["Known world, the outdoor maps that you visited, the first visit first:", ...lines];
+}
+
+function knownMapLine(atlas: Atlas, map: AtlasMap): string {
+  const edge = ({ side, to, blocked }: AtlasEdge) => `${side} ${blocked ? `blocked (${blocked})` : to ? `to ${to}` : "not visited"}`;
+  const passages: string[] = [];
+  const buildings: string[] = [];
+  const entered = new Set<string>();
+  for (const warp of map.warps) {
+    if (!warp.to || entered.has(warp.to)) continue;
+    entered.add(warp.to);
+    const { through, outdoor } = beyond(atlas, map.name, warp.to);
+    if (outdoor.length === 0) buildings.push(warpLabel(warp));
+    else passages.push(`${warpLabel(warp)}, a passage${through.length === 0 ? "" : ` through ${through.join(", ")}`} to ${outdoor.join(" and ")}`);
+  }
+  const notEntered = map.warps.filter((w) => !w.to).length;
+  const unseen = [...map.cells].filter((c) => c === UNSEEN).length;
+  return [
+    `- ${map.name}: edges: ${map.edges.map(edge).join(", ") || "none seen"}.`,
+    ...(passages.length === 0 ? [] : [`Passages: ${passages.join("; ")}.`]),
+    ...(buildings.length === 0 ? [] : [`Buildings entered: ${buildings.join("; ")}.`]),
+    ...(notEntered === 0 ? [] : [`${notEntered} door${notEntered === 1 ? "" : "s"} not entered.`]),
+    `${unseen === 0 ? "No" : unseen} unseen cell${unseen === 1 ? "" : "s"} left.`,
+    ...(map.obstacles.length === 0 ? [] : [`Fixed obstacles: ${map.obstacles.map(({ name, x, y }) => `${name} at (${x}, ${y})`).join(", ")}.`]),
+  ].join(" ");
+}
+
+/** The indoor maps after the first one that the exits taken reach from `first`, and the outdoor maps other than `from` at their end. */
+function beyond(atlas: Atlas, from: string, first: string): { through: string[]; outdoor: string[] } {
+  const maps = new Map(atlas.maps.map((m) => [m.name, m]));
+  if (maps.get(first)?.outside) return { through: [], outdoor: [first] };
+  const indoor = [first];
+  const outdoor = new Set<string>();
+  for (const name of indoor) {
+    for (const to of [...(maps.get(name)?.warps ?? []), ...(maps.get(name)?.edges ?? [])].map((e) => e.to)) {
+      const next = to && maps.get(to);
+      if (!next || indoor.includes(next.name)) continue;
+      if (!next.outside) indoor.push(next.name);
+      else if (next.name !== from) outdoor.add(next.name);
+    }
+  }
+  return { through: indoor.slice(1), outdoor: [...outdoor] };
 }
 
 function range(from: number, to: number): number[] {
