@@ -2,7 +2,7 @@
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { type BagPocket, battleItems, depositableItems, sellableItems, walkItems } from "../bag";
-import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
+import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import {
   DIRECTION_STEP,
@@ -441,8 +441,10 @@ export class Harness {
           return this.interactions();
         case "choose":
           return waiting.kind === "choice" ? waiting.options.map((option) => ({ name, option })) : [];
-        case "fight":
-          return game.requireBattle().player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
+        case "fight": {
+          const { player } = game.requireBattle();
+          return struggles(player) ? [{ name, move: 0 }] : player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
+        }
         case "run":
           return game.requireBattle().kind === "wild" ? [{ name }] : [];
         case "use": {

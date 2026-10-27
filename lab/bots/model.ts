@@ -20,7 +20,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "10",
+    version: "11",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };

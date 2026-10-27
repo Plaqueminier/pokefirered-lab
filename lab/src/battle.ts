@@ -1,5 +1,5 @@
 import { battleTurn, type BattleTurn, hpPercent } from "./battle-facts";
-import type { Memory, Ref } from "./memory";
+import type { Memory } from "./memory";
 import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAT_NAMES, type Stats, statusOf } from "./party";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
@@ -34,6 +34,43 @@ const MVSTATE_HANDLE_YES_NO = 4;
 const MVSTATE_SHOW_MOVE_SELECT = 5;
 const SUMMARY_TASK = "Task_InputHandler_SelectOrForgetMove";
 const SUMMARY_READS_INPUT = 2;
+// The volatile states that a battle text tells the player, from include/constants/battle.h.
+const STATUS2_STATES: [bits: number, state: string][] = [
+  [0x7, "confused"],
+  [0x70, "in an uproar"],
+  [0x300, "storing energy (BIDE)"],
+  [0xc00, "rampaging (then confused)"],
+  [0x1000, "locked into its move"],
+  [0xe000, "wrapped"],
+  [0xf0000, "infatuated"],
+  [1 << 20, "pumped up (FOCUS ENERGY)"],
+  [1 << 21, "transformed"],
+  [1 << 22, "must recharge"],
+  [1 << 23, "in a RAGE"],
+  [1 << 24, "behind a SUBSTITUTE"],
+  [1 << 25, "DESTINY BOND"],
+  [1 << 26, "cannot escape"],
+  [1 << 27, "in a NIGHTMARE"],
+  [1 << 28, "cursed"],
+  [1 << 29, "identified (FORESIGHT)"],
+  [1 << 31, "tormented"],
+];
+const STATUS3_STATES: [bits: number, state: string][] = [
+  [1 << 2, "seeded"],
+  [0x18, "its next move hits for sure"],
+  [1 << 6, "in the air"],
+  [1 << 7, "underground"],
+  [1 << 18, "underwater"],
+  [1 << 8, "minimized"],
+  [1 << 9, "charged (CHARGE)"],
+  [1 << 10, "rooted (INGRAIN)"],
+  [0x1800, "drowsy (YAWN)"],
+  [1 << 13, "IMPRISON"],
+  [1 << 14, "GRUDGE"],
+  [1 << 16, "MUD SPORT"],
+  [1 << 17, "WATER SPORT"],
+];
+const STATUS3_PERISH_SONG = 1 << 5;
 
 export type BattleMenu = "battleAction" | "battleMove";
 
@@ -45,7 +82,8 @@ export type PrintedMove = { partyIndex: number; move: number };
 
 type StatStages = Record<(typeof STAGE_NAMES)[number], number>;
 
-export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { statStages: StatStages };
+/** `states` are the volatile states of the battle, for example "seeded" or "confused". */
+export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages };
 
 export type Battle = { kind: "trainer" | "wild"; player: BattleMon & { partyIndex: number }; enemy: BattleMon & { partyIndex: number } };
 
@@ -55,24 +93,29 @@ export type EnemyMon = {
   level: number;
   hpPercent: number;
   status: BattleMon["status"];
+  states: string[];
   statStages: StatStages;
   movesSeen: string[];
   exact?: { hp: number; maxHp: number; stats: Stats };
 };
 
 export function readBattle(mem: Memory, decode: Decode): Battle {
-  const mons = mem.global("gBattleMons");
   return {
     kind: mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_TRAINER ? "trainer" : "wild",
-    player: { ...battleMon(mem, mons.at(PLAYER_BATTLER), decode), partyIndex: battlerPartyIndex(mem, PLAYER_BATTLER) },
-    enemy: { ...battleMon(mem, mons.at(ENEMY_BATTLER), decode), partyIndex: battlerPartyIndex(mem, ENEMY_BATTLER) },
+    player: { ...battleMon(mem, PLAYER_BATTLER, decode), partyIndex: battlerPartyIndex(mem, PLAYER_BATTLER) },
+    enemy: { ...battleMon(mem, ENEMY_BATTLER, decode), partyIndex: battlerPartyIndex(mem, ENEMY_BATTLER) },
   };
 }
 
 export function enemyView(enemy: BattleMon, movesSeen: string[], exact: boolean): EnemyMon {
-  const { species, types, level, hp, maxHp, status, stats, statStages } = enemy;
-  const seen = { species, types, level, hpPercent: hpPercent(hp, maxHp), status, statStages, movesSeen };
+  const { species, types, level, hp, maxHp, status, states, stats, statStages } = enemy;
+  const seen = { species, types, level, hpPercent: hpPercent(hp, maxHp), status, states, statStages, movesSeen };
   return exact ? { ...seen, exact: { hp, maxHp, stats } } : seen;
+}
+
+/** With no PP in all its moves, a Pokémon uses STRUGGLE when FIGHT is chosen (AreAllMovesUnusable in src/battle_util.c). */
+export function struggles(mon: Pick<BattleMon, "moves">): boolean {
+  return mon.moves.length > 0 && mon.moves.every((move) => move.pp === 0);
 }
 
 export function battleMenu(mem: Memory): BattleMenu | null {
@@ -185,7 +228,8 @@ export function battleMenuSlot(mem: Memory, partyIndex: number): number {
   throw new Error(`no slot of the party menu has the Pokémon ${partyIndex}`);
 }
 
-function battleMon(mem: Memory, mon: Ref, decode: Decode): BattleMon {
+function battleMon(mem: Memory, battler: number, decode: Decode): BattleMon {
+  const mon = mem.global("gBattleMons").at(battler);
   const stages = mon.field("statStages");
   const species = mon.field("species").int();
   return {
@@ -196,8 +240,24 @@ function battleMon(mem: Memory, mon: Ref, decode: Decode): BattleMon {
     hp: mon.field("hp").int(),
     maxHp: mon.field("maxHP").int(),
     status: statusOf(mon.field("status1").int()),
+    states: battleStates(mem, battler, mon.field("status2").int(), decode),
     moves: readMoves(mem, decode, mon.field("ppBonuses").int(), (slot) => ({ move: mon.field("moves").at(slot).int(), pp: mon.field("pp").at(slot).int() })),
     stats: readStats(mon),
     statStages: Object.fromEntries(STAGE_NAMES.map((name, i) => [name, stages.at(i + 1).int() - DEFAULT_STAT_STAGE])) as StatStages,
   };
+}
+
+function battleStates(mem: Memory, battler: number, status2: number, decode: Decode): string[] {
+  const status3 = mem.global("gStatuses3").at(battler).int();
+  const disable = mem.global("gDisableStructs").at(battler);
+  const move = (field: string) => nameAt(mem, "gMoveNames", disable.field(field).int(), decode);
+  return [
+    ...STATUS2_STATES.flatMap(([bits, state]) => (status2 & bits ? [state] : [])),
+    ...STATUS3_STATES.flatMap(([bits, state]) => (status3 & bits ? [state] : [])),
+    ...(status3 & STATUS3_PERISH_SONG ? [`PERISH SONG count ${disable.field("perishSongTimer").int()}`] : []),
+    ...(disable.field("disableTimer").int() > 0 ? [`${move("disabledMove")} disabled`] : []),
+    ...(disable.field("encoreTimer").int() > 0 ? [`ENCORE of ${move("encoredMove")}`] : []),
+    ...(disable.field("tauntTimer").int() > 0 ? ["taunted"] : []),
+    ...(disable.field("stockpileCounter").int() > 0 ? [`STOCKPILE ${disable.field("stockpileCounter").int()}`] : []),
+  ];
 }

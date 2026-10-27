@@ -1,5 +1,5 @@
 import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
-import type { BattleMenu } from "../battle";
+import { type BattleMenu, struggles } from "../battle";
 import type { Game } from "../game";
 import type { NamingScreen } from "../menus";
 import { isHmMove } from "../party";
@@ -197,8 +197,11 @@ export class MenuDriver {
 
   fight(move: number): Outcome & Partial<Texts> {
     const { game } = this;
-    const chosen = game.requireBattle().player.moves[move];
+    const { player } = game.requireBattle();
+    const chosen = player.moves[move];
     if (!chosen) return impossible(`the Pokémon has no move ${move}`);
+    // The game opens no move menu: FIGHT plays STRUGGLE at once.
+    if (struggles(player)) return game.waitingFor().kind === "battleAction" ? this.turn("battleAction", FIGHT_CURSOR) : impossible("the move menu is open, but no move has PP");
     if (chosen.pp === 0) return impossible(`${chosen.name} has no PP`);
     if (game.waitingFor().kind === "battleAction") {
       const opened = this.select("battleAction", FIGHT_CURSOR);

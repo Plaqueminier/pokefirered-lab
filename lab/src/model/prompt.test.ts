@@ -140,8 +140,8 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
     atlas: { maps: [], lastTalk: null },
     battle: {
       kind: "wild",
-      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", stats, moves: [], statStages: stages, partyIndex: 0 },
-      enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", statStages: stages, movesSeen: [] },
+      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", states: [], stats, moves: [], statStages: stages, partyIndex: 0 },
+      enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", states: [], statStages: stages, movesSeen: [] },
       inPc: pc,
       fights: [],
       lastTurn: null,
@@ -181,14 +181,15 @@ describe("the Bag", () => {
 });
 
 describe("the battle facts", () => {
-  test("each fight shows its effect on the foe, STAB and a damage estimate from the formula of the game; the prompt shows the last turn and the moves used on this foe", () => {
+  test("each fight shows its effect on the foe, STAB and a damage estimate from the formula of the game, and a move with no PP shows no PP and no estimate; the prompt shows the last turn and the moves used on this foe", () => {
     const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
     const moves = [
       { name: "BUBBLE", type: "WATER", power: 20, accuracy: 100, pp: 29, maxPp: 30, description: "" },
       { name: "TAIL WHIP", type: "NORMAL", power: null, accuracy: 100, pp: 30, maxPp: 30, description: "" },
       { name: "SEISMIC TOSS", type: "FIGHTING", power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
+      { name: "WATER GUN", type: "WATER", power: 40, accuracy: 100, pp: 0, maxPp: 25, description: "" },
     ];
-    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
+    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
     const bulbasaur = { ...squirtle, species: "BULBASAUR", nickname: "BULBASAUR", types: ["GRASS", "POISON"], hp: 20, stats: { attack: 11, defense: 11, speed: 10, spAttack: 13, spDefense: 13 }, moves: [] };
     const now: Battle = { kind: "trainer", player: squirtle, enemy: bulbasaur };
     const before: Battle = { kind: "trainer", player: { ...squirtle, hp: 22 }, enemy: { ...bulbasaur, hp: 22 } };
@@ -210,6 +211,7 @@ describe("the battle facts", () => {
         "- fight 0: BUBBLE (WATER, power 20, accuracy 100, PP 29/30). On the foe: not very effective ×½, STAB, 5% to 10% of its HP now, 10 to 20 hits to KO.",
         "- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)",
         "- fight 2: SEISMIC TOSS (FIGHTING, power ---, accuracy 100, PP 20/20). On the foe: normal effect ×1.",
+        "- fight 3: WATER GUN (WATER, power 40, accuracy 100, PP 0/25). No PP: you cannot use it.",
       ].join("\n"),
     );
     expect(prompt).toContain("Last turn: SQUIRTLE moved first. SQUIRTLE used BUBBLE: not very effective. Foe BULBASAUR used TACKLE: a critical hit. Your SQUIRTLE: HP 22/22 → 15/22. Foe BULBASAUR: HP 100% → 90%.");
@@ -220,6 +222,31 @@ describe("the battle facts", () => {
     expect(userPrompt(owned, askedOf(owned, false)!, [], NO_TURN)).toContain("Moves seen: none.\nYou own 2 PIDGEY: 1 in the party, 1 in the PC.");
     const none = wildPidgey();
     expect(userPrompt(none, askedOf(none, false)!, [], NO_TURN)).toContain("Moves seen: none.\nYou own no PIDGEY.");
+  });
+
+  test("each side of a battle shows its states after its status", () => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    observation.battle.enemy.states = ["seeded", "confused"];
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("Your SQUIRTLE: level 6, HP 20/22, status none. States: none. Stats:");
+    expect(prompt).toContain("Foe PIDGEY (NORMAL, FLYING): level 3, HP 100%, status none. States: seeded, confused. Stat stages:");
+  });
+
+  test("when no move has PP, the fight line tells that the Pokémon uses STRUGGLE", () => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    observation.battle.player.moves = [{ name: "TACKLE", type: "NORMAL", power: 35, accuracy: 95, pp: 0, maxPp: 35, description: "" }];
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain(
+      "Actions:\n- fight 0: no move of SQUIRTLE has PP, so SQUIRTLE uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.\n- run",
+    );
+  });
+
+  test("at a battle action, the actions have no press", () => {
+    const observation = wildPidgey();
+    const asked = askedOf(observation, false)!;
+    expect(userPrompt(observation, asked, [], NO_TURN)).not.toContain("- press");
+    expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use fight, run, use or zoom');
   });
 });
 

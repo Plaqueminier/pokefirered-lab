@@ -1,4 +1,5 @@
 import type { BagItem, BagPocket } from "../bag";
+import { struggles } from "../battle";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
@@ -72,7 +73,7 @@ Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same
 
 At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
 
-In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. You also get the last turn and the moves that you used on this foe, with their results.
+In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -484,9 +485,11 @@ function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()):
 }
 
 function fights({ player, fights: facts }: BattleState): string[] {
+  if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
   return player.moves.map((move, i) => {
     const fact = facts[i];
-    return `- fight ${i}: ${move.name} (${moveText(move)})${fact ? `. On the foe: ${fightText(fact)}.` : ""}`;
+    const about = move.pp === 0 ? ". No PP: you cannot use it." : fact ? `. On the foe: ${fightText(fact)}.` : "";
+    return `- fight ${i}: ${move.name} (${moveText(move)})${about}`;
   });
 }
 
@@ -508,8 +511,8 @@ function battleLines(battle: BattleState, party: PartyMon[]): string[] {
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
     `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
-    `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
-    `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
+    `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
+    `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. States: ${enemy.states.join(", ") || "none"}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
     ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),

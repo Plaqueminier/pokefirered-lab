@@ -2,7 +2,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { modelSettings } from "../model/openrouter";
-import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
+import { CACHE_DIR } from "../core";
+import { Memory } from "../memory";
+import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
+import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness, must } from "./harness";
@@ -76,7 +79,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "10", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "11", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -239,7 +242,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(battle.player.hp).toBe(harness.observe().party[0].hp);
     expect(battle.player.stats.defense).toBeWithin(11, 14);
     expect(battle.player.statStages).toEqual(NO_STAGES);
-    expect(battle.enemy).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
+    expect(battle.enemy).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", states: [], statStages: NO_STAGES, movesSeen: [] });
     expect(harness.availableActions()).toEqual([
       { name: "fight", move: 0 },
       { name: "fight", move: 1 },
@@ -280,6 +283,21 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.rawInputs).toBe(4);
   });
 
+  test("with no PP in all its moves, the Pokémon uses STRUGGLE on fight; a seeded foe shows its state", async () => {
+    const run = await Run.open();
+    const harness = await Harness.open({}, run);
+    await toRivalBattle(harness);
+    const mem = new Memory(run.core, await loadSymbols(ROM_FILE.replace(/\.gba$/, ".elf"), CACHE_DIR));
+    // The test writes the memory: no PP in the 2 moves of SQUIRTLE, and STATUS3_LEECHSEED on the foe.
+    run.core.patch16(mem.global("gBattleMons").at(0).field("pp").addr, 0);
+    run.core.patch16(mem.global("gStatuses3").at(1).addr, 1 << 2);
+    expect(battleOf(harness).enemy.states).toEqual(["seeded"]);
+    expect(harness.availableActions()).toEqual([{ name: "fight", move: 0 }]);
+    // The text of the selection waits for a key: the texts of the turn come with the next readText.
+    expect(await harness.fight(1)).toMatchObject({ status: "done" });
+    expect(await harness.readText()).toMatchObject({ status: "done", text: expect.arrayContaining(["SQUIRTLE has no moves left!", "SQUIRTLE used STRUGGLE!"]) });
+  });
+
   test("in a wild battle, availableActions lists run, and run leaves the battle", async () => {
     const harness = await Harness.open();
     await starter.play(harness);
@@ -313,7 +331,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const harness = await Harness.open({ knowledge: "full" });
     await toRivalBattle(harness);
     const { exact, ...seen } = battleOf(harness).enemy;
-    expect(seen).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", statStages: NO_STAGES, movesSeen: [] });
+    expect(seen).toEqual({ species: "BULBASAUR", types: ["GRASS", "POISON"], level: 5, hpPercent: 100, status: "none", states: [], statStages: NO_STAGES, movesSeen: [] });
     if (!exact) throw new Error("no exact values at the full level");
     expect(exact.hp).toBe(exact.maxHp);
     expect(exact.maxHp).toBeWithin(19, 22);

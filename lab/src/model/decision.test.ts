@@ -83,7 +83,7 @@ describe("readAction", () => {
 
   test("press Start is not read: its reason tells that there is no Start menu, names use and the items of the Bag that work now, or tells that none works", () => {
     const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
-    expect(() => readAction("press Start", { kind: "battleAction", party, battle, items: [potion] })).toThrow("there is no Start menu: write use <item> to use an item of your Bag; the items that work now: POTION");
+    expect(() => readAction("press Start", { kind: "battleMove", party, battle, items: [potion] })).toThrow("there is no Start menu: write use <item> to use an item of your Bag; the items that work now: POTION");
     expect(() => readAction("press(start)", walk(3))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag has no item that works now");
     expect(() => readAction("press Start", walk(3, party, true))).toThrow("there is no Start menu: write use <item> to use an item of your Bag; your Bag is empty");
   });
