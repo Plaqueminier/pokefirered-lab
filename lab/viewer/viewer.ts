@@ -69,6 +69,7 @@ const runsPanel = new RunsPanel(
     costLimit: $<HTMLInputElement>("cost-limit"),
     reasoning: $<HTMLSelectElement>("reasoning"),
     starter: $<HTMLSelectElement>("starter"),
+    stopAtWhiteout: $<HTMLInputElement>("stop-at-whiteout"),
     from: $<HTMLSelectElement>("run-from"),
     start: $<HTMLButtonElement>("bot-start"),
     stop: $<HTMLButtonElement>("run-stop"),

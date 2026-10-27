@@ -45,11 +45,12 @@ const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory t
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
-export function systemPrompt(starterRule: string): string {
+/** `rules`: the rules of this Run, for example the starter and the stop at a whiteout. */
+export function systemPrompt(rules: string): string {
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
-${starterRule}
+${rules}
 
 At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 

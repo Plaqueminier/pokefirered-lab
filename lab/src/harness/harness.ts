@@ -73,9 +73,10 @@ export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
-export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress";
+export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
-export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number };
+/** `lastText`: the last text of the game, at the end reason `unknown screen`. */
+export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number; lastText?: string };
 
 /** `since`: the number of events of the Run at the last progress. */
 export type NoProgress = { stuck: number; since: number };
@@ -189,13 +190,17 @@ export type Bot = {
 };
 
 class RunEnd extends Error {
-  constructor(readonly reason: EndReason) {
+  constructor(
+    readonly reason: EndReason,
+    readonly lastText?: string,
+  ) {
     super(`the Run ends: ${reason}`);
   }
 }
 
 class RunLimits {
   #noProgress: NoProgress;
+  #whitedOut = false;
 
   /** The cost limit counts the Model calls from `firstEvent`: a continued Run does not count the calls of its parent. */
   constructor(
@@ -205,6 +210,7 @@ class RunLimits {
     private readonly costLimit: number,
     private progress: number,
     private readonly firstEvent: number,
+    private readonly stopAtWhiteout: boolean,
   ) {
     this.#noProgress = { stuck: 0, since: firstEvent };
   }
@@ -213,12 +219,18 @@ class RunLimits {
     if (frame >= this.lastFrame) throw new RunEnd("frame budget");
   }
 
+  // The battle and the field poison both white out through CB2_WhiteOut. The Run ends after the action, at the walk in the Pokémon Center.
+  afterFrame(whitingOut: boolean): void {
+    this.#whitedOut ||= whitingOut;
+  }
+
   get noProgress(): NoProgress {
     return this.#noProgress;
   }
 
   atAction(milestones: Milestone[], progress: number, decisionPoint: boolean, events: number): void {
     if (milestones.includes(this.goal)) throw new RunEnd("goal");
+    if (this.#whitedOut && this.stopAtWhiteout) throw new RunEnd("whiteout");
     if (progress > this.progress) this.#noProgress = { stuck: 0, since: events };
     else if (decisionPoint) this.#noProgress = { ...this.#noProgress, stuck: this.#noProgress.stuck + 1 };
     // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
@@ -331,20 +343,28 @@ export class Harness {
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
     const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
-    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.progress(), this.#events.length);
+    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.progress(), this.#events.length, bot.model?.stopAtWhiteout ?? false);
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
+    let lastText: string | undefined;
     let result: RunResult | null = null;
     try {
       await bot.play(this);
     } catch (error) {
       if (!(error instanceof RunEnd)) throw error;
       endReason = error.reason;
+      lastText = error.lastText;
     } finally {
-      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs };
+      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(lastText === undefined ? {} : { lastText }) };
       this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}) }, result };
     }
     return result;
+  }
+
+  /** A Bot ends its Run at a screen that it cannot play. The Run result keeps the last text of the game. */
+  end(reason: "unknown screen"): never {
+    const texts = this.#events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
+    throw new RunEnd(reason, texts.at(-1) ?? "");
   }
 
   /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
@@ -652,6 +672,7 @@ export class Harness {
   private advance(keys: number): boolean {
     if (this.#phase.kind === "playing") this.#phase.limits.beforeFrame(this.frame);
     this.#run.runFrame(keys);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterFrame(this.#run.game.whitingOut());
     this.#buttons.push(keys);
     const events = this.#watch.onFrame(this.frame);
     this.#events.push(...events);

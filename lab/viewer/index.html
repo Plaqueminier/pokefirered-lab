@@ -375,11 +375,12 @@
             <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
             <select id="reasoning" title="Reasoning effort of the model bot"></select>
             <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
+            <label title="The Run of the model bot ends when all the Pokémon of the party faint"><input id="stop-at-whiteout" type="checkbox" checked /> stop at a whiteout</label>
             <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
             <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. With "stop at a whiteout" (on by default), the Run ends with <code>whiteout</code> when all the Pokémon of the party faint. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
         </section>
         <section>
           <div class="panel-head">
@@ -545,6 +546,8 @@
             <dt><code>cost limit</code></dt><dd>the Model calls cost more than the cost limit (model bot)</dd>
             <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000)</dd>
             <dt><code>no progress</code></dt><dd>the stuck counter reaches N, when the Run gives N</dd>
+            <dt><code>whiteout</code></dt><dd>all the Pokémon of the party faint, in or out of a battle (model bot with "stop at a whiteout"), after the action that reads the whiteout</dd>
+            <dt><code>unknown screen</code></dt><dd>the model bot pressed B for 3 screens in a row that no action covers, with no Decision point between them. The result keeps the last text of the game.</dd>
           </dl>
         </section>
         <section class="w4">
@@ -568,7 +571,7 @@
           <h2>Bots</h2>
           <dl>
             <dt>model</dt>
-            <dd>plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. At each Decision point, it asks an AI model for the action (a <b>Model call</b>). The code reads the texts alone. The next section tells what the model sees and does.</dd>
+            <dd>plays past the first rival battle, to the cost limit, a user stop, a whiteout, an unknown screen or <code>badge-8</code>. At each Decision point, it asks an AI model for the action (a <b>Model call</b>). The code reads the texts alone. The next section tells what the model sees and does.</dd>
           </dl>
           <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>
           <table id="doc-bots">

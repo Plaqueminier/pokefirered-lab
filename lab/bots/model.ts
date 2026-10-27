@@ -1,7 +1,7 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type RunEvent, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
@@ -13,6 +13,9 @@ const MAX_UNREADABLE = 3;
 // After this number of impossible actions in a row, a new conversation starts from a new prompt.
 const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
+// After this number of screens in a row that no action covers, with no Model call between them, the Run ends.
+const MAX_UNCOVERED = 3;
+const WHITEOUT_RULE = "If all your Pokémon faint, the Run ends.";
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
@@ -23,6 +26,12 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
+}
+
+/** The model bot pressed B for MAX_UNCOVERED screens that no action covers, with no Model call between them: it makes a Model call at each Decision point. */
+export function unknownScreen(events: readonly RunEvent[]): boolean {
+  const since = events.slice(events.findLastIndex((e) => e.type === "model") + 1);
+  return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
 function starterRule(starter: Starter): string {
@@ -43,7 +52,7 @@ class ModelPlay {
     private readonly settings: ModelSettings,
     private readonly ask: ModelClient,
   ) {
-    this.#system = systemPrompt(starterRule(settings.starter));
+    this.#system = systemPrompt([starterRule(settings.starter), ...(settings.stopAtWhiteout ? [WHITEOUT_RULE] : [])].join("\n"));
   }
 
   async play(): Promise<void> {
@@ -84,6 +93,7 @@ class ModelPlay {
   private async readText(): Promise<void> {
     if ((await this.harness.readText()).status !== "impossible") return;
     for (let i = 0; i < B_PRESSES; i++) await this.harness.press("B");
+    if (unknownScreen(this.harness.events)) this.harness.end("unknown screen");
   }
 
   private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {

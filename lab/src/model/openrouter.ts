@@ -27,7 +27,7 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   if (temperature !== null && !(temperature >= 0 && temperature <= MAX_TEMPERATURE)) throw new Error(`the temperature must be from 0 to ${MAX_TEMPERATURE}`);
   const starter = STARTERS.find((name) => name === (given.starter ?? DEFAULT_STARTER));
   if (!starter) throw new Error(`the starter must be ${STARTERS.join(", ")}, not "${given.starter}"`);
-  return { id: given.id || DEFAULT_MODEL, costLimit, reasoning, temperature, starter };
+  return { id: given.id || DEFAULT_MODEL, costLimit, reasoning, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true };
 }
 
 type ChatReply = {
