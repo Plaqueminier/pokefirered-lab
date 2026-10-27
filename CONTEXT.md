@@ -48,6 +48,10 @@ _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
+**Unusual call**:
+A **Model call** that the **Viewer** marks with one or more flags: an answer that the Bot cannot read, an `impossible` or `blocked` action, a **Reflection turn** or a **Review turn**, a cost, a latency or prompt tokens above 3 times the median of its **Run**, a conversation with more turns (`zoom`, `viewAtlas`), a change of the **Mission** or the **Objective**, or the same action 3 times in a row with no progress. The **Viewer** calculates the flags from the **Run record**: they are not in it.
+_Avoid_: bad call, error (an error is only one of the flags)
+
 **Memory tree**:
 The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something, and that nobody changes later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
@@ -111,6 +115,10 @@ _Avoid_: flag (a flag is one bit of the save), achievement
 The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
+**Game event**:
+A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a whiteout. Each one has typed fields (species, item, count, money before and after, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
+_Avoid_: log line, fact (a fact is a line of the prompt)
+
 **Continued Run**:
 A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit counts its own **Model calls** only, and its model can be another one.
 _Avoid_: resumed run, restart, savestate
@@ -120,7 +128,7 @@ What a **Run** gives at its end: the end reason, the frames, the **Milestones** 
 _Avoid_: score, outcome
 
 **Viewer**:
-The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. It does not emulate.
+The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. It does not emulate. It has three tabs: Lab (the screen and the panels), Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
 _Avoid_: emulator, web player
 
 ## Relationships
