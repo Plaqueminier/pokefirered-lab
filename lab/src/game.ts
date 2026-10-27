@@ -16,7 +16,7 @@ import {
   readBattle,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
-import { multichoice, type NamingScreen, namingScreen, type PartyMenu, partyMenu, startMenu } from "./menus";
+import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
 import { nameAt, type PartyMon, readParty } from "./party";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -74,8 +74,6 @@ export const DIRECTION_STEPS = Object.entries(DIRECTION_STEP) as [Direction, [nu
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 const T_NOT_MOVING = 0;
-// The enum in script.c is RUNNING, WAITING, SHUTDOWN.
-const SCRIPT_CONTEXT_SHUTDOWN = 2;
 const SCRIPT_MODE_NATIVE = 2;
 // Map script tables (script.c): entries of a tag byte and a pointer; frame table rows of two variables and a pointer.
 const MAP_SCRIPT_ON_FRAME_TABLE = 2;
@@ -97,7 +95,7 @@ export type Camera = { x: number; y: number };
 export type WaitingFor =
   | { kind: "walk" }
   | { kind: "text" }
-  | ({ kind: "choice" } & Choice)
+  | ({ kind: "choice"; columns: number } & Choice)
   | { kind: "battleAction" }
   | { kind: "battleMove" }
   | { kind: "partyPick" }
@@ -285,8 +283,10 @@ export class Game {
     if (list) return { kind: "shopMenu", items: list.items, screen: "buyList" };
     const shop = this.shopMenu();
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
-    const choice = this.prompts.choice() ?? multichoice(this.mem, this.decode);
-    if (choice) return { kind: "choice", ...choice };
+    const menu = this.prompts.choice() ?? multichoice(this.mem, this.decode);
+    if (menu) return { kind: "choice", ...menu, columns: 1 };
+    const grid = multichoiceGrid(this.mem, this.decode);
+    if (grid) return { kind: "choice", ...grid };
     if (this.textWaits()) return { kind: "text" };
     return callback1 === "CB1_Overworld" && this.canWalk() ? { kind: "walk" } : { kind: "busy" };
   }
@@ -331,7 +331,7 @@ export class Game {
     if (this.partyMenu()?.kind === "pick") return { kind: "partyPick" };
     if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem)) return { kind: "text" };
     const yesNo = battleYesNoCursor(this.mem);
-    if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo };
+    if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo, columns: 1 };
     return { kind: battleMenu(this.mem) ?? "busy" };
   }
 
@@ -508,6 +508,10 @@ export class Game {
 
   battleScreen(): boolean {
     return this.context().callback2 === "BattleMainCB2";
+  }
+
+  whitingOut(): boolean {
+    return this.context().callback2 === "CB2_WhiteOut";
   }
 
   private context(): GameState["context"] {

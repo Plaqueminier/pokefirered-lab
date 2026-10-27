@@ -8,6 +8,9 @@ const YES_NO_TIMER = 2;
 const YES_NO_INPUT_DELAY = 5;
 // The field message box is window 0 (sStandardTextBox_WindowTemplates, new_menu_helpers.c); text printer n prints in window n.
 const FIELD_MESSAGE_WINDOW = 0;
+const WHITE_OUT_TASK = "Task_RushInjuredPokemonToCenter";
+// tWindowId (field_screen_effect.c): it is 0 until the first frame of the task adds the window, and window 0 is the field message box.
+const WHITE_OUT_WINDOW_DATA = 1;
 // B_WIN_MSG and B_WIN_OAK_OLD_MAN, Oak's box in the first battle (constants/battle.h).
 const BATTLE_MESSAGE_WINDOWS = [0, 24];
 // Long battle texts overflow the 300 bytes of gDisplayedStringBattle (BattleStringExpandPlaceholders).
@@ -78,11 +81,11 @@ export class Prompts {
   ) {}
 
   fieldPrinterWaits(): boolean {
-    return this.printerWaits(FIELD_MESSAGE_WINDOW);
+    return this.fieldWindows().some((w) => this.printerWaits(w));
   }
 
   fieldPrinterActive(): boolean {
-    return this.printerActive(FIELD_MESSAGE_WINDOW);
+    return this.fieldWindows().some((w) => this.printerActive(w));
   }
 
   choice(): Choice | null {
@@ -107,7 +110,19 @@ export class Prompts {
 
   fieldMessages(): Messages {
     const shown = this.fieldMessageBoxShown();
-    return { onScreen: shown ? [FIELD_MESSAGE_WINDOW] : [], printing: this.printingIn([FIELD_MESSAGE_WINDOW]), boxClosed: !shown };
+    const whiteOut = this.whiteOutWindow();
+    const onScreen = [...(shown ? [FIELD_MESSAGE_WINDOW] : []), ...(whiteOut === null ? [] : [whiteOut])];
+    return { onScreen, printing: this.printingIn(this.fieldWindows()), boxClosed: !shown };
+  }
+
+  private whiteOutWindow(): number | null {
+    const window = activeTask(this.mem, WHITE_OUT_TASK)?.field("data").at(WHITE_OUT_WINDOW_DATA).int();
+    return window === undefined || window === FIELD_MESSAGE_WINDOW ? null : window;
+  }
+
+  private fieldWindows(): number[] {
+    const whiteOut = this.whiteOutWindow();
+    return whiteOut === null ? [FIELD_MESSAGE_WINDOW] : [FIELD_MESSAGE_WINDOW, whiteOut];
   }
 
   // The battle message box stays on the screen for the whole battle.

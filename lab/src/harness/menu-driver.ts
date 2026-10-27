@@ -66,6 +66,22 @@ function gridKey(cursor: number, target: number): number {
   return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
 }
 
+type Cell = { row: number; column: number };
+
+/** The key that moves a cursor of a grid toward the target: along the `first` axis until it matches, then along the other axis. */
+function towardCell(at: Cell, target: Cell, first: "row" | "column"): number {
+  const rowKey = toward(target.row, Keys.Down, Keys.Up)(at.row);
+  const columnKey = toward(target.column, Keys.Right, Keys.Left)(at.column);
+  const aligned = first === "row" ? at.row === target.row : at.column === target.column;
+  const [firstKey, secondKey] = first === "row" ? [rowKey, columnKey] : [columnKey, rowKey];
+  return aligned ? secondKey : firstKey;
+}
+
+function choiceKey(target: number, columns: number): (at: number) => number {
+  const cell = (index: number): Cell => ({ row: Math.floor(index / columns), column: index % columns });
+  return (at) => towardCell(cell(at), cell(target), "column");
+}
+
 type Sale = { place: BagPlace; refusal: null } | { place: null; refusal: string };
 
 function sale(item: string, place: BagPlace | null): Sale {
@@ -100,6 +116,8 @@ class MessageReader {
   private messages: Messages;
   private pressedOnce = false;
   private lastWindow: number | null = null;
+  // The texts of a whiteout close their box between them: after a whiteout, only the end of the texts ends the reading.
+  private sawWhiteOut = false;
   closedAfterPress = false;
 
   constructor(private readonly game: Game) {
@@ -115,7 +133,9 @@ class MessageReader {
     const before = this.messages.printing;
     this.messages = this.game.messages();
     for (const window of this.messages.printing) if (!before.includes(window)) this.push(window);
-    if (this.pressedOnce && this.messages.boxClosed) this.closedAfterPress = true;
+    if (this.game.whitingOut()) this.sawWhiteOut = true;
+    const closedNow = this.pressedOnce && this.messages.boxClosed && !this.sawWhiteOut;
+    this.closedAfterPress = this.closedAfterPress || closedNow;
   }
 
   textBeforeWaitingText(): string[] {
@@ -161,7 +181,7 @@ export class MenuDriver {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
-    const moved = this.moveCursor(target, cursor, toward(target, Keys.Down, Keys.Up));
+    const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns));
     return moved.status === "done" ? this.input(Keys.A) : moved;
   }
 
@@ -339,7 +359,7 @@ export class MenuDriver {
     const direction = (at: number) => {
       const [atX, atY] = [at % NAMING_CURSOR_STRIDE, Math.floor(at / NAMING_CURSOR_STRIDE)];
       if (atX === screen.columns) return Keys.Left;
-      return atY !== y ? toward(y, Keys.Down, Keys.Up)(atY) : toward(x, Keys.Right, Keys.Left)(atX);
+      return towardCell({ row: atY, column: atX }, { row: y, column: x }, "row");
     };
     const moved = this.moveMenuCursor(y * NAMING_CURSOR_STRIDE + x, cursor, direction);
     if (moved.status !== "done") return moved;

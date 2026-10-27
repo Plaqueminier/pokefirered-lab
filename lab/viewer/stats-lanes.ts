@@ -1,6 +1,6 @@
 import { REFLECTION_EVERY } from "../src/model/decision";
 import { GBA_FPS } from "../src/protocol";
-import { dollars } from "./runs";
+import { dollars, tokens } from "./runs";
 import type { Call, Span, StatsView } from "./stats-panel";
 
 const PLOT_LEFT = 118;
@@ -33,6 +33,7 @@ const LANES: Lane[] = [
   { name: "Areas", height: 38, model: false, draw: areasLane },
   { name: "Cost", height: 90, model: true, draw: costLane },
   { name: "Stuck", height: 60, model: true, draw: stuckLane },
+  { name: "Prompt tokens", height: 50, model: true, draw: promptLane },
   { name: "Model calls", height: 22, model: true, draw: callsLane },
   { name: "Played actions", height: 40, model: false, draw: playedLane },
   { name: "Summary calls", height: 16, model: true, draw: summariesLane },
@@ -155,8 +156,12 @@ function costLane({ view, scale: { x }, top, height, costLimit }: Plot): string 
   return parts.join("");
 }
 
+function callsWith<K extends "stuck" | "prompt">(view: StatsView, key: K): (Call & Record<K, number>)[] {
+  return view.calls.filter((c): c is Call & Record<K, number> => c[key] !== null);
+}
+
 function stuckLane({ view, scale: { x, end }, top, height }: Plot): string {
-  const known = view.calls.filter((c): c is Call & { stuck: number } => c.stuck !== null);
+  const known = callsWith(view, "stuck");
   if (known.length === 0) return `<text x="${x(0) + 6}" y="${top + 34}">no Stuck counter in this Run record (a model bot before version 4)</text>`;
   const max = Math.max(...known.map((c) => c.stuck));
   const now = known[known.length - 1].stuck;
@@ -177,6 +182,18 @@ function stuckLane({ view, scale: { x, end }, top, height }: Plot): string {
   }
   parts.push(`<text class="stuck-now ${stuckLevel(now)}" x="0" y="${top + 38}">${now}</text><text x="${8 + String(now).length * 12}" y="${top + 38}">now</text>`);
   parts.push(`<text class="stuck-max ${stuckLevel(max)}" x="0" y="${top + 54}">max ${max}</text>`);
+  return parts.join("");
+}
+
+function promptLane({ view, scale: { x }, top, height }: Plot): string {
+  const known = callsWith(view, "prompt");
+  if (known.length === 0) return `<text x="${x(0) + 6}" y="${top + 28}">no prompt tokens in this Run record</text>`;
+  const max = Math.max(...known.map((c) => c.prompt));
+  const y = (count: number) => top + height - (count / (max * 1.1)) * height;
+  const path = known.map((c, i) => `${i === 0 ? "M" : "L"} ${x(c.frame)} ${y(c.prompt)}`).join(" ");
+  const parts = [`<path class="prompt" d="${path}"/>`];
+  for (const c of known) parts.push(`<circle class="prompt-dot" cx="${x(c.frame)}" cy="${y(c.prompt)}" r="2.5" data-tip="prompt of ${tokens(c.prompt)} tokens at ${clock(c.frame)}"/>`);
+  parts.push(`<text class="prompt-now" x="0" y="${top + 32}">${tokens(known[known.length - 1].prompt)} now</text><text x="0" y="${top + 46}">max ${tokens(max)}</text>`);
   return parts.join("");
 }
 

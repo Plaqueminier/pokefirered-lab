@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "6", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "7", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -341,7 +341,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       status: "done",
       text: [BULBASAUR_QUESTION],
     });
-    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0 });
+    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0, columns: 1 });
     expect(await harness.choose("MAYBE")).toMatchObject({ status: "impossible", frames: 0 });
     expect(await harness.choose("NO")).toMatchObject({ status: "done" });
     expect(harness.observe().waitingFor).toEqual({ kind: "walk" });
@@ -602,7 +602,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("Harness on th
       if (turn === 20) throw new Error("SHELL does not faint");
       await (harness.observe().waitingFor.kind === "battleAction" ? harness.fight(0) : harness.readText());
     }
-    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0 });
+    expect(harness.observe().waitingFor).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0, columns: 1 });
     expect(await harness.choose("YES")).toMatchObject({ status: "done" });
     expect(harness.observe().waitingFor).toEqual({ kind: "partyPick" });
     const squirtle = harness.observe().party.findIndex((mon) => mon.nickname === "SQUIRTLE");
@@ -674,9 +674,47 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     must(await harness.goTo(7, 4, "ViridianCity_PokemonCenter_1F"));
     must(await harness.interact(7, 3));
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Welcome to our POKéMON CENTER! Would you like me to heal your POKéMON back to perfect health?"] });
-    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0 });
+    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["YES", "NO"], cursor: 0, columns: 1 });
     must(await harness.choose("YES"));
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Thank you for waiting. We've restored your POKéMON to full health.", "We hope to see you again!"] });
     expect(harness.waitingFor().kind).toBe("walk");
+  });
+});
+
+const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {
+  test("after a whiteout, readText reads the texts through the warp to the Pokémon Center and ends at the walk there", async () => {
+    const harness = await Harness.open({ startSave: WHITEOUT_SAVE });
+    expect(await harness.goTo(26, 26)).toMatchObject({ status: "interrupted", reason: "script" });
+    const before = harness.frame;
+    expect(await harness.readText()).toMatchObject({
+      status: "done",
+      text: [
+        "SQUIRTLE fainted…",
+        "PLOK is out of usable POKéMON! PLOK panicked and lost ¥48… … … … … PLOK whited out!",
+        "PLOK scurried to a POKéMON CENTER, protecting the exhausted and fainted POKéMON from further harm…",
+        "First, you should restore your POKéMON to full health.",
+        "Your POKéMON have been healed to perfect health. If your POKéMON's energy, HP, is down, please come see us. If you're planning to go far in the field, you should buy some POTIONS at the POKéMON MART. We hope you excel!",
+      ],
+    });
+    expect(harness.frame - before).toBeLessThan(3600);
+    expect(harness.observe()).toMatchObject({ map: { name: "ViridianCity_PokemonCenter_1F" }, waitingFor: { kind: "walk" }, party: [{ hp: 22, maxHp: 22, status: "none" }] });
+  });
+});
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at the school of Viridian City", () => {
+  test("the blackboard of the school asks with a grid menu: it is a choice with its 6 options, and choose FRZ moves the cursor right and down and reads the topic", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    must(await harness.goTo(5, 2, "ViridianCity_School"));
+    must(await harness.interact(5, 1));
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["The blackboard lists POKéMON STATUS problems during battles.", "Which topic do you want to read?"] });
+    expect(harness.waitingFor()).toEqual({ kind: "choice", options: ["SLP", "PSN", "PAR", "BRN", "FRZ", "EXIT"], cursor: 0, columns: 3 });
+    must(await harness.choose("FRZ"));
+    expect(await harness.readText()).toMatchObject({
+      status: "done",
+      text: ["A frozen POKéMON becomes helplessly immobile. It stays frozen even after the battle ends. Use ICE HEAL to thaw out the suffering POKéMON.", "Which topic do you want to read?"],
+    });
+    expect(harness.waitingFor()).toMatchObject({ kind: "choice", cursor: 0 });
   });
 });

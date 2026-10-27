@@ -11,6 +11,10 @@ export function dollars(cost: number): string {
   return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
 }
 
+export function tokens(count: number): string {
+  return count.toLocaleString("en-US");
+}
+
 function runState(run: RunSummary): string {
   if (run.playing) return run.stopAsked ? "stops…" : "plays";
   if (run.error) return `error: ${run.error}`;

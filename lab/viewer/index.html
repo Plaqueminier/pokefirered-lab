@@ -235,6 +235,9 @@
       .stats-lanes .reflection { stroke: var(--violet); stroke-dasharray: 5 4; }
       .stats-lanes text.reflection-text { fill: var(--violet); }
       .stats-lanes .reflection-mark { fill: var(--violet); }
+      .stats-lanes .prompt { fill: none; stroke: var(--blue); stroke-width: 1.5; }
+      .stats-lanes .prompt-dot { fill: var(--blue); }
+      .stats-lanes text.prompt-now { fill: var(--blue); }
       .stats-lanes .call { stroke: var(--blue); }
       .stats-lanes .call.unreadable { stroke: var(--bad); stroke-width: 2; }
       .stats-lanes .played { stroke-width: 2; }
@@ -251,6 +254,7 @@
       .stats-card .interrupted { color: var(--blue); }
       .stats-card .done { color: var(--ok); }
       .stats-head .violet, .stats-card .violet { color: var(--violet); }
+      .stats-head .blue { color: var(--blue); }
       .stats-head .stuck-text.low { color: var(--ok); }
       .stats-head .stuck-text.mid { color: var(--warn); }
       .stats-head .stuck-text.high { color: var(--bad); }
@@ -496,8 +500,8 @@
             <tbody>
               <tr><td><code>goTo(x, y, map?)</code></td><td>walk</td><td>Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell, it takes the exit.</td></tr>
               <tr><td><code>interact(x, y)</code></td><td>walk</td><td>Turns to the next cell and presses A: a person, a sign, an item.</td></tr>
-              <tr><td><code>readText()</code></td><td>text, busy game</td><td>Reads the texts to the end of the box or to a choice.</td></tr>
-              <tr><td><code>choose(option)</code></td><td>yes/no, nickname after a catch</td><td>Moves the cursor to the option and presses A.</td></tr>
+              <tr><td><code>readText()</code></td><td>text, busy game</td><td>Reads the texts to the end of the box or to a choice. After a whiteout, it reads to the walk in the Pokémon Center or the house.</td></tr>
+              <tr><td><code>choose(option)</code></td><td>yes/no, nickname after a catch, script menu, grid menu of the school blackboard</td><td>Moves the cursor to the option and presses A.</td></tr>
               <tr><td><code>fight(move)</code></td><td>battle</td><td>Uses the move 0 to 3, and gives the messages of the turn.</td></tr>
               <tr><td><code>switch(slot)</code></td><td>battle</td><td>Sends another Pokémon of the party into the battle.</td></tr>
               <tr><td><code>send(slot)</code></td><td>party menu of a battle</td><td>Sends a Pokémon, for example after a faint.</td></tr>
@@ -563,18 +567,7 @@
           <h2>Bots</h2>
           <dl>
             <dt>model</dt>
-            <dd>
-              plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. Each prompt has the
-              next Milestone (a name and a place only). It asks an AI model for the action (a <b>Model call</b>) at each walk, choice, battle action or move, in the party
-              menu, at the shop menu of a Poké Mart and at the naming screen. The code reads the texts alone; the model sees text and gives an action, its reason, its <b>Mission</b> (the
-              story step, kept until it is reached) and its <b>Objective</b> (what it does now) (ADR 0003). At a walk, it sees an extract of the Atlas (its map and the texts of its people in full, 1 500 characters for the other maps). The map is a grid of all its rows, with <code>?</code> for the cells not seen and the targets as letters (<code>go B</code>). The extract lists the edges that go to another map, and the targets in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction and the marks talked (with the last text of the person), read or taken. When a person moves during a <code>go</code>, the code finds the person again and walks again (2 times at most). It can ask for the full Atlas one
-              time at most at each Decision point (<code>viewAtlas</code>, no frames run). It also sees its tries since the last
-              progress, the stuck counter, the important events, and the top nodes of its Memory tree: it adds a note after an important event or a lesson, a Summary call merges two
-              nodes of the same size, and <code>zoom &lt;a-b&gt;</code> opens a node. After an impossible action, the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). The Bot also reads an action as a call: <code>press(Up)</code> is <code>press Up</code>, <code>buy(POTION, 2)</code> is <code>buy POTION 2</code>, and <code>use(POTION, SQUIRTLE)</code> is <code>use POTION on SQUIRTLE</code>. The panel "Model" shows each Model call in full; the panel "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, Model calls, played actions, Summary calls, battles); a drag or a click on the lanes selects a part of the Run for the details under them. The panel "Memory tree" shows the top nodes with zoom, and the Summary calls.
-            <p>At a choice, one line shows the question of the game and the options, for example <code>The game asks: "Do you want to give a nickname to this BULBASAUR?" Choose YES or NO.</code> The question is the last text that the game showed: a <code>zoom</code> or a <code>viewAtlas</code> does not hide it. The actions are <code>choose &lt;option&gt;</code> and <code>zoom</code>, with no <code>press</code>, also in a battle.</p>
-            <p>At a walk, <code>use</code> works with a medicine on a Pokémon, and with REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone. At the shop menu, the model sees the items for sale with their prices, the items of the Bag that the Mart buys and the money, and chooses <code>buy &lt;item&gt; &lt;quantity&gt;</code>, <code>sell &lt;item&gt; &lt;quantity&gt;</code> or <code>leave</code>, with no <code>press</code>: the code does all the menus of the Mart.</p>
-            <p>At the naming screen, the model sees what the screen names and the maximum length, and chooses <code>name &lt;text&gt;</code> or <code>name</code> to keep the name, with no <code>press</code>. It is free to give a nickname.</p>
-            </dd>
+            <dd>plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. At each Decision point, it asks an AI model for the action (a <b>Model call</b>). The code reads the texts alone. The next section tells what the model sees and does.</dd>
           </dl>
           <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>
           <table id="doc-bots">
@@ -583,11 +576,31 @@
           </table>
         </section>
         <section>
+          <h2>Model bot: prompt and actions</h2>
+          <dl>
+            <dt>Model call</dt><dd>at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart and at the naming screen.</dd>
+            <dt>Answer</dt><dd>an action, its reason, the <b>Mission</b> (the story step, kept until it is reached) and the <b>Objective</b> (what the model does now) (ADR 0003).</dd>
+            <dt>Each prompt</dt><dd>the Milestones and the next one (a name and a place only), the Mission, the top nodes of the Memory tree, what the game waits for, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the party, the money and the Bag. Then the part of the Decision point: at a walk, the extract of the Atlas below.</dd>
+            <dt>Walk</dt><dd>an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: <code>?</code> is a cell not seen, a letter is a target (<code>go B</code>).</dd>
+            <dt>Targets</dt><dd>in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction, and the marks talked (with the last text of the person), read or taken. The extract also lists the edges to other maps. When a person moves during a <code>go</code>, the code finds the person and walks again (2 times at most).</dd>
+            <dt><code>viewAtlas</code></dt><dd>the full Atlas, one time at most at each Decision point. No frames run.</dd>
+            <dt>Memory tree</dt><dd>the model adds a note after an important event or a lesson. A Summary call merges two nodes of the same size. <code>zoom &lt;a-b&gt;</code> opens a node.</dd>
+            <dt>Choice</dt><dd>one line with the question and the options, for example <code>The game asks: "Do you want to give a nickname to this BULBASAUR?" Choose YES or NO.</code> A <code>zoom</code> or a <code>viewAtlas</code> does not hide the question. The actions are <code>choose &lt;option&gt;</code> and <code>zoom</code>, also in a battle.</dd>
+            <dt><code>use</code></dt><dd>at a walk: a medicine on a Pokémon, or REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone.</dd>
+            <dt>Shop menu</dt><dd>the items for sale with their prices, the items of the Bag that the Mart buys, and the money. The actions are <code>buy &lt;item&gt; &lt;quantity&gt;</code>, <code>sell &lt;item&gt; &lt;quantity&gt;</code> and <code>leave</code>. The code does all the menus of the Mart.</dd>
+            <dt>Naming screen</dt><dd>what the screen names and the maximum length. The actions are <code>name &lt;text&gt;</code>, and <code>name</code> alone to keep the name. The model is free to give a nickname.</dd>
+            <dt><code>press</code></dt><dd>only at a walk, in a battle and in the party menu, never at a choice, the shop menu or the naming screen. It has no Start: the model bot does not know the Start menu. The reason of a <code>press Start</code> answer tells to <code>use &lt;item&gt;</code>, with the items that work now, or that the Bag is empty.</dd>
+            <dt>Forms of an action</dt><dd>a call is read too: <code>press(Up)</code> is <code>press Up</code>, <code>use(POTION, SQUIRTLE)</code> is <code>use POTION on SQUIRTLE</code>. A comma between the arguments is a space: <code>goTo 9, 42</code> is <code>goTo 9 42</code>. The commas of <code>choose</code> and <code>name</code> stay in the text.</dd>
+            <dt>Impossible action</dt><dd>the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example.</dd>
+            <dt>Panels</dt><dd>"Model" shows each Model call in full. "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, prompt tokens, Model calls, played actions, Summary calls, battles); a drag or a click selects a part of the Run, with the smallest and the largest prompt in tokens. "Memory tree" shows the top nodes with zoom, and the Summary calls.</dd>
+          </dl>
+        </section>
+        <section>
           <h2>Model bot: progress, reflection and notes</h2>
           <dl>
             <dt>Stuck counter</dt><dd>the Decision points since the last progress (<code>harness.noProgress.stuck</code>). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The prompt shows it at each call; <code>noProgressLimit</code> ends a Run on it.</dd>
             <dt>Progress</dt><dd>a new map, a new Milestone, a new exit in the Atlas (a warp or an edge seen for the first time), a level up, or a new text of a person. A text heard before from the same person and a new cell are not progress.</dd>
-            <dt>Reflection turn</dt><dd>the first walk at 30 on the stuck counter, then at 60, 90… A normal Model call, with the full Atlas after the extract and an instruction: read the Memory tree and the Atlas, zoom freely, write a lesson in <code>note</code> (what failed, why, what next) and set a new <code>objective</code>. No <code>viewAtlas</code> there.</dd>
+            <dt>Reflection turn</dt><dd>the first walk at 20 on the stuck counter, then at 40, 60… A normal Model call, with the full Atlas after the extract and an instruction: read the Memory tree and the Atlas, zoom freely, write a lesson in <code>note</code> (what failed, why, what next) and set a new <code>objective</code>. No <code>viewAtlas</code> there.</dd>
             <dt>Events that ask for a note</dt><dd>since the last Model call: a new map, a lost battle, a heal (all HP full again with no battle and no item use; the line names the map and the last person talked to), a new item, 2 impossible actions or more in a row. One line "Something important happened: …" each, then "Write a note if it can help you later." The model decides.</dd>
             <dt>Notes</dt><dd>a fact that the game proved, or a lesson: what works, what fails and why. Never a guess, never HP values.</dd>
             <dt>Blocked edge</dt><dd>an edge with water between the two maps: only SURF crosses it. The extract and the full Atlas say "you cannot go there now" with the reason, the edge is not a target, and a <code>goTo</code> past it gives the same reason. A <code>goTo</code> past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell.</dd>
