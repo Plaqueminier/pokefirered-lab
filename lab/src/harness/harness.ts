@@ -57,6 +57,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   shopMenu: ["buy", "sell", "leave"],
   itemPc: ["withdraw", "deposit", "leave"],
   naming: ["name"],
+  learnMove: ["forget", "keep"],
   busy: ["readText"],
 };
 // Each Macro-action is in ACCEPTS: a Macro-action that no kind accepts can never run.
@@ -108,7 +109,9 @@ export type MacroAction =
   | { name: "sell"; item: string; quantity: number }
   | { name: "withdraw" | "deposit"; item: string; quantity: number }
   | { name: "leave" }
-  | { name: "name"; text: string };
+  | { name: "name"; text: string }
+  | { name: "forget"; move: string }
+  | { name: "keep" };
 
 export type AvailableAction =
   | { name: "goTo" | "swap" | "name" }
@@ -429,7 +432,10 @@ export class Harness {
         case "readText":
         case "leave":
         case "name":
+        case "keep":
           return [{ name }];
+        case "forget":
+          return waiting.kind === "learnMove" ? game.party()[waiting.slot].moves.map((move) => ({ name, move: move.name })) : [];
         case "swap":
           return game.party().length > 1 ? [{ name }] : [];
         case "switch":
@@ -561,6 +567,14 @@ export class Harness {
     return this.act<Texts>({ name: "name", text }, () => this.#menus.name(text), { text: [] });
   }
 
+  async forget(move: string): Promise<ActionResult> {
+    return this.act({ name: "forget", move }, () => this.#menus.forget(move));
+  }
+
+  async keep(): Promise<ActionResult> {
+    return this.act({ name: "keep" }, () => this.#menus.keep());
+  }
+
   async switch(slot: number): Promise<TextResult> {
     return this.act<Texts>({ name: "switch", slot }, () => this.#menus.switch(slot), { text: [] });
   }
@@ -608,6 +622,10 @@ export class Harness {
         return this.leave();
       case "name":
         return this.name(action.text);
+      case "forget":
+        return this.forget(action.move);
+      case "keep":
+        return this.keep();
       case "press":
         return this.press(action.button);
     }

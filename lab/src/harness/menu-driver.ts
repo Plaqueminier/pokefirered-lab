@@ -32,6 +32,10 @@ const CURSOR_ROW = 2;
 const NAMING_OK_ROW = 2;
 // moveMenuCursor reads the cursor as one number: y * NAMING_CURSOR_STRIDE + x. A row of the keyboard has less than 16 columns.
 const NAMING_CURSOR_STRIDE = 16;
+const YES = 0;
+const NO = 1;
+// sHMMoves (pokemon.c): the learn-move flow refuses to forget them.
+const HM_MOVES = new Set(["CUT", "FLY", "SURF", "STRENGTH", "FLASH", "ROCK SMASH", "WATERFALL", "DIVE"]);
 
 export type Outcome =
   | { status: "done" }
@@ -315,6 +319,37 @@ export class MenuDriver {
     if (onOk.status !== "done") return withText(onOk);
     const pressed = this.pressUntilRead(Keys.A);
     return pressed.status === "done" ? this.readText() : withText(pressed);
+  }
+
+  /** At the "Delete a move?" question: YES, then the move on the summary screen. It ends at the first text after the summary screen. */
+  forget(move: string): Outcome {
+    const { game } = this;
+    const learn = game.waitingFor();
+    if (learn.kind !== "learnMove") throw new Error("forget is available only at a learnMove");
+    const pokemon = game.party()[learn.slot];
+    const slot = pokemon.moves.findIndex((m) => m.name === move);
+    if (slot < 0) return impossible(`${pokemon.nickname} does not know ${move}: its moves are ${pokemon.moves.map((m) => m.name).join(", ")}`);
+    if (HM_MOVES.has(move)) return impossible(`${move} is an HM move, and HM moves cannot be forgotten now`);
+    const yes = this.answerLearnMove(YES);
+    if (yes.status !== "done") return yes;
+    const shown = this.tapUntil(Keys.A, () => game.forgetMoveCursor() !== null, "the moves of the Pokémon");
+    if (shown.status !== "done") return shown;
+    const moved = this.moveMenuCursor(slot, () => game.forgetMoveCursor());
+    return moved.status === "done" ? this.input(Keys.A) : moved;
+  }
+
+  /** At the "Delete a move?" question: NO, then YES at "Stop learning …?". It ends at the text that the Pokémon did not learn the move. */
+  keep(): Outcome {
+    const no = this.answerLearnMove(NO);
+    if (no.status !== "done") return no;
+    const asked = this.tapUntil(Keys.A, () => this.game.learnMoveBox()?.question === "stop", "the question to stop learning the move");
+    if (asked.status !== "done") return asked;
+    // The game shows the cursor of this yes/no on YES.
+    return this.input(Keys.A);
+  }
+
+  private answerLearnMove(target: number): Outcome {
+    return this.moveCursor(target, () => this.game.learnMoveBox()?.cursor ?? null, toward(target, Keys.Down, Keys.Up));
   }
 
   readText(): Outcome & Texts {

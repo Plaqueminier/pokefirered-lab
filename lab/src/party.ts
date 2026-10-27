@@ -102,21 +102,30 @@ export function readMoves(mem: Memory, decode: Decode, ppBonuses: number, slot: 
   const moves: PartyMove[] = [];
   for (let i = 0; i < MAX_MON_MOVES; i++) {
     const { move, pp } = slot(i);
-    if (move === MOVE_NONE) continue;
-    const data = mem.global("gBattleMoves").at(move);
-    const power = data.field("power").int();
-    const accuracy = data.field("accuracy").int();
-    moves.push({
-      name: nameAt(mem, "gMoveNames", move, decode),
-      type: typeName(mem, data.field("type").int(), decode),
-      power: power >= MIN_SHOWN_POWER ? power : null,
-      accuracy: accuracy === 0 ? null : accuracy,
-      pp,
-      maxPp: maxPp(mem, move, ppBonuses, i),
-      description: textAt(mem, mem.global("gMoveDescriptionPointers").at(move - 1).pointer(), decode),
-    });
+    if (move !== MOVE_NONE) moves.push(partyMove(mem, decode, move, pp, maxPp(mem, move, ppBonuses, i)));
   }
   return moves;
+}
+
+/** A move that a Pokémon does not know yet: its PP are full, with no PP Up. */
+export function newMove(mem: Memory, decode: Decode, move: number): PartyMove {
+  const pp = mem.global("gBattleMoves").at(move).field("pp").int();
+  return partyMove(mem, decode, move, pp, pp);
+}
+
+function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp: number): PartyMove {
+  const data = mem.global("gBattleMoves").at(move);
+  const power = data.field("power").int();
+  const accuracy = data.field("accuracy").int();
+  return {
+    name: nameAt(mem, "gMoveNames", move, decode),
+    type: typeName(mem, data.field("type").int(), decode),
+    power: power >= MIN_SHOWN_POWER ? power : null,
+    accuracy: accuracy === 0 ? null : accuracy,
+    pp,
+    maxPp,
+    description: textAt(mem, mem.global("gMoveDescriptionPointers").at(move - 1).pointer(), decode),
+  };
 }
 
 function decryptSubstructs(raw: Uint8Array, key: number): DataView {

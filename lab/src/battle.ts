@@ -38,8 +38,30 @@ const TURN_RESULTS: [RegExp, string][] = [
   [/'s attack missed!$/, "missed"],
   [/^But it failed!$/, "failed"],
 ];
+// The two yes/no boxes of the learn-move flow: "Delete a move to make room for …?" (learn) and "Stop learning …?" (stop).
+const LEARN_MOVE_COMMANDS: Record<string, LearnMoveQuestion> = { Cmd_yesnoboxlearnmove: "learn", Cmd_yesnoboxstoplearningmove: "stop" };
+// Both commands read the keys in this gBattleScripting.learnMoveState.
+const LEARN_MOVE_READS_INPUT = 1;
+// Task_EvolutionScene (evolution_scene.c): tState is data[0], tLearnMoveState data[6], tLearnMoveYesState data[7], tPartyId data[10].
+const EVOLUTION_TASK = "Task_EvolutionScene";
+const EVO_STATE = 0;
+const EVO_LEARN_MOVE_STATE = 6;
+const EVO_LEARN_MOVE_YES_STATE = 7;
+const EVO_PARTY_ID = 10;
+const EVOSTATE_REPLACE_MOVE = 22;
+const MVSTATE_HANDLE_YES_NO = 4;
+// After YES, the yes/no of the "learn" question opens the moves; the "stop" question cancels.
+const MVSTATE_SHOW_MOVE_SELECT = 5;
+// Task_InputHandler_SelectOrForgetMove (pokemon_summary_screen.c) reads the keys in this selectMoveInputHandlerState.
+const SUMMARY_TASK = "Task_InputHandler_SelectOrForgetMove";
+const SUMMARY_READS_INPUT = 2;
 
 export type BattleMenu = "battleAction" | "battleMove";
+
+type LearnMoveQuestion = "learn" | "stop";
+
+/** A yes/no box of the learn-move flow that reads the keys: `slot` is the Pokémon in the party, `move` the move to learn. */
+export type LearnMoveBox = { question: LearnMoveQuestion; cursor: number; slot: number; move: number };
 
 export type PrintedMove = { partyIndex: number; move: number };
 
@@ -95,6 +117,30 @@ export function battleYesNoCursor(mem: Memory): number | null {
 
 export function dexPageWaits(mem: Memory): boolean {
   return activeTask(mem, "Task_DexScreen_RegisterMonToPokedex") !== null && mem.global("sPokedexScreenData").deref().field("state").int() === DEX_PAGE_KEY_STATE;
+}
+
+/** The learn-move flow of a battle (a level up) or of the evolution scene after it, at a yes/no that reads the keys. */
+export function learnMoveBox(mem: Memory): LearnMoveBox | null {
+  const cursor = mem.global("gBattleCommunication").at(YES_NO_CURSOR).int();
+  const move = mem.global("gMoveToLearn").int();
+  // The evolution after a battle runs before the game leaves the battle mode.
+  const evolution = activeTask(mem, EVOLUTION_TASK)?.field("data");
+  if (evolution) {
+    if (evolution.at(EVO_STATE).int() !== EVOSTATE_REPLACE_MOVE || evolution.at(EVO_LEARN_MOVE_STATE).int() !== MVSTATE_HANDLE_YES_NO) return null;
+    const question = evolution.at(EVO_LEARN_MOVE_YES_STATE).int() === MVSTATE_SHOW_MOVE_SELECT ? "learn" : "stop";
+    return { question, cursor, slot: evolution.at(EVO_PARTY_ID).int(), move };
+  }
+  const question = LEARN_MOVE_COMMANDS[scriptCommand(mem) ?? ""];
+  const reads = question !== undefined && mem.global("gBattleScripting").field("learnMoveState").int() === LEARN_MOVE_READS_INPUT;
+  return reads ? { question, cursor, slot: mem.global("gBattleStruct").deref().field("expGetterMonId").int(), move } : null;
+}
+
+/** The cursor of the summary screen that chooses the move to forget, 0 to 3 for the known moves and 4 for the new move; null while it reads no keys. */
+export function forgetMoveCursor(mem: Memory): number | null {
+  // sMonSummaryScreen keeps its old address when the screen closes: read it only while its task runs.
+  if (!activeTask(mem, SUMMARY_TASK)) return null;
+  const reads = mem.global("sMonSummaryScreen").deref().field("selectMoveInputHandlerState").int() === SUMMARY_READS_INPUT;
+  return reads ? mem.global("sMoveSelectionCursorPos").int() : null;
 }
 
 function scriptCommand(mem: Memory): string | null {

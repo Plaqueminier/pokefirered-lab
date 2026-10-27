@@ -27,6 +27,7 @@ const WAITS: Record<AskedKind, string> = {
   shopMenu: "the shop menu of a Poké Mart",
   itemPc: "the item storage of a PC",
   naming: "a name on the naming screen",
+  learnMove: "a move to forget",
 };
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
@@ -358,6 +359,15 @@ function context(asked: Asked): string[] {
     }
     case "naming":
       return [`The naming screen asks for ${asked.subject}, ${asked.maxLength} characters at most.`];
+    case "learnMove": {
+      const { nickname, moves } = asked.party[asked.slot];
+      const { move } = asked;
+      return [
+        `${nickname} wants to learn ${move.name} (${moveText(move)}). ${move.description}`,
+        `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
+        ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveText(known)}. ${known.description}`),
+      ];
+    }
     default:
       return battleLines(asked.battle);
   }
@@ -406,6 +416,13 @@ function actionLines(asked: Asked): string[] {
         `- name <text>: type the text and press OK, for example name Sparky. The keys of the keyboard: ${keyList(asked.keys)} A " in the text types “ or ”.`,
         "- name: keep the name that the game gives.",
       ];
+    case "learnMove": {
+      const { nickname, moves } = asked.party[asked.slot];
+      return [
+        `- forget <move>: forget this move and learn ${asked.move.name}, for example forget ${moves[0].name}. <move> is the name of a move above, or its place, 1 to ${moves.length}.`,
+        `- keep: keep the ${moves.length} moves. ${nickname} does not learn ${asked.move.name}.`,
+      ];
+    }
   }
 }
 

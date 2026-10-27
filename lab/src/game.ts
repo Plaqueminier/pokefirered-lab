@@ -11,6 +11,9 @@ import {
   battleYesNoCursor,
   dexPageWaits,
   enemyMovePrinted,
+  forgetMoveCursor,
+  type LearnMoveBox,
+  learnMoveBox,
   levelUpBoxWaits,
   type PrintedMove,
   readBattle,
@@ -19,7 +22,7 @@ import {
 } from "./battle";
 import type { Memory, Ref } from "./memory";
 import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
-import { nameAt, type PartyMon, readParty } from "./party";
+import { nameAt, newMove, type PartyMon, type PartyMove, readParty } from "./party";
 import { itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor, withdrawRow } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -107,6 +110,8 @@ export type WaitingFor =
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
   | { kind: "itemPc"; items: PcItem[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
+  /** The Pokémon of the party at `slot` knows 4 moves and tries to learn `move`. */
+  | { kind: "learnMove"; slot: number; move: PartyMove }
   | { kind: "busy" };
 
 export function isDecisionPoint({ kind }: WaitingFor): boolean {
@@ -353,9 +358,25 @@ export class Game {
   private battleWaitingFor(): WaitingFor {
     if (this.partyMenu()?.kind === "pick") return { kind: "partyPick" };
     if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem)) return { kind: "text" };
+    const learnMove = this.learnMoveWait();
+    if (learnMove) return learnMove;
     const yesNo = battleYesNoCursor(this.mem);
     if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo, columns: 1 };
     return { kind: battleMenu(this.mem) ?? "busy" };
+  }
+
+  private learnMoveWait(): WaitingFor | null {
+    const box = this.learnMoveBox();
+    return box?.question === "learn" ? { kind: "learnMove", slot: box.slot, move: newMove(this.mem, this.decode, box.move) } : null;
+  }
+
+  /** The yes/no boxes of the learn-move flow, in a battle or in the evolution scene after it. */
+  learnMoveBox(): LearnMoveBox | null {
+    return learnMoveBox(this.mem);
+  }
+
+  forgetMoveCursor(): number | null {
+    return forgetMoveCursor(this.mem);
   }
 
   private textWaits(): boolean {
