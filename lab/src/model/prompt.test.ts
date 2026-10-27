@@ -101,9 +101,9 @@ describe("the Mission", () => {
 describe("the next Milestone", () => {
   test("it is the first Milestone, in the order of the story, that the Run did not reach, with a name and a place only", () => {
     expect(nextMilestone([])).toBe("Get your first Pokémon from Professor Oak in Pallet Town.");
-    expect(nextMilestone(["has-pokemon", "first-rival-battle"])).toBe("Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.");
+    expect(nextMilestone(["has-pokemon", "first-rival-battle"])).toBe("Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.");
     expect(nextMilestone(["first-rival-battle"])).toBe("Get your first Pokémon from Professor Oak in Pallet Town.");
-    expect(nextMilestone(["has-pokemon", "first-rival-battle", "badge-1", "badge-2", "badge-3", "badge-4", "badge-5", "badge-6", "badge-7"])).toBe(
+    expect(nextMilestone(["has-pokemon", "first-rival-battle", "pokedex", "badge-1", "badge-2", "badge-3", "badge-4", "badge-5", "badge-6", "badge-7"])).toBe(
       "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
     );
   });

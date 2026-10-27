@@ -6,12 +6,14 @@ export type MemoryTree = { notes: string[]; summaries: Map<string, string> };
 
 export type MemoryNode = NodeRange & { text: string };
 
-export const SUMMARY_SCHEMA = {
-  type: "object",
-  properties: { summary: { type: "string", description: `The summary of the two parts, in one line of ${MAX_SENTENCE} characters at most.` } },
-  required: ["summary"],
-  additionalProperties: false,
-} as const;
+export function summarySchema(node: NodeRange): object {
+  return {
+    type: "object",
+    properties: { summary: { type: "string", description: `The summary of the two parts, newest facts first, in one line of ${summaryLimit(node)} characters at most.` } },
+    required: ["summary"],
+    additionalProperties: false,
+  };
+}
 
 const SUMMARY_SYSTEM = `You keep the memory of a player of Pokémon FireRed. The memory is the list of the notes that the player wrote, oldest first. Two neighbour parts of the memory get one summary, and the player then sees the summary in place of the two parts.`;
 
@@ -68,7 +70,7 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   return {
     system: SUMMARY_SYSTEM,
     user: [
-      `Write the summary of these two parts of the memory, oldest first, in one line of ${MAX_SENTENCE} characters at most. Keep the facts that help to play: places, people, items, and what works or does not work. When two facts do not agree, keep the newest.`,
+      `Write the summary of these two parts of the memory, newest facts first, in short sentences, in one line of ${summaryLimit(node)} characters at most. Keep the facts that help to play: places, people, items, and what works or does not work. When two facts do not agree, keep the newest.`,
       "",
       ...parts,
       "",
@@ -77,11 +79,26 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   };
 }
 
-export function readSummary(content: string): string {
+export function readSummary(content: string, node: NodeRange): string {
   const value = readJson(content);
   const summary = typeof value === "object" && value !== null ? (value as Record<string, unknown>).summary : undefined;
   if (typeof summary !== "string" || summary.trim() === "") throw new Error('the answer has no "summary"');
-  return summary.trim().slice(0, MAX_SENTENCE);
+  return cut(summary.trim(), summaryLimit(node));
+}
+
+// The cut keeps whole sentences, else whole words: a fact never ends in the middle of a word.
+function cut(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const sentences = [...text.slice(0, limit + 1).matchAll(/[.!?](?=\s)/g)];
+  const end = sentences.at(-1)?.index;
+  if (end !== undefined) return text.slice(0, end + 1);
+  const space = text.lastIndexOf(" ", limit);
+  return (space > 0 ? text.slice(0, space) : text.slice(0, limit)).trimEnd();
+}
+
+// A node of 2^k notes has 200 × (k + 1) characters: the size of the tree in the prompt grows with the logarithm of the number of notes.
+function summaryLimit({ from, to }: NodeRange): number {
+  return MAX_SENTENCE * (Math.log2(to - from + 1) + 1);
 }
 
 function key({ from, to }: NodeRange): string {

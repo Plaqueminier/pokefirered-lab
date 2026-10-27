@@ -49,7 +49,7 @@ One request of a model bot to its AI model, and its answer: one action, with a s
 _Avoid_: prompt, turn, step
 
 **Memory tree**:
-The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something, and that nobody changes later. Two neighbour nodes of the same size get a parent node: a short summary of the two. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
+The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something, and that nobody changes later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
 **Stuck counter**:
@@ -96,7 +96,7 @@ One emulator instance that plays the game from a **Starting save**. The **Harnes
 _Avoid_: game, instance, session
 
 **Milestone**:
-A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
+A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:

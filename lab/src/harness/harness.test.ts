@@ -75,7 +75,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "7", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "8", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -671,6 +671,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at a Pokémon Center", () => {
   test("the Nurse asks with a multichoice menu: it is a choice, and choose YES heals the party", async () => {
     const harness = await Harness.open({ startSave: MART_SAVE });
+    // After the parcel scene, before the delivery to Oak: the game did not give the Pokédex yet.
+    expect(harness.observe().milestones).toEqual(["has-pokemon", "first-rival-battle"]);
     must(await harness.goTo(7, 4, "ViridianCity_PokemonCenter_1F"));
     must(await harness.interact(7, 3));
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Welcome to our POKéMON CENTER! Would you like me to heal your POKéMON back to perfect health?"] });

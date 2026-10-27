@@ -156,7 +156,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect([...new Set(next)]).toEqual([
       "Get your first Pokémon from Professor Oak in Pallet Town.",
       "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
-      "Earn the Boulder Badge from Brock, the Gym Leader of Pewter City.",
+      "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.",
     ]);
     expect(prompts).toHaveLength(calls.length);
     const totals = modelTotals(harness.events);
@@ -205,7 +205,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "7", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "8", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
