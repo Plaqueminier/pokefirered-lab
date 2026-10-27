@@ -150,6 +150,11 @@ export type MapGrid = {
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
 
+/** The move that removes each fixed obstacle, by its OBJ_EVENT_GFX_ name. */
+const OBSTACLE_MOVES: Record<string, string> = { CUT_TREE: "CUT", ROCK_SMASH_ROCK: "ROCK SMASH", PUSHABLE_BOULDER: "STRENGTH" };
+
+export type Obstacle = { localId: number; x: number; y: number; graphics: string; move: string };
+
 export type MapActors = {
   player: { x: number; y: number; facing: number } | null;
   /** Every person of the map. `loaded`: the game has it in memory now (near the screen). */
@@ -165,6 +170,8 @@ export type MapActors = {
     wander?: { x: number; y: number; w: number; h: number };
     trainer?: { id: number; defeated: boolean; range: number; allDirections: boolean; sight: [number, number][] };
   }[];
+  /** The objects that never move by themselves: not people, but blocked cells that a move removes. */
+  obstacles: Obstacle[];
   /** Per grid trigger: true active, false inactive, null unknown (special variable). */
   triggers: (boolean | null)[];
   /** Per grid sign: hidden items say if they were found. */
@@ -778,6 +785,7 @@ export class Game {
 
     // The map lists every person; only those near the screen are loaded in gObjectEvents.
     const people: MapActors["people"] = [];
+    const obstacles: Obstacle[] = [];
     for (const template of this.eventList(header, "objectEvents", "objectEventCount")) {
       if (template.field("kind").int() !== OBJ_KIND_NORMAL) continue;
       const localId = template.field("localId").int();
@@ -792,6 +800,11 @@ export class Game {
       const rangeY = normal.field("movementRangeY").int();
       const graphicsId = (obj ?? template).field("graphicsId").int();
       const graphics = this.graphicsNames.get(graphicsId) ?? `#${graphicsId}`;
+      const move = OBSTACLE_MOVES[graphics];
+      if (move) {
+        obstacles.push({ localId, x, y, graphics, move });
+        continue;
+      }
       const person: MapActors["people"][number] = { localId, x, y, graphics, facing, loaded: obj !== undefined };
       if (rangeX > 0 || rangeY > 0) {
         person.wander = { x: template.field("x").int() - rangeX, y: template.field("y").int() - rangeY, w: rangeX * 2 + 1, h: rangeY * 2 + 1 };
@@ -830,7 +843,7 @@ export class Game {
       const raw = e.field("bgUnion").field("hiddenItem").int();
       return { found: this.flag(FLAG_HIDDEN_ITEMS_START + ((raw >>> 16) & 0xff)) };
     });
-    return { player, people, triggers, signs };
+    return { player, people, obstacles, triggers, signs };
   }
 }
 

@@ -18,6 +18,7 @@ const LAB: AtlasMap = {
   hasEdges: false,
   signs: [],
   people: [],
+  obstacles: [],
   entry: { x: 2, y: 2 },
 };
 
@@ -36,6 +37,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     player: { ...player, facing: "north" },
     grid,
     people,
+    obstacles: current.obstacles.map((o, i) => ({ localId: 100 + i, ...o })),
     atlas: { maps: [current, ...others], lastTalk: null },
   };
 }
@@ -55,6 +57,7 @@ function chain(routes: number): AtlasMap[] {
     hasEdges: true,
     signs: [],
     people: [],
+    obstacles: [],
     entry: { x: 5, y: 5 },
   }));
 }
@@ -71,6 +74,7 @@ describe("the extract of the Atlas", () => {
       hasEdges: false,
       signs: [{ x: 3, y: 0, facing: "north", text: "It's a TV." }],
       people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!", "MOM: Take care!"] }],
+      obstacles: [],
       entry: { x: 6, y: 2 },
     };
     const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", to: "House" }], signs: [], people: [] };
@@ -110,6 +114,13 @@ describe("the extract of the Atlas", () => {
     const view = atlasExtract(overworld({ ...town, edges: [{ side: "south", to: null, blocked: "water" }, ...town.edges.slice(1)] }, []));
     expect(view.lines).toContain("- south edge: you cannot go there now: the south edge of Town is water. Only a Pokémon that knows SURF can cross water, and you have none.");
     expect(view.targets.filter((t) => t.kind === "edge").map((t) => t.label)).toEqual(["north edge, 3 north: not taken"]);
+  });
+
+  test("a cut tree is a fixed obstacle with its move: not a target, and a blocked cell of the grid", () => {
+    const view = atlasExtract(overworld({ ...LAB, obstacles: [{ x: 2, y: 1, graphics: "CUT_TREE", move: "CUT" }] }, []));
+    expect(view.lines).toContain("- CUT TREE at (2, 1). Only a Pokémon that knows CUT can remove it.");
+    expect(view.lines).toContain("y= 1  B.#?#");
+    expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("CUT TREE"));
   });
 
   test("the people on the cells that the player did not see are not targets", () => {
