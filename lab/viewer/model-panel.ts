@@ -29,7 +29,7 @@ type Answer = Decision | { error: string; raw: string | null };
 
 type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
-type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; reflection?: boolean };
+type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; reflection?: boolean; review?: boolean };
 
 export type ModelPanelView = { rows: CallRow[]; selected: number | null; thinking: boolean; call: CallView | null };
 
@@ -43,7 +43,7 @@ export function modelPanelView(events: readonly RunEvent[], callsStarted: number
   const index = selected !== null && selected < calls.length ? selected : calls.length - 1;
   const call = calls[index];
   return {
-    rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, reflection: c.reflection })),
+    rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, reflection: c.reflection, review: c.review })),
     selected: call ? index : null,
     thinking: thinking(callsStarted),
     call: call ? callView(call, index) : null,
@@ -64,8 +64,8 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function stuckText({ stuck, reflection }: Pick<CallRow, "stuck" | "reflection">): string[] {
-  return stuck === undefined ? [] : [`stuck ${stuck}`, ...(reflection ? ["reflection turn"] : [])];
+function stuckText({ stuck, reflection, review }: Pick<CallRow, "stuck" | "reflection" | "review">): string[] {
+  return stuck === undefined ? [] : [`stuck ${stuck}`, ...(reflection ? ["reflection turn"] : []), ...(review ? ["review turn"] : [])];
 }
 
 function answerFields(decision: Decision): Record<string, string> {
@@ -135,7 +135,7 @@ export class ModelPanel {
         const action = document.createElement("b");
         action.textContent = row.action ?? "unreadable";
         const stuck = document.createElement("span");
-        stuck.className = row.reflection ? "model-reflection" : "muted";
+        stuck.className = row.reflection || row.review ? "model-reflection" : "muted";
         stuck.textContent = stuckText(row).map((text) => ` · ${text}`).join("");
         line.append(frame, ` ${row.situation} → `, action, stuck);
         return line;
