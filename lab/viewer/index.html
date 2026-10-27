@@ -293,7 +293,6 @@
       .memory-calls td:not(:nth-child(3)) { white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
       .memory-calls summary { cursor: pointer; }
       .memory-calls .model-pre { white-space: pre-wrap; max-height: 260px; margin-top: 4px; }
-      .tabs { display: flex; gap: 6px; padding: 16px 16px 0; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
       .doc-head h1 { margin: 0; font-size: 20px; }
@@ -324,11 +323,7 @@
     </style>
   </head>
   <body>
-    <nav class="tabs">
-      <button id="tab-lab" class="on">Lab</button>
-      <button id="tab-doc">Doc</button>
-      <button id="tab-components">Components</button>
-    </nav>
+    <nav id="nav" class="ds border-b border-line"></nav>
     <main id="lab">
       <div class="screen-column">
         <div class="screen" id="screen">

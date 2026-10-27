@@ -3,7 +3,7 @@ import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
 import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
-import { ViewerTabs } from "./doc";
+import { ViewerTabs } from "./tabs";
 import { showTooltip } from "./dom";
 import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
@@ -90,7 +90,7 @@ const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), too
 const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const tabs = new ViewerTabs(
   {
-    buttons: { lab: $<HTMLButtonElement>("tab-lab"), doc: $<HTMLButtonElement>("tab-doc"), components: $<HTMLButtonElement>("tab-components") },
+    nav: $("nav"),
     tabs: { lab: $("lab"), doc: $("doc"), components: $("components") },
     bots: $<HTMLTableElement>("doc-bots").tBodies[0],
   },

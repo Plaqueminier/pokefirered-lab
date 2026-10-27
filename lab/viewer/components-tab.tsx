@@ -1,4 +1,4 @@
-import { Copy, Pause, Play, RotateCcw, Search, Square } from "lucide-preact";
+import { BookOpen, Copy, LayoutGrid, Pause, Play, RotateCcw, Search, Shapes, Square } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Bar, Button, Card, Checkbox, Field, Input, Num, Pill, Select, Switch, Tabs, Tooltip, hpTone } from "./components";
@@ -151,8 +151,18 @@ function FieldDemo() {
 function TabsDemo() {
   const [block, setBlock] = useState<"situation" | "battle" | "rules">("battle");
   const [speed, setSpeed] = useState<"1" | "4" | "max">("4");
+  const [tab, setTab] = useState<"lab" | "doc" | "components">("components");
   return (
     <div class="flex flex-wrap items-center gap-6">
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: "lab", label: "Lab", icon: <LayoutGrid size={15} /> },
+          { id: "doc", label: "Doc", icon: <BookOpen size={15} /> },
+          { id: "components", label: "Components", icon: <Shapes size={15} /> },
+        ]}
+      />
       <Tabs
         value={block}
         onChange={setBlock}
@@ -282,7 +292,7 @@ function ComponentsSheet() {
         <Section title="Field" rule="Focus: the border and a soft ring. An error has a red border and a short text under it.">
           <FieldDemo />
         </Section>
-        <Section title="Tabs" rule="The indicator slides to the selected tab.">
+        <Section title="Tabs" rule="The indicator slides to the selected tab. An icon only in the tabs of the navigation bar.">
           <TabsDemo />
         </Section>
         <Section title="Pill" rule="A short state or count. A dot for a state with a color.">

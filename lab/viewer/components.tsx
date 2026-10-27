@@ -106,7 +106,7 @@ export function Checkbox({ on, onChange, children }: { on: boolean; onChange: (o
   );
 }
 
-type TabItem<T extends string> = { id: T; label: string };
+type TabItem<T extends string> = { id: T; label: string; icon?: ComponentChildren };
 
 export function Tabs<T extends string>({ items, value, onChange, kind = "line" }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; kind?: "line" | "segmented" }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -144,8 +144,9 @@ export function Tabs<T extends string>({ items, value, onChange, kind = "line" }
           role="tab"
           aria-selected={item.id === value}
           onClick={() => onChange(item.id)}
-          class={`relative z-1 inline-flex items-center text-sm font-semibold transition-colors ${segmented ? "h-6.5 px-3" : "h-9 px-3"} ${item.id === value ? "text-fg" : "text-muted hover:text-fg"}`}
+          class={`relative z-1 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors ${segmented ? "h-6.5 px-3" : "h-9 px-3"} ${item.id === value ? "text-fg" : "text-muted hover:text-fg"}`}
         >
+          {item.icon}
           {item.label}
         </button>
       ))}
