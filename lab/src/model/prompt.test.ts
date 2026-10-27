@@ -4,7 +4,7 @@ import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
-import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, systemPrompt, tries, userPrompt } from "./prompt";
+import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, reviewTurn, systemPrompt, tries, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -23,7 +23,7 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, happened: [] };
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, review: false, happened: [] };
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
@@ -267,6 +267,31 @@ describe("the stuck counter and the reflection turn", () => {
     const normal = userPrompt(observation, askedOf(observation, false)!, noted, NO_TURN);
     expect(normal).not.toContain("Reflection turn");
     expect(normal).not.toContain("Full Atlas");
+  });
+});
+
+describe("the review turn", () => {
+  test("the first walk after 20 decisions since the last Review or Reflection turn is a review turn: the prompt adds the full Atlas and the check of the Mission", () => {
+    const observation = route1(22, [POTION]);
+    const decided = (n: number) => Array.from({ length: n }, () => [call("go A"), played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })]).flat();
+    const reviewed = [{ ...call("go A"), review: true }, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+    expect([reviewTurn("walk", decided(19)), reviewTurn("walk", [...decided(19), call("zoom 1-2")]), reviewTurn("walk", decided(20))]).toEqual([false, false, true]);
+    expect([reviewTurn("battleAction", decided(20)), reviewTurn("walk", [...decided(5), ...reviewed, ...decided(19)])]).toEqual([false, false]);
+    expect(systemPrompt("")).toContain("Every 20 decisions, you get a review turn");
+
+    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, review: true });
+    expect(prompt).toContain(
+      [
+        "Review turn: check your plan against the facts before you act.",
+        "- Where are you on the way to the next Milestone?",
+        "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+        "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+        "- Which exits, edges and unseen cells are left to explore?",
+        '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
+      ].join("\n"),
+    );
+    expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
+    expect(userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, reflection: true, review: true })).not.toContain("Review turn");
   });
 });
 
