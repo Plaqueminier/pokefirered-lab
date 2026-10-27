@@ -17,6 +17,8 @@ import {
   levelUpBoxWaits,
   type PrintedMove,
   readBattle,
+  readTypeChart,
+  type TypeChart,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
 import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
@@ -144,6 +146,8 @@ export type MapGrid = {
   mapHeight: number;
   /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), . open. */
   kinds: string;
+  /** The map type of the ROM is a town, a city or a route. */
+  outside: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
   /** Metatile behavior id per cell; names in behaviorNames. */
@@ -240,33 +244,38 @@ export class Game {
   private readonly prompts: Prompts;
   private readonly behaviorNames: Map<number, string>;
   private readonly graphicsNames: Map<number, string>;
+  private readonly outsideTypes: Set<number>;
   private readonly mapNames: string[][];
   private readonly attributeCache = new Map<number, Uint32Array>();
+  #typeChart: TypeChart | null = null;
 
   private constructor(
     private readonly mem: Memory,
-    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; mapNames: string[][] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; outsideTypes: Set<number>; mapNames: string[][] },
   ) {
     this.decode = tables.decode;
     this.prompts = new Prompts(mem, tables.decode);
     this.behaviorNames = tables.behaviorNames;
     this.graphicsNames = tables.graphicsNames;
+    this.outsideTypes = tables.outsideTypes;
     this.mapNames = tables.mapNames;
   }
 
   static async create(mem: Memory): Promise<Game> {
-    const [charmapText, behaviorsText, graphicsText, groups] = await Promise.all([
+    const [charmapText, behaviorsText, graphicsText, mapTypesText, groups] = await Promise.all([
       Bun.file(join(REPO_DIR, "charmap.txt")).text(),
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/event_objects.h")).text(),
+      Bun.file(join(REPO_DIR, "include/constants/map_types.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
     ]);
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
     const graphicsNames = new Map<number, string>();
     for (const m of graphicsText.matchAll(/^#define OBJ_EVENT_GFX_(\w+)\s+(\d+)\s*$/gm)) graphicsNames.set(Number(m[2]), m[1]);
+    const outsideTypes = new Set([...mapTypesText.matchAll(/^#define (MAP_TYPE_\w+)\s+(\d+)/gm)].flatMap((m) => (OUTSIDE_MAP_TYPES.has(m[1]) ? [Number(m[2])] : [])));
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, mapNames });
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, outsideTypes, mapNames });
   }
 
   private get saveBlock1(): Ref {
@@ -498,6 +507,12 @@ export class Game {
 
   battleMenuSlot(partyIndex: number): number {
     return battleMenuSlot(this.mem, partyIndex);
+  }
+
+  /** The ROM never changes the type chart, so the first read serves the whole Run. */
+  typeChart(): TypeChart {
+    this.#typeChart ??= readTypeChart(this.mem, this.decode);
+    return this.#typeChart;
   }
 
   moveName(move: number): string {
@@ -746,6 +761,7 @@ export class Game {
       height,
       mapWidth: layout.field("width").int(),
       mapHeight: layout.field("height").int(),
+      outside: this.outsideTypes.has(header.field("mapType").int()),
       kinds,
       blocks,
       behaviors,

@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { modelBot } from "../../bots/model";
+import { modelBot, unknownScreen } from "../../bots/model";
 import { Harness } from "../harness/harness";
-import { type ModelEvent, modelTotals, type Prompt, replay, type SummaryEvent } from "../harness/record";
+import { type ModelEvent, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-panel";
 import type { ModelClient } from "./openrouter";
@@ -137,6 +137,17 @@ beforeAll(() => {
 });
 afterAll(() => fetchSpy?.mockRestore());
 
+describe("the guard of an uncovered screen", () => {
+  test("the Run is at an unknown screen when the bot pressed B for 3 uncovered screens with no Model call between them", () => {
+    const uncovered: RunEvent[] = [
+      { type: "action", frame: 0, action: { name: "readText" }, result: { status: "impossible", reason: "the game is busy", frames: 3600, text: [] } },
+      ...Array.from({ length: 3 }, (): RunEvent => ({ type: "action", frame: 0, action: { name: "press", button: "B" }, result: { status: "done", frames: 2 } })),
+    ];
+    const call = { type: "model", frame: 0 } as RunEvent;
+    expect([unknownScreen([...uncovered, call, ...uncovered, ...uncovered]), unknownScreen([...uncovered, ...uncovered, ...uncovered])]).toEqual([false, true]);
+  });
+});
+
 describe.skipIf(!ready)("model bot", () => {
   test("with a fake model, it plays past the first rival battle: the code reads the texts, the model chooses at each walk, choice and battle action, and the next Milestone in the prompt moves with the story", async () => {
     const { client, prompts } = fakeModel();
@@ -205,16 +216,16 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "9", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free" } });
+    expect(header.bot).toEqual({ name: "model", version: "9", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
-  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run is in the rules", async () => {
+  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
     const harness = await Harness.open();
     const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     expect(harness.record().result.endReason).toBe("cost limit");
     expect(modelEvents(harness)).toHaveLength(3);
-    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.");
+    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends.");
   });
 
   test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {

@@ -375,11 +375,12 @@
             <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
             <select id="reasoning" title="Reasoning effort of the model bot"></select>
             <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
+            <label title="The Run of the model bot ends when all the Pokémon of the party faint"><input id="stop-at-whiteout" type="checkbox" checked /> stop at a whiteout</label>
             <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
             <button id="bot-start">Start the Bot</button>
           </div>
           <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
+          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. With "stop at a whiteout" (on by default), the Run ends with <code>whiteout</code> when all the Pokémon of the party faint. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
         </section>
         <section>
           <div class="panel-head">
@@ -528,7 +529,7 @@
             <code>observe()</code>: what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it
             (types, ability, held item, nature, stats, EXP; for each move its type, power, accuracy, PP and description). On the
             map: the grid, the people and the fixed obstacles. The Atlas gives the rival with its name from the save. In a battle: the player's Pokémon, and the enemy
-            as the player sees it, with its types. <code>availableActions()</code>: the Macro-actions accepted now.
+            as the player sees it, with its types. The battle facts: for each move, its effect on the enemy (type chart of the game), STAB and the damage estimate in percent of the enemy HP and in hits to KO; the last turn and the turns against the current enemy. <code>availableActions()</code>: the Macro-actions accepted now.
           </p>
         </section>
         <section class="w4">
@@ -547,6 +548,8 @@
             <dt><code>cost limit</code></dt><dd>the Model calls cost more than the cost limit (model bot)</dd>
             <dt><code>frame budget</code></dt><dd>no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000)</dd>
             <dt><code>no progress</code></dt><dd>the stuck counter reaches N, when the Run gives N</dd>
+            <dt><code>whiteout</code></dt><dd>all the Pokémon of the party faint, in or out of a battle (model bot with "stop at a whiteout"), after the action that reads the whiteout</dd>
+            <dt><code>unknown screen</code></dt><dd>the model bot pressed B for 3 screens in a row that no action covers, with no Decision point between them. The result keeps the last text of the game.</dd>
           </dl>
         </section>
         <section class="w4">
@@ -570,7 +573,7 @@
           <h2>Bots</h2>
           <dl>
             <dt>model</dt>
-            <dd>plays past the first rival battle, to the cost limit, a user stop or <code>badge-8</code>. At each Decision point, it asks an AI model for the action (a <b>Model call</b>). The code reads the texts alone. The next section tells what the model sees and does.</dd>
+            <dd>plays past the first rival battle, to the cost limit, a user stop, a whiteout, an unknown screen or <code>badge-8</code>. At each Decision point, it asks an AI model for the action (a <b>Model call</b>). The code reads the texts alone. The next section tells what the model sees and does.</dd>
           </dl>
           <p class="muted">The scripted bot <code>starter</code> is a tool for the tests of the Harness only: it is not in this list.</p>
           <table id="doc-bots">
@@ -583,12 +586,15 @@
           <dl>
             <dt>Model call</dt><dd>at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the naming screen and when a Pokémon must forget a move to learn a new one.</dd>
             <dt>Answer</dt><dd>an action, its reason, the <b>Mission</b> (the story step, kept until it is reached) and the <b>Objective</b> (what the model does now) (ADR 0003).</dd>
-            <dt>Each prompt</dt><dd>the Milestones and the next one (a name and a place only), the Mission, the top nodes of the Memory tree, what the game waits for, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the party, the money and the Bag. Then the part of the Decision point: at a walk, the extract of the Atlas below.</dd>
+            <dt>Each prompt</dt><dd>the Milestones and the next one (a name and a place only), the Mission, the top nodes of the Memory tree, what the game waits for, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the party, the money and the Bag. Then the part of the Decision point: at a walk, the Known world and the extract of the Atlas below.</dd>
+            <dt>Known world</dt><dd>one line for each town, city or route that the player visited (the map type of the ROM), first visit first. The code makes it from the Atlas: the edges seen (with the destination, "not visited" or blocked), the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the doors not entered, the unseen cells left and the fixed obstacles.</dd>
             <dt>Walk</dt><dd>an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: <code>?</code> is a cell not seen, a letter is a target (<code>go B</code>).</dd>
             <dt>Targets</dt><dd>in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction, and the marks talked (with the last text of the person), read or taken. The extract also lists the edges to other maps. When a person moves during a <code>go</code>, the code finds the person and walks again (2 times at most).</dd>
+            <dt>Guide</dt><dd>short generic advice in the rules, with no facts about the maps or the story: read the signs and talk to the people, write guesses in the notes and check them, keep the POTIONS for when they are necessary, use more than one Pokémon and make a balanced team, <code>run</code> from a wild battle that goes badly, compare the levels before a trainer, train when the trainers ahead are stronger.</dd>
             <dt><code>viewAtlas</code></dt><dd>the full Atlas, one time at most at each Decision point. No frames run.</dd>
             <dt>Memory tree</dt><dd>the model adds a note after an important event or a lesson. A Summary call merges two nodes of the same size. A node of 2^k notes has 200 × (k + 1) characters at most, with the newest facts first. A summary that is too long ends at its last full sentence. <code>zoom &lt;a-b&gt;</code> opens a node.</dd>
             <dt>Choice</dt><dd>one line with the question and the options, for example <code>The game asks: "Do you want to give a nickname to this BULBASAUR?" Choose YES or NO.</code> A <code>zoom</code> or a <code>viewAtlas</code> does not hide the question. The actions are <code>choose &lt;option&gt;</code> and <code>zoom</code>, also in a battle.</dd>
+            <dt>Battle</dt><dd>each <code>fight</code> shows its effect on the foe (×2, ×½, ×0), STAB and the damage estimate: the formula of the game with no critical hit, random factor 85% to 100%, in percent of the foe HP and in hits to KO. No estimate for a move with no power. Abilities, held items and weather are not in it. The line <code>Last turn: …</code> tells who moved first, the moves, their results (critical hit, miss) and the HP before and after. <code>Your moves on this foe: …</code> lists the moves already used on this foe, with their results.</dd>
             <dt><code>use</code></dt><dd>at a walk: a medicine on a Pokémon, or REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone.</dd>
             <dt>Shop menu</dt><dd>the items for sale with their prices, the items of the Bag that the Mart buys, and the money. The actions are <code>buy &lt;item&gt; &lt;quantity&gt;</code>, <code>sell &lt;item&gt; &lt;quantity&gt;</code> and <code>leave</code>. The code does all the menus of the Mart.</dd>
             <dt>Naming screen</dt><dd>what the screen names and the maximum length. The actions are <code>name &lt;text&gt;</code>, and <code>name</code> alone to keep the name. The model is free to give a nickname.</dd>
@@ -605,11 +611,13 @@
             <dt>Stuck counter</dt><dd>the Decision points since the last progress (<code>harness.noProgress.stuck</code>). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The prompt shows it at each call; <code>noProgressLimit</code> ends a Run on it.</dd>
             <dt>Progress</dt><dd>a new map, a new Milestone, a new exit in the Atlas (a warp or an edge seen for the first time), a level up, or a new text of a person. A text heard before from the same person and a new cell are not progress.</dd>
             <dt>Reflection turn</dt><dd>the first walk at 20 on the stuck counter, then at 40, 60… A normal Model call, with the full Atlas after the extract and an instruction: read the Memory tree and the Atlas, zoom freely, write a lesson in <code>note</code> (what failed, why, what next) and set a new <code>objective</code>. No <code>viewAtlas</code> there.</dd>
+            <dt>Review turn</dt><dd>the first walk after 20 decisions (Model calls that played an action) since the last Review or Reflection turn, also with progress. A normal Model call, with the full Atlas after the extract and a short check: the way to the next Milestone, the facts against the Mission, the guesses from the signs and the people, the exits left to explore. The model writes the result in <code>mission</code>, <code>objective</code> and <code>note</code>. When a Reflection turn comes at the same decision, only the Reflection turn shows. No <code>viewAtlas</code> there.</dd>
             <dt>Events that ask for a note</dt><dd>since the last Model call: a new map, a lost battle, a heal (all HP full again with no battle and no item use; the line names the map and the last person talked to), a new item, 2 impossible actions or more in a row. One line "Something important happened: …" each, then "Write a note if it can help you later." The model decides.</dd>
-            <dt>Notes</dt><dd>a fact that the game proved, or a lesson: what works, what fails and why. Never a guess, never HP values.</dd>
+            <dt>Loop warning</dt><dd>when the last 3 decisions that played an action played the same actions with the same results, one line "Warning: …" comes after the tries since the last progress. A <code>zoom</code> or a <code>viewAtlas</code> does not count.</dd>
+            <dt>Notes</dt><dd>a fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:". The model writes the result of a guess in a new note. Never HP values.</dd>
             <dt>Blocked edge</dt><dd>an edge with water between the two maps: only SURF crosses it. The extract and the full Atlas say "you cannot go there now" with the reason, the edge is not a target, and a <code>goTo</code> past it gives the same reason. A <code>goTo</code> past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell.</dd>
             <dt>Fixed obstacle</dt><dd>the cut tree, the rock of ROCK SMASH and the boulder of STRENGTH: not people. Their cell is blocked, and <code>goTo</code> never waits for them. A <code>goTo</code> that only a fixed obstacle stops is impossible at once, and the reason names the obstacle, its cell and the move. The extract and the full Atlas list them with the move and no letter.</dd>
-            <dt>Run record</dt><dd>each Model call has <code>stuck</code> and <code>reflection</code>. The panel "Model" shows them in the list and in the title of a call.</dd>
+            <dt>Run record</dt><dd>each Model call has <code>stuck</code>, <code>reflection</code> and <code>review</code>. The panel "Model" shows them in the list and in the title of a call.</dd>
           </dl>
         </section>
       </div>

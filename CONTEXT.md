@@ -60,6 +60,10 @@ _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
+**Review turn**:
+A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the signs and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note. It is not a separate request. When a **Reflection turn** comes at the same decision, only the **Reflection turn** shows.
+_Avoid_: review call, check turn
+
 **Summary call**:
 One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost counts in the cost of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
@@ -69,8 +73,12 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take, the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
+
+**Known world**:
+A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the number of doors not entered, the unseen cells left and the **Fixed obstacles**. The code makes it from the **Atlas** only, so it shows only what the player saw.
+_Avoid_: world map, overview, Town Map (an item of the game)
 
 **Fixed obstacle**:
 An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it.
@@ -108,7 +116,7 @@ A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness
 _Avoid_: resumed run, restart, savestate
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default). A model bot has no frame budget and no limit of **Decision points** with no progress.
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Decision point** between them; the result also keeps the last text of the game). A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Viewer**:
@@ -121,7 +129,7 @@ _Avoid_: emulator, web player
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit, at a whiteout (an option, on by default) and at an unknown screen.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.

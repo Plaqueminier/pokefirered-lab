@@ -21,10 +21,10 @@ type Reasoning = (typeof REASONING)[number];
 export type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
-export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null; starter: Starter };
+export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null; starter: Starter; stopAtWhiteout: boolean };
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string };
+export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
 
 export type Prompt = { system: string; user: string; turns?: Turn[] };
 
@@ -34,8 +34,8 @@ export type Usage = { promptTokens: number; cachedTokens?: number; completionTok
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
 
-// answer is null when the request failed. A record from before the model bot version 4 has no stuck and no reflection.
-export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; stuck?: number; reflection?: boolean } & (
+// answer is null when the request failed. A record from before the model bot version 4 has no stuck and no reflection, and a record from before the Review turn has no review.
+export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; stuck?: number; reflection?: boolean; review?: boolean } & (
   | { decision: Decision; error: null }
   | { decision: null; error: string }
 );

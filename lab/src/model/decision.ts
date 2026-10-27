@@ -11,6 +11,8 @@ import { type Overworld, targetIndex, targetLetter } from "./targets";
 export const MAX_SENTENCE = 200;
 /** The model bot gets a Reflection turn at each REFLECTION_EVERY more Decision points on the Stuck counter. */
 export const REFLECTION_EVERY = 20;
+/** The model bot gets a Review turn at the first walk after REVIEW_EVERY decisions since its last Review or Reflection turn, even with progress. */
+export const REVIEW_EVERY = 20;
 const MAX_QUOTED_ACTION = 80;
 
 const FIELDS = ["reason", "action", "mission", "objective", "note"] as const satisfies readonly (keyof Decision)[];
@@ -22,7 +24,7 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go B\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    note: { type: "string", description: `A fact that the game proved, or a lesson (what works, what fails and why), in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never a guess, never HP values. Nobody changes it later.` },
+    note: { type: "string", description: `A fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:", in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never HP values. Nobody changes it later.` },
   },
   required: FIELDS,
   additionalProperties: false,
