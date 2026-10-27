@@ -42,6 +42,7 @@ export type RunsElements = {
   costLimit: HTMLInputElement;
   reasoning: HTMLSelectElement;
   starter: HTMLSelectElement;
+  stopAtWhiteout: HTMLInputElement;
   from: HTMLSelectElement;
   start: HTMLButtonElement;
   stop: HTMLButtonElement;
@@ -76,6 +77,7 @@ export class RunsPanel {
         costLimit: costLimit ? Number(costLimit) : undefined,
         reasoning: option(ui.reasoning.value, DEFAULT_REASONING),
         starter: option(ui.starter.value, DEFAULT_STARTER),
+        stopAtWhiteout: ui.stopAtWhiteout.checked ? undefined : false,
       };
       send({ type: "start-bot", name: ui.bots.value, model, ...(ui.from.value === FROM_START ? {} : { parent: ui.from.value }) });
     });

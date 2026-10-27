@@ -20,10 +20,10 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("modelSettings", () => {
-  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning, the temperature of the model and a free starter", () => {
-    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null, starter: "free" });
+  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning, the temperature of the model, a free starter and a stop at a whiteout", () => {
+    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true });
     expect(modelSettings({}, { LAB_COST_LIMIT: "0.2" }).costLimit).toBe(0.2);
-    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER" }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER" });
+    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false });
   });
 
   test("it refuses a cost limit, a reasoning, a temperature or a starter that is not valid", () => {

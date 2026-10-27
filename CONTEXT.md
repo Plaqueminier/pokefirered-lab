@@ -108,7 +108,7 @@ A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness
 _Avoid_: resumed run, restart, savestate
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run) or `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default). A model bot has no frame budget and no limit of **Decision points** with no progress.
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Decision point** between them; the result also keeps the last text of the game). A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Viewer**:
@@ -121,7 +121,7 @@ _Avoid_: emulator, web player
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit, at a whiteout (an option, on by default) and at an unknown screen.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.

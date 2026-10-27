@@ -1,6 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { modelSettings } from "../model/openrouter";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
@@ -696,11 +697,22 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
 const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {
-  test("after a whiteout, readText reads the texts through the warp to the Pokémon Center and ends at the walk there", async () => {
+  test("a whiteout ends the Run of a model bot: readText reads the texts through the warp to the Pokémon Center and ends at the walk there, then the Run ends", async () => {
     const harness = await Harness.open({ startSave: WHITEOUT_SAVE });
-    expect(await harness.goTo(26, 26)).toMatchObject({ status: "interrupted", reason: "script" });
-    const before = harness.frame;
-    expect(await harness.readText()).toMatchObject({
+    const bot: Bot = {
+      name: "whiteout",
+      version: "1",
+      model: modelSettings({}, {}),
+      play: async (played) => {
+        await played.goTo(26, 26);
+        await played.readText();
+        throw new Error("the Run continues after the whiteout");
+      },
+    };
+    expect(await harness.play(bot)).toMatchObject({ endReason: "whiteout" });
+    const [walk, read] = harness.actions;
+    expect(walk.result).toMatchObject({ status: "interrupted", reason: "script" });
+    expect(read.result).toMatchObject({
       status: "done",
       text: [
         "SQUIRTLE fainted…",
@@ -710,7 +722,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on
         "Your POKéMON have been healed to perfect health. If your POKéMON's energy, HP, is down, please come see us. If you're planning to go far in the field, you should buy some POTIONS at the POKéMON MART. We hope you excel!",
       ],
     });
-    expect(harness.frame - before).toBeLessThan(3600);
+    expect(read.result.frames).toBeLessThan(3600);
     expect(harness.observe()).toMatchObject({ map: { name: "ViridianCity_PokemonCenter_1F" }, waitingFor: { kind: "walk" }, party: [{ hp: 22, maxHp: 22, status: "none" }] });
   });
 });
