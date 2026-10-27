@@ -79,7 +79,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "11", goal: null }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "12", goal: null }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -770,6 +770,21 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
       text: ["A frozen POKéMON becomes helplessly immobile. It stays frozen even after the battle ends. Use ICE HEAL to thaw out the suffering POKéMON.", "Which topic do you want to read?"],
     });
     expect(harness.waitingFor()).toMatchObject({ kind: "choice", cursor: 0 });
+  });
+});
+
+const PROFILE_SAVE = join(SAVES_DIR, "test-profile.sav");
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PROFILE_SAVE))("Harness on the test Starting save in the Pokémon Center of Pewter City", () => {
+  test("YES to the woman opens the word screen of a profile: readText leaves it, and her answer ends at the walk", async () => {
+    const harness = await Harness.open({ startSave: PROFILE_SAVE });
+    must(await harness.goTo(13, 3));
+    must(await harness.interact(13, 2));
+    must(await harness.readText());
+    must(await harness.choose("YES"));
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["What's your profile?"], leftWordScreen: true });
+    expect((await harness.readText()).text[0]).toStartWith("Oh, you've decided not to?");
+    expect(harness.waitingFor().kind).toBe("walk");
   });
 });
 

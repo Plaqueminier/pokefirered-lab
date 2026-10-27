@@ -30,6 +30,11 @@ const NAMING_SUBJECTS = new Map([
 // Decomp STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
 const NAMING_INPUT_STATE = 2;
 const NAMING_PAGES = 3;
+// Decomp Task_RunEasyChat reads the keys at its step 1; sEasyChatScreen->state 4 is the menu to quit (easy_chat_2.c).
+const WORD_SCREEN_INPUT_STEP = 1;
+const WORD_SCREEN_QUIT_MENU = 4;
+
+export type WordScreen = { quitMenu: boolean };
 
 /** `keys` are the rows of the page that the screen shows, one text for each row; `characters` are the characters of all the pages, each one once. */
 export type NamingScreen = {
@@ -161,4 +166,10 @@ export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
     cursor: { x: cursor.at(0).int(), y: cursor.at(1).int() },
     text: decode(screen.field("textBuffer").bytes()),
   };
+}
+
+export function wordScreen(mem: Memory): WordScreen | null {
+  if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_EasyChatScreen") return null;
+  if (activeTask(mem, "Task_RunEasyChat")?.field("data").at(0).int() !== WORD_SCREEN_INPUT_STEP) return null;
+  return { quitMenu: mem.global("sEasyChatScreen").deref().field("state").int() === WORD_SCREEN_QUIT_MENU };
 }

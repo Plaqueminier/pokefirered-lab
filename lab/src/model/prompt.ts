@@ -45,6 +45,9 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 };
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
+const NICKNAME_QUESTION = /nickname/i;
+const CREATIVE_NAME = "A nickname has no effect on the game: be creative, there is nothing to optimize.";
+const WORD_SCREEN_LEFT = "The game opened a screen to write the words of a profile, and you cannot write words: the program left it. A profile gives nothing in the game: choose NO when a person asks for your profile.";
 const TRANSFERS = [
   ["withdraw", "take items from the PC and put them in your Bag", "withdraw POTION 2"],
   ["deposit", "put items of your Bag into the PC", "deposit POTION 1"],
@@ -197,7 +200,9 @@ function lastText(events: readonly RunEvent[]): string | undefined {
 function waitLine(asked: Asked, events: readonly RunEvent[]): string {
   if (asked.kind !== "choice") return `The game waits for ${WAITS[asked.kind]}.`;
   const question = lastText(events);
-  return question ? `The game asks: "${question}" Choose ${alternatives(asked.options)}.` : `The game waits for ${WAITS.choice}: ${asked.options.join(", ")}.`;
+  if (!question) return `The game waits for ${WAITS.choice}: ${asked.options.join(", ")}.`;
+  const line = `The game asks: "${question}" Choose ${alternatives(asked.options)}.`;
+  return NICKNAME_QUESTION.test(question) ? `${line} ${CREATIVE_NAME}` : line;
 }
 
 export function atlasMessage(asked: Asked & { kind: "walk" }): string {
@@ -324,6 +329,7 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
       const reason = "reason" in result ? ` (${result.reason})` : "";
       const texts = "text" in result ? result.text.map((text) => `  "${text}"`) : [];
       const lines = [`${actionText(action)}: ${result.status}${reason}, ${result.frames} frames`, ...texts];
+      if (result.leftWordScreen) lines.push(WORD_SCREEN_LEFT);
       // The Bot reads only at a text or when the game is busy: there, readText is impossible only on an unknown screen.
       return action.name === "readText" && result.status === "impossible" ? [...lines, UNKNOWN_SCREEN] : lines;
     }

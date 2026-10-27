@@ -20,7 +20,7 @@ import {
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
 import type { Memory, Ref } from "./memory";
-import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
+import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
 import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
 import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
@@ -552,6 +552,10 @@ export class Game {
 
   namingScreen(): NamingScreen | null {
     return namingScreen(this.mem, this.decode);
+  }
+
+  wordScreen(): WordScreen | null {
+    return wordScreen(this.mem);
   }
 
   partyMenu(): PartyMenu | null {

@@ -90,6 +90,7 @@ type LegResult = "done" | "stuck" | "no move" | "no warp" | Interruption;
 
 export type ActionResult = Outcome & {
   frames: number;
+  leftWordScreen?: true;
 };
 
 export type TextResult = ActionResult & Texts;
@@ -644,7 +645,8 @@ export class Harness {
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
     const turnStart = action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
     const outcome: Outcome & Partial<Texts> = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
-    const result = { ...defaults, ...outcome, frames: this.frame - start };
+    const left = this.#menus.takeLeftWordScreen() ? { leftWordScreen: true as const } : {};
+    const result = { ...defaults, ...outcome, ...left, frames: this.frame - start };
     const entry = { action, result };
     this.#battles.onAction(outcome.status === "impossible" ? null : turnStart, outcome.text ?? [], game.battle(), isDecisionPoint(game.waitingFor()));
     // The action event goes before the game events of its frames.

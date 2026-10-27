@@ -218,9 +218,10 @@ function forgotten(move: string, asked: Asked): string {
   return (place ?? moves.find((m) => plain(m.name) === plain(move)))?.name ?? move;
 }
 
-function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
+function readUse(name: string, writtenOn: string | undefined, asked: Asked): ModelAction {
   const items = "items" in asked ? asked.items : [];
-  const item = items.find((i) => plain(i.name) === plain(name));
+  const [itemName, on] = writtenOn === undefined ? withoutOn(name, items) : [name, writtenOn];
+  const item = items.find((i) => plain(i.name) === plain(itemName));
   if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
   if (itemUse(item, asked) === "alone") {
     if (on !== undefined) throw new Error(`${item.name} does not work on a Pokémon: use ${item.name}`);
@@ -228,6 +229,13 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
   }
   if (on === undefined) throw new Error(`${item.name} works on a Pokémon: use ${item.name} on <Pokémon>`);
   return { name: "use", item: item.name, on: partySlot(on, asked.party) };
+}
+
+function withoutOn(written: string, items: BagItem[]): [item: string, on: string | undefined] {
+  if (items.some((i) => plain(i.name) === plain(written))) return [written, undefined];
+  const starts = items.filter((i) => written[i.name.length] === " " && plain(written.slice(0, i.name.length)) === plain(i.name));
+  const item = starts.sort((a, b) => b.name.length - a.name.length)[0];
+  return item ? [item.name, written.slice(item.name.length).trim()] : [written, undefined];
 }
 
 /** The items that a buy, a sell, a withdraw or a deposit can name, and where they are. */

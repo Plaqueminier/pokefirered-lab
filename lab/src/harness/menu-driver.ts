@@ -1,7 +1,7 @@
 import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
 import { type BattleMenu, struggles } from "../battle";
 import type { Game } from "../game";
-import type { NamingScreen } from "../menus";
+import type { NamingScreen, WordScreen } from "../menus";
 import { isHmMove } from "../party";
 import { type Messages, oneLine } from "../prompts";
 import { Keys } from "../protocol";
@@ -159,6 +159,8 @@ class MessageReader {
 }
 
 export class MenuDriver {
+  private leftWordScreen = false;
+
   constructor(
     private readonly game: Game,
     private readonly frames: Input,
@@ -748,7 +750,21 @@ export class MenuDriver {
       watch();
       if (ready()) return { status: "done" };
       if (frames === DECISION_FRAME_LIMIT) return impossible(`the game waits for no known input for ${DECISION_FRAME_LIMIT} frames`);
-      if (this.frames.advance(0)) return BATTLE_INTERRUPTION;
+      const screen = this.game.wordScreen();
+      if (screen ? this.leaveWordScreen(screen) : this.frames.advance(0)) return BATTLE_INTERRUPTION;
     }
+  }
+
+  takeLeftWordScreen(): boolean {
+    const left = this.leftWordScreen;
+    this.leftWordScreen = false;
+    return left;
+  }
+
+  // B opens a menu to quit with its cursor on NO (easy_chat_3.c): Up, then A, chooses YES.
+  private leaveWordScreen({ quitMenu }: WordScreen): "battle" | null {
+    this.leftWordScreen = true;
+    for (const keys of quitMenu ? [Keys.Up, Keys.A] : [Keys.B]) if (this.tap(keys)) return "battle";
+    return null;
   }
 }

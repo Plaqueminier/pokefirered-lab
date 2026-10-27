@@ -102,6 +102,17 @@ describe("the loop warning", () => {
   });
 });
 
+describe("the word screen", () => {
+  test("after the program left the word screen of a profile, the past decisions say that a profile gives nothing", () => {
+    const observation = route1(22, []);
+    const asked = askedOf(observation, false)!;
+    const events = [call("choose YES"), played({ name: "readText" }, { status: "done", frames: 400, text: ["What's your profile?"], leftWordScreen: true })];
+    expect(userPrompt(observation, asked, events, NO_TURN)).toContain(
+      "The game opened a screen to write the words of a profile, and you cannot write words: the program left it. A profile gives nothing in the game: choose NO when a person asks for your profile.",
+    );
+  });
+});
+
 describe("the Mission", () => {
   test("the prompt shows the last Mission that the model gave, and for how many decisions it did not change", () => {
     expect(missionLine([])).toBe("Mission: none yet.");
@@ -290,14 +301,16 @@ describe("the battle facts", () => {
 });
 
 describe("a choice", () => {
-  test("the choice line shows the question, the last text of the last decision, or the old line with no text; the actions are choose and zoom, with no press", () => {
+  const CREATIVE = "A nickname has no effect on the game: be creative, there is nothing to optimize.";
+
+  test("the choice line shows the question (with the nickname line for a nickname), the last text of the last decision, or the old line with no text; the actions are choose and zoom, with no press", () => {
     const observation = { ...route1(22, []), waitingFor: { kind: "choice", options: ["YES", "NO"] } } as Observation;
     const asked = askedOf(observation, false)!;
     const question = "Do you want to give a nickname to this BULBASAUR?";
     const events = [call("choose YES"), played({ name: "choose", option: "YES" }, { status: "done", frames: 10 }), played({ name: "readText" }, { status: "done", frames: 50, text: ["PLOK received the BULBASAUR from PROF. OAK!", question] })];
     const prompt = userPrompt(observation, asked, events, NO_TURN);
-    expect(prompt).toContain(`The game asks: "${question}" Choose YES or NO.`);
-    expect(userPrompt(observation, asked, [...events, call("zoom 1-2")], NO_TURN)).toContain(`The game asks: "${question}" Choose YES or NO.`);
+    expect(prompt).toContain(`The game asks: "${question}" Choose YES or NO. ${CREATIVE}`);
+    expect(userPrompt(observation, asked, [...events, call("zoom 1-2")], NO_TURN)).toContain(`The game asks: "${question}" Choose YES or NO. ${CREATIVE}`);
     expect(prompt).not.toContain("The game waits for");
     expect(prompt).not.toContain("The question is the last text");
     expect(prompt).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: [^\n]*$/);

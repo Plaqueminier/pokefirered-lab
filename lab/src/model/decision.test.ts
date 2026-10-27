@@ -96,6 +96,7 @@ describe("readAction", () => {
     expect(readAction("use potion on bird", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
     expect(readAction("use Poke Ball", asked)).toEqual({ name: "use", item: "POKé BALL" });
     expect(readAction("use(POTION, BIRD)", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
+    expect(readAction("use POTION 2 BIRD", asked)).toEqual({ name: "use", item: "POTION", on: 1 });
     expect(() => readAction("use POTION", asked)).toThrow("POTION works on a Pokémon: use POTION on <Pokémon>");
     expect(() => readAction("use POTION on MEW", asked)).toThrow('"MEW" is not a Pokémon of your party: SQUIRTLE, BIRD');
     expect(() => readAction("use ANTIDOTE", asked)).toThrow('"ANTIDOTE" is not an item that works now: POTION, POKé BALL');
