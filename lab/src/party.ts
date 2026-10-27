@@ -17,6 +17,7 @@ const ABILITY_NUM_BIT = 31;
 const NUM_NATURES = 25;
 const MAX_LEVEL = 100;
 const ITEM_NONE = 0;
+const SPECIES_NONE = 0;
 // The Summary screen shows "---" for a power below 2 and for an accuracy of 0 (pokemon_summary_screen.c).
 const MIN_SHOWN_POWER = 2;
 const FIXED_DAMAGE_POWER = 1;
@@ -95,6 +96,29 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       moves,
     };
   });
+}
+
+/** The species of each Pokémon in the boxes of the PC. A box Pokémon has the same encryption as a party Pokémon. */
+export function readPcSpecies(mem: Memory, decode: Decode): string[] {
+  const boxes = mem.global("gPokemonStoragePtr").deref().field("boxes");
+  const first = boxes.at(0).at(0);
+  const offset = (name: string) => first.field(name).addr - first.addr;
+  const [personalityAt, otIdAt, secureAt] = [offset("personality"), offset("otId"), offset("secure")];
+  // One read of all the boxes: a read for each of the 420 places is slow.
+  const raw = boxes.bytes();
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const species: string[] = [];
+  for (let mon = 0; mon < raw.byteLength; mon += first.size) {
+    const personality = view.getUint32(mon + personalityAt, true);
+    const substructs = decryptSubstructs(raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4), (personality ^ view.getUint32(mon + otIdAt, true)) >>> 0);
+    const id = substructs.getUint16(growthOffset(personality), true);
+    if (id !== SPECIES_NONE) species.push(nameAt(mem, "gSpeciesNames", id, decode));
+  }
+  return species;
+}
+
+function growthOffset(personality: number): number {
+  return Number(SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length][0]) * SUBSTRUCT_SIZE;
 }
 
 export function isHmMove(move: string): boolean {

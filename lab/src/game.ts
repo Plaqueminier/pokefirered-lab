@@ -21,7 +21,7 @@ import {
 import { readTypeChart, type TypeChart } from "./battle-facts";
 import type { Memory, Ref } from "./memory";
 import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
-import { nameAt, newMove, type PartyMon, type PartyMove, readParty } from "./party";
+import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
 import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -613,6 +613,10 @@ export class Game {
   /** The party in the order of the game. */
   party(): PartyMon[] {
     return readParty(this.mem, this.decode);
+  }
+
+  pcSpecies(): string[] {
+    return readPcSpecies(this.mem, this.decode);
   }
 
   /** The party in the order of the screen: the party menu of a battle lists the Pokémon in the battle order. */
