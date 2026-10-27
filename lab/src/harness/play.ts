@@ -21,7 +21,7 @@ if (!name || ids.length > 1) {
   process.exit(1);
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
-const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: values["no-stop-at-whiteout"] ? false : undefined };
+const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: !values["no-stop-at-whiteout"] };
 const bot = await loadBot(name, model).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type Battle, battleTurn, enemyView, fightFacts } from "../battle";
+import { type Battle, enemyView } from "../battle";
+import { battleTurn, fightFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
-import { MAX_TRIES, missionLine, nextMilestone, reflectionTurn, reviewTurn, systemPrompt, tries, userPrompt } from "./prompt";
+import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -24,7 +25,8 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, reflection: false, review: false, happened: [] };
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [] };
+const SYSTEM = { starter: "free", stopAtWhiteout: false } as const;
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
@@ -178,6 +180,7 @@ describe("the battle facts", () => {
     const moves = [
       { name: "BUBBLE", type: "WATER", power: 20, accuracy: 100, pp: 29, maxPp: 30, description: "" },
       { name: "TAIL WHIP", type: "NORMAL", power: null, accuracy: 100, pp: 30, maxPp: 30, description: "" },
+      { name: "SEISMIC TOSS", type: "FIGHTING", power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
     ];
     const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
     const bulbasaur = { ...squirtle, species: "BULBASAUR", nickname: "BULBASAUR", types: ["GRASS", "POISON"], hp: 20, stats: { attack: 11, defense: 11, speed: 10, spAttack: 13, spDefense: 13 }, moves: [] };
@@ -200,6 +203,7 @@ describe("the battle facts", () => {
       [
         "- fight 0: BUBBLE (WATER, power 20, accuracy 100, PP 29/30). On the foe: not very effective ×½, STAB, 5% to 10% of its HP now, 10 to 20 hits to KO.",
         "- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)",
+        "- fight 2: SEISMIC TOSS (FIGHTING, power ---, accuracy 100, PP 20/20). On the foe: normal effect ×1.",
       ].join("\n"),
     );
     expect(prompt).toContain("Last turn: SQUIRTLE moved first. SQUIRTLE used BUBBLE: not very effective. Foe BULBASAUR used TACKLE: a critical hit. Your SQUIRTLE: HP 22/22 → 15/22. Foe BULBASAUR: HP 100% → 90%.");
@@ -283,14 +287,14 @@ describe("the naming screen", () => {
 describe("the stuck counter and the reflection turn", () => {
   test("the first walk at 20 Decision points with no progress, and at each 20 more, is a reflection turn: the prompt adds the full Atlas and asks for a lesson and a new objective", () => {
     const observation = route1(22, [POTION]);
-    const at = (stuck: number, events: RunEvent[] = []) => reflectionTurn("walk", events, { stuck, since: 0 });
+    const at = (stuck: number, events: RunEvent[] = []) => turnKind("walk", events, { stuck, since: 0 });
     const reflected = { ...call("go A"), stuck: 21, reflection: true };
-    expect([at(19), at(20), at(21), at(39, [reflected]), at(40, [reflected])]).toEqual([false, true, true, false, true]);
-    expect(reflectionTurn("battleAction", [], { stuck: 20, since: 0 })).toBe(false);
-    expect(systemPrompt("")).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn");
+    expect([at(19), at(20), at(21), at(39, [reflected]), at(40, [reflected])]).toEqual(["normal", "reflection", "reflection", "normal", "reflection"]);
+    expect(turnKind("battleAction", [], { stuck: 20, since: 0 })).toBe("normal");
+    expect(systemPrompt(SYSTEM)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn");
 
     const noted = [call("go A", "", "fact 1")];
-    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, reflection: true });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection" });
     expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): 20.");
     expect(prompt).toContain(
       [
@@ -314,11 +318,12 @@ describe("the review turn", () => {
     const observation = route1(22, [POTION]);
     const decided = (n: number) => Array.from({ length: n }, () => [call("go A"), played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })]).flat();
     const reviewed = [{ ...call("go A"), review: true }, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
-    expect([reviewTurn("walk", decided(19)), reviewTurn("walk", [...decided(19), call("zoom 1-2")]), reviewTurn("walk", decided(20))]).toEqual([false, false, true]);
-    expect([reviewTurn("battleAction", decided(20)), reviewTurn("walk", [...decided(5), ...reviewed, ...decided(19)])]).toEqual([false, false]);
-    expect(systemPrompt("")).toContain("Every 20 decisions, you get a review turn");
+    const at = (events: RunEvent[], kind: "walk" | "battleAction" = "walk") => turnKind(kind, events, { stuck: 0, since: 0 });
+    expect([at(decided(19)), at([...decided(19), call("zoom 1-2")]), at(decided(20))]).toEqual(["normal", "normal", "review"]);
+    expect([at(decided(20), "battleAction"), at([...decided(5), ...reviewed, ...decided(19)])]).toEqual(["normal", "normal"]);
+    expect(systemPrompt(SYSTEM)).toContain("Every 20 decisions, you get a review turn");
 
-    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, review: true });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review" });
     expect(prompt).toContain(
       [
         "Review turn: check your plan against the facts before you act.",
@@ -330,7 +335,6 @@ describe("the review turn", () => {
       ].join("\n"),
     );
     expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
-    expect(userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, reflection: true, review: true })).not.toContain("Review turn");
   });
 });
 

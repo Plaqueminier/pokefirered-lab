@@ -7,12 +7,14 @@ const PARTY_ACTION_SWITCH = 8;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
+// CreatePCMenu draws its own window, so its task has no list: it gets this id.
 const MULTICHOICE_NONE = 255;
 // While the script waits, the id of the special is the u16 3 bytes before the script pointer.
 const SPECIAL_ID_OFFSET = 3;
-const FLAG_SYS_POKEDEX_GET = 0x829;
+export const FLAG_SYS_POKEDEX_GET = 0x829;
 const FLAG_SYS_GAME_CLEAR = 0x82c;
 const FLAG_SYS_NOT_SOMEONES_PC = 0x834;
+const PC_STORAGE_PLACE = 0;
 // The script pointer is past the command multichoicegrid: the id of the menu is the third of its five bytes, so it is 3 bytes before the pointer.
 const GRID_MULTICHOICE_ID_OFFSET = 3;
 // The enum in script.c is RUNNING, WAITING, SHUTDOWN.
@@ -57,12 +59,19 @@ export function startMenu(mem: Memory, decode: Decode): Choice | null {
 }
 
 // Task_MultichoiceMenu_HandleInput reads no input while sDelay counts down or the palette fades.
-export function multichoice(mem: Memory, decode: Decode, flag: (id: number) => boolean): Choice | null {
+function multichoiceId(mem: Memory): number | null {
   const task = activeTask(mem, "Task_MultichoiceMenu_HandleInput");
   if (!task || mem.global("sDelay").int() !== 0 || mem.global("gPaletteFade").field("active").int()) return null;
-  const id = task.field("data").at(MULTICHOICE_ID).int();
-  const options = id !== MULTICHOICE_NONE ? multichoiceOptions(mem, id, decode) : pcMenuSpecial(mem) ? pcMenuOptions(mem, decode, flag) : null;
-  return options && { options, cursor: mem.global("sMenu").field("cursorPos").int() };
+  return task.field("data").at(MULTICHOICE_ID).int();
+}
+
+export function multichoice(mem: Memory, decode: Decode): Choice | null {
+  const id = multichoiceId(mem);
+  return id === null || id === MULTICHOICE_NONE ? null : { options: multichoiceOptions(mem, id, decode), cursor: mem.global("sMenu").field("cursorPos").int() };
+}
+
+export function pcMenu(mem: Memory, decode: Decode, flag: (id: number) => boolean): Choice | null {
+  return multichoiceId(mem) === MULTICHOICE_NONE && pcMenuSpecial(mem) ? { options: pcMenuOptions(mem, decode, flag), cursor: mem.global("sMenu").field("cursorPos").int(), storage: PC_STORAGE_PLACE } : null;
 }
 
 function pcMenuSpecial(mem: Memory): boolean {
@@ -75,6 +84,7 @@ function pcMenuOptions(mem: Memory, decode: Decode, flag: (id: number) => boolea
   const player = decode(mem.global("gSaveBlock2Ptr").deref().field("playerName").bytes());
   const oak = flag(FLAG_SYS_POKEDEX_GET) || flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_ProfOakSPc")] : [];
   const hallOfFame = flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_HallOfFame_2")] : [];
+  // The first option is the Pokémon storage: SOMEONE'S PC or BILL'S PC.
   return [text(flag(FLAG_SYS_NOT_SOMEONES_PC) ? "gText_BillSPc" : "gText_SomeoneSPc"), `${player}'s PC`, ...oak, ...hallOfFame, text("gText_LogOff")];
 }
 

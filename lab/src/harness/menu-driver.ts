@@ -2,6 +2,7 @@ import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRef
 import type { BattleMenu } from "../battle";
 import type { Game } from "../game";
 import type { NamingScreen } from "../menus";
+import { isHmMove } from "../party";
 import { type Messages, oneLine } from "../prompts";
 import { Keys } from "../protocol";
 import type { Interruption } from "./harness";
@@ -18,7 +19,6 @@ const MAX_TRADE = 99;
 const PC_WITHDRAW = 0;
 const PC_DEPOSIT = 1;
 const WITHDRAW_MENU_WITHDRAW = 0;
-const POKEMON_STORAGE_OPTIONS = ["SOMEONE'S PC", "BILL'S PC"];
 const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
@@ -32,8 +32,6 @@ const NAMING_OK_ROW = 2;
 const NAMING_CURSOR_STRIDE = 16;
 const YES = 0;
 const NO = 1;
-// sHMMoves (pokemon.c): the learn-move flow refuses to forget them.
-const HM_MOVES = new Set(["CUT", "FLY", "SURF", "STRENGTH", "FLASH", "ROCK SMASH", "WATERFALL", "DIVE"]);
 
 export type Outcome =
   | { status: "done" }
@@ -47,6 +45,8 @@ export type Texts = { text: string[] };
 export type Input = { advance(keys: number): boolean };
 
 const impossible = (reason: string): Outcome => ({ status: "impossible", reason });
+
+const quantityRefusal = (verb: string, item: string, quantity: number, most: number): Outcome | null => (quantity < 1 || quantity > most ? impossible(`the quantity of ${item} to ${verb} is 1 to ${most}`) : null);
 
 const withText = (outcome: Outcome, text: string[] = []): Outcome & Texts => ({ ...outcome, text });
 
@@ -184,13 +184,13 @@ export class MenuDriver {
     if (choice.kind !== "choice") throw new Error("choose is available only at a choice");
     const target = choice.options.indexOf(option);
     if (target < 0) return impossible(`no option "${option}" in ${choice.options.join(", ")}`);
-    if (POKEMON_STORAGE_OPTIONS.includes(option)) return impossible(`${option} opens the Pokémon storage (the boxes), and the program does not cover it: choose another option`);
+    if (target === choice.storage) return impossible(`${option} opens the Pokémon storage (the boxes), and the program does not cover it: choose another option`);
     const cursor = () => {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
     // Wireless tasks in a Pokémon Center make some frames skip the keys.
-    const press = (keys: number) => this.menuInput(keys, () => game.waitingFor().kind !== "busy");
+    const press = (keys: number) => this.menuToDecision(keys);
     const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns), press);
     return moved.status === "done" ? press(Keys.A) : moved;
   }
@@ -234,13 +234,14 @@ export class MenuDriver {
     // The quantity box stops without error at the quantity that the money pays: check the money first.
     const cost = items[row].price * quantity;
     if (cost > game.money()) return impossible(`${quantity} ${item} cost ${cost} and the money is ${game.money()}`);
-    if (quantity < 1 || quantity > MAX_TRADE) return impossible(`the quantity of ${item} to buy is 1 to ${MAX_TRADE}`);
+    const refused = quantityRefusal("buy", item, quantity, MAX_TRADE);
+    if (refused) return refused;
     const list = () => game.buyList();
     const opened = list() ? DONE : this.shopOption(SHOP_BUY, () => list() !== null, "the buy list");
     if (opened.status !== "done") return opened;
     const moved = this.moveMenuCursor(row, () => list()?.row ?? null);
     if (moved.status !== "done") return moved;
-    return this.backToShopMenu(this.trade(quantity));
+    return this.backToMenu(this.trade(quantity), () => this.toShopMenu());
   }
 
   sell(item: string, quantity: number): Outcome {
@@ -248,14 +249,15 @@ export class MenuDriver {
     const { place, refusal } = sale(item, game.findInBag(item));
     if (refusal !== null) return impossible(refusal);
     const most = Math.min(game.bagQuantity(place.item), MAX_TRADE);
-    if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to sell is 1 to ${most}`);
+    const refused = quantityRefusal("sell", item, quantity, most);
+    if (refused) return refused;
     const menu = this.toShopMenu();
     if (menu.status !== "done") return menu;
     const opened = this.shopOption(SHOP_SELL, () => game.bagMenu()?.screen === "list", "the Bag");
     if (opened.status !== "done") return opened;
     const row = this.toBagItem(place);
     if (row.status !== "done") return row;
-    return this.backToShopMenu(this.trade(quantity));
+    return this.backToMenu(this.trade(quantity), () => this.toShopMenu());
   }
 
   withdraw(item: string, quantity: number): Outcome {
@@ -264,16 +266,17 @@ export class MenuDriver {
     const row = items.findIndex((i) => i.name === item);
     if (row < 0) return impossible(`there is no ${item} in the PC`);
     const most = items[row].quantity;
-    if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to withdraw is 1 to ${most}`);
-    const opened = this.itemStorageOption(PC_WITHDRAW, () => game.withdrawRow() !== null);
+    const refused = quantityRefusal("withdraw", item, quantity, most);
+    if (refused) return refused;
+    const opened = this.itemStorageOption(PC_WITHDRAW, () => game.itemPcRow() !== null);
     if (opened.status !== "done") return opened;
-    const moved = this.moveMenuCursor(row, () => game.withdrawRow());
+    const moved = this.moveMenuCursor(row, () => game.itemPcRow());
     if (moved.status !== "done") return moved;
     const menu = this.tapUntil(Keys.A, () => game.withdrawMenuCursor() !== null, "the menu of the item");
     if (menu.status !== "done") return menu;
     const withdrawn = this.moveMenuCursor(WITHDRAW_MENU_WITHDRAW, () => game.withdrawMenuCursor());
     if (withdrawn.status !== "done") return withdrawn;
-    return this.backToItemStorage(this.transfer(item, quantity, "the Bag"));
+    return this.backToMenu(this.transfer(item, quantity, "the Bag"), () => this.toItemStorage());
   }
 
   deposit(item: string, quantity: number): Outcome {
@@ -282,16 +285,17 @@ export class MenuDriver {
     if (!place) return impossible(`there is no ${item} in the Bag`);
     if (place.pocket !== ITEMS_POCKET) return impossible("only the items of the ITEMS pocket go into the PC");
     const most = game.bagQuantity(place.item);
-    if (quantity < 1 || quantity > most) return impossible(`the quantity of ${item} to deposit is 1 to ${most}`);
+    const refused = quantityRefusal("deposit", item, quantity, most);
+    if (refused) return refused;
     const opened = this.itemStorageOption(PC_DEPOSIT, () => game.bagMenu()?.screen === "list");
     if (opened.status !== "done") return opened;
     const row = this.toBagItem(place);
     if (row.status !== "done") return row;
-    return this.backToItemStorage(this.transfer(item, quantity, "the PC"));
+    return this.backToMenu(this.transfer(item, quantity, "the PC"), () => this.toItemStorage());
   }
 
   leave(): Outcome & Texts {
-    if (this.game.waitingFor().kind === "itemPc") return withText(this.menuInput(Keys.B, () => this.game.waitingFor().kind !== "busy"));
+    if (this.game.waitingFor().kind === "itemPc") return withText(this.menuToDecision(Keys.B));
     const menu = this.toShopMenu();
     if (menu.status !== "done") return withText(menu);
     const left = this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop");
@@ -326,7 +330,7 @@ export class MenuDriver {
     const pokemon = game.party()[learn.slot];
     const slot = pokemon.moves.findIndex((m) => m.name === move);
     if (slot < 0) return impossible(`${pokemon.nickname} does not know ${move}: its moves are ${pokemon.moves.map((m) => m.name).join(", ")}`);
-    if (HM_MOVES.has(move)) return impossible(`${move} is an HM move, and HM moves cannot be forgotten now`);
+    if (isHmMove(move)) return impossible(`${move} is an HM move, and HM moves cannot be forgotten now`);
     const yes = this.answerLearnMove(YES);
     if (yes.status !== "done") return yes;
     const shown = this.tapUntil(Keys.A, () => game.forgetMoveCursor() !== null, "the moves of the Pokémon");
@@ -369,7 +373,7 @@ export class MenuDriver {
     if (game.waitingFor().kind !== "partyPick") return withText(impossible("the party menu does not open"));
     const sent = this.sendOut(game.battleMenuSlot(slot));
     if (sent.status !== "impossible") return sent;
-    const closed = this.menuInput(Keys.B, () => game.waitingFor().kind !== "busy");
+    const closed = this.menuToDecision(Keys.B);
     return closed.status === "done" ? sent : withText(closed, sent.text);
   }
 
@@ -505,7 +509,7 @@ export class MenuDriver {
   private endWalkUse(item: string, id: number, before: number, text: string[]): Outcome & Partial<Texts> {
     const { game } = this;
     if (game.mode() === "overworld") {
-      const escaped = this.menuInput(Keys.A, () => game.waitingFor().kind !== "busy");
+      const escaped = this.menuToDecision(Keys.A);
       return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
     }
     const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
@@ -537,11 +541,11 @@ export class MenuDriver {
     return moved.status === "done" ? this.tapUntil(Keys.A, shown, screen) : moved;
   }
 
-  // A refused trade stays in its list, and the Bag of the shop is not a Decision point: go back to the shop menu also then.
-  private backToShopMenu(traded: Outcome): Outcome {
-    if (traded.status === "interrupted") return traded;
-    const back = this.toShopMenu();
-    return traded.status === "done" || back.status !== "done" ? back : traded;
+  // A refused trade stays in its list, and the Bag of the shop is not a Decision point: go back to the menu also then. The same is true for a transfer of the item PC.
+  private backToMenu(done: Outcome, toMenu: () => Outcome): Outcome {
+    if (done.status === "interrupted") return done;
+    const back = toMenu();
+    return done.status === "done" || back.status !== "done" ? back : done;
   }
 
   private toShopMenu(): Outcome {
@@ -560,18 +564,19 @@ export class MenuDriver {
     return this.moveMenuCursor(place.row, () => list()?.row ?? null);
   }
 
+  /** Opens the quantity box with A, sets the quantity and confirms it. `next` is true when the game shows what follows the box; the game can skip the box. */
+  private setQuantity(quantity: number, count: () => number | null, next: () => boolean, after: string): Outcome {
+    const box = this.tapUntil(Keys.A, () => count() !== null || next(), "the quantity box");
+    if (box.status !== "done" || count() === null) return box;
+    const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
+    const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
+    return moved.status === "done" ? this.tapUntil(Keys.A, next, after) : moved;
+  }
+
   private trade(quantity: number): Outcome {
     const { game } = this;
-    const box = this.tapUntil(Keys.A, () => game.tradeQuantity() !== null || game.tradeYesNo() !== null, "the quantity box");
+    const box = this.setQuantity(quantity, () => game.tradeQuantity(), () => game.tradeYesNo() !== null, "the yes/no");
     if (box.status !== "done") return box;
-    const count = () => game.tradeQuantity();
-    const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
-    if (count() !== null) {
-      const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
-      if (moved.status !== "done") return moved;
-      const asked = this.tapUntil(Keys.A, () => game.tradeYesNo() !== null, "the yes/no");
-      if (asked.status !== "done") return asked;
-    }
     const yes = this.tapUntil(Keys.A, () => game.tradeDone() || game.waitingTexts().length > 0, "the end of the trade");
     if (yes.status !== "done") return yes;
     const refusal = game.tradeDone() ? null : game.menuMessage();
@@ -584,28 +589,18 @@ export class MenuDriver {
     return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
   }
 
-  private backToItemStorage(moved: Outcome): Outcome {
-    if (moved.status === "interrupted") return moved;
+  private toItemStorage(): Outcome {
     const { game } = this;
-    const back = game.itemStorageCursor() !== null ? DONE : this.menuInput(Keys.B, () => game.itemStorageCursor() !== null);
-    return moved.status === "done" || back.status !== "done" ? back : moved;
+    return game.itemStorageCursor() !== null ? DONE : this.menuInput(Keys.B, () => game.itemStorageCursor() !== null);
   }
 
   private transfer(item: string, quantity: number, place: string): Outcome {
     const { game } = this;
-    const box = this.tapUntil(Keys.A, () => game.pcQuantity() !== null || game.pcTransfer() !== null, "the quantity box");
+    const box = this.setQuantity(quantity, () => game.pcQuantity(), () => game.pcTransfer() !== null, "the end of the transfer");
     if (box.status !== "done") return box;
-    const count = () => game.pcQuantity();
-    if (count() !== null) {
-      const inBox = (keys: number) => this.tapUntil(keys, () => count() !== null, "the quantity box");
-      const moved = this.moveCursor(quantity, count, (at) => quantityKey(at, quantity), inBox);
-      if (moved.status !== "done") return moved;
-      const chosen = this.tapUntil(Keys.A, () => game.pcTransfer() !== null, "the end of the transfer");
-      if (chosen.status !== "done") return chosen;
-    }
     const refused = game.pcTransfer() === "refused";
     // The message reads the keys on the frames after it shows.
-    const back = this.menuInput(Keys.A, () => game.withdrawRow() !== null || game.bagMenu()?.screen === "list");
+    const back = this.menuInput(Keys.A, () => game.itemPcRow() !== null || game.bagMenu()?.screen === "list");
     return back.status !== "done" || !refused ? back : impossible(`${place} has no room for ${quantity} ${item}`);
   }
 
@@ -709,6 +704,10 @@ export class MenuDriver {
       at = cursor();
     }
     return { status: "done" };
+  }
+
+  private menuToDecision(keys: number): Outcome {
+    return this.menuInput(keys, () => this.game.waitingFor().kind !== "busy");
   }
 
   private menuInput(keys: number, ready: () => boolean): Outcome {

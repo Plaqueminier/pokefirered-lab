@@ -151,12 +151,14 @@ export function readDecision(content: string): Decision {
   return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), note: decision.note.slice(0, MAX_SENTENCE) };
 }
 
+type QuantityName = "buy" | "sell" | "withdraw" | "deposit";
+
 /** An action as the model writes it: the Pokémon, the item and the option are still texts. */
 type Written =
   | { name: "go"; target: string }
   | { name: "switch" | "send" | "swap"; pokemon: string }
   | { name: "use"; item: string; on?: string }
-  | { name: "buy" | "sell" | "withdraw" | "deposit"; item: string; quantity: number }
+  | { name: QuantityName; item: string; quantity: number }
   | { name: "forget"; move: string };
 type ParsedAction = Exclude<ModelAction, { name: Written["name"] }> | Written;
 
@@ -188,10 +190,9 @@ export function readAction(text: string, asked: Asked): ModelAction {
       return readUse(action.item, action.on, asked);
     case "buy":
     case "sell":
-      return readTrade(action.name, action.item, action.quantity, asked);
     case "withdraw":
     case "deposit":
-      return readTransfer(action.name, action.item, action.quantity, asked);
+      return readQuantity(action.name, action.item, action.quantity, asked);
     case "forget":
       return { name: "forget", move: forgotten(action.move, asked) };
     case "press":
@@ -204,7 +205,7 @@ export function readAction(text: string, asked: Asked): ModelAction {
 
 function noStartMenu(asked: Asked): string {
   const hint = "there is no Start menu: write use <item> to use an item of your Bag";
-  if (asked.kind === "shopMenu" || asked.kind === "itemPc" || asked.kind === "choice" || asked.kind === "naming" || asked.kind === "learnMove") return hint;
+  if (!("items" in asked)) return hint;
   if (asked.items.length > 0) return `${hint}; the items that work now: ${asked.items.map((i) => i.name).join(", ")}`;
   return `${hint}; ${asked.bagEmpty ? "your Bag is empty" : "your Bag has no item that works now"}`;
 }
@@ -212,12 +213,9 @@ function noStartMenu(asked: Asked): string {
 function forgotten(move: string, asked: Asked): string {
   if (asked.kind !== "learnMove") return move;
   const { moves } = asked.party[asked.slot];
-  if (/^\d+$/.test(move)) {
-    const place = Number(move);
-    if (place < 1 || place > moves.length) throw new Error(`there is no move ${place}: the places of the moves are 1 to ${moves.length}`);
-    return moves[place - 1].name;
-  }
-  return moves.find((m) => plain(m.name) === plain(move))?.name ?? move;
+  // A name or a place that is not a move of the Pokémon goes to the Harness, which gives the reason.
+  const place = /^\d+$/.test(move) ? moves[Number(move) - 1] : undefined;
+  return (place ?? moves.find((m) => plain(m.name) === plain(move)))?.name ?? move;
 }
 
 function readUse(name: string, on: string | undefined, asked: Asked): ModelAction {
@@ -232,18 +230,25 @@ function readUse(name: string, on: string | undefined, asked: Asked): ModelActio
   return { name: "use", item: item.name, on: partySlot(on, asked.party) };
 }
 
-function readTrade(name: "buy" | "sell", item: string, quantity: number, asked: Asked): ModelAction {
-  const names = (asked.kind !== "shopMenu" ? [] : name === "buy" ? asked.forSale : asked.sellable).map((i) => i.name);
-  const found = names.find((n) => plain(n) === plain(item));
-  if (!found) throw new Error(`"${quoted(item)}" is not an item ${name === "buy" ? "for sale" : "of your Bag that the Poké Mart buys"}: ${names.join(", ") || "none"}`);
-  return { name, item: found, quantity };
+/** The items that a buy, a sell, a withdraw or a deposit can name, and where they are. */
+function tradable(name: QuantityName, asked: Asked): { items: { name: string }[]; where: string } {
+  switch (name) {
+    case "buy":
+      return { items: asked.kind === "shopMenu" ? asked.forSale : [], where: "for sale" };
+    case "sell":
+      return { items: asked.kind === "shopMenu" ? asked.sellable : [], where: "of your Bag that the Poké Mart buys" };
+    case "withdraw":
+      return { items: asked.kind === "itemPc" ? asked.pcItems : [], where: "in the PC" };
+    case "deposit":
+      return { items: asked.kind === "itemPc" ? asked.depositable : [], where: "of the ITEMS pocket of your Bag" };
+  }
 }
 
-function readTransfer(name: "withdraw" | "deposit", item: string, quantity: number, asked: Asked): ModelAction {
-  const names = (asked.kind !== "itemPc" ? [] : name === "withdraw" ? asked.pcItems : asked.depositable).map((i) => i.name);
-  const found = names.find((n) => plain(n) === plain(item));
-  if (!found) throw new Error(`"${quoted(item)}" is not an item ${name === "withdraw" ? "in the PC" : "of the ITEMS pocket of your Bag"}: ${names.join(", ") || "none"}`);
-  return { name, item: found, quantity };
+function readQuantity(name: QuantityName, item: string, quantity: number, asked: Asked): ModelAction {
+  const { items, where } = tradable(name, asked);
+  const found = items.find((i) => plain(i.name) === plain(item));
+  if (!found) throw new Error(`"${quoted(item)}" is not an item ${where}: ${items.map((i) => i.name).join(", ") || "none"}`);
+  return { name, item: found.name, quantity };
 }
 
 export function itemUse(item: BagItem, asked: Asked): ItemUse | null {
@@ -306,8 +311,11 @@ function parse(written: string): ParsedAction | null {
   const action = withSpaces(written);
   let m: RegExpMatchArray | null;
   if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
-  if ((m = action.match(/^(buy|sell)\s+(.+?)\s+(\d+)$/i))) return { name: m[1].toLowerCase() as "buy" | "sell", item: m[2], quantity: Number(m[3]) };
-  if ((m = action.match(/^(withdraw|deposit)\s+(.+?)(?:\s+(\d+))?$/i))) return { name: m[1].toLowerCase() as "withdraw" | "deposit", item: m[2], quantity: Number(m[3] ?? 1) };
+  if ((m = action.match(/^(buy|sell|withdraw|deposit)\s+(.+?)(?:\s+(\d+))?$/i))) {
+    const name = m[1].toLowerCase() as QuantityName;
+    // The quantity is 1 when a withdraw or a deposit does not give it. A buy or a sell must give it.
+    if (m[3] !== undefined || name === "withdraw" || name === "deposit") return { name, item: m[2], quantity: Number(m[3] ?? 1) };
+  }
   if ((m = action.match(/^switch\s+(.+)$/i))) return { name: "switch", pokemon: m[1] };
   if ((m = action.match(/^send\s+(.+)$/i))) return { name: "send", pokemon: m[1] };
   if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };

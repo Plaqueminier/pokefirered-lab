@@ -1,12 +1,12 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type RunEvent, type Starter, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type RunEvent, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { importantEvents } from "../src/model/important-events";
-import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, reflectionTurn, reviewTurn, situation, systemPrompt, userPrompt, zoomMessage } from "../src/model/prompt";
+import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, situation, systemPrompt, type TurnKind, turnKind, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
@@ -14,7 +14,6 @@ const MAX_UNREADABLE = 3;
 const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
 const MAX_UNCOVERED = 3;
-const WHITEOUT_RULE = "If all your Pokémon faint, the Run ends.";
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
@@ -32,11 +31,7 @@ export function unknownScreen(events: readonly RunEvent[]): boolean {
   return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
-function starterRule(starter: Starter): string {
-  return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
-}
-
-type Conversation = { user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; reflection: boolean; review: boolean };
+type Conversation = { user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind };
 
 class ModelPlay {
   readonly #system: string;
@@ -50,7 +45,7 @@ class ModelPlay {
     private readonly settings: ModelSettings,
     private readonly ask: ModelClient,
   ) {
-    this.#system = systemPrompt([starterRule(settings.starter), ...(settings.stopAtWhiteout ? [WHITEOUT_RULE] : [])].join("\n"));
+    this.#system = systemPrompt(settings);
   }
 
   async play(): Promise<void> {
@@ -63,12 +58,11 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
-      const reflection = this.#conversation?.reflection ?? reflectionTurn(kind, this.harness.events, this.harness.noProgress);
-      const review = this.#conversation?.review ?? (!reflection && reviewTurn(kind, this.harness.events));
-      const asked = askedOf(observation, this.#conversation?.atlasShown ?? (reflection || review));
+      const turn = this.#conversation?.turnKind ?? turnKind(kind, this.harness.events, this.harness.noProgress);
+      const asked = askedOf(observation, this.#conversation?.atlasShown ?? turn !== "normal");
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
       if (!this.#conversation) {
-        this.#conversation = this.newConversation(observation, asked, { reflection, review });
+        this.#conversation = this.newConversation(observation, asked, turn);
         this.#promptObservation = observation;
       }
       const conversation = this.#conversation;
@@ -96,7 +90,7 @@ class ModelPlay {
 
   private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
     const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
-    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, reflection: conversation.reflection, review: conversation.review };
+    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
     const reply = await this.tryAsk(prompt);
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
     const replied = { ...request, answer: reply.content, usage: reply.usage };
@@ -115,11 +109,11 @@ class ModelPlay {
     }
   }
 
-  private newConversation(observation: Observation, asked: Asked, { reflection, review }: { reflection: boolean; review: boolean }): Conversation {
+  private newConversation(observation: Observation, asked: Asked, turn: TurnKind): Conversation {
     const { events, noProgress } = this.harness;
     const happened = importantEvents(this.#promptObservation, observation, events);
-    const user = userPrompt(observation, asked, events, { noProgress, reflection, review, happened });
-    return { user, turns: [], atlasShown: reflection || review, impossible: 0, stuck: noProgress.stuck, reflection, review };
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened });
+    return { user, turns: [], atlasShown: turn !== "normal", impossible: 0, stuck: noProgress.stuck, turnKind: turn };
   }
 
   private async summarize(): Promise<void> {

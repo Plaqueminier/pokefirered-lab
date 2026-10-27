@@ -18,7 +18,7 @@ export type GameEvent = { frame: number } & (
 
 type Reasoning = (typeof REASONING)[number];
 
-export type Starter = (typeof STARTERS)[number];
+type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
 export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null; starter: Starter; stopAtWhiteout: boolean };

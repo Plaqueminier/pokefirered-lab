@@ -17,13 +17,12 @@ import {
   levelUpBoxWaits,
   type PrintedMove,
   readBattle,
-  readTypeChart,
-  type TypeChart,
 } from "./battle";
+import { readTypeChart, type TypeChart } from "./battle-facts";
 import type { Memory, Ref } from "./memory";
-import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
+import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
 import { nameAt, newMove, type PartyMon, type PartyMove, readParty } from "./party";
-import { itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor, withdrawRow } from "./pc";
+import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
@@ -35,7 +34,6 @@ const MAP_OFFSET = 7;
 const NUM_METATILES_IN_PRIMARY = 640;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
-const FLAG_SYS_POKEDEX_GET = 0x829;
 // EndRivalBattle sets it after the first rival battle, won or lost.
 const FLAG_BEAT_RIVAL_IN_OAKS_LAB = 0x258;
 const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
@@ -247,7 +245,7 @@ export class Game {
   private readonly outsideTypes: Set<number>;
   private readonly mapNames: string[][];
   private readonly attributeCache = new Map<number, Uint32Array>();
-  #typeChart: TypeChart | null = null;
+  private chart: TypeChart | null = null;
 
   private constructor(
     private readonly mem: Memory,
@@ -309,7 +307,7 @@ export class Game {
     const shop = this.shopMenu();
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
     if (itemStorageCursor(this.mem) !== null) return { kind: "itemPc", items: this.pcItems() };
-    const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? multichoice(this.mem, this.decode, (id) => this.flag(id));
+    const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? pcMenu(this.mem, this.decode, (id) => this.flag(id)) ?? multichoice(this.mem, this.decode);
     if (menu) return { kind: "choice", ...menu, columns: 1 };
     const grid = multichoiceGrid(this.mem, this.decode);
     if (grid) return { kind: "choice", ...grid };
@@ -442,8 +440,8 @@ export class Game {
     return itemStorageCursor(this.mem);
   }
 
-  withdrawRow(): number | null {
-    return withdrawRow(this.mem);
+  itemPcRow(): number | null {
+    return itemPcRow(this.mem);
   }
 
   withdrawMenuCursor(): number | null {
@@ -534,8 +532,8 @@ export class Game {
   }
 
   typeChart(): TypeChart {
-    this.#typeChart ??= readTypeChart(this.mem, this.decode);
-    return this.#typeChart;
+    this.chart ??= readTypeChart(this.mem, this.decode);
+    return this.chart;
   }
 
   moveName(move: number): string {

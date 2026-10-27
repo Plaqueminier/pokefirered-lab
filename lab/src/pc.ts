@@ -21,7 +21,8 @@ export function pcItems(mem: Memory, decode: Decode): PcItem[] {
   });
 }
 
-export function withdrawRow(mem: Memory): number | null {
+/** The row of the list of the PC screen: the screen of a withdraw, and the screen that a deposit returns to. */
+export function itemPcRow(mem: Memory): number | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "ItemPc_MainCB") return null;
   if (!activeTask(mem, "Task_ItemPcMain") || mem.global("gPaletteFade").field("active").int() || activeTask(mem, "Task_PCScreenEffect_TurnOn")) return null;
   const state = mem.global("sListMenuState");

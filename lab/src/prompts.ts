@@ -37,7 +37,8 @@ const MAX_ROM_TEXT = 256;
 
 export type Decode = (bytes: Uint8Array) => string;
 
-export type Choice = { options: string[]; cursor: number };
+/** `storage`: the place of the option that opens the Pokémon storage (the boxes), which no action covers. */
+export type Choice = { options: string[]; cursor: number; storage?: number };
 
 export type Messages = { onScreen: number[]; printing: number[]; boxClosed: boolean };
 

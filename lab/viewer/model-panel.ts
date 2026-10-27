@@ -30,7 +30,7 @@ type Answer = Decision | { error: string; raw: string | null };
 
 type CallView = { title: string; answer: Answer; fields: Record<string, string>; usage: string; blocks: { title: string; text: string }[] };
 
-type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; reflection?: boolean; review?: boolean };
+type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; turn?: string };
 
 export type ModelPanelView = { rows: CallRow[]; selected: number | null; thinking: boolean; call: CallView | null };
 
@@ -44,7 +44,7 @@ export function modelPanelView(events: readonly RunEvent[], callsStarted: number
   const index = selected !== null && selected < calls.length ? selected : calls.length - 1;
   const call = calls[index];
   return {
-    rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, reflection: c.reflection, review: c.review })),
+    rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, turn: turnText(c) })),
     selected: call ? index : null,
     thinking: thinking(callsStarted),
     call: call ? callView(call, index) : null,
@@ -57,7 +57,7 @@ function callView(call: ModelEvent, index: number): CallView {
   const turnBlocks = turns.flatMap((turn) => [{ title: "Your answer", text: turn.assistant }, ...messageBlocks(turn.user)]);
   const cached = cachedTokens === undefined ? "" : ` (${cachedTokens} cached)`;
   return {
-    title: [`call ${index + 1}`, `frame ${call.frame}`, call.model, call.situation, ...stuckText(call)].join(" · "),
+    title: [`call ${index + 1}`, `frame ${call.frame}`, call.model, call.situation, ...stuckText(call.stuck, turnText(call))].join(" · "),
     answer: call.decision ?? { error: call.error, raw: call.answer },
     fields: call.decision ? answerFields(call.decision) : {},
     usage: `${promptTokens} tokens in${cached} · ${completionTokens} out (${reasoningTokens} reasoning) · ${Number(cost.toFixed(6))} $ · ${(call.latencyMs / 1000).toFixed(1)} s`,
@@ -65,8 +65,12 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function stuckText({ stuck, reflection, review }: Pick<CallRow, "stuck" | "reflection" | "review">): string[] {
-  return stuck === undefined ? [] : [`stuck ${stuck}`, ...(reflection ? ["reflection turn"] : []), ...(review ? ["review turn"] : [])];
+function turnText({ reflection, review }: ModelEvent): string | undefined {
+  return reflection ? "reflection turn" : review ? "review turn" : undefined;
+}
+
+function stuckText(stuck: number | undefined, turn: string | undefined): string[] {
+  return stuck === undefined ? [] : [`stuck ${stuck}`, ...(turn ? [turn] : [])];
 }
 
 function answerFields(decision: Decision): Record<string, string> {
@@ -136,8 +140,8 @@ export class ModelPanel {
         const action = document.createElement("b");
         action.textContent = row.action ?? "unreadable";
         const stuck = document.createElement("span");
-        stuck.className = row.reflection || row.review ? "model-reflection" : "muted";
-        stuck.textContent = stuckText(row).map((text) => ` · ${text}`).join("");
+        stuck.className = row.turn ? "model-reflection" : "muted";
+        stuck.textContent = stuckText(row.stuck, row.turn).map((text) => ` · ${text}`).join("");
         line.append(frame, ` ${row.situation} → `, action, stuck);
         return line;
       }),

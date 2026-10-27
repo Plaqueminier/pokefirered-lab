@@ -50,7 +50,7 @@ describe.skipIf(!ready)("the panel Model", () => {
     const record = await modelRecord();
     const view = modelPanelView(record.events, 4, 1);
     expect(view.thinking).toBe(true);
-    expect(view.rows.map((r) => [r.action, r.stuck, r.reflection, r.review])).toEqual([["go A", 0, false, false], ["viewAtlas", 0, false, false], ["goTo 8 6", 0, false, false]]);
+    expect(view.rows.map((r) => [r.action, r.stuck, r.turn])).toEqual([["go A", 0, undefined], ["viewAtlas", 0, undefined], ["goTo 8 6", 0, undefined]]);
     expect(view.call?.title).toMatch(/ · stuck 0$/);
     expect(view.selected).toBe(1);
     expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", note: "" });

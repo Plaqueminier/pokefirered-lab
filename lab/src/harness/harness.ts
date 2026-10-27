@@ -2,7 +2,8 @@
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { type BagPocket, battleItems, depositableItems, sellableItems, walkItems } from "../bag";
-import { type Battle, type BattleTurn, BattleWatch, type EnemyMon, enemyView, type FightFacts, fightFacts } from "../battle";
+import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
+import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import {
   DIRECTION_STEP,
   DIRECTION_STEPS,
@@ -17,7 +18,7 @@ import {
   type PlayerPosition,
   type WaitingFor,
 } from "../game";
-import { type PartyMon, sendableSlots } from "../party";
+import { isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
@@ -194,38 +195,34 @@ export type Bot = {
 };
 
 class RunEnd extends Error {
-  constructor(
-    readonly reason: EndReason,
-    readonly lastText?: string,
-  ) {
+  constructor(readonly reason: EndReason) {
     super(`the Run ends: ${reason}`);
   }
 }
 
+/** The end reasons whose result has `lastText`: the Bot reads the last text of the game to know why. */
+const ENDS_WITH_TEXT: readonly EndReason[] = ["whiteout", "unknown screen"];
+
+type Limits = { goal: Milestone; lastFrame: number; noProgressLimit: number; costLimit: number; progress: number; firstEvent: number; stopAtWhiteout: boolean };
+
 class RunLimits {
   #noProgress: NoProgress;
   #whitedOut = false;
+  #progress: number;
 
   /** The cost limit counts the Model calls from `firstEvent`: a continued Run does not count the calls of its parent. */
-  constructor(
-    private readonly goal: Milestone,
-    private readonly lastFrame: number,
-    private readonly noProgressLimit: number,
-    private readonly costLimit: number,
-    private progress: number,
-    private readonly firstEvent: number,
-    private readonly stopAtWhiteout: boolean,
-  ) {
-    this.#noProgress = { stuck: 0, since: firstEvent };
+  constructor(private readonly limits: Limits) {
+    this.#noProgress = { stuck: 0, since: limits.firstEvent };
+    this.#progress = limits.progress;
   }
 
   beforeFrame(frame: number): void {
-    if (frame >= this.lastFrame) throw new RunEnd("frame budget");
+    if (frame >= this.limits.lastFrame) throw new RunEnd("frame budget");
   }
 
-  // Battle poison and field poison both white out through CB2_WhiteOut.
-  afterFrame(whitingOut: boolean): void {
-    this.#whitedOut ||= whitingOut;
+  // Battle poison and field poison both white out through CB2_WhiteOut. The game is read only when the Run stops at a whiteout.
+  afterFrame(whitingOut: () => boolean): void {
+    if (this.limits.stopAtWhiteout && !this.#whitedOut) this.#whitedOut = whitingOut();
   }
 
   get noProgress(): NoProgress {
@@ -233,17 +230,17 @@ class RunLimits {
   }
 
   atAction(milestones: Milestone[], progress: number, decisionPoint: boolean, events: number): void {
-    if (milestones.includes(this.goal)) throw new RunEnd("goal");
-    if (this.#whitedOut && this.stopAtWhiteout) throw new RunEnd("whiteout");
-    if (progress > this.progress) this.#noProgress = { stuck: 0, since: events };
+    if (milestones.includes(this.limits.goal)) throw new RunEnd("goal");
+    if (this.#whitedOut) throw new RunEnd("whiteout");
+    if (progress > this.#progress) this.#noProgress = { stuck: 0, since: events };
     else if (decisionPoint) this.#noProgress = { ...this.#noProgress, stuck: this.#noProgress.stuck + 1 };
     // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
-    this.progress = Math.max(this.progress, progress);
-    if (this.#noProgress.stuck >= this.noProgressLimit) throw new RunEnd("no progress");
+    this.#progress = Math.max(this.#progress, progress);
+    if (this.#noProgress.stuck >= this.limits.noProgressLimit) throw new RunEnd("no progress");
   }
 
   afterCall(events: readonly RunEvent[]): void {
-    if (modelTotals(events.slice(this.firstEvent)).cost > this.costLimit) throw new RunEnd("cost limit");
+    if (modelTotals(events.slice(this.limits.firstEvent)).cost > this.limits.costLimit) throw new RunEnd("cost limit");
   }
 }
 
@@ -347,27 +344,29 @@ export class Harness {
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
     const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
-    const limits = new RunLimits(goal, this.frame + frameBudget, noProgressLimit, costLimit, this.progress(), this.#events.length, bot.model?.stopAtWhiteout ?? false);
+    const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, costLimit, progress: this.progress(), firstEvent: this.#events.length, stopAtWhiteout: bot.model?.stopAtWhiteout ?? false });
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
-    let lastText: string | undefined;
     let result: RunResult | null = null;
     try {
       await bot.play(this);
     } catch (error) {
       if (!(error instanceof RunEnd)) throw error;
       endReason = error.reason;
-      lastText = error.lastText;
     } finally {
-      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(lastText === undefined ? {} : { lastText }) };
+      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}) };
       this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}) }, result };
     }
     return result;
   }
 
+  /** The last text of the game in the results of the actions. */
+  private lastText(): string {
+    return this.#events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : [])).at(-1) ?? "";
+  }
+
   end(reason: "unknown screen"): never {
-    const texts = this.#events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
-    throw new RunEnd(reason, texts.at(-1) ?? "");
+    throw new RunEnd(reason);
   }
 
   /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
@@ -432,7 +431,7 @@ export class Harness {
         case "keep":
           return [{ name }];
         case "forget":
-          return waiting.kind === "learnMove" ? game.party()[waiting.slot].moves.map((move) => ({ name, move: move.name })) : [];
+          return waiting.kind === "learnMove" ? game.party()[waiting.slot].moves.flatMap((move) => (isHmMove(move.name) ? [] : [{ name, move: move.name }])) : [];
         case "swap":
           return game.party().length > 1 ? [{ name }] : [];
         case "switch":
@@ -634,17 +633,17 @@ export class Harness {
 
   private act(action: MacroAction | RawInput, body: () => Outcome): ActionResult;
   private act<T extends object>(action: MacroAction | RawInput, body: () => Outcome & Partial<T>, defaults: T): ActionResult & T;
-  private act(action: MacroAction | RawInput, body: () => Outcome, defaults = {}): ActionResult {
+  private act(action: MacroAction | RawInput, body: () => Outcome & Partial<Texts>, defaults = {}): ActionResult {
     const start = this.frame;
     const firstEvent = this.#events.length;
     const game = this.#run.game;
     const kind = game.waitingFor().kind;
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
-    const before = !refused && action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
-    const outcome: Outcome = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
+    const turnStart = action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
+    const outcome: Outcome & Partial<Texts> = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
     const result = { ...defaults, ...outcome, frames: this.frame - start };
     const entry = { action, result };
-    this.#battles.onAction(outcome.status === "impossible" ? null : before, "text" in result ? (result.text as string[]) : [], game.battle(), isDecisionPoint(game.waitingFor()));
+    this.#battles.onAction(outcome.status === "impossible" ? null : turnStart, outcome.text ?? [], game.battle(), isDecisionPoint(game.waitingFor()));
     // The action event goes before the game events of its frames.
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#atlas.onAction(entry);
@@ -718,7 +717,7 @@ export class Harness {
   private advance(keys: number): boolean {
     if (this.#phase.kind === "playing") this.#phase.limits.beforeFrame(this.frame);
     this.#run.runFrame(keys);
-    if (this.#phase.kind === "playing") this.#phase.limits.afterFrame(this.#run.game.whitingOut());
+    if (this.#phase.kind === "playing") this.#phase.limits.afterFrame(() => this.#run.game.whitingOut());
     this.#buttons.push(keys);
     const events = this.#watch.onFrame(this.frame);
     this.#events.push(...events);

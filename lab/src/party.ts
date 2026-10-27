@@ -19,7 +19,10 @@ const MAX_LEVEL = 100;
 const ITEM_NONE = 0;
 // The Summary screen shows "---" for a power below 2 and for an accuracy of 0 (pokemon_summary_screen.c).
 const MIN_SHOWN_POWER = 2;
+const FIXED_DAMAGE_POWER = 1;
 const MAX_STRING = 256;
+// sHMMoves (pokemon.c): the learn-move flow refuses to forget them.
+const HM_MOVES = new Set(["CUT", "FLY", "SURF", "STRENGTH", "FLASH", "ROCK SMASH", "WATERFALL", "DIVE"]);
 export const STAT_NAMES = ["attack", "defense", "speed", "spAttack", "spDefense"] as const;
 // STATUS1_* (constants/battle.h); the game shows PSN for STATUS1_POISON and STATUS1_TOXIC_POISON.
 const STATUS_BITS: [number, Status][] = [
@@ -34,7 +37,8 @@ export type Status = "none" | "sleep" | "poison" | "burn" | "freeze" | "paralysi
 
 export type Stats = Record<(typeof STAT_NAMES)[number], number>;
 
-export type PartyMove = { name: string; type: string; power: number | null; accuracy: number | null; pp: number; maxPp: number; description: string };
+// fixedDamage: the power in the game is 1, so the move has its own damage rule (SEISMIC TOSS, DRAGON RAGE, SUPER FANG…).
+export type PartyMove = { name: string; type: string; power: number | null; fixedDamage?: true; accuracy: number | null; pp: number; maxPp: number; description: string };
 
 export type PartyMon = {
   species: string;
@@ -93,6 +97,10 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
+export function isHmMove(move: string): boolean {
+  return HM_MOVES.has(move);
+}
+
 /** The slots of the party that can enter a battle: not fainted, and not already in the battle. */
 export function sendableSlots(party: PartyMon[], inBattle: number): number[] {
   return party.flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
@@ -120,6 +128,7 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
     name: nameAt(mem, "gMoveNames", move, decode),
     type: typeName(mem, data.field("type").int(), decode),
     power: power >= MIN_SHOWN_POWER ? power : null,
+    ...(power === FIXED_DAMAGE_POWER ? { fixedDamage: true as const } : {}),
     accuracy: accuracy === 0 ? null : accuracy,
     pp,
     maxPp,

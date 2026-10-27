@@ -1,10 +1,10 @@
 import type { BagItem, BagPocket } from "../bag";
-import type { BattleTurn, FightFacts } from "../battle";
+import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
-import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
-import type { PartyMon, PartyMove } from "../party";
+import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
+import { isHmMove, type PartyMon, type PartyMove } from "../party";
 import { actionText } from "../protocol";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
@@ -45,11 +45,22 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
+const TRANSFERS = [
+  ["withdraw", "take items from the PC and put them in your Bag", "withdraw POTION 2"],
+  ["deposit", "put items of your Bag into the PC", "deposit POTION 1"],
+] as const;
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 const POKEMON = "<Pokémon> is the name of a Pokémon of your party, or its place in the party (1 is the first).";
 
-export function systemPrompt(rules: string): string {
+const WHITEOUT_RULE = "If all your Pokémon faint, the Run ends.";
+
+function starterRule(starter: ModelSettings["starter"]): string {
+  return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
+}
+
+export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">): string {
+  const rules = [starterRule(starter), ...(stopAtWhiteout ? [WHITEOUT_RULE] : [])].join("\n");
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
@@ -109,26 +120,35 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
-export type PromptState = { noProgress: NoProgress; reflection: boolean; review: boolean; happened: string[] };
+/** A reflection or a review turn happens at a walk, and adds the full Atlas. A reflection turn has the priority. */
+export type TurnKind = "normal" | "reflection" | "review";
+
+export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[] };
+
+export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], noProgress: NoProgress): TurnKind {
+  if (kind !== "walk") return "normal";
+  if (reflectionDue(events, noProgress)) return "reflection";
+  return reviewDue(events) ? "review" : "normal";
+}
 
 // The count can pass a multiple of REFLECTION_EVERY during a battle. The Reflection turn then waits for the next walk in the same block.
-export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
+function reflectionDue(events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
   const block = Math.floor(stuck / REFLECTION_EVERY);
   const done = modelEvents(events.slice(since)).some((e) => e.reflection && Math.floor((e.stuck ?? 0) / REFLECTION_EVERY) === block);
-  return kind === "walk" && block > 0 && !done;
+  return block > 0 && !done;
 }
 
-export function reviewTurn(kind: WaitingFor["kind"], events: readonly RunEvent[]): boolean {
+function reviewDue(events: readonly RunEvent[]): boolean {
   const turns = callTurns(events);
   const last = turns.findLastIndex((turn) => turn.call?.review || turn.call?.reflection);
-  const decisions = turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length;
-  return kind === "walk" && decisions >= REVIEW_EVERY;
+  return turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length >= REVIEW_EVERY;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, review, happened }: PromptState): string {
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
-  const calls = pastCalls(events);
-  const tried = tries(events, noProgress.since);
+  const answers = answeredTurns(events);
+  const calls = pastCalls(answers);
+  const tried = tries(events, noProgress.since, answers);
   const known = asked.kind === "walk" ? knownWorld(asked.overworld.atlas) : [];
   const world = known.length === 0 ? [] : [...known, ""];
   // The facts that change little come first, so that the providers cache more of the prompt.
@@ -142,9 +162,9 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
-    ...(reflection ? REFLECTION : review ? REVIEW : []),
+    ...(turn === "reflection" ? REFLECTION : turn === "review" ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
-    ...loopWarning(events),
+    ...loopWarning(answers),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
@@ -155,7 +175,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     ...world,
     ...context(asked),
-    ...((reflection || review) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
+    ...(turn !== "normal" && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     "Actions:",
     ...actionLines(asked),
@@ -225,10 +245,15 @@ export function situation(asked: Asked): string {
   return `a walk on ${map.name} (${player.x}, ${player.y})`;
 }
 
+type AnsweredTurn = CallTurn & { call: ModelEvent };
+
+function answeredTurns(events: readonly RunEvent[]): AnsweredTurn[] {
+  return callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: turn.events }] : []));
+}
+
 // The last Model calls, each with what the program played and the game did until the next one.
-function pastCalls(events: readonly RunEvent[]): string[] {
-  const calls = callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: turn.events }] : []));
-  return calls.slice(-MAX_PAST_CALLS).map(({ call, events: after }) => {
+function pastCalls(answers: AnsweredTurn[]): string[] {
+  return answers.slice(-MAX_PAST_CALLS).map(({ call, events: after }) => {
     const lines = after.flatMap(eventLines);
     const answer = call.decision ? `You chose: ${call.decision.action}` : `Your answer could not be read: ${call.error}`;
     const shown = lines.length > MAX_CALL_LINES ? [`… ${lines.length - MAX_CALL_LINES + 1} lines before`, ...lines.slice(-(MAX_CALL_LINES - 1))] : lines;
@@ -240,15 +265,14 @@ type Try = { action: string; result: ActionEntry["result"]; texts: string[] };
 
 // After a Model call the program plays the answer, then reads the texts and can press B: only the actions before the first readText are tries.
 // The turn of the last progress counts from its Model call, so that its end (the code's B presses) is not a try.
-export function tries(events: readonly RunEvent[], since: number): string[] {
+export function tries(events: readonly RunEvent[], since: number, answers = answeredTurns(events)): string[] {
   const recent = new Set(events.slice(since));
-  const start = events.findLastIndex((e, i) => i <= since && e.type === "model");
-  const played = callTurns(events.slice(Math.max(0, start))).flatMap((turn) => (turn.call ? answerTries(turn.events, (a) => recent.has(a)) : []));
+  const first = Math.max(0, modelEvents(events.slice(0, since + 1)).length - 1);
+  const played = answers.slice(first).flatMap((turn) => answerTries(turn.events, (a) => recent.has(a)));
   const grouped = new Map<string, { action: string; outcome: string; times: number }>();
   for (const t of played) {
-    const result = outcome(t);
-    const key = `${t.action}: ${result}`;
-    const group = grouped.get(key) ?? { action: t.action, outcome: result, times: 0 };
+    const key = described(t);
+    const group = grouped.get(key) ?? { action: t.action, outcome: outcome(t), times: 0 };
     group.times++;
     grouped.set(key, group);
   }
@@ -268,9 +292,13 @@ function answerTries(events: readonly RunEvent[], keep: (event: RunEvent) => boo
   }));
 }
 
-function loopWarning(events: readonly RunEvent[]): string[] {
-  const last = callTurns(events)
-    .flatMap((turn) => (turn.call ? [answerTries(turn.events).map((t) => `${t.action}: ${outcome(t)}`).join("; ")] : []))
+function described(t: Try): string {
+  return `${t.action}: ${outcome(t)}`;
+}
+
+function loopWarning(answers: AnsweredTurn[]): string[] {
+  const last = answers
+    .map((turn) => answerTries(turn.events).map(described).join("; "))
     .filter(Boolean)
     .slice(-LOOP_AFTER);
   return last.length === LOOP_AFTER && last.every((played) => played === last[0])
@@ -361,7 +389,7 @@ function context(asked: Asked): string[] {
       return [
         `${nickname} wants to learn ${move.name} (${moveText(move)}). ${move.description}`,
         `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
-        ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveText(known)}. ${known.description}`),
+        ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveText(known)}. ${known.description}${isHmMove(known.name) ? " It is an HM move: it cannot be forgotten." : ""}`),
       ];
     }
     default:
@@ -403,8 +431,7 @@ function actionLines(asked: Asked): string[] {
       ];
     case "itemPc":
       return [
-        ...(actionsOf(asked).includes("withdraw") ? ["- withdraw <item> [quantity]: take items from the PC and put them in your Bag, for example withdraw POTION 2. The quantity is 1 when you do not give it."] : []),
-        ...(actionsOf(asked).includes("deposit") ? ["- deposit <item> [quantity]: put items of your Bag into the PC, for example deposit POTION 1. The quantity is 1 when you do not give it."] : []),
+        ...TRANSFERS.filter(([name]) => actionsOf(asked).includes(name)).map(([name, help, example]) => `- ${name} <item> [quantity]: ${help}, for example ${example}. The quantity is 1 when you do not give it.`),
         "- leave: go back to the menu of the PC, where you can turn the PC off.",
       ];
     case "naming":
@@ -414,8 +441,9 @@ function actionLines(asked: Asked): string[] {
       ];
     case "learnMove": {
       const { nickname, moves } = asked.party[asked.slot];
+      const forgettable = moves.filter((known) => !isHmMove(known.name));
       return [
-        `- forget <move>: forget this move and learn ${asked.move.name}, for example forget ${moves[0].name}. <move> is the name of a move above, or its place, 1 to ${moves.length}.`,
+        `- forget <move>: forget this move and learn ${asked.move.name}, for example forget ${(forgettable[0] ?? moves[0]).name}. <move> is the name of a move above, or its place, 1 to ${moves.length}.`,
         `- keep: keep the ${moves.length} moves. ${nickname} does not learn ${asked.move.name}.`,
       ];
     }
@@ -448,15 +476,14 @@ function fights({ player, fights: facts }: BattleState): string[] {
 
 function fightText({ effect, stab, estimate }: FightFacts): string {
   const name = effect === 0 ? "no effect" : effect < 1 ? "not very effective" : effect > 1 ? "super effective" : "normal effect";
-  const hits = estimate && range(estimate.minHits, estimate.maxHits);
   return [
     `${name} ×${MULTIPLIERS[effect] ?? effect}`,
     ...(stab ? ["STAB"] : []),
-    ...(estimate ? [`${range(estimate.minPercent, estimate.maxPercent, "%")} of its HP now`, `${hits} hit${hits === "1" ? "" : "s"} to KO`] : []),
+    ...(estimate ? [`${rangeText(estimate.minPercent, estimate.maxPercent, "%")} of its HP now`, `${rangeText(estimate.minHits, estimate.maxHits)} hit${estimate.maxHits === 1 ? "" : "s"} to KO`] : []),
   ].join(", ");
 }
 
-function range(min: number, max: number, unit = ""): string {
+function rangeText(min: number, max: number, unit = ""): string {
   return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
 }
 
