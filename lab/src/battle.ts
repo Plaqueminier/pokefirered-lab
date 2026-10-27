@@ -1,5 +1,5 @@
 import type { Memory, Ref } from "./memory";
-import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAT_NAMES, type Stats, statusOf } from "./party";
+import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAT_NAMES, type Stats, statusOf, typeName } from "./party";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -22,6 +22,22 @@ const YES_NO_READS_INPUT = 1;
 const YES_NO_CURSOR = 1;
 const YES_NO_COMMANDS = new Set(["Cmd_yesnobox", "Cmd_trygivecaughtmonnick"]);
 const DEX_PAGE_KEY_STATE = 11;
+// include/constants/pokemon.h and include/battle_main.h.
+const TYPE_MYSTERY = 9;
+const TYPE_FORESIGHT = 0xfe;
+const TYPE_ENDTABLE = 0xff;
+const TYPE_MUL_NORMAL = 10;
+// ApplyRandomDmgMultiplier: 100 - (Random() % 16) percent.
+const MIN_RANDOM_PERCENT = 85;
+const USED_TEXT = /^(.+) used (.+)!$/;
+const TURN_RESULTS: [RegExp, string][] = [
+  [/^It's super effective!$/, "super effective"],
+  [/^It's not very effective/, "not very effective"],
+  [/^It doesn't affect /, "no effect"],
+  [/^A critical hit!$/, "a critical hit"],
+  [/'s attack missed!$/, "missed"],
+  [/^But it failed!$/, "failed"],
+];
 
 export type BattleMenu = "battleAction" | "battleMove";
 
@@ -95,17 +111,42 @@ export function enemyMovePrinted(mem: Memory): PrintedMove | null {
 export class BattleWatch {
   private last: PrintedMove | null = null;
   private moves = new Map<number, Set<number>>();
+  private open: { before: Battle; texts: string[] } | null = null;
+  private turns: { foe: number; turn: BattleTurn }[] = [];
 
   // gLastPrintedMoves keeps the move of the last battle until the intro of the next one clears it.
   onFrame(battleStarted: boolean, printed: PrintedMove | null): void {
     const changed = printed && (printed.move !== this.last?.move || printed.partyIndex !== this.last?.partyIndex);
     this.last = printed;
-    if (battleStarted) this.moves = new Map();
-    else if (changed) this.moves.set(printed.partyIndex, (this.moves.get(printed.partyIndex) ?? new Set()).add(printed.move));
+    if (battleStarted) {
+      this.moves = new Map();
+      this.open = null;
+      this.turns = [];
+    } else if (changed) this.moves.set(printed.partyIndex, (this.moves.get(printed.partyIndex) ?? new Set()).add(printed.move));
   }
 
   movesSeen(partyIndex: number): number[] {
     return [...(this.moves.get(partyIndex) ?? [])];
+  }
+
+  /** A turn starts with a battle action that the game took, and ends at the next Decision point of the battle. */
+  onAction(before: Battle | null, texts: string[], now: Battle | null, decision: boolean): void {
+    if (before) this.open = { before, texts: [] };
+    if (!this.open) return;
+    this.open.texts.push(...texts);
+    if (!now) this.open = null;
+    else if (decision) {
+      this.turns.push({ foe: this.open.before.enemy.partyIndex, turn: battleTurn(this.open.before, now, this.open.texts) });
+      this.open = null;
+    }
+  }
+
+  lastTurn(): BattleTurn | null {
+    return this.turns.at(-1)?.turn ?? null;
+  }
+
+  turnsAgainst(partyIndex: number): BattleTurn[] {
+    return this.turns.flatMap((t) => (t.foe === partyIndex ? [t.turn] : []));
   }
 }
 
@@ -138,6 +179,83 @@ function battleMon(mem: Memory, mon: Ref, decode: Decode): BattleMon {
     stats: readStats(mon),
     statStages: Object.fromEntries(STAGE_NAMES.map((name, i) => [name, stages.at(i + 1).int() - DEFAULT_STAT_STAGE])) as StatStages,
   };
+}
+
+/** gTypeEffectiveness in the order of the game, with the type names; `special`: the move types that use the special stats. */
+export type TypeChart = { effects: { attack: string; defense: string; multiplier: number }[]; special: string[] };
+
+export type FightFacts = { effect: number; stab: boolean; estimate: { minPercent: number; maxPercent: number; minHits: number; maxHits: number } | null };
+
+type TurnSide = { before: { name: string; hp: string }; after: { name: string; hp: string } };
+
+export type MoveUse = { user: string; move: string; results: string[] };
+
+export type BattleTurn = { moves: MoveUse[]; player: TurnSide; foe: TurnSide };
+
+export function readTypeChart(mem: Memory, decode: Decode): TypeChart {
+  // The debug info gives the table as signed bytes: the bytes are read raw, so that TYPE_ENDTABLE is 0xff.
+  const table = mem.global("gTypeEffectiveness").bytes();
+  const effects: TypeChart["effects"] = [];
+  // The game skips the Foresight marker and applies the entries after it when the foe has no Foresight status.
+  for (let i = 0; i + 2 < table.length && table[i] !== TYPE_ENDTABLE; i += 3) {
+    if (table[i] === TYPE_FORESIGHT) continue;
+    effects.push({ attack: typeName(mem, table[i], decode), defense: typeName(mem, table[i + 1], decode), multiplier: table[i + 2] });
+  }
+  const types = mem.global("gTypeNames").length;
+  return { effects, special: Array.from({ length: types - TYPE_MYSTERY - 1 }, (_, i) => typeName(mem, TYPE_MYSTERY + 1 + i, decode)) };
+}
+
+/** The facts of each move of the player against the foe, with no critical hit; null for a move with no power. Abilities, held items, weather, screens and fixed damage are not in the estimate. */
+export function fightFacts({ player, enemy }: Battle, chart: TypeChart, milestones: readonly string[]): (FightFacts | null)[] {
+  return player.moves.map(({ type, power }) => {
+    if (power === null) return null;
+    const stab = player.types.includes(type);
+    const effects = chart.effects.filter((e) => e.attack === type && enemy.types.includes(e.defense));
+    const effect = effects.reduce((product, e) => (product * e.multiplier) / TYPE_MUL_NORMAL, 1);
+    if (effect === 0 || enemy.hp === 0) return { effect, stab, estimate: null };
+    // Cmd_damagecalc (CalculateBaseDamage), then Cmd_typecalc (STAB, then each entry of the chart), then Cmd_adjustnormaldamage (85% to 100%).
+    let damage = baseDamage(player, enemy, power, chart.special.includes(type), milestones);
+    if (stab) damage = Math.floor((damage * 15) / 10);
+    for (const { multiplier } of effects) damage = Math.max(Math.floor((damage * multiplier) / TYPE_MUL_NORMAL), multiplier === 0 ? 0 : 1);
+    const [min, max] = [Math.floor((damage * MIN_RANDOM_PERCENT) / 100), damage];
+    const percent = (hp: number) => Math.min(100, Math.round((hp * 100) / enemy.hp));
+    const hits = (hp: number) => Math.ceil(enemy.hp / Math.max(1, hp));
+    return { effect, stab, estimate: { minPercent: percent(min), maxPercent: percent(max), minHits: hits(max), maxHits: hits(min) } };
+  });
+}
+
+function baseDamage(attacker: BattleMon, defender: BattleMon, power: number, special: boolean, milestones: readonly string[]): number {
+  const [attackStat, defenseStat] = special ? (["spAttack", "spDefense"] as const) : (["attack", "defense"] as const);
+  const badge = special ? "badge-7" : "badge-1";
+  const attack = milestones.includes(badge) ? Math.floor((attacker.stats[attackStat] * 110) / 100) : attacker.stats[attackStat];
+  let damage = staged(attack, attacker.statStages[attackStat]) * power * (Math.floor((2 * attacker.level) / 5) + 2);
+  damage = Math.floor(Math.floor(damage / staged(defender.stats[defenseStat], defender.statStages[defenseStat])) / 50);
+  if (!special) {
+    if (attacker.status === "burn") damage = Math.floor(damage / 2);
+    damage = Math.max(damage, 1);
+  }
+  return damage + 2;
+}
+
+// gStatStageRatios: 10/40 at -6 to 40/10 at +6.
+function staged(stat: number, stage: number): number {
+  return Math.floor((stat * (10 + 5 * Math.max(0, stage))) / (10 + 5 * Math.max(0, -stage)));
+}
+
+/** A turn from the texts of the game between two Decision points of the battle, and the HP before and after. */
+export function battleTurn(before: Battle, after: Battle, texts: string[]): BattleTurn {
+  const moves: MoveUse[] = [];
+  for (const text of texts) {
+    const used = text.match(USED_TEXT);
+    if (used) moves.push({ user: used[1], move: used[2], results: [] });
+    const result = TURN_RESULTS.find(([pattern]) => pattern.test(text));
+    if (result && moves.length > 0) moves.at(-1)!.results.push(result[1]);
+  }
+  // A foe that fainted leaves its place to the next one before the next Decision point.
+  const foeAfter = after.enemy.partyIndex === before.enemy.partyIndex ? after.enemy : { ...before.enemy, hp: 0 };
+  const playerHp = (mon: BattleMon) => ({ name: mon.nickname, hp: `${mon.hp}/${mon.maxHp}` });
+  const foeHp = (mon: BattleMon) => ({ name: mon.species, hp: `${hpPercent(mon.hp, mon.maxHp)}%` });
+  return { moves, player: { before: playerHp(before.player), after: playerHp(after.player) }, foe: { before: foeHp(before.enemy), after: foeHp(foeAfter) } };
 }
 
 function hpPercent(hp: number, maxHp: number): number {

@@ -2,7 +2,7 @@
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { type BagPocket, battleItems, sellableItems, walkItems } from "../bag";
-import { type Battle, BattleWatch, type EnemyMon, enemyView } from "../battle";
+import { type Battle, type BattleTurn, BattleWatch, type EnemyMon, enemyView, type FightFacts, fightFacts } from "../battle";
 import {
   DIRECTION_STEP,
   DIRECTION_STEPS,
@@ -64,7 +64,8 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enemy: EnemyMon };
+/** `fights`: the facts of each move of the player, in the order of its moves. `foeTurns`: the turns of the battle against the current foe. */
+export type BattleState = { kind: Battle["kind"]; player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] };
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -583,11 +584,14 @@ export class Harness {
   private act(action: MacroAction | RawInput, body: () => Outcome, defaults = {}): ActionResult {
     const start = this.frame;
     const firstEvent = this.#events.length;
-    const kind = this.#run.game.waitingFor().kind;
+    const game = this.#run.game;
+    const kind = game.waitingFor().kind;
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
+    const before = !refused && action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
     const outcome: Outcome = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
     const result = { ...defaults, ...outcome, frames: this.frame - start };
     const entry = { action, result };
+    this.#battles.onAction(outcome.status === "impossible" ? null : before, "text" in result ? (result.text as string[]) : [], game.battle(), isDecisionPoint(game.waitingFor()));
     // The action event goes before the game events of its frames.
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.#atlas.onAction(entry);
@@ -634,9 +638,18 @@ export class Harness {
     if (this.#phase.kind === "playing" && this.#stopAsked()) throw new RunEnd("user stop");
   }
 
-  private battleState({ kind, player, enemy }: Battle): BattleState {
-    const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => this.#run.game.moveName(move));
-    return { kind, player, enemy: enemyView(enemy, movesSeen, this.#knowledge === "full") };
+  private battleState(battle: Battle): BattleState {
+    const { kind, player, enemy } = battle;
+    const game = this.#run.game;
+    const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => game.moveName(move));
+    return {
+      kind,
+      player,
+      enemy: enemyView(enemy, movesSeen, this.#knowledge === "full"),
+      fights: fightFacts(battle, game.typeChart(), game.milestones()),
+      lastTurn: this.#battles.lastTurn(),
+      foeTurns: this.#battles.turnsAgainst(enemy.partyIndex),
+    };
   }
 
   private overworld(): { player: PlayerPosition; grid: MapGrid; actors: MapActors } {

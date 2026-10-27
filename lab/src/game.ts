@@ -14,6 +14,8 @@ import {
   levelUpBoxWaits,
   type PrintedMove,
   readBattle,
+  readTypeChart,
+  type TypeChart,
 } from "./battle";
 import type { Memory, Ref } from "./memory";
 import { multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu } from "./menus";
@@ -237,6 +239,7 @@ export class Game {
   private readonly graphicsNames: Map<number, string>;
   private readonly mapNames: string[][];
   private readonly attributeCache = new Map<number, Uint32Array>();
+  #typeChart: TypeChart | null = null;
 
   private constructor(
     private readonly mem: Memory,
@@ -477,6 +480,12 @@ export class Game {
 
   battleMenuSlot(partyIndex: number): number {
     return battleMenuSlot(this.mem, partyIndex);
+  }
+
+  /** The ROM never changes the type chart, so the first read serves the whole Run. */
+  typeChart(): TypeChart {
+    this.#typeChart ??= readTypeChart(this.mem, this.decode);
+    return this.#typeChart;
   }
 
   moveName(move: number): string {
