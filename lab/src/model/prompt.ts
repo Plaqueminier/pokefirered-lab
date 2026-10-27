@@ -5,7 +5,7 @@ import type { ActionEntry, BattleState, NoProgress, Observation } from "../harne
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { PartyMon, PartyMove } from "../party";
 import { actionText } from "../protocol";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, sendable } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, targetLines } from "./targets";
@@ -50,7 +50,7 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -88,8 +88,17 @@ const REFLECTION = [
   '- Set a new "objective" that follows this lesson.',
 ];
 
-/** `happened`: the facts of importantEvents. */
-export type PromptState = { noProgress: NoProgress; reflection: boolean; happened: string[] };
+const REVIEW = [
+  "Review turn: check your plan against the facts before you act.",
+  "- Where are you on the way to the next Milestone?",
+  "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+  "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+  "- Which exits, edges and unseen cells are left to explore?",
+  '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
+];
+
+/** `happened`: the facts of importantEvents. When `reflection` and `review` are both true, only the Reflection turn shows. */
+export type PromptState = { noProgress: NoProgress; reflection: boolean; review: boolean; happened: string[] };
 
 // The count can pass a multiple of REFLECTION_EVERY during a battle. The Reflection turn then waits for the next walk in the same block.
 export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
@@ -98,7 +107,15 @@ export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEve
   return kind === "walk" && block > 0 && !done;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, happened }: PromptState): string {
+/** A decision is a Model call after which the program played an action: a zoom, a viewAtlas or an answer that the Bot cannot read is not one. */
+export function reviewTurn(kind: WaitingFor["kind"], events: readonly RunEvent[]): boolean {
+  const turns = callTurns(events);
+  const last = turns.findLastIndex((turn) => turn.call?.review || turn.call?.reflection);
+  const decisions = turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length;
+  return kind === "walk" && decisions >= REVIEW_EVERY;
+}
+
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, review, happened }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
@@ -115,7 +132,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
-    ...(reflection ? REFLECTION : []),
+    ...(reflection ? REFLECTION : review ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
@@ -127,7 +144,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     ...world,
     ...context(asked),
-    ...(reflection && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
+    ...((reflection || review) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     "Actions:",
     ...actionLines(asked),

@@ -60,6 +60,10 @@ _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
+**Review turn**:
+A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the signs and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note. It is not a separate request. When a **Reflection turn** comes at the same decision, only the **Reflection turn** shows.
+_Avoid_: review call, check turn
+
 **Summary call**:
 One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost counts in the cost of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
