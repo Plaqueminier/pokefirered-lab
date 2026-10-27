@@ -9,7 +9,7 @@ export type MemoryNode = NodeRange & { text: string };
 export function summarySchema(node: NodeRange): object {
   return {
     type: "object",
-    properties: { summary: { type: "string", description: `The summary of the two parts, newest facts first, in one line of ${summaryLimit(node)} characters at most.` } },
+    properties: { summary: { type: "string", description: `The summary of the two parts, ${summaryRule(node)}.` } },
     required: ["summary"],
     additionalProperties: false,
   };
@@ -70,7 +70,7 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   return {
     system: SUMMARY_SYSTEM,
     user: [
-      `Write the summary of these two parts of the memory, newest facts first, in short sentences, in one line of ${summaryLimit(node)} characters at most. Keep the facts that help to play: places, people, items, and what works or does not work. When two facts do not agree, keep the newest.`,
+      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When two facts do not agree, keep the newest.`,
       "",
       ...parts,
       "",
@@ -88,14 +88,17 @@ export function readSummary(content: string, node: NodeRange): string {
 
 function cut(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  const sentences = [...text.slice(0, limit + 1).matchAll(/[.!?](?=\s)/g)];
-  const end = sentences.at(-1)?.index;
-  if (end !== undefined) return text.slice(0, end + 1);
+  const sentences = text.slice(0, limit + 1).match(/^.*[.!?](?=\s)/s);
+  if (sentences) return sentences[0];
   const space = text.lastIndexOf(" ", limit);
-  return (space > 0 ? text.slice(0, space) : text.slice(0, limit)).trimEnd();
+  return text.slice(0, space > 0 ? space : limit).trimEnd();
 }
 
-// The prompt size grows with the logarithm of the number of notes.
+// The limit grows with the logarithm of the number of notes: it is the same for the prompt, the schema and the cut.
+function summaryRule(node: NodeRange): string {
+  return `newest facts first, in short sentences, in one line of ${summaryLimit(node)} characters at most`;
+}
+
 function summaryLimit({ from, to }: NodeRange): number {
   return MAX_SENTENCE * (Math.log2(to - from + 1) + 1);
 }

@@ -1,6 +1,7 @@
-import { type Direction, KIND } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasObstacle, type AtlasPerson, cellAt, mapNamed, obstacleName, obstacleRemedy, seenIn } from "../harness/atlas";
+import type { Direction, Obstacle } from "../game";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
+import { obstacleRemedy } from "../protocol";
 import { EXITS_GROUP, edgeLabel, isExit, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
@@ -35,7 +36,7 @@ export function atlasExtract(overworld: Overworld): AtlasView {
 
 export function localView({ grid, player }: Overworld, here: AtlasMap, targets: Target[]): string[] {
   const seen = seenIn(here);
-  const marks = new Map<string, string>(here.obstacles.map((o) => [cellKey(o), KIND.blocked]));
+  const marks = new Map<string, string>();
   targets.forEach((t, i) => {
     const letter = targetLetter(i);
     if (t.kind !== "edge" && t.kind !== "map") marks.set(cellKey(t.cell), letter.length === 1 ? letter : LONG_MARK);
@@ -137,8 +138,8 @@ function peopleLines(map: AtlasMap): string[] {
   return talked.length === 0 ? [] : ["", "What the people of this map said to you:", ...talked.map((p) => `- ${personText(p)}`)];
 }
 
-function obstacleText(obstacle: AtlasObstacle): string {
-  return `${obstacleName(obstacle)} at (${obstacle.x}, ${obstacle.y}). ${obstacleRemedy(obstacle.move)}.`;
+function obstacleText({ name, x, y, move }: Obstacle): string {
+  return `${name} at (${x}, ${y}). ${obstacleRemedy(move)}.`;
 }
 
 function obstacleLines(map: AtlasMap): string[] {

@@ -351,6 +351,7 @@
           <span>➜ ledge</span>
           <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp (outline: inactive)</span>
           <span><span class="swatch" style="border-radius: 50%; background: rgba(240, 200, 40, 0.8)"></span>person (hollow: off the screen)</span>
+          <span><span class="swatch" style="background: rgba(60, 170, 80, 0.85)"></span>fixed obstacle (cut tree, rock, boulder)</span>
           <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)"></span>trainer</span>
           <span><span class="swatch" style="background: rgba(255, 60, 60, 0.35)"></span>trainer sight</span>
           <span><span class="swatch" style="border: 2px solid rgba(255, 110, 30, 0.95)"></span>active trigger (!)</span>
@@ -490,7 +491,7 @@
             <dt>Decision point</dt><dd>the game waits for an input: walk, text, choice, battle action…</dd>
             <dt>Frozen game</dt><dd>in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot</dd>
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
-            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps</dd>
+            <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps, but only the fixed obstacles seen</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
           </dl>
         </section>

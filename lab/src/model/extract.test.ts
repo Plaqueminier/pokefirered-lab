@@ -37,7 +37,6 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     player: { ...player, facing: "north" },
     grid,
     people,
-    obstacles: current.obstacles.map((o, i) => ({ localId: 100 + i, ...o })),
     atlas: { maps: [current, ...others], lastTalk: null },
   };
 }
@@ -116,10 +115,9 @@ describe("the extract of the Atlas", () => {
     expect(view.targets.filter((t) => t.kind === "edge").map((t) => t.label)).toEqual(["north edge, 3 north: not taken"]);
   });
 
-  test("a cut tree is a fixed obstacle with its move: not a target, and a blocked cell of the grid", () => {
-    const view = atlasExtract(overworld({ ...LAB, obstacles: [{ x: 2, y: 1, graphics: "CUT_TREE", move: "CUT" }] }, []));
+  test("a cut tree is a fixed obstacle with its move, and not a target", () => {
+    const view = atlasExtract(overworld({ ...LAB, obstacles: [{ x: 2, y: 1, name: "CUT TREE", move: "CUT" }] }, []));
     expect(view.lines).toContain("- CUT TREE at (2, 1). Only a Pokémon that knows CUT can remove it.");
-    expect(view.lines).toContain("y= 1  B.#?#");
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("CUT TREE"));
   });
 

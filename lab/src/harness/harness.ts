@@ -14,16 +14,15 @@ import {
   type MapGrid,
   MILESTONES,
   type Milestone,
-  type Obstacle,
   type PlayerPosition,
   type WaitingFor,
 } from "../game";
 import { type PartyMon, sendableSlots } from "../party";
-import { type BotInfo, Keys } from "../protocol";
+import { type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
-import { type Atlas, AtlasWatch, blockedText, obstacleName, obstacleRemedy, type Sight } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type BlockOf, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
+import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
   ButtonTrack,
   GameWatch,
@@ -72,7 +71,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded">;
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; obstacles: Obstacle[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress";
 
@@ -395,7 +394,7 @@ export class Harness {
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded }): Person => ({ localId, x, y, graphics, loaded }));
-    return { ...base, mode: "overworld", map: game.map(), player, grid, people, obstacles: actors.obstacles };
+    return { ...base, mode: "overworld", map: game.map(), player, grid, people };
   }
 
   availableActions(): AvailableAction[] {
@@ -447,9 +446,7 @@ export class Harness {
         const maps = this.routeMaps();
         const route = findRoute(here, destination, maps);
         if (!route && !findRoute(here, destination, (name) => withoutPeople(maps(name)))) {
-          const obstacle = obstacleOnRoute(here, destination, maps);
-          if (obstacle) return { status: "impossible", reason: `you cannot go there now: a ${obstacleName(obstacle)} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}` };
-          return { status: "impossible", reason: `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps` };
+          return { status: "impossible", reason: noRouteReason(here, destination, asked, maps) };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
         switch (result) {
@@ -648,7 +645,7 @@ export class Harness {
     const grid = game.grid();
     const actors = grid && game.actors(grid);
     if (!player || !grid || !actors) throw new Error("the player is not on the overworld");
-    return { player, grid: { ...grid, signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
+    return { player, grid: { ...game.withObstacles(grid, actors), signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
   }
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
@@ -778,6 +775,12 @@ function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, bloc
   if (block) return blockedText(map.name, side, block);
   if (map.connections.some((c) => c.direction === side)) return `(${cell.x}, ${cell.y}) leads to a cell of the next map where the player cannot stand: cross the ${side} edge at another cell`;
   return `no map connects to the ${side} edge of ${map.name}; ${range}`;
+}
+
+function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource): string {
+  const obstacle = obstacleOnRoute(here, destination, maps);
+  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}`;
+  return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
 }
 
 function withoutPeople(map: RouteMap | null): RouteMap | null {

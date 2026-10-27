@@ -145,14 +145,14 @@ function edgeSteps(map: AtlasMap, { x, y }: Cell, side: Direction): number {
   return { north: y + 1, south: map.height - y, west: x + 1, east: map.width - x }[side];
 }
 
-function reachable({ grid, player, obstacles }: Overworld, seen: (cell: Cell) => boolean): Cell[] {
+function reachable({ grid, player }: Overworld, seen: (cell: Cell) => boolean): Cell[] {
   const visited = new Set([cellKey(player)]);
   const cells: Cell[] = [{ x: player.x, y: player.y }];
   for (let i = 0; i < cells.length; i++) {
     for (const [, [dx, dy]] of DIRECTION_STEPS) {
       const next = { x: cells[i].x + dx, y: cells[i].y + dy };
       const key = cellKey(next);
-      if (visited.has(key) || !seen(next) || !free({ ...grid, people: [], obstacles }, next)) continue;
+      if (visited.has(key) || !seen(next) || !walkable(grid, next)) continue;
       visited.add(key);
       cells.push(next);
     }
@@ -174,8 +174,8 @@ function frontier(reached: Cell[], grid: MapGrid, seen: (cell: Cell) => boolean,
   });
 }
 
-export function approaches(target: Exclude<Target, { kind: "map" }>, { grid, player, people, obstacles }: Overworld): Cell[] {
-  const isFree = (c: Cell) => free({ ...grid, people, obstacles }, c);
+export function approaches(target: Exclude<Target, { kind: "map" }>, { grid, player, people }: Overworld): Cell[] {
+  const isFree = (c: Cell) => free({ ...grid, people }, c);
   const nearest = (cells: Cell[]) => cells.filter(isFree).toSorted((a, b) => distance(a, player) - distance(b, player));
   switch (target.kind) {
     case "exit":

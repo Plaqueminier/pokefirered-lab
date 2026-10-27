@@ -23,6 +23,11 @@ export function actionText({ name, ...args }: MacroAction | RawInput): string {
   return `${name}(${Object.values(args).join(", ")})`;
 }
 
+/** What removes a fixed obstacle of the map, for the model, the reasons of the Harness and the Viewer. */
+export function obstacleRemedy(move: string): string {
+  return `Only a Pokémon that knows ${move} can remove it`;
+}
+
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
 

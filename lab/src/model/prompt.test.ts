@@ -40,7 +40,6 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     player: { x: 1, y: 1, facing: "north" },
     grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
     people: [],
-    obstacles: [],
     atlas: { maps: [map], lastTalk: people[0] ? { map: "Route1", localId: people[0].localId } : null },
   } as unknown as Observation;
 }

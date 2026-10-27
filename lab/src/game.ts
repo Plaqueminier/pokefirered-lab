@@ -152,9 +152,13 @@ export type MapGrid = {
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
 
-const OBSTACLE_MOVES: Record<string, string> = { CUT_TREE: "CUT", ROCK_SMASH_ROCK: "ROCK SMASH", PUSHABLE_BOULDER: "STRENGTH" };
+const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
+  CUT_TREE: { name: "CUT TREE", move: "CUT" },
+  ROCK_SMASH_ROCK: { name: "ROCK SMASH ROCK", move: "ROCK SMASH" },
+  PUSHABLE_BOULDER: { name: "PUSHABLE BOULDER", move: "STRENGTH" },
+};
 
-export type Obstacle = { localId: number; x: number; y: number; graphics: string; move: string };
+export type Obstacle = { x: number; y: number; name: string; move: string };
 
 export type MapActors = {
   player: { x: number; y: number; facing: number } | null;
@@ -610,10 +614,22 @@ export class Game {
     const here = this.location();
     if (id.group === here.group && id.num === here.num) {
       const grid = this.grid();
-      if (grid) return { grid, actors: this.buildActors(grid, this.mem.global("gMapHeader"), true) };
+      if (grid) {
+        const actors = this.buildActors(grid, this.mem.global("gMapHeader"), true);
+        return { grid: this.withObstacles(grid, actors), actors };
+      }
     }
     const grid = this.gridOf(id.group, id.num);
-    return grid && { grid, actors: this.actorsOf(grid) };
+    if (!grid) return null;
+    const actors = this.actorsOf(grid);
+    return { grid: this.withObstacles(grid, actors), actors };
+  }
+
+  /** The grid with the cells of the fixed obstacles as blocked cells: a route, a target and the Atlas then see them as walls. */
+  withObstacles(grid: MapGrid, { obstacles }: MapActors): MapGrid {
+    const kinds = [...grid.kinds];
+    for (const { x, y } of obstacles) kinds[(y - grid.y0) * grid.width + (x - grid.x0)] = KIND.blocked;
+    return { ...grid, kinds: kinds.join("") };
   }
 
   /** All map names, by group then number. */
@@ -800,9 +816,9 @@ export class Game {
       const rangeY = normal.field("movementRangeY").int();
       const graphicsId = (obj ?? template).field("graphicsId").int();
       const graphics = this.graphicsNames.get(graphicsId) ?? `#${graphicsId}`;
-      const move = OBSTACLE_MOVES[graphics];
-      if (move) {
-        obstacles.push({ localId, x, y, graphics, move });
+      const obstacle = OBSTACLES[graphics];
+      if (obstacle) {
+        obstacles.push({ x, y, ...obstacle });
         continue;
       }
       const person: MapActors["people"][number] = { localId, x, y, graphics, facing, loaded: obj !== undefined };

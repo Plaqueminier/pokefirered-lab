@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, type Game, KIND, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -18,8 +18,6 @@ export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text:
 /** x and y: where the player last saw the person on the screen, not where the person is now. */
 export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
 
-export type AtlasObstacle = Omit<Obstacle, "localId">;
-
 export type AtlasMap = {
   name: string;
   width: number;
@@ -32,7 +30,7 @@ export type AtlasMap = {
   hasEdges: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];
-  obstacles: AtlasObstacle[];
+  obstacles: Obstacle[];
   entry: Cell | null;
 };
 
@@ -44,14 +42,6 @@ const BLOCK_REASONS: Record<EdgeBlock, string> = { water: "is water. Only a Pok√
 
 export function blockedText(map: string, side: Direction, block: EdgeBlock): string {
   return `you cannot go there now: the ${side} edge of ${map} ${BLOCK_REASONS[block]}`;
-}
-
-export function obstacleName({ graphics }: { graphics: string }): string {
-  return graphics.replaceAll("_", " ");
-}
-
-export function obstacleRemedy(move: string): string {
-  return `Only a Pok√©mon that knows ${move} can remove it`;
 }
 
 export function cellAt(map: AtlasMap, { x, y }: Cell): string {
@@ -81,7 +71,7 @@ type Visit = {
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
   people: Map<number, AtlasPerson>;
-  obstacles: Map<string, AtlasObstacle>;
+  obstacles: Map<string, Obstacle>;
 };
 
 type Talk = { person: AtlasPerson; text: string | null; index: number | null };
@@ -110,7 +100,7 @@ export class AtlasWatch {
     const here = { map: map.name, x: player.x, y: player.y };
     this.#place = here;
     this.see(visit, here);
-    this.seePeople(visit, here);
+    this.seeActors(visit, here);
     if (last && last.map !== here.map) this.crossed(last, here);
   }
 
@@ -146,7 +136,7 @@ export class AtlasWatch {
   lookAround(): void {
     const place = this.#place;
     const visit = place && this.#visits.get(place.map);
-    if (visit) this.seePeople(visit, place);
+    if (visit) this.seeActors(visit, place);
   }
 
   atlas(knowledge: KnowledgeLevel): Atlas {
@@ -182,10 +172,10 @@ export class AtlasWatch {
     return { person: this.seen(visit, found), text: null, index: null };
   }
 
-  private seePeople(visit: Visit, player: Cell): void {
+  private seeActors(visit: Visit, player: Cell): void {
     const actors = this.game.mapView(visit.grid.name)?.actors;
     for (const p of actors?.people ?? []) if (p.loaded && onScreen(player, p)) this.seen(visit, p);
-    for (const { localId, ...obstacle } of actors?.obstacles ?? []) if (onScreen(player, obstacle)) visit.obstacles.set(cellKey(obstacle), obstacle);
+    for (const o of actors?.obstacles ?? []) if (onScreen(player, o)) visit.obstacles.set(cellKey(o), o);
   }
 
   private seen(visit: Visit, { localId, graphics, x, y }: MapActors["people"][number]): AtlasPerson {
@@ -200,7 +190,10 @@ export class AtlasWatch {
   }
 
   private grid(name: string, group: number, num: number): MapGrid | null {
-    if (!this.#grids.has(name)) this.#grids.set(name, this.game.gridOf(group, num));
+    if (!this.#grids.has(name)) {
+      const grid = this.game.gridOf(group, num);
+      this.#grids.set(name, grid && this.game.withObstacles(grid, this.game.actorsOf(grid)));
+    }
     return this.#grids.get(name)!;
   }
 
@@ -289,10 +282,7 @@ function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
     name: grid.name,
     width: grid.mapWidth,
     height: grid.mapHeight,
-    cells: Array.from(seen, (s, i) => {
-      const cell = { x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) };
-      return !s ? UNSEEN : obstacles.has(cellKey(cell)) ? KIND.blocked : kindAt(grid, cell);
-    }).join(""),
+    cells: Array.from(seen, (s, i) => (s ? kindAt(grid, { x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) }) : UNSEEN)).join(""),
     warps: seenWarps(visit),
     edges: seenEdges(visit).map(({ direction: side }) => {
       const block = blocked(grid.name, side);

@@ -1,6 +1,7 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
 import type { ConnectionSide, Direction, MapActors, MapGrid, Warp } from "../src/game";
+import { obstacleRemedy } from "../src/protocol";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
 export type View = { x: number; y: number; cell: number };
@@ -226,7 +227,7 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
     }
     if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) lines.push(`in the sight of trainer ${p.trainer.id}`);
   }
-  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) lines.push(`fixed obstacle: ${o.graphics.replaceAll("_", " ")} (${o.move} removes it)`);
+  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) lines.push(`fixed obstacle: ${o.name}. ${obstacleRemedy(o.move)}`);
   if (actors?.player && actors.player.x === x && actors.player.y === y) lines.push("player");
   return lines.filter(Boolean).join("\n");
 }

@@ -36,7 +36,10 @@ export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[]
 export function obstacleOnRoute(from: Place, to: Destination, mapOf: MapSource): (Obstacle & { map: string }) | null {
   const open: MapSource = (name) => {
     const map = mapOf(name);
-    return map && { ...map, people: [], obstacles: [] };
+    if (!map) return null;
+    const kinds = [...map.kinds];
+    for (const { x, y } of map.obstacles) kinds[(y - map.y0) * map.width + (x - map.x0)] = KIND.open;
+    return { ...map, kinds: kinds.join(""), people: [] };
   };
   for (const { to: place } of search(from, to, open) ?? []) {
     const obstacle = mapOf(place.map)?.obstacles.find((o) => o.x === place.x && o.y === place.y);
@@ -200,9 +203,8 @@ export function walkable(map: MapCells, c: Cell): boolean {
   return inside(map, c) && WALKABLE.has(kindAt(map, c));
 }
 
-export function free(map: MapCells & Pick<RouteMap, "people" | "obstacles">, c: Cell): boolean {
-  const on = (o: Cell) => o.x === c.x && o.y === c.y;
-  return walkable(map, c) && !map.people.some(on) && !map.obstacles.some(on);
+export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {
+  return walkable(map, c) && !map.people.some((p) => p.x === c.x && p.y === c.y);
 }
 
 function linksTo(end: string, cameFrom: Map<string, Link>): Link[] {
