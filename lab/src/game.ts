@@ -152,7 +152,6 @@ export type MapGrid = {
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
 
-/** The move that removes each fixed obstacle, by its OBJ_EVENT_GFX_ name. */
 const OBSTACLE_MOVES: Record<string, string> = { CUT_TREE: "CUT", ROCK_SMASH_ROCK: "ROCK SMASH", PUSHABLE_BOULDER: "STRENGTH" };
 
 export type Obstacle = { localId: number; x: number; y: number; graphics: string; move: string };
@@ -172,7 +171,6 @@ export type MapActors = {
     wander?: { x: number; y: number; w: number; h: number };
     trainer?: { id: number; defeated: boolean; range: number; allDirections: boolean; sight: [number, number][] };
   }[];
-  /** The objects that never move by themselves: not people, but blocked cells that a move removes. */
   obstacles: Obstacle[];
   /** Per grid trigger: true active, false inactive, null unknown (special variable). */
   triggers: (boolean | null)[];

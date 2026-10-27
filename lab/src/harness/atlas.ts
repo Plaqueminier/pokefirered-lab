@@ -32,7 +32,6 @@ export type AtlasMap = {
   hasEdges: boolean;
   signs: AtlasSign[];
   people: AtlasPerson[];
-  /** The fixed obstacles that the player saw. They are not people and not targets. */
   obstacles: AtlasObstacle[];
   entry: Cell | null;
 };
@@ -82,7 +81,6 @@ type Visit = {
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
   people: Map<number, AtlasPerson>;
-  /** By cellKey: a fixed obstacle never moves by itself. */
   obstacles: Map<string, AtlasObstacle>;
 };
 

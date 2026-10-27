@@ -671,7 +671,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the test Starting save at a Pokémon Center", () => {
   test("the Nurse asks with a multichoice menu: it is a choice, and choose YES heals the party", async () => {
     const harness = await Harness.open({ startSave: MART_SAVE });
-    // After the parcel scene, before the delivery to Oak: the game did not give the Pokédex yet.
     expect(harness.observe().milestones).toEqual(["has-pokemon", "first-rival-battle"]);
     must(await harness.goTo(7, 4, "ViridianCity_PokemonCenter_1F"));
     must(await harness.interact(7, 3));

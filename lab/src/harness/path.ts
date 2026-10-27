@@ -33,7 +33,6 @@ export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[]
   return links && legsOf(links, from.map);
 }
 
-/** The first fixed obstacle on a route that passes through the people and the fixed obstacles. */
 export function obstacleOnRoute(from: Place, to: Destination, mapOf: MapSource): (Obstacle & { map: string }) | null {
   const open: MapSource = (name) => {
     const map = mapOf(name);

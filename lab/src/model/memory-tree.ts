@@ -86,7 +86,6 @@ export function readSummary(content: string, node: NodeRange): string {
   return cut(summary.trim(), summaryLimit(node));
 }
 
-// The cut keeps whole sentences, else whole words: a fact never ends in the middle of a word.
 function cut(text: string, limit: number): string {
   if (text.length <= limit) return text;
   const sentences = [...text.slice(0, limit + 1).matchAll(/[.!?](?=\s)/g)];
@@ -96,7 +95,7 @@ function cut(text: string, limit: number): string {
   return (space > 0 ? text.slice(0, space) : text.slice(0, limit)).trimEnd();
 }
 
-// A node of 2^k notes has 200 × (k + 1) characters: the size of the tree in the prompt grows with the logarithm of the number of notes.
+// The prompt size grows with the logarithm of the number of notes.
 function summaryLimit({ from, to }: NodeRange): number {
   return MAX_SENTENCE * (Math.log2(to - from + 1) + 1);
 }
