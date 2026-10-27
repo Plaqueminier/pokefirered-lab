@@ -6,8 +6,8 @@ import type { ActionEntry, BattleState, NoProgress, Observation } from "../harne
 import { callTurns, type ModelEvent, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import type { PartyMon, PartyMove } from "../party";
 import { actionText } from "../protocol";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, sendable } from "./decision";
-import { fullAtlas, localView } from "./extract";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
+import { fullAtlas, knownWorld, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, targetLines } from "./targets";
 
@@ -16,6 +16,7 @@ const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat th
 const MAX_PAST_CALLS = 15;
 const MAX_CALL_LINES = 30;
 export const MAX_TRIES = 20;
+const LOOP_AFTER = 3;
 const MAX_OUTCOME = 200;
 const WAITS: Record<AskedKind, string> = {
   walk: "a walk",
@@ -52,11 +53,11 @@ export function systemPrompt(starterRule: string): string {
 Long-term goal: ${LONG_TERM_GOAL}
 ${starterRule}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn: the full Atlas, and the request to write a lesson and a new objective. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it.
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
 
 In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. You also get the last turn and the moves that you used on this foe, with their results.
 
@@ -65,7 +66,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note is never a guess, and never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town". When the game proves or disproves a guess, write a new note with the result. A note is never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
@@ -76,9 +77,14 @@ Rules of the program:
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
 Advice of a good player:
-- Talk to the people: they tell you where to go and what to do.
+- Read the signs and talk to the people: they often tell you the way and what to do.
+- Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
-- Train your Pokémon in the tall grass before you fight a Gym Leader.
+- Keep your POTIONS for when they are necessary, for example before a difficult battle.
+- You can use more than one Pokémon: catch more Pokémon and make a balanced team, with different types.
+- When a wild battle goes badly, run.
+- Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
+- When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - Buy Poké Balls and Potions at a Poké Mart.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
@@ -92,8 +98,17 @@ const REFLECTION = [
   '- Set a new "objective" that follows this lesson.',
 ];
 
-/** `happened`: the facts of importantEvents. */
-export type PromptState = { noProgress: NoProgress; reflection: boolean; happened: string[] };
+const REVIEW = [
+  "Review turn: check your plan against the facts before you act.",
+  "- Where are you on the way to the next Milestone?",
+  "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+  "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+  "- Which exits, edges and unseen cells are left to explore?",
+  '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
+];
+
+/** `happened`: the facts of importantEvents. When `reflection` and `review` are both true, only the Reflection turn shows. */
+export type PromptState = { noProgress: NoProgress; reflection: boolean; review: boolean; happened: string[] };
 
 // The count can pass a multiple of REFLECTION_EVERY during a battle. The Reflection turn then waits for the next walk in the same block.
 export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
@@ -102,10 +117,20 @@ export function reflectionTurn(kind: WaitingFor["kind"], events: readonly RunEve
   return kind === "walk" && block > 0 && !done;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, happened }: PromptState): string {
+/** A decision is a Model call after which the program played an action: a zoom, a viewAtlas or an answer that the Bot cannot read is not one. */
+export function reviewTurn(kind: WaitingFor["kind"], events: readonly RunEvent[]): boolean {
+  const turns = callTurns(events);
+  const last = turns.findLastIndex((turn) => turn.call?.review || turn.call?.reflection);
+  const decisions = turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length;
+  return kind === "walk" && decisions >= REVIEW_EVERY;
+}
+
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, reflection, review, happened }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const calls = pastCalls(events);
   const tried = tries(events, noProgress.since);
+  const known = asked.kind === "walk" ? knownWorld(asked.overworld.atlas) : [];
+  const world = known.length === 0 ? [] : [...known, ""];
   // The facts that change little come first, so that the providers cache more of the prompt.
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
@@ -117,8 +142,9 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up or a new text of a person): ${noProgress.stuck}.`,
-    ...(reflection ? REFLECTION : []),
+    ...(reflection ? REFLECTION : review ? REVIEW : []),
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
+    ...loopWarning(events),
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
@@ -127,8 +153,9 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     `Money: ${observation.money}`,
     bagText(observation.bag),
     "",
+    ...world,
     ...context(asked),
-    ...(reflection && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
+    ...((reflection || review) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     "Actions:",
     ...actionLines(asked),
@@ -216,18 +243,7 @@ type Try = { action: string; result: ActionEntry["result"]; texts: string[] };
 export function tries(events: readonly RunEvent[], since: number): string[] {
   const recent = new Set(events.slice(since));
   const start = events.findLastIndex((e, i) => i <= since && e.type === "model");
-  const played = callTurns(events.slice(Math.max(0, start))).flatMap((turn): Try[] => {
-    if (!turn.call) return [];
-    const actions = turn.events.flatMap((e) => (e.type === "action" ? [e] : []));
-    const read = actions.findIndex((a) => a.action.name === "readText");
-    const answer = (read === -1 ? actions : actions.slice(0, read)).filter((a) => recent.has(a));
-    const textsAfter = actions.slice(read === -1 ? actions.length : read).flatMap((a) => (a.action.name === "readText" && "text" in a.result ? a.result.text : []));
-    return answer.map((a, i) => ({
-      action: actionText(a.action),
-      result: a.result,
-      texts: [...("text" in a.result ? a.result.text : []), ...(i === answer.length - 1 ? textsAfter : [])],
-    }));
-  });
+  const played = callTurns(events.slice(Math.max(0, start))).flatMap((turn) => (turn.call ? answerTries(turn.events, (a) => recent.has(a)) : []));
   const grouped = new Map<string, { action: string; outcome: string; times: number }>();
   for (const t of played) {
     const result = outcome(t);
@@ -238,6 +254,29 @@ export function tries(events: readonly RunEvent[], since: number): string[] {
   }
   const lines = [...grouped.values()].map((g) => `- ${g.action} ×${g.times}: ${g.outcome}`);
   return lines.length <= MAX_TRIES ? lines : [`- … and ${lines.length - MAX_TRIES} other tries before`, ...lines.slice(-MAX_TRIES)];
+}
+
+function answerTries(events: readonly RunEvent[], keep: (event: RunEvent) => boolean = () => true): Try[] {
+  const actions = events.flatMap((e) => (e.type === "action" ? [e] : []));
+  const read = actions.findIndex((a) => a.action.name === "readText");
+  const answer = (read === -1 ? actions : actions.slice(0, read)).filter(keep);
+  const textsAfter = actions.slice(read === -1 ? actions.length : read).flatMap((a) => (a.action.name === "readText" && "text" in a.result ? a.result.text : []));
+  return answer.map((a, i) => ({
+    action: actionText(a.action),
+    result: a.result,
+    texts: [...("text" in a.result ? a.result.text : []), ...(i === answer.length - 1 ? textsAfter : [])],
+  }));
+}
+
+/** One line when the last LOOP_AFTER decisions that played an action played the same actions with the same results. A zoom or a viewAtlas plays nothing, so it does not count. */
+function loopWarning(events: readonly RunEvent[]): string[] {
+  const last = callTurns(events)
+    .flatMap((turn) => (turn.call ? [answerTries(turn.events).map((t) => `${t.action}: ${outcome(t)}`).join("; ")] : []))
+    .filter(Boolean)
+    .slice(-LOOP_AFTER);
+  return last.length === LOOP_AFTER && last.every((played) => played === last[0])
+    ? [`Warning: your last ${LOOP_AFTER} decisions played the same action with the same result: ${last[0]}. If it does not bring you closer to your objective, choose another action.`]
+    : [];
 }
 
 function outcome({ result, texts }: Try): string {
