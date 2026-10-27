@@ -1,7 +1,7 @@
-import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
+import type { ModelOptions, ModelSettings, NodeRange, Prompt, Usage } from "../harness/record";
 import { DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, STARTERS } from "../protocol";
 import { DECISION_SCHEMA } from "./decision";
-import { SUMMARY_SCHEMA } from "./memory-tree";
+import { summarySchema } from "./memory-tree";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_COST_LIMIT = 0.5;
@@ -15,7 +15,9 @@ export type AnswerFormat = { name: "decision" | "summary"; schema: object };
 
 export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 
-export const SUMMARY_FORMAT: AnswerFormat = { name: "summary", schema: SUMMARY_SCHEMA };
+export function summaryFormat(node: NodeRange): AnswerFormat {
+  return { name: "summary", schema: summarySchema(node) };
+}
 
 export type ModelClient = (prompt: Prompt, format?: AnswerFormat) => Promise<ModelReply>;
 
