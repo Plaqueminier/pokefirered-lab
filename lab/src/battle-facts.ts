@@ -1,6 +1,6 @@
 import type { Battle, BattleMon } from "./battle";
 import type { Memory } from "./memory";
-import { typeName } from "./party";
+import { type PartyMove, STAGE_NAMES, type StageName, statLabel, typeName } from "./party";
 import type { Decode } from "./prompts";
 
 const HP_BAR_PIXELS = 48;
@@ -18,10 +18,31 @@ const TURN_RESULTS: [RegExp, string][] = [
   [/'s attack missed!$/, "missed"],
   [/^But it failed!$/, "failed"],
 ];
+// EFFECT_* of constants/battle_move_effects.h. The rules come from their scripts in data/battle_scripts_1.s.
+const EFFECT_SLEEP = 1;
+const EFFECT_TOXIC = 33;
+const EFFECT_CONFUSE = 49;
+const EFFECT_POISON = 66;
+const EFFECT_PARALYZE = 67;
+const EFFECT_LEECH_SEED = 84;
+const EFFECT_WILL_O_WISP = 167;
+// Each range has one effect for each stat, in the order of STAGE_NAMES.
+const STAT_UP_EFFECTS = [10, 50];
+const STAT_DOWN_EFFECTS = [18, 58];
+const MAX_STAGE = 6;
+// These scripts fail on a target behind a SUBSTITUTE before the accuracy check.
+const SUBSTITUTE_FAILS = new Set([EFFECT_SLEEP, EFFECT_TOXIC, EFFECT_CONFUSE, EFFECT_POISON, EFFECT_PARALYZE, EFFECT_LEECH_SEED, EFFECT_WILL_O_WISP]);
+const STATUS_EFFECTS = new Set([EFFECT_SLEEP, EFFECT_TOXIC, EFFECT_POISON, EFFECT_PARALYZE, EFFECT_WILL_O_WISP]);
+// jumpiftype in the scripts. The paralysis script uses the type chart instead (typecalc).
+const IMMUNE_TYPES: Record<number, string[]> = { [EFFECT_POISON]: ["POISON", "STEEL"], [EFFECT_TOXIC]: ["POISON", "STEEL"], [EFFECT_WILL_O_WISP]: ["FIRE"], [EFFECT_LEECH_SEED]: ["GRASS"] };
+// The texts of the states in battle.ts.
+const SUBSTITUTE_STATE = "behind a SUBSTITUTE";
+const FORESIGHT_STATE = "identified (FORESIGHT)";
 
 export type TypeChart = { effects: { attack: string; defense: string; multiplier: number }[]; special: string[] };
 
-export type FightFacts = { effect: number; stab: boolean; estimate: { minPercent: number; maxPercent: number; minHits: number; maxHits: number } | null };
+/** A damage move gets its type effect, STAB and an estimate. A move with no damage gets only the sure reason why it has no effect on the foe now. */
+export type FightFacts = { effect: number; stab: boolean; estimate: { minPercent: number; maxPercent: number; minHits: number; maxHits: number } | null } | { noEffect: string };
 
 type TurnSide = { before: { name: string; hp: string }; after: { name: string; hp: string } };
 
@@ -42,8 +63,12 @@ export function readTypeChart(mem: Memory, decode: Decode): TypeChart {
 }
 
 export function fightFacts({ player, enemy }: Battle, chart: TypeChart, milestones: readonly string[]): (FightFacts | null)[] {
-  return player.moves.map(({ type, power, fixedDamage }) => {
-    if (power === null && !fixedDamage) return null;
+  return player.moves.map((move) => {
+    const { type, power, fixedDamage } = move;
+    if (power === null && !fixedDamage) {
+      const noEffect = noEffectReason(move, player, enemy, chart);
+      return noEffect ? { noEffect } : null;
+    }
     const stab = player.types.includes(type);
     const effects = chart.effects.filter((e) => e.attack === type && enemy.types.includes(e.defense));
     const effect = effects.reduce((product, e) => (product * e.multiplier) / TYPE_MUL_NORMAL, 1);
@@ -59,6 +84,28 @@ export function fightFacts({ player, enemy }: Battle, chart: TypeChart, mileston
     const hits = (hp: number) => Math.ceil(enemy.hp / Math.max(1, hp));
     return { effect, stab, estimate: { minPercent: percent(min), maxPercent: percent(max), minHits: hits(max), maxHits: hits(min) } };
   });
+}
+
+/** The reason why a move with no damage surely has no effect now, from the facts that a player sees. Accuracy, abilities and the other cases are not sure: they give null. */
+function noEffectReason({ effect, type }: PartyMove, player: BattleMon, foe: BattleMon, chart: TypeChart): string | null {
+  const raised = stageOf(STAT_UP_EFFECTS, effect);
+  if (raised) return player.statStages[raised] === MAX_STAGE ? `the ${statLabel(raised)} of ${player.nickname} is already at +${MAX_STAGE}` : null;
+  const lowered = stageOf(STAT_DOWN_EFFECTS, effect);
+  if (foe.states.includes(SUBSTITUTE_STATE) && (lowered || SUBSTITUTE_FAILS.has(effect))) return `the foe is ${SUBSTITUTE_STATE}`;
+  if (lowered) return foe.statStages[lowered] === -MAX_STAGE ? `the ${statLabel(lowered)} of the foe is already at -${MAX_STAGE}` : null;
+  // With FORESIGHT, the type chart of the game skips the immunities of GHOST.
+  const immune = effect === EFFECT_PARALYZE && !foe.states.includes(FORESIGHT_STATE) ? chart.effects.filter((e) => e.attack === type && e.multiplier === 0).map((e) => e.defense) : (IMMUNE_TYPES[effect] ?? []);
+  const immuneType = foe.types.find((t) => immune.includes(t));
+  if (immuneType) return `the foe is a ${immuneType} type`;
+  if (STATUS_EFFECTS.has(effect) && foe.status !== "none") return "the foe already has a status";
+  if (effect === EFFECT_LEECH_SEED && foe.states.includes("seeded")) return "the foe is already seeded";
+  if (effect === EFFECT_CONFUSE && foe.states.includes("confused")) return "the foe is already confused";
+  return null;
+}
+
+function stageOf(firstEffects: number[], effect: number): StageName | null {
+  const first = firstEffects.find((start) => effect >= start && effect < start + STAGE_NAMES.length);
+  return first === undefined ? null : STAGE_NAMES[effect - first];
 }
 
 function baseDamage(attacker: BattleMon, defender: BattleMon, power: number, special: boolean, milestones: readonly string[]): number {

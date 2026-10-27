@@ -184,10 +184,10 @@ describe("the battle facts", () => {
   test("each fight shows its effect on the foe, STAB and a damage estimate from the formula of the game, and a move with no PP shows no PP and no estimate; the prompt shows the last turn and the moves used on this foe", () => {
     const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
     const moves = [
-      { name: "BUBBLE", type: "WATER", power: 20, accuracy: 100, pp: 29, maxPp: 30, description: "" },
-      { name: "TAIL WHIP", type: "NORMAL", power: null, accuracy: 100, pp: 30, maxPp: 30, description: "" },
-      { name: "SEISMIC TOSS", type: "FIGHTING", power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
-      { name: "WATER GUN", type: "WATER", power: 40, accuracy: 100, pp: 0, maxPp: 25, description: "" },
+      { name: "BUBBLE", type: "WATER", effect: 70, power: 20, accuracy: 100, pp: 29, maxPp: 30, description: "" },
+      { name: "TAIL WHIP", type: "NORMAL", effect: 19, power: null, accuracy: 100, pp: 30, maxPp: 30, description: "" },
+      { name: "SEISMIC TOSS", type: "FIGHTING", effect: 87, power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
+      { name: "WATER GUN", type: "WATER", effect: 0, power: 40, accuracy: 100, pp: 0, maxPp: 25, description: "" },
     ];
     const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
     const bulbasaur = { ...squirtle, species: "BULBASAUR", nickname: "BULBASAUR", types: ["GRASS", "POISON"], hp: 20, stats: { attack: 11, defense: 11, speed: 10, spAttack: 13, spDefense: 13 }, moves: [] };
@@ -236,10 +236,49 @@ describe("the battle facts", () => {
   test("when no move has PP, the fight line tells that the Pokémon uses STRUGGLE", () => {
     const observation = wildPidgey();
     if (observation.mode !== "battle") throw new Error("not a battle");
-    observation.battle.player.moves = [{ name: "TACKLE", type: "NORMAL", power: 35, accuracy: 95, pp: 0, maxPp: 35, description: "" }];
+    observation.battle.player.moves = [{ name: "TACKLE", type: "NORMAL", effect: 0, power: 35, accuracy: 95, pp: 0, maxPp: 35, description: "" }];
     expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain(
       "Actions:\n- fight 0: no move of SQUIRTLE has PP, so SQUIRTLE uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.\n- run",
     );
+  });
+
+  test("a move with no damage tells why it has no effect when the facts make it sure, and few PP in the damage moves add a line", () => {
+    const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
+    const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
+    const move = (name: string, type: string, effect: number, pp = 10) => ({ name, type, effect, power: null, accuracy: 100, pp, maxPp: 10, description: "" });
+    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], stats, statStages: { ...stages, defense: 6 }, moves: [], partyIndex: 0 };
+    const nidoran = { ...ivysaur, species: "NIDORAN♀", nickname: "NIDORAN♀", types: ["POISON"], status: "sleep" as const, states: ["seeded"], statStages: { ...stages, attack: -6 } };
+    const geodude = { ...nidoran, species: "GEODUDE", nickname: "GEODUDE", types: ["ROCK", "GROUND"], status: "none" as const, states: ["behind a SUBSTITUTE"], statStages: stages };
+    const chart = { effects: [{ attack: "ELECTRIC", defense: "GROUND", multiplier: 0 }], special: ["ELECTRIC", "GRASS"] };
+    const prompt = (player: Battle["player"], enemy: Battle["player"]) => {
+      const observation = wildPidgey();
+      if (observation.mode !== "battle") throw new Error("not a battle");
+      observation.battle = { ...observation.battle, player, enemy: enemyView(enemy, [], false), fights: fightFacts({ kind: "wild", player, enemy }, chart, []) };
+      return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    };
+    const statusMoves = [move("POISONPOWDER", "POISON", 66), move("SLEEP POWDER", "GRASS", 1), move("LEECH SEED", "GRASS", 84), move("GROWL", "NORMAL", 18)];
+    expect(prompt({ ...ivysaur, moves: statusMoves }, nidoran)).toContain(
+      [
+        "- fight 0: POISONPOWDER (POISON, power ---, accuracy 100, PP 10/10). No effect: the foe is a POISON type.",
+        "- fight 1: SLEEP POWDER (GRASS, power ---, accuracy 100, PP 10/10). No effect: the foe already has a status.",
+        "- fight 2: LEECH SEED (GRASS, power ---, accuracy 100, PP 10/10). No effect: the foe is already seeded.",
+        "- fight 3: GROWL (NORMAL, power ---, accuracy 100, PP 10/10). No effect: the attack of the foe is already at -6.",
+      ].join("\n"),
+    );
+    const vineWhip = { ...move("VINE WHIP", "GRASS", 0, 2), power: 35 };
+    const otherMoves = [move("THUNDER WAVE", "ELECTRIC", 67), move("HARDEN", "NORMAL", 11), move("GROWL", "NORMAL", 18), vineWhip];
+    const lowPp = prompt({ ...ivysaur, moves: otherMoves }, geodude);
+    expect(lowPp).toContain(
+      [
+        "- fight 0: THUNDER WAVE (ELECTRIC, power ---, accuracy 100, PP 10/10). No effect: the foe is behind a SUBSTITUTE.",
+        "- fight 1: HARDEN (NORMAL, power ---, accuracy 100, PP 10/10). No effect: the defense of IVY is already at +6.",
+        "- fight 2: GROWL (NORMAL, power ---, accuracy 100, PP 10/10). No effect: the foe is behind a SUBSTITUTE.",
+      ].join("\n"),
+    );
+    expect(lowPp).toContain("Your damage moves have few PP: use the other moves that have an effect, or switch.");
+    const thunderWave = prompt({ ...ivysaur, moves: [move("THUNDER WAVE", "ELECTRIC", 67), move("GROWL", "NORMAL", 18), { ...vineWhip, pp: 3 }] }, { ...geodude, states: [] });
+    expect(thunderWave).toContain("- fight 0: THUNDER WAVE (ELECTRIC, power ---, accuracy 100, PP 10/10). No effect: the foe is a GROUND type.\n- fight 1: GROWL (NORMAL, power ---, accuracy 100, PP 10/10)\n");
+    expect(thunderWave).not.toContain("few PP");
   });
 
   test("at a battle action, the actions have no press", () => {

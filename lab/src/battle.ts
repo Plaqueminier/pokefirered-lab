@@ -1,6 +1,6 @@
 import { battleTurn, type BattleTurn, hpPercent } from "./battle-facts";
 import type { Memory } from "./memory";
-import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAT_NAMES, type Stats, statusOf } from "./party";
+import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAGE_NAMES, type StageName, type Stats, statusOf } from "./party";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -8,7 +8,6 @@ const BATTLE_TYPE_TRAINER = 1 << 3;
 const PLAYER_BATTLER = 0;
 const ENEMY_BATTLER = 1;
 const MOVE_UNAVAILABLE = 0xffff;
-const STAGE_NAMES = [...STAT_NAMES, "accuracy", "evasion"] as const;
 const DEFAULT_STAT_STAGE = 6;
 const BATTLE_MENUS: Record<string, BattleMenu> = {
   HandleInputChooseAction: "battleAction",
@@ -80,7 +79,7 @@ export type LearnMoveBox = { question: LearnMoveQuestion; cursor: number; slot: 
 
 export type PrintedMove = { partyIndex: number; move: number };
 
-type StatStages = Record<(typeof STAGE_NAMES)[number], number>;
+type StatStages = Record<StageName, number>;
 
 /** `states` are the volatile states of the battle, for example "seeded" or "confused". */
 export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages };

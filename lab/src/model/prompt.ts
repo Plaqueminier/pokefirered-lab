@@ -5,7 +5,7 @@ import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
-import { isHmMove, type PartyMon, type PartyMove } from "../party";
+import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText } from "../protocol";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
@@ -43,7 +43,6 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
   "badge-7": "Earn the Volcano Badge from Blaine, the Gym Leader of Cinnabar Island.",
   "badge-8": "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
 };
-const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
 const TRANSFERS = [
@@ -73,7 +72,7 @@ Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same
 
 At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
 
-In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does.
+In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -368,7 +367,7 @@ function moveText(move: PartyMove): string {
 
 function statsText(stats: Record<string, number>): string {
   return Object.entries(stats)
-    .map(([stat, value]) => `${STAT_LABELS[stat] ?? stat} ${value}`)
+    .map(([stat, value]) => `${statLabel(stat)} ${value}`)
     .join(", ");
 }
 
@@ -489,12 +488,12 @@ function fights({ player, fights: facts }: BattleState): string[] {
   if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
   return player.moves.map((move, i) => {
     const fact = facts[i];
-    const about = move.pp === 0 ? ". No PP: you cannot use it." : fact ? `. On the foe: ${fightText(fact)}.` : "";
+    const about = move.pp === 0 ? ". No PP: you cannot use it." : !fact ? "" : "noEffect" in fact ? `. No effect: ${fact.noEffect}.` : `. On the foe: ${fightText(fact)}.`;
     return `- fight ${i}: ${move.name} (${moveText(move)})${about}`;
   });
 }
 
-function fightText({ effect, stab, estimate }: FightFacts): string {
+function fightText({ effect, stab, estimate }: Exclude<FightFacts, { noEffect: string }>): string {
   const name = effect === 0 ? "no effect" : effect < 1 ? "not very effective" : effect > 1 ? "super effective" : "normal effect";
   return [
     `${name} ×${MULTIPLIERS[effect] ?? effect}`,
@@ -517,7 +516,15 @@ function battleLines(battle: BattleState, party: PartyMon[]): string[] {
     ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
+    ...(fewDamagePp(player.moves) ? ["Your damage moves have few PP: use the other moves that have an effect, or switch."] : []),
   ];
+}
+
+/** All the damage moves together have a quarter of their PP or less, and a move still has PP. */
+function fewDamagePp(moves: PartyMove[]): boolean {
+  const damage = moves.filter((move) => move.power !== null || move.fixedDamage);
+  const sum = (pp: (move: PartyMove) => number) => damage.reduce((total, move) => total + pp(move), 0);
+  return damage.length > 0 && sum((move) => move.pp) * 4 <= sum((move) => move.maxPp) && moves.some((move) => move.pp > 0);
 }
 
 function ownedLine(species: string, inParty: number, inPc: number): string {
@@ -536,5 +543,5 @@ function sideText({ before, after }: BattleTurn["player"]): string {
 
 function stagesText(stages: Record<string, number>): string {
   const changed = Object.entries(stages).filter(([, stage]) => stage !== 0);
-  return changed.map(([stat, stage]) => `${STAT_LABELS[stat] ?? stat} ${stage > 0 ? "+" : ""}${stage}`).join(", ") || "none";
+  return changed.map(([stat, stage]) => `${statLabel(stat)} ${stage > 0 ? "+" : ""}${stage}`).join(", ") || "none";
 }

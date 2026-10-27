@@ -24,7 +24,10 @@ const FIXED_DAMAGE_POWER = 1;
 const MAX_STRING = 256;
 // sHMMoves (pokemon.c): the learn-move flow refuses to forget them.
 const HM_MOVES = new Set(["CUT", "FLY", "SURF", "STRENGTH", "FLASH", "ROCK SMASH", "WATERFALL", "DIVE"]);
-export const STAT_NAMES = ["attack", "defense", "speed", "spAttack", "spDefense"] as const;
+const STAT_NAMES = ["attack", "defense", "speed", "spAttack", "spDefense"] as const;
+// The order of STAT_ATK to STAT_EVASION (constants/pokemon.h).
+export const STAGE_NAMES = [...STAT_NAMES, "accuracy", "evasion"] as const;
+const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefense: "special defense" };
 // STATUS1_* (constants/battle.h); the game shows PSN for STATUS1_POISON and STATUS1_TOXIC_POISON.
 const STATUS_BITS: [number, Status][] = [
   [0x07, "sleep"],
@@ -38,8 +41,11 @@ export type Status = "none" | "sleep" | "poison" | "burn" | "freeze" | "paralysi
 
 export type Stats = Record<(typeof STAT_NAMES)[number], number>;
 
+export type StageName = (typeof STAGE_NAMES)[number];
+
+// effect: the EFFECT_* of the move (constants/battle_move_effects.h).
 // fixedDamage: the power in the game is 1, so the move has its own damage rule (SEISMIC TOSS, DRAGON RAGE, SUPER FANG…).
-export type PartyMove = { name: string; type: string; power: number | null; fixedDamage?: true; accuracy: number | null; pp: number; maxPp: number; description: string };
+export type PartyMove = { name: string; type: string; effect: number; power: number | null; fixedDamage?: true; accuracy: number | null; pp: number; maxPp: number; description: string };
 
 export type PartyMon = {
   species: string;
@@ -112,6 +118,10 @@ export function readPcSpecies(mem: Memory, decode: Decode): string[] {
   return species;
 }
 
+export function statLabel(stat: string): string {
+  return STAT_LABELS[stat] ?? stat;
+}
+
 export function isHmMove(move: string): boolean {
   return HM_MOVES.has(move);
 }
@@ -142,6 +152,7 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
   return {
     name: nameAt(mem, "gMoveNames", move, decode),
     type: typeName(mem, data.field("type").int(), decode),
+    effect: data.field("effect").int(),
     power: power >= MIN_SHOWN_POWER ? power : null,
     ...(power === FIXED_DAMAGE_POWER ? { fixedDamage: true as const } : {}),
     accuracy: accuracy === 0 ? null : accuracy,
