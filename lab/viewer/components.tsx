@@ -109,17 +109,44 @@ export function Checkbox({ on, onChange, children }: { on: boolean; onChange: (o
 
 type TabItem<T extends string> = { id: T; label: string; icon?: ComponentChildren };
 
-export function Tabs<T extends string>({ items, value, onChange, kind = "line" }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; kind?: "line" | "segmented" }) {
+type TabKind = "line" | "segmented" | "rail";
+
+const TAB_LISTS: Record<TabKind, string> = {
+  line: "inline-flex gap-1",
+  segmented: "inline-flex rounded-ctl border border-line bg-field p-0.75",
+  rail: "flex gap-1 min-[900px]:flex-col",
+};
+
+const TAB_INDICATORS: Record<TabKind, string> = {
+  line: "-bottom-px h-0.5 rounded-full bg-accent",
+  segmented: "inset-y-0.75 rounded-sm border border-line bg-raised",
+  rail: "rounded-ctl border border-accent bg-raised",
+};
+
+const TAB_BUTTONS: Record<TabKind, string> = {
+  line: "h-9 px-3",
+  segmented: "h-6.5 px-3",
+  rail: "size-8 justify-center rounded-ctl",
+};
+
+type Box = { left: number; top: number; width: number; height: number };
+
+// A rail is vertical from 900 px wide, and horizontal under it: its tabs show only their icon, with the label in a tooltip.
+export function Tabs<T extends string>({ items, value, onChange, kind = "line" }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; kind?: TabKind }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const [indicator, setIndicator] = useState<Box | null>(null);
   const index = items.findIndex((item) => item.id === value);
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
     let live = true;
+    // From the boxes on the screen: in a rail, the tooltip of each tab is the offset parent of the tab.
     const place = () => {
       const tab = root.querySelectorAll<HTMLElement>('[role="tab"]')[index];
-      if (live && tab) setIndicator({ left: tab.offsetLeft, width: tab.offsetWidth });
+      if (!live || !tab) return;
+      const from = root.getBoundingClientRect();
+      const box = tab.getBoundingClientRect();
+      setIndicator({ left: box.left - from.left - root.clientLeft, top: box.top - from.top - root.clientTop, width: box.width, height: box.height });
     };
     place();
     void document.fonts.ready.then(place);
@@ -130,27 +157,38 @@ export function Tabs<T extends string>({ items, value, onChange, kind = "line" }
       observer.disconnect();
     };
   }, [index]);
-  const segmented = kind === "segmented";
+  const rail = kind === "rail";
   return (
-    <div ref={ref} role="tablist" class={`relative inline-flex ${segmented ? "rounded-ctl border border-line bg-field p-0.75" : "gap-1"}`}>
+    <div ref={ref} role="tablist" class={`relative ${TAB_LISTS[kind]}`}>
       {indicator && (
         <span
-          class={`absolute transition-[left,width] duration-300 ease-out ${segmented ? "inset-y-0.75 rounded-sm border border-line bg-raised" : "-bottom-px h-0.5 rounded-full bg-accent"}`}
-          style={{ left: `${indicator.left}px`, width: `${indicator.width}px` }}
+          class={`absolute transition-[left,top,width,height] duration-300 ease-out ${TAB_INDICATORS[kind]}`}
+          style={rail ? { left: `${indicator.left}px`, top: `${indicator.top}px`, width: `${indicator.width}px`, height: `${indicator.height}px` } : { left: `${indicator.left}px`, width: `${indicator.width}px` }}
         />
       )}
-      {items.map((item) => (
-        <button
-          key={item.id}
-          role="tab"
-          aria-selected={item.id === value}
-          onClick={() => onChange(item.id)}
-          class={`relative z-1 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors ${segmented ? "h-6.5 px-3" : "h-9 px-3"} ${item.id === value ? "text-fg" : "text-muted hover:text-fg"}`}
-        >
-          {item.icon}
-          {item.label}
-        </button>
-      ))}
+      {items.map((item) => {
+        const selected = item.id === value;
+        const tab = (
+          <button
+            key={item.id}
+            role="tab"
+            aria-selected={selected}
+            aria-label={rail ? item.label : undefined}
+            onClick={() => onChange(item.id)}
+            class={`relative z-1 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${TAB_BUTTONS[kind]} ${selected ? (rail ? "text-accent" : "text-fg") : "text-muted hover:text-fg"}`}
+          >
+            {item.icon}
+            {!rail && item.label}
+          </button>
+        );
+        return rail ? (
+          <Tooltip key={item.id} text={item.label}>
+            {tab}
+          </Tooltip>
+        ) : (
+          tab
+        );
+      })}
     </div>
   );
 }

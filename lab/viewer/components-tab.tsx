@@ -1,4 +1,4 @@
-import { BookOpen, CircleCheck, Clock, Coins, Copy, Info, LayoutGrid, MessageSquare, OctagonAlert, Pause, Play, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
+import { BookOpen, Bot, ChartColumn, CircleCheck, Clock, Coins, Copy, Info, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, OctagonAlert, Pause, Play, Rewind, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PartyMon, PartyMove } from "../src/party";
@@ -180,6 +180,7 @@ function TabsDemo() {
   const [block, setBlock] = useState<"situation" | "battle" | "rules">("battle");
   const [speed, setSpeed] = useState<"1" | "4" | "max">("4");
   const [tab, setTab] = useState<"lab" | "doc" | "components">("components");
+  const [panel, setPanel] = useState<"map" | "model" | "stats" | "memory" | "replay">("model");
   return (
     <div class="flex flex-wrap items-center gap-6">
       <Tabs
@@ -210,6 +211,20 @@ function TabsDemo() {
           { id: "max", label: "Max" },
         ]}
       />
+      <div class="rounded-card border border-line p-2">
+        <Tabs
+          kind="rail"
+          value={panel}
+          onChange={setPanel}
+          items={[
+            { id: "map", label: "Whole map", icon: <MapIcon size={16} /> },
+            { id: "model", label: "Model", icon: <Bot size={16} /> },
+            { id: "stats", label: "Stats", icon: <ChartColumn size={16} /> },
+            { id: "memory", label: "Memory tree", icon: <ListTree size={16} /> },
+            { id: "replay", label: "Replay", icon: <Rewind size={16} /> },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -780,7 +795,7 @@ function ComponentsSheet() {
         <Section title="Field" rule="Focus: the border and a soft ring. An error has a red border and a short text under it.">
           <FieldDemo />
         </Section>
-        <Section title="Tabs" rule="The indicator slides to the selected tab. An icon only in the tabs of the navigation bar.">
+        <Section title="Tabs" rule="The indicator slides to the selected tab. Line tabs for the navigation bar and the blocks of a panel, segmented tabs for a choice of values. A rail chooses the panel of the Lab tab: icons only, the name in a tooltip, vertical from 900 px wide and horizontal under it.">
           <TabsDemo />
         </Section>
         <Section title="Pill" rule="A short state or count. The text has the color of the state: ok, warning, problem, information, or the accent.">

@@ -4,7 +4,7 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import type { GameState } from "../src/game";
 import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
 import { PokemonCard } from "./pokemon";
@@ -79,14 +79,8 @@ function LabLayout() {
         >
           {ZONES.live.render()}
         </section>
-        <nav aria-label="Panels" class="flex shrink-0 gap-1 border-y border-line p-2 min-[900px]:flex-col min-[900px]:border-x min-[900px]:border-y-0">
-          {RAIL.map(({ id, title, icon: Icon }) => (
-            <Tooltip key={id} text={title}>
-              <Button size="icon" variant="ghost" pressed={id === shown} aria-label={title} onClick={() => setShown(id)}>
-                {Icon && <Icon size={16} />}
-              </Button>
-            </Tooltip>
-          ))}
+        <nav aria-label="Panels" class="shrink-0 border-y border-line p-2 min-[900px]:border-x min-[900px]:border-y-0">
+          <Tabs kind="rail" value={shown} onChange={setShown} items={RAIL.map(({ id, title, icon: Icon }) => ({ id, label: title, icon: Icon && <Icon size={16} /> }))} />
         </nav>
         <div style={sizeVars(panel.size)} class="h-(--narrow) min-w-0 overflow-auto p-4 min-[900px]:h-(--medium) min-[900px]:flex-1 min-[1280px]:h-(--wide)">
           {RAIL.map((entry) => (
