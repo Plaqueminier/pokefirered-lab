@@ -157,19 +157,17 @@ export function Tabs<T extends string>({ items, value, onChange, kind = "line" }
 
 export type Tone = "ok" | "warn" | "bad" | "info" | "accent";
 
-// A dot marks a state; the accent is not a state.
-const TONES: Record<Tone, { text: string; fill: string; dot: boolean }> = {
-  ok: { text: "text-ok", fill: "bg-ok", dot: true },
-  warn: { text: "text-warn", fill: "bg-warn", dot: true },
-  bad: { text: "text-bad", fill: "bg-bad", dot: true },
-  info: { text: "text-info", fill: "bg-info", dot: true },
-  accent: { text: "text-accent", fill: "bg-accent", dot: false },
+const TONES: Record<Tone, { text: string; fill: string }> = {
+  ok: { text: "text-ok", fill: "bg-ok" },
+  warn: { text: "text-warn", fill: "bg-warn" },
+  bad: { text: "text-bad", fill: "bg-bad" },
+  info: { text: "text-info", fill: "bg-info" },
+  accent: { text: "text-accent", fill: "bg-accent" },
 };
 
 export function Pill({ tone, children }: { tone?: Tone; children: ComponentChildren }) {
   return (
     <span class={`inline-flex h-5 items-center gap-1.5 rounded-full bg-raised px-2 text-xs font-semibold ${tone ? TONES[tone].text : "text-muted"}`}>
-      {tone && TONES[tone].dot && <span class="size-1.5 rounded-full bg-current" />}
       {children}
     </span>
   );

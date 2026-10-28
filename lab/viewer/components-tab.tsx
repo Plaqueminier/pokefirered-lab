@@ -745,7 +745,7 @@ function ComponentsSheet() {
         <Section title="Tabs" rule="The indicator slides to the selected tab. An icon only in the tabs of the navigation bar.">
           <TabsDemo />
         </Section>
-        <Section title="Pill" rule="A short state or count. A dot for a state with a color.">
+        <Section title="Pill" rule="A short state or count. The text has the color of the state: ok, warning, problem, information, or the accent.">
           <div class="flex flex-wrap gap-2">
             <Pill>walk</Pill>
             <Pill tone="ok">done</Pill>
