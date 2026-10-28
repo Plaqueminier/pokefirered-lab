@@ -33,7 +33,7 @@ function Hp({ mon }: { mon: PartyMon }) {
   );
 }
 
-function hpBar(mon: PartyMon) {
+function HpBar({ mon }: { mon: PartyMon }) {
   return <Bar value={mon.hp} max={mon.maxHp} tone={hpTone(mon.maxHp > 0 ? mon.hp / mon.maxHp : 0)} />;
 }
 
@@ -45,7 +45,9 @@ export function PokemonCard({ mon }: { mon: PartyMon }) {
           <Name mon={mon} />
           <span class="ml-auto shrink-0 text-xs text-muted">Lv. {mon.level}</span>
         </div>
-        <div class="mt-2">{hpBar(mon)}</div>
+        <div class="mt-2">
+          <HpBar mon={mon} />
+        </div>
         <div class="mt-1.5 flex h-5 items-center justify-between text-xs">
           <Hp mon={mon} />
           <StatusPill mon={mon} />
@@ -81,7 +83,7 @@ export function PokemonSummary({ mon }: { mon: PartyMon }) {
           <span class="font-semibold text-muted">HP</span>
           <Hp mon={mon} />
         </div>
-        {hpBar(mon)}
+        <HpBar mon={mon} />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <dl class="flex flex-col gap-1.5 text-xs">

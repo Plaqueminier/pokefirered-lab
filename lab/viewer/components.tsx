@@ -291,15 +291,29 @@ export function Tooltip({ text, wide, children }: { text: string; wide?: boolean
   );
 }
 
-export function HoverCardBody({ children }: { children: ComponentChildren }) {
-  return <div class="w-max max-w-[calc(100vw-16px)] animate-pop rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
+export const LABEL = "text-xs font-semibold tracking-[0.08em] text-muted uppercase";
+
+// The body of a floating layer: the card of a HoverCard and the content of a Popover.
+export function PopoverBody({ children }: { children: ComponentChildren }) {
+  return <div class="max-h-[calc(100dvh-96px)] w-max max-w-[calc(100vw-16px)] animate-pop overflow-auto rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
 }
+
+function useAnchorId(): string {
+  return useId().replace(/[^\w-]/g, "");
+}
+
+// The layer sits in the top layer, so CSS anchors it to its trigger.
+function anchoredStyle(anchor: string, margin: string, area: string, fallbacks: string): string {
+  return `position-anchor: ${anchor}; inset: auto; ${margin}; position-area: ${area}; position-try-fallbacks: ${fallbacks}`;
+}
+
+const LAYER = "m-0 overflow-visible border-0 bg-transparent p-0";
 
 const OPEN_DELAY = 300;
 const CLOSE_DELAY = 150;
 
 export function HoverCard({ card, children }: { card: ComponentChildren; children: ComponentChildren }) {
-  const anchor = `--hover-card-${useId().replace(/[^\w-]/g, "")}`;
+  const anchor = `--hover-card-${useAnchorId()}`;
   const popover = useRef<HTMLDivElement>(null);
   const timer = useRef(0);
   const [open, setOpen] = useState(false);
@@ -331,21 +345,17 @@ export function HoverCard({ card, children }: { card: ComponentChildren; childre
       <div
         ref={popover}
         popover="manual"
-        class="m-0 overflow-visible border-0 bg-transparent p-0"
-        style={`position-anchor: ${anchor}; inset: auto; margin-left: 8px; position-area: right span-bottom; position-try-fallbacks: flip-inline, flip-block, flip-block flip-inline`}
+        class={LAYER}
+        style={anchoredStyle(anchor, "margin-left: 8px", "right span-bottom", "flip-inline, flip-block, flip-block flip-inline")}
       >
-        {open && <HoverCardBody>{card}</HoverCardBody>}
+        {open && <PopoverBody>{card}</PopoverBody>}
       </div>
     </div>
   );
 }
 
-export function PopoverBody({ children }: { children: ComponentChildren }) {
-  return <div class="max-h-[calc(100dvh-96px)] w-max max-w-[calc(100vw-16px)] animate-pop overflow-auto rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
-}
-
 export function Popover({ label, title, disabled, children }: { label: ComponentChildren; title?: string; disabled?: boolean; children: ComponentChildren }) {
-  const id = `popover-${useId().replace(/[^\w-]/g, "")}`;
+  const id = `popover-${useAnchorId()}`;
   const [open, setOpen] = useState(false);
   return (
     <span class="flex min-w-0 *:min-w-0" style={`anchor-name: --${id}`}>
@@ -357,8 +367,8 @@ export function Popover({ label, title, disabled, children }: { label: Component
         id={id}
         popover="auto"
         onToggle={(event) => setOpen(event.newState === "open")}
-        class="m-0 overflow-visible border-0 bg-transparent p-0"
-        style={`position-anchor: --${id}; inset: auto; margin-top: 6px; position-area: bottom span-right; position-try-fallbacks: flip-inline, flip-block`}
+        class={LAYER}
+        style={anchoredStyle(`--${id}`, "margin-top: 6px", "bottom span-right", "flip-inline, flip-block")}
       >
         <PopoverBody>{children}</PopoverBody>
       </div>

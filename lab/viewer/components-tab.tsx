@@ -11,8 +11,8 @@ import {
   ExpBar,
   Field,
   HoverCard,
-  HoverCardBody,
   Input,
+  LABEL,
   Num,
   Pill,
   Popover,
@@ -45,8 +45,6 @@ function colorTokens(): string[] {
   for (const sheet of document.styleSheets) walk(sheet.cssRules);
   return [...names].filter((name) => !name.startsWith("type-"));
 }
-
-const LABEL = "text-xs font-semibold tracking-[0.08em] text-muted uppercase";
 
 function Section({ title, rule, children }: { title: string; rule: string; children: ComponentChildren }) {
   return (
@@ -539,9 +537,9 @@ function HoverCardDemo() {
           <p class="text-sm">Hover me, or focus me with Tab</p>
         </Card>
       </HoverCard>
-      <HoverCardBody>
+      <PopoverBody>
         <p class="text-sm">The card when it is open.</p>
-      </HoverCardBody>
+      </PopoverBody>
     </div>
   );
 }
@@ -700,9 +698,9 @@ function PokemonSummaryDemo() {
       {[PARTY[0], PARTY[1], PARTY[5], PARTY[6]].map(({ state, mon }) => (
         <div key={state}>
           <p class="mb-1.5 text-xs text-faint">{state}</p>
-          <HoverCardBody>
+          <PopoverBody>
             <PokemonSummary mon={mon} />
-          </HoverCardBody>
+          </PopoverBody>
         </div>
       ))}
     </div>
