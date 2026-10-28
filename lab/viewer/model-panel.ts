@@ -1,5 +1,6 @@
 import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
+import { callAt, type SharedCursor } from "./cursor";
 import { element } from "./dom";
 import { runKey } from "./runs";
 
@@ -86,25 +87,25 @@ export function callsStarted(shown: ShownRun): number {
   return shown.kind === "bot" && shown.run.playing ? (shown.run.model?.callsStarted ?? 0) : 0;
 }
 
-export type ModelPanelElements = { title: HTMLElement; follow: HTMLButtonElement; calls: HTMLElement; answer: HTMLElement; blocks: HTMLElement };
+export type ModelPanelElements = { title: HTMLElement; follow: HTMLButtonElement; calls: HTMLElement; answer: HTMLElement; blocks: HTMLElement; shared: SharedCursor };
 
 export class ModelPanel {
   #events: readonly RunEvent[] = [];
   #callsStarted = 0;
-  #selected: number | null = null;
   #shownCall = "";
   #run = "";
 
   constructor(private readonly ui: ModelPanelElements) {
-    ui.follow.addEventListener("click", () => this.select(null));
+    // "Follow the last call" takes the cursor of all the panels back to now.
+    ui.follow.addEventListener("click", () => ui.shared.set({ ...ui.shared.value, cursor: null }));
     ui.calls.addEventListener("click", (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>("[data-call]");
-      if (row) this.select(Number(row.dataset.call));
+      if (row) ui.shared.pickCall(Number(row.dataset.call), Number(row.dataset.frame));
     });
+    ui.shared.subscribe(() => this.render());
   }
 
   onEvents(events: readonly RunEvent[]): void {
-    if (events.length < this.#events.length) this.#selected = null;
     this.#events = events;
     this.render();
   }
@@ -113,27 +114,29 @@ export class ModelPanel {
     const run = runKey(shown);
     const started = callsStarted(shown);
     if (run === this.#run && started === this.#callsStarted) return;
-    if (run !== this.#run) this.#selected = null;
     this.#run = run;
     this.#callsStarted = started;
     this.render();
   }
 
-  private select(index: number | null): void {
-    this.#selected = index;
-    this.render();
+  /** The call at the shared cursor; null: follow the last call. */
+  get #selected(): number | null {
+    const { cursor } = this.ui.shared.value;
+    return cursor ? callAt(modelCalls(this.#events).calls, cursor) : null;
   }
 
   private render(): void {
-    const view = modelPanelView(this.#events, this.#callsStarted, this.#selected);
+    const selected = this.#selected;
+    const view = modelPanelView(this.#events, this.#callsStarted, selected);
     const { ui } = this;
     ui.title.textContent = [view.call?.title ?? "no Model call yet", view.thinking ? "the model thinks…" : null].filter(Boolean).join(" · ");
-    ui.follow.classList.toggle("on", this.#selected === null);
+    ui.follow.classList.toggle("on", selected === null);
     ui.calls.replaceChildren(
       ...view.rows.map((row, i) => {
         const line = document.createElement("div");
         line.className = `model-call${i === view.selected ? " on" : ""}`;
         line.dataset.call = String(i);
+        line.dataset.frame = String(row.frame);
         const frame = document.createElement("span");
         frame.className = "muted";
         frame.textContent = String(row.frame);
@@ -147,9 +150,15 @@ export class ModelPanel {
       }),
     );
     // scrollIntoView also scrolls the page: scroll only the list.
-    if (this.#selected === null) ui.calls.scrollTop = ui.calls.scrollHeight;
+    if (selected === null) ui.calls.scrollTop = ui.calls.scrollHeight;
     const key = view.call ? `${view.selected} ${view.call.title}` : "";
     if (key === this.#shownCall) return;
+    // The cursor moved from another panel: show its call in the list.
+    const row = selected === null ? null : ui.calls.children[selected];
+    if (row) {
+      const top = row.getBoundingClientRect().top - ui.calls.getBoundingClientRect().top;
+      if (top < 0 || top > ui.calls.clientHeight) ui.calls.scrollTop += top - ui.calls.clientHeight / 2;
+    }
     this.#shownCall = key;
     ui.answer.replaceChildren(...(view.call ? answerNodes(view.call) : []));
     ui.blocks.replaceChildren(...(view.call?.blocks ?? []).flatMap((block) => [element("h3", block.title), element("pre", block.text, "model-pre")]));

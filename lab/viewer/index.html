@@ -36,22 +36,19 @@
         color: var(--text);
         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
       }
-      main {
-        display: flex;
-        gap: 16px;
-        padding: 16px;
-        align-items: flex-start;
-        flex-wrap: wrap;
-      }
-      .screen-column { display: flex; flex-direction: column; gap: 10px; width: 720px; max-width: 100%; }
+      /* An old part in a zone of the Lab tab keeps the font of the old page. */
+      .legacy { font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--text); }
       .screen {
         position: relative;
-        width: 720px;
-        max-width: calc(100vw - 32px);
+        width: 100%;
         aspect-ratio: 3 / 2;
-        height: auto;
+        margin: 0 auto;
         background: #000;
         border: 1px solid var(--line);
+      }
+      /* From 900 px wide, the page does not scroll: the screen leaves room for the decision line and two rows of the party. */
+      @media (min-width: 900px) {
+        .screen { max-width: max(300px, calc((100dvh - 420px) * 1.5)); }
       }
       .screen canvas {
         position: absolute;
@@ -85,24 +82,21 @@
       button:hover { border-color: var(--muted); }
       button.on { border-color: var(--accent); color: var(--accent); }
       button:disabled { opacity: 0.4; cursor: default; }
-      .cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 10px;
-        max-width: 720px;
-      }
       .map-column {
-        flex: 1;
-        min-width: 320px;
+        height: 100%;
+        min-height: 520px;
         display: flex;
         flex-direction: column;
         gap: 10px;
       }
       .map-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
       .map-head h2 { margin: 0; flex: 1; }
+      /* A height of 0 that grows: a height from the content gives a ResizeObserver loop. */
       #map {
         width: 100%;
-        height: min(620px, 70vh);
+        height: 0;
+        flex: 1 1 0;
+        min-height: 240px;
         background: #101216;
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -147,16 +141,10 @@
       .big { font-size: 18px; font-weight: 600; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: var(--muted); }
-      .mon { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
-      .mon:first-child { border-top: 0; }
-      .hp { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
-      .hp > div { height: 100%; background: var(--ok); }
-      .badges { display: flex; gap: 6px; }
-      .badge { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); }
-      .badge.got { background: var(--accent); border-color: var(--accent); }
+      #help { display: flex; flex-direction: column; gap: 8px; }
+      .runs-panel { width: min(760px, calc(100vw - 48px)); }
       .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
       .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
-      #notice { min-height: 1.4em; color: var(--accent); }
       .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
       .panel-head h2 { margin: 0; flex: 1; }
       .panel-head input {
@@ -187,7 +175,6 @@
         border-radius: 4px;
         padding: 0 4px;
       }
-      .model-panel { flex-basis: 100%; }
       .model-columns { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr); gap: 12px; }
       .model-calls, .model-detail { max-height: 720px; overflow: auto; }
       .model-calls { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
@@ -203,7 +190,6 @@
       .model-dl dd { margin: 0; }
       .model-detail h3 { margin: 10px 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
       .model-pre { margin: 0; white-space: pre; overflow: auto; max-height: 460px; padding: 6px 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .stats-panel { flex-basis: 100%; }
       .stats-lanes { user-select: none; cursor: crosshair; }
       .stats-lanes svg { display: block; overflow: visible; }
       .stats-lanes text { fill: var(--muted); font: 11px ui-sans-serif, system-ui, sans-serif; pointer-events: none; }
@@ -215,6 +201,7 @@
       .stats-lanes .future { fill: var(--muted); opacity: 0.08; pointer-events: none; }
       .stats-lanes .selection { fill: #fff; fill-opacity: 0.08; stroke: #fff; stroke-opacity: 0.5; pointer-events: none; }
       .stats-lanes .cross { stroke: #fff; opacity: 0.4; pointer-events: none; }
+      .stats-lanes .cursor { stroke: var(--accent); stroke-width: 2; pointer-events: none; }
       .stats-lanes .chapter { opacity: 0.25; }
       .stats-lanes .c0 { fill: var(--blue); }
       .stats-lanes .c1 { fill: var(--accent); }
@@ -277,7 +264,6 @@
       .stats-card h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
       .stats-card table { border-collapse: collapse; width: 100%; }
       .stats-card td { padding: 2px 8px 2px 0; border-top: 1px solid var(--line); vertical-align: top; }
-      .memory-panel { flex-basis: 100%; }
       .memory-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
       .memory-outline, .memory-log { max-height: 720px; overflow: auto; font-size: 13px; }
       .memory-node > summary { list-style: none; cursor: pointer; }
@@ -324,24 +310,26 @@
   </head>
   <body>
     <nav id="nav" class="ds border-b border-line"></nav>
-    <main id="lab">
-      <div class="screen-column">
-        <div class="screen" id="screen">
-          <canvas id="game" width="240" height="160"></canvas>
-          <canvas id="overlay" width="720" height="480"></canvas>
-        </div>
-        <div class="controls">
-          <button id="pause" data-viewer-run>Pause</button>
-          <button data-speed="1" data-viewer-run>×1</button>
-          <button data-speed="4" data-viewer-run>×4</button>
-          <button data-speed="max" data-viewer-run>Max</button>
-          <button id="overlay-toggle">Overlay (G)</button>
-          <button id="sound">Sound (M)</button>
-          <button id="quick-save" data-viewer-run>Save state (K)</button>
-          <button id="quick-load" data-viewer-run>Load state (L)</button>
-          <button id="reset" data-viewer-run>Restart</button>
-          <button id="start-save" data-viewer-run>Write the Starting save</button>
-        </div>
+    <!-- Issue #57: the user chose the layout C1 "Live column" from five prototypes. viewer/lab.tsx renders it and moves the old parts below into its zones. -->
+    <main id="lab" class="ds flex flex-col min-[900px]:min-h-0 min-[900px]:flex-1"></main>
+    <div id="parking" hidden>
+      <div class="screen" id="screen">
+        <canvas id="game" width="240" height="160"></canvas>
+        <canvas id="overlay" width="720" height="480"></canvas>
+      </div>
+      <div class="controls" id="controls">
+        <button id="pause" data-viewer-run>Pause</button>
+        <button data-speed="1" data-viewer-run>×1</button>
+        <button data-speed="4" data-viewer-run>×4</button>
+        <button data-speed="max" data-viewer-run>Max</button>
+        <button id="overlay-toggle">Overlay (G)</button>
+        <button id="sound">Sound (M)</button>
+        <button id="quick-save" data-viewer-run>Save state (K)</button>
+        <button id="quick-load" data-viewer-run>Load state (L)</button>
+        <button id="reset" data-viewer-run>Restart</button>
+        <button id="start-save" data-viewer-run>Write the Starting save</button>
+      </div>
+      <div id="help">
         <div class="legend" id="legend">
           <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>blocked</span>
           <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>water</span>
@@ -363,64 +351,38 @@
           <kbd>⌫</kbd> = Select, <kbd>Q</kbd> = L, <kbd>S</kbd> = R, <kbd>G</kbd> = overlay, <kbd>M</kbd> = sound.
           With the overlay, point at a cell to see its data.
         </div>
-        <div id="notice"></div>
-        <section>
-          <div class="panel-head">
-            <h2>Runs</h2>
-            <select id="runs"></select>
-            <button id="run-stop" disabled title="Stops the shown Run after the action or the Model call that plays, and writes its Run record">Stop the Run</button>
-            <select id="bots"></select>
-            <input id="model-id" autocomplete="off" title="OpenRouter model of the model bot" />
-            <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
-            <select id="reasoning" title="Reasoning effort of the model bot"></select>
-            <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
-            <label title="The Run of the model bot ends when all the Pokémon of the party faint"><input id="stop-at-whiteout" type="checkbox" checked /> stop at a whiteout</label>
-            <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
-            <button id="bot-start">Start the Bot</button>
-          </div>
-          <div class="mono" id="shown-model"></div>
-          <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. With "stop at a whiteout" (on by default), the Run ends with <code>whiteout</code> when all the Pokémon of the party faint. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
-        </section>
-        <section>
-          <div class="panel-head">
-            <h2>Replay</h2>
-            <select id="records"></select>
-            <button id="replay-start">Replay</button>
-            <button id="replay-end" hidden>Back to the keyboard</button>
-          </div>
-          <div class="mono muted" id="replay-status"></div>
-          <div class="big" id="action">–</div>
-          <pre class="list muted" id="action-detail"></pre>
-          <div id="model"></div>
-          <pre class="list" id="events"></pre>
-        </section>
-        <div class="cards">
-          <section>
-            <h2>Map</h2>
-            <div class="big" id="map-name">–</div>
-            <div class="mono muted" id="map-pos"></div>
-          </section>
-          <section>
-            <h2>Context</h2>
-            <div class="big" id="mode">–</div>
-            <div class="mono muted" id="callbacks"></div>
-          </section>
-          <section>
-            <h2>Party</h2>
-            <div id="party" class="muted">–</div>
-          </section>
-          <section>
-            <h2>Badges and money</h2>
-            <div class="badges" id="badges"></div>
-            <div style="margin-top: 6px" id="money"></div>
-          </section>
-          <section>
-            <h2>Run</h2>
-            <div class="mono" id="status">connecting…</div>
-          </section>
-        </div>
       </div>
-      <section class="map-column">
+      <section id="runs-panel" class="runs-panel">
+        <div class="panel-head">
+          <h2>Runs</h2>
+          <select id="runs"></select>
+          <button id="run-stop" disabled title="Stops the shown Run after the action or the Model call that plays, and writes its Run record">Stop the Run</button>
+          <select id="bots"></select>
+          <input id="model-id" autocomplete="off" title="OpenRouter model of the model bot" />
+          <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
+          <select id="reasoning" title="Reasoning effort of the model bot"></select>
+          <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
+          <label title="The Run of the model bot ends when all the Pokémon of the party faint"><input id="stop-at-whiteout" type="checkbox" checked /> stop at a whiteout</label>
+          <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
+          <button id="bot-start">Start the Bot</button>
+        </div>
+        <div class="mono" id="shown-model"></div>
+        <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. With "stop at a whiteout" (on by default), the Run ends with <code>whiteout</code> when all the Pokémon of the party faint. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
+      </section>
+      <section id="replay-panel">
+        <div class="panel-head">
+          <h2>Replay</h2>
+          <select id="records"></select>
+          <button id="replay-start">Replay</button>
+          <button id="replay-end" hidden>Back to the keyboard</button>
+        </div>
+        <div class="mono muted" id="replay-status"></div>
+        <div class="big" id="action">–</div>
+        <pre class="list muted" id="action-detail"></pre>
+        <div id="model"></div>
+        <pre class="list" id="events"></pre>
+      </section>
+      <section class="map-column" id="map-panel">
         <div class="map-head">
           <h2 id="map-title">Whole map</h2>
           <input id="map-search" list="map-names" placeholder="Go to a map…" autocomplete="off" />
@@ -442,7 +404,7 @@
         </div>
       </section>
       <!-- Issue #11: the user chose this layout from three prototypes. The list of all the calls and the full prompt of one call show the state at each call. The losers were a band with columns and a panel with tabs. -->
-      <section class="model-panel">
+      <section class="model-panel" id="model-panel">
         <div class="panel-head">
           <h2>Model</h2>
           <span class="muted" id="model-title"></span>
@@ -456,14 +418,14 @@
           </div>
         </div>
       </section>
-      <section class="stats-panel">
+      <section class="stats-panel" id="stats-panel">
         <div class="panel-head">
           <h2>Stats</h2>
           <span class="muted" id="stats-cost"></span>
         </div>
         <div id="stats"></div>
       </section>
-      <section class="memory-panel">
+      <section class="memory-panel" id="memory-panel">
         <div class="panel-head">
           <h2>Memory tree</h2>
           <span class="muted" id="memory-title"></span>
@@ -473,7 +435,7 @@
           <div class="memory-log" id="memory-calls"></div>
         </div>
       </section>
-    </main>
+    </div>
     <article id="doc" hidden>
       <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
       <div class="doc-head">
@@ -629,6 +591,7 @@
       </div>
     </article>
     <div id="components" hidden></div>
+    <div id="toasts" class="ds bg-none"></div>
     <div id="tooltip"></div>
     <script type="module" src="./viewer.ts"></script>
   </body>

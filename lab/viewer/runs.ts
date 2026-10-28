@@ -21,7 +21,7 @@ function runState(run: RunSummary): string {
   return `end: ${run.endReason}`;
 }
 
-function runLabel(run: RunSummary): string {
+export function runLabel(run: RunSummary): string {
   return `Run ${run.id} · ${run.bot}${run.parent ? ` (continues ${run.parent})` : ""} · ${runState(run)}`;
 }
 

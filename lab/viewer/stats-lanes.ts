@@ -1,7 +1,8 @@
 import { REFLECTION_EVERY } from "../src/model/decision";
 import { GBA_FPS } from "../src/protocol";
+import type { Span } from "./cursor";
 import { dollars, tokens } from "./runs";
-import type { Call, Span, StatsView } from "./stats-panel";
+import type { Call, StatsView } from "./stats-panel";
 
 const PLOT_LEFT = 118;
 const PLOT_RIGHT = 80;
@@ -82,9 +83,10 @@ function fitLabel(text: string, className: string, x: number, width: number, y: 
   return width > text.length * 6.6 + 8 ? `<text class="${className}" x="${x + 4}" y="${y}">${esc(text)}</text>` : "";
 }
 
-export type LanesInput = { view: StatsView; scale: AxisScale; played: number; costLimit: number | null; selection: Span | null };
+/** `cursor`: the frame of the shared cursor of the Viewer, a line through all the lanes. */
+export type LanesInput = { view: StatsView; scale: AxisScale; played: number; costLimit: number | null; selection: Span | null; cursor?: number | null };
 
-export function lanesSvg({ view, scale, played, costLimit, selection }: LanesInput): string {
+export function lanesSvg({ view, scale, played, costLimit, selection, cursor = null }: LanesInput): string {
   const { x } = scale;
   const right = x(scale.end);
   const parts: string[] = [];
@@ -106,6 +108,7 @@ export function lanesSvg({ view, scale, played, costLimit, selection }: LanesInp
   for (let i = 0; i <= 6; i++) parts.push(`<text x="${x((scale.end * i) / 6)}" y="${bottom + AXIS_HEIGHT - 6}" text-anchor="middle">${clock((scale.end * i) / 6)}</text>`);
   const span = selection ?? { from: 0, to: 0 };
   parts.push(`<rect class="selection" x="${x(span.from)}" y="0" width="${selection ? Math.max(2, x(span.to) - x(span.from)) : 0}" height="${bottom}"/>`);
+  if (cursor !== null) parts.push(`<line class="cursor" x1="${x(cursor)}" x2="${x(cursor)}" y1="0" y2="${bottom}"/>`);
   parts.push(`<line class="cross" x1="0" x2="0" y1="0" y2="${bottom}"/>`);
   return `<svg width="${scale.width}" height="${bottom + AXIS_HEIGHT}">${parts.join("")}</svg>`;
 }

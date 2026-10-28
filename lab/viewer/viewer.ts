@@ -1,15 +1,17 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
-import type { Camera, GameState, MapActors, MapGrid } from "../src/game";
+import type { Camera, MapActors, MapGrid } from "../src/game";
 import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
+import { SharedCursor } from "./cursor";
 import { ViewerTabs } from "./tabs";
 import { showTooltip } from "./dom";
+import { LabTab } from "./lab";
 import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
 import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
-import { RunsPanel } from "./runs";
+import { RunsPanel, runKey } from "./runs";
 import { StatsPanel } from "./stats-panel";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
@@ -79,14 +81,18 @@ const runsPanel = new RunsPanel(
   send,
 );
 let shownRunId: number | null = null;
+/** The cursor and the selection of all the panels. */
+const shared = new SharedCursor();
+let eventCount = 0;
 const modelPanel = new ModelPanel({
+  shared,
   title: $("model-title"),
   follow: $<HTMLButtonElement>("model-follow"),
   calls: $("model-calls"),
   answer: $("model-answer"),
   blocks: $("model-blocks"),
 });
-const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip });
+const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip, shared });
 const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const tabs = new ViewerTabs(
   {
@@ -97,6 +103,22 @@ const tabs = new ViewerTabs(
   releaseKeys,
 );
 mountComponentsTab($("components"));
+const lab = new LabTab(
+  $("lab"),
+  $("toasts"),
+  {
+    screen: $("screen"),
+    controls: $("controls"),
+    help: $("help"),
+    runs: $("runs-panel"),
+    replay: $("replay-panel"),
+    map: $("map-panel"),
+    model: $("model-panel"),
+    stats: $("stats-panel"),
+    memory: $("memory-panel"),
+  },
+  shared,
+);
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -123,7 +145,7 @@ function connect(): void {
     if (soundOn && audio.running) send({ type: "audio", enabled: true });
   };
   ws.onclose = () => {
-    $("status").textContent = "disconnected, trying again…";
+    lab.onStatusLine("disconnected, trying again…");
     setTimeout(connect, 1000);
   };
 }
@@ -141,10 +163,12 @@ function onMessage(message: ServerMessage): void {
       for (const b of document.querySelectorAll<HTMLButtonElement>("[data-viewer-run]")) b.disabled = run !== null;
       if (!message.hasQuickState) $<HTMLButtonElement>("quick-load").disabled = true;
       $("sound").classList.toggle("on", soundOn);
-      $("status").textContent =
+      const statusLine =
         `${message.rom} · frame ${message.frame} · ` +
         (run ? `Run ${run.id} of the Bot ${run.bot}, no sound` : `${message.fps} frames/s · ${soundText(message.audio)}`) +
         (message.hasStartSave ? "" : " · no Starting save yet");
+      shared.onRun(runKey(message.shown));
+      lab.onStatus(message, statusLine);
       replayPanel.onStatus(message.frame, message.shown);
       modelPanel.onStatus(message.shown);
       statsPanel.onStatus(message.frame, message.shown);
@@ -152,7 +176,7 @@ function onMessage(message: ServerMessage): void {
       break;
     }
     case "state":
-      renderState(message.state);
+      lab.onState(message.state);
       break;
     case "map":
       if (message.grid && message.grid.key !== grid?.key && !preview) fitMap(message.grid);
@@ -186,7 +210,7 @@ function onMessage(message: ServerMessage): void {
       showPreview(message.grid, message.actors);
       break;
     case "notice":
-      $("notice").textContent = message.text;
+      lab.notice(message.text);
       break;
     case "records":
       replayPanel.setRecords(message.names);
@@ -197,6 +221,10 @@ function onMessage(message: ServerMessage): void {
       tabs.setBots(message.bots);
       break;
     case "events":
+      // A replay that starts again sends fewer events, with the same name.
+      if (message.events.length < eventCount) shared.clear();
+      eventCount = message.events.length;
+      lab.onEvents(message.events);
       replayPanel.onEvents(message.events);
       modelPanel.onEvents(message.events);
       statsPanel.onEvents(message.events);
@@ -210,33 +238,6 @@ function soundText(playing: boolean): string {
   if (!audio.running) return "sound: click or press a key";
   if (playing) return `sound ${Math.round(audioLevel)} ms`;
   return "sound only at ×1";
-}
-
-const MODE_LABEL = { overworld: "On the map", battle: "In a battle", other: "Menu / transition" };
-
-function renderState(state: GameState): void {
-  // Before the player is on a map, the location fields are not set yet.
-  $("map-name").textContent = state.player ? state.map.name : "–";
-  $("map-pos").textContent = state.player
-    ? `group ${state.map.group}, map ${state.map.num} · x ${state.player.x}, y ${state.player.y}`
-    : "";
-  $("mode").textContent = MODE_LABEL[state.context.mode];
-  $("callbacks").textContent = `callback2 ${state.context.callback2}\ncallback1 ${state.context.callback1}`;
-  $("callbacks").style.whiteSpace = "pre";
-  const party = $("party");
-  party.classList.toggle("muted", state.party.length === 0);
-  party.innerHTML = state.party.length === 0 ? "no Pokémon" : "";
-  for (const mon of state.party) {
-    const row = document.createElement("div");
-    row.className = "mon";
-    const pct = mon.maxHp > 0 ? Math.round((100 * mon.hp) / mon.maxHp) : 0;
-    row.innerHTML = `<span></span><span class="mono"></span><div class="hp"><div style="width:${pct}%"></div></div>`;
-    row.children[0].textContent = mon.nickname === mon.species ? mon.species : `${mon.nickname} (${mon.species})`;
-    row.children[1].textContent = `Lv.${mon.level}  ${mon.hp}/${mon.maxHp} HP`;
-    party.append(row);
-  }
-  $("badges").innerHTML = state.badges.map((got) => `<div class="badge${got ? " got" : ""}"></div>`).join("");
-  $("money").textContent = `${state.money} ₽`;
 }
 
 // ---- Overlay on the game screen
@@ -544,7 +545,9 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.repeat) return;
   const key = event.key.toLowerCase();
-  if (key === "g") setOverlay(!overlayOn);
+  // Esc takes the cursor back to now and selects the whole Run; an open popover takes it first.
+  if (key === "escape" && !document.querySelector(":popover-open")) shared.clear();
+  else if (key === "g") setOverlay(!overlayOn);
   else if (key === "m") setSound(!soundOn);
   else if (key === "k") send({ type: "quick-save" });
   else if (key === "l") send({ type: "quick-load" });

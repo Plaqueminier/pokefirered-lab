@@ -240,3 +240,15 @@
     }
   }
 }
+
+/* From 900 px wide, the Lab tab fills the window and the page does not scroll: its zones scroll inside. */
+@layer base {
+  @media (min-width: 900px) {
+    body:has(> #lab:not([hidden])) {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+  }
+}

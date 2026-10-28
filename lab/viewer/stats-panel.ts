@@ -4,6 +4,7 @@ import type { Continuation, RunEvent } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { isNewNote } from "../src/model/memory-tree";
 import { actionText, type ShownRun } from "../src/protocol";
+import type { Selection, SharedCursor, Span } from "./cursor";
 import { card, element, line, rows, showTooltip } from "./dom";
 import { dollars, runKey, tokens } from "./runs";
 import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel } from "./stats-lanes";
@@ -22,8 +23,6 @@ export type Call = {
 };
 
 type Played = { frame: number; call: number | null; name: string; text: string; status: ActionResult["status"]; reason: string };
-
-export type Span = { from: number; to: number };
 
 type AreaStay = Span & { area: string; order: number };
 
@@ -124,8 +123,6 @@ function actionName(action: string): string {
   return MODEL_ACTION_NAMES.find((name) => name.toLowerCase() === word.toLowerCase()) ?? word;
 }
 
-type Selection = ({ kind: "range" } & Span) | { kind: "call"; index: number };
-
 type Selected = Span & {
   calls: Call[];
   played: Played[];
@@ -203,7 +200,7 @@ function pointLines(view: StatsView, frame: number, near: number): string[] {
   return lines;
 }
 
-export type StatsPanelElements = { cost: HTMLElement; body: HTMLElement; tooltip: HTMLElement };
+export type StatsPanelElements = { cost: HTMLElement; body: HTMLElement; tooltip: HTMLElement; shared: SharedCursor };
 
 type Shown = { key: string; replayFrames: number | null; costLimit: number | null; continued: Continuation | null };
 
@@ -225,7 +222,6 @@ export class StatsPanel {
   #areas: Areas = {};
   #shown: Shown = { key: "", replayFrames: null, costLimit: null, continued: null };
   #frame = 0;
-  #selection: Selection | null = null;
   #view: StatsView | null = null;
   #scale: AxisScale = axisScale(0, 1);
   #dragStart: number | null = null;
@@ -248,13 +244,11 @@ export class StatsPanel {
       showTooltip(ui.tooltip, null, 0, 0);
     });
     document.addEventListener("mouseup", (event) => this.onUp(event));
+    ui.shared.subscribe(() => this.draw());
     window.addEventListener("blur", () => {
       if (this.#dragStart === null) return;
       this.#dragStart = null;
       this.draw();
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && this.#selection) this.select(null);
     });
     // Draw in the next animation frame: a draw in the observer can change the scroll bar, and so the width, and the browser reports a loop.
     new ResizeObserver(() => requestAnimationFrame(() => ui.body.clientWidth !== this.#scale.width && this.draw())).observe(ui.body);
@@ -266,11 +260,8 @@ export class StatsPanel {
   }
 
   onEvents(events: readonly RunEvent[]): void {
-    // A replay that starts again sends fewer events, with the same name.
-    const restarted = events.length < this.#events.length;
     this.#events = events;
-    if (restarted) this.select(null);
-    else this.drawWithin(EVENT_REDRAW_MS);
+    this.drawWithin(EVENT_REDRAW_MS);
   }
 
   onStatus(frame: number, shown: ShownRun): void {
@@ -281,14 +272,12 @@ export class StatsPanel {
     this.#shown = next;
     const moved = frame !== this.#frame;
     this.#frame = frame;
-    if (otherRun) this.select(null);
-    else if (changed) this.draw();
+    if (otherRun || changed) this.draw();
     else if (moved) this.drawWithin(FRAME_REDRAW_MS);
   }
 
-  private select(selection: Selection | null): void {
-    this.#selection = selection;
-    this.draw();
+  get #selection(): Selection | null {
+    return this.ui.shared.value.selection;
   }
 
   private drawWithin(ms: number): void {
@@ -312,7 +301,8 @@ export class StatsPanel {
     this.#view = view;
     this.#scale = axisScale(width, Math.max(1, now, this.#shown.replayFrames ?? 0));
     this.ui.cost.textContent = `${view.calls.length} Model calls · ${dollars(view.cost)}`;
-    this.#lanes.innerHTML = lanesSvg({ view, scale: this.#scale, played: now, costLimit: this.#shown.costLimit, selection: this.#selection && part });
+    const cursor = this.ui.shared.value.cursor?.frame ?? null;
+    this.#lanes.innerHTML = lanesSvg({ view, scale: this.#scale, played: now, costLimit: this.#shown.costLimit, selection: this.#selection && part, cursor });
     if (this.#mouseX !== null) this.follow(this.#mouseX);
     this.#head.replaceChildren(...this.head(view, part));
     this.#cards.replaceChildren(actionsCard(part), problemsCard(part), callsCard(part));
@@ -333,7 +323,7 @@ export class StatsPanel {
     if (part.prompt) add(element("span", `prompt ${tokens(part.prompt.min)} to ${tokens(part.prompt.max)} tokens`, "blue"));
     if (this.#selection) {
       const all = element("button", "select all");
-      all.addEventListener("click", () => this.select(null));
+      all.addEventListener("click", () => this.ui.shared.select(null));
       nodes.push(document.createTextNode(" "), all);
     }
     return nodes;
@@ -388,10 +378,11 @@ export class StatsPanel {
     if (Math.abs(x - start) < DRAG_PIXELS) {
       const frame = this.#scale.frame(x);
       const call = this.#view.calls.findLast((c) => c.frame <= frame);
-      return this.select(call ? { kind: "call", index: call.index } : null);
+      if (call) return this.ui.shared.pickCall(call.index, call.frame);
+      return this.ui.shared.set({ cursor: { frame, call: null }, selection: null });
     }
     const [from, to] = [this.#scale.frame(start), this.#scale.frame(x)].sort((a, b) => a - b);
-    this.select({ kind: "range", from, to });
+    this.ui.shared.select({ kind: "range", from, to });
   }
 }
 
