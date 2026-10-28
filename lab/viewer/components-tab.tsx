@@ -1,7 +1,9 @@
 import { BookOpen, Copy, LayoutGrid, Pause, Play, RotateCcw, Search, Shapes, Square } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Bar, Button, Card, Checkbox, Field, Input, Num, Pill, Select, Switch, Tabs, Tooltip, hpTone } from "./components";
+import type { PartyMon, PartyMove } from "../src/party";
+import { Bar, Button, Card, Checkbox, ExpBar, Field, HoverCard, HoverCardBody, Input, Num, Pill, Select, StatBar, Switch, Tabs, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
+import { PokemonCard, PokemonSummary } from "./pokemon";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
 function colorTokens(): string[] {
@@ -14,7 +16,8 @@ function colorTokens(): string[] {
     }
   };
   for (const sheet of document.styleSheets) walk(sheet.cssRules);
-  return [...names];
+  // The type colors have their own section.
+  return [...names].filter((name) => !name.startsWith("type-"));
 }
 
 const LABEL = "text-xs font-semibold tracking-[0.08em] text-muted uppercase";
@@ -264,6 +267,299 @@ function CardDemo() {
   );
 }
 
+function move(name: string, type: string, power: number | null, accuracy: number | null, pp: number, maxPp: number, description: string): PartyMove {
+  return { name, type, effect: 0, power, accuracy, pp, maxPp, description };
+}
+
+const TACKLE = move("TACKLE", "NORMAL", 35, 95, 35, 35, "A physical attack in which the user charges, full body, into the foe.");
+const STRING_SHOT = move("STRING SHOT", "BUG", null, 95, 40, 40, "The foe is bound with strings shot from the mouth to reduce its SPEED.");
+
+type MonData = Omit<PartyMon, "nickname" | "heldItem" | "status"> & Partial<Pick<PartyMon, "nickname" | "heldItem" | "status">>;
+
+function mon(data: MonData): PartyMon {
+  return { nickname: data.species, heldItem: null, status: "none", ...data };
+}
+
+// Data from the Run model-10, and made-up Pokémon for the states that it does not have.
+const IVYSAUR = mon({
+  species: "IVYSAUR",
+  types: ["GRASS", "POISON"],
+  ability: { name: "OVERGROW", description: "Ups GRASS moves in a pinch." },
+  nature: "JOLLY",
+  level: 18,
+  exp: 3929,
+  levelExp: 3798,
+  expToNextLevel: 646,
+  hp: 53,
+  maxHp: 53,
+  stats: { attack: 32, defense: 29, speed: 33, spAttack: 33, spDefense: 38 },
+  moves: [
+    move("POISONPOWDER", "POISON", null, 75, 33, 35, "A cloud of toxic dust is scattered. It may poison the foe."),
+    move("SLEEP POWDER", "GRASS", null, 75, 1, 15, "A sleep-inducing dust is scattered in high volume around a foe."),
+    move("LEECH SEED", "GRASS", null, 90, 6, 10, "A seed is planted on the foe to steal some HP for the user on every turn."),
+    move("VINE WHIP", "GRASS", 35, 100, 0, 10, "The foe is struck with slender, whip-like vines."),
+  ],
+});
+
+const PARTY: { state: string; mon: PartyMon }[] = [
+  { state: "full HP, 4 moves, a move with 0 PP", mon: IVYSAUR },
+  {
+    state: "a nickname, sleep, 3 moves",
+    mon: mon({
+      nickname: "SHELLY",
+      species: "SQUIRTLE",
+      types: ["WATER"],
+      ability: { name: "TORRENT", description: "Ups WATER moves in a pinch." },
+      heldItem: "ORAN BERRY",
+      nature: "MODEST",
+      status: "sleep",
+      level: 7,
+      exp: 260,
+      levelExp: 236,
+      expToNextLevel: 54,
+      hp: 18,
+      maxHp: 24,
+      stats: { attack: 11, defense: 14, speed: 10, spAttack: 11, spDefense: 13 },
+      moves: [
+        { ...TACKLE, pp: 30 },
+        move("TAIL WHIP", "NORMAL", null, 100, 28, 30, "The user wags its tail cutely, making the foe lower its DEFENSE stat."),
+        move("BUBBLE", "WATER", 20, 100, 25, 30, "A spray of countless bubbles is jetted at the foe. It may lower the foe's SPEED stat."),
+      ],
+    }),
+  },
+  {
+    state: "half HP, freeze, 3 moves",
+    mon: mon({
+      species: "PIKACHU",
+      types: ["ELECTR"],
+      ability: { name: "STATIC", description: "Paralyzes on contact." },
+      nature: "HASTY",
+      status: "freeze",
+      level: 9,
+      exp: 850,
+      levelExp: 729,
+      expToNextLevel: 150,
+      hp: 12,
+      maxHp: 25,
+      stats: { attack: 14, defense: 10, speed: 20, spAttack: 13, spDefense: 13 },
+      moves: [
+        move("THUNDERSHOCK", "ELECTR", 40, 100, 21, 30, "An electric shock attack that may also leave the foe paralyzed."),
+        move("GROWL", "NORMAL", null, 100, 40, 40, "The user growls in a cute way, making the foe lower its ATTACK stat."),
+        move("THUNDER WAVE", "ELECTR", null, 100, 18, 20, "A weak jolt of electricity that paralyzes the foe."),
+      ],
+    }),
+  },
+  {
+    state: "low HP, poison, 2 moves",
+    mon: mon({
+      species: "WEEDLE",
+      types: ["BUG", "POISON"],
+      ability: { name: "SHIELD DUST", description: "Prevents added effects." },
+      nature: "MILD",
+      status: "poison",
+      level: 6,
+      exp: 257,
+      levelExp: 216,
+      expToNextLevel: 86,
+      hp: 4,
+      maxHp: 22,
+      stats: { attack: 10, defense: 9, speed: 11, spAttack: 9, spDefense: 7 },
+      moves: [move("POISON STING", "POISON", 15, 100, 31, 35, "The foe is stabbed with a toxic barb, etc. It may poison the foe."), STRING_SHOT],
+    }),
+  },
+  {
+    state: "burn, 1 move",
+    mon: mon({
+      species: "MAGIKARP",
+      types: ["WATER"],
+      ability: { name: "SWIFT SWIM", description: "Raises SPEED in rain." },
+      nature: "NAIVE",
+      status: "burn",
+      level: 5,
+      exp: 190,
+      levelExp: 156,
+      expToNextLevel: 80,
+      hp: 15,
+      maxHp: 19,
+      stats: { attack: 6, defense: 11, speed: 14, spAttack: 6, spDefense: 7 },
+      moves: [move("SPLASH", "NORMAL", null, null, 40, 40, "The user just flops and splashes around without having any effect.")],
+    }),
+  },
+  {
+    state: "fainted (FNT at 0 HP), 2 moves",
+    mon: mon({
+      species: "CATERPIE",
+      types: ["BUG"],
+      ability: { name: "SHIELD DUST", description: "Prevents added effects." },
+      nature: "BASHFUL",
+      level: 4,
+      exp: 79,
+      levelExp: 64,
+      expToNextLevel: 46,
+      hp: 0,
+      maxHp: 18,
+      stats: { attack: 8, defense: 8, speed: 8, spAttack: 7, spDefense: 6 },
+      moves: [{ ...TACKLE, pp: 32 }, STRING_SHOT],
+    }),
+  },
+  {
+    state: "level 100, paralysis, 4 moves",
+    mon: mon({
+      species: "CHARIZARD",
+      types: ["FIRE", "FLYING"],
+      ability: { name: "BLAZE", description: "Ups FIRE moves in a pinch." },
+      heldItem: "CHARCOAL",
+      nature: "TIMID",
+      status: "paralysis",
+      level: 100,
+      exp: 1059860,
+      levelExp: 1059860,
+      expToNextLevel: 0,
+      hp: 180,
+      maxHp: 297,
+      stats: { attack: 204, defense: 192, speed: 236, spAttack: 254, spDefense: 206 },
+      moves: [
+        move("FLAMETHROWER", "FIRE", 95, 100, 12, 15, "A powerful fire attack that may inflict a burn on the foe."),
+        move("FLY", "FLYING", 70, 95, 15, 15, "A 2-turn move that hits on the 2nd turn. Use it to fly to any known town."),
+        move("EARTHQUAKE", "GROUND", 100, 100, 4, 10, "An earthquake that strikes all POKéMON in battle excluding the user."),
+        move("DRAGON CLAW", "DRAGON", 80, 100, 15, 15, "Sharp, huge claws hook and slash the foe quickly and with great power."),
+      ],
+    }),
+  },
+];
+
+function TypeChipDemo() {
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-wrap gap-1.5">
+        {TYPES.map((type) => (
+          <TypeChip key={type} type={type} />
+        ))}
+      </div>
+      <div class="flex flex-wrap items-center gap-4 text-sm">
+        <span class="flex items-center gap-1">
+          IVYSAUR <TypeChip type="GRASS" />
+          <TypeChip type="POISON" />
+        </span>
+        <span class="flex items-center gap-1">
+          A type that the list does not have <TypeChip type="#19" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function GameBarDemo() {
+  const [pp, setPp] = useState(10);
+  return (
+    <div class="flex max-w-[520px] flex-col gap-5">
+      <div>
+        <p class={`${LABEL} mb-2`}>PP, in the color of the type</p>
+        <div class="grid grid-cols-4 gap-2">
+          <Bar value={33} max={35} type="POISON" />
+          <Bar value={1} max={15} type="GRASS" />
+          <Bar value={pp} max={10} type="ELECTR" />
+          <Bar value={0} max={10} type="GRASS" />
+        </div>
+        <div class="mt-3 flex gap-2">
+          <Button size="sm" onClick={() => setPp((v) => Math.max(0, v - 1))}>
+            Use THUNDERSHOCK
+          </Button>
+          <Button size="sm" onClick={() => setPp(10)}>
+            Restore the PP
+          </Button>
+        </div>
+      </div>
+      <div class="flex flex-col gap-3">
+        <p class={LABEL}>EXP: from the start of the level to the next level</p>
+        <ExpBar level={18} exp={3929} levelExp={3798} expToNextLevel={646} />
+        <ExpBar level={6} exp={340} levelExp={216} expToNextLevel={3} />
+        <ExpBar level={100} exp={1059860} levelExp={1059860} expToNextLevel={0} />
+      </div>
+      <div class="flex max-w-[260px] flex-col gap-1">
+        <p class={`${LABEL} mb-1`}>Stats</p>
+        {(
+          [
+            ["Attack", 32],
+            ["Defense", 29],
+            ["Sp. Atk", 33],
+            ["Sp. Def", 38],
+            ["Speed", 33],
+          ] as const
+        ).map(([label, value]) => (
+          <StatBar key={label} label={label} value={value} max={38} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HoverCardDemo() {
+  return (
+    <div class="flex flex-wrap items-start gap-6">
+      <HoverCard
+        card={
+          <div class="flex max-w-[320px] flex-col gap-1.5 text-sm">
+            <p class={LABEL}>Review turn, 1:49:42</p>
+            <p>
+              <span class="text-muted">Mission </span>Earn the Boulder Badge from Brock.
+            </p>
+            <p>
+              <span class="text-muted">Objective </span>Go east on Route 3 to Mt. Moon.
+            </p>
+          </div>
+        }
+      >
+        <Card interactive>
+          <p class="text-sm">Hover me, or focus me with Tab</p>
+        </Card>
+      </HoverCard>
+      <HoverCardBody>
+        <p class="text-sm">The card when it is open.</p>
+      </HoverCardBody>
+    </div>
+  );
+}
+
+function PokemonCardDemo() {
+  const [hp, setHp] = useState(IVYSAUR.hp);
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {PARTY.map(({ state, mon }, i) => (
+          <div key={state}>
+            <p class="mb-1.5 text-xs text-faint">{state}</p>
+            <PokemonCard mon={i === 0 ? { ...mon, hp } : mon} />
+          </div>
+        ))}
+      </div>
+      <div class="flex gap-2">
+        <Button size="sm" onClick={() => setHp((v) => Math.max(0, v - 12))}>
+          Damage IVYSAUR
+        </Button>
+        <Button size="sm" onClick={() => setHp(IVYSAUR.maxHp)}>
+          Heal
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PokemonSummaryDemo() {
+  return (
+    <div class="flex flex-col gap-5">
+      {[PARTY[0], PARTY[1], PARTY[5], PARTY[6]].map(({ state, mon }) => (
+        <div key={state}>
+          <p class="mb-1.5 text-xs text-faint">{state}</p>
+          <HoverCardBody>
+            <PokemonSummary mon={mon} />
+          </HoverCardBody>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ComponentsSheet() {
   const [reduced, setReduced] = useState(false);
   return (
@@ -283,6 +579,13 @@ function ComponentsSheet() {
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {colorTokens().map((token) => (
               <Swatch key={token} token={token} />
+            ))}
+          </div>
+        </Section>
+        <Section title="Type colors" rule="One token for each type of the game, with its usual color. The token of ??? is type-mystery.">
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {TYPES.map((type) => (
+              <Swatch key={type} token={typeToken(type)} />
             ))}
           </div>
         </Section>
@@ -309,20 +612,49 @@ function ComponentsSheet() {
         <Section title="Bar and number" rule="The fill moves, and a light trail follows it when the value falls. HP uses the colors of the game. A number counts to its new value.">
           <BarDemo />
         </Section>
-        <Section title="Card" rule="The base of each panel. A card that opens something takes the accent on hover: its border and its background.">
+        <Section title="Bars of the game" rule="A bar takes the color of a type for the PP of a move. The EXP bar starts at the EXP of the level and is empty at level 100. A stat bar compares the stats of one Pokémon: the largest stat fills its bar.">
+          <GameBarDemo />
+        </Section>
+        <Section title="TypeChip" rule="The name of a type on its color. White text on a dark type color, dark text on the others.">
+          <TypeChipDemo />
+        </Section>
+        <Section title="Card" rule="The base of each panel. A card that opens something takes the accent on hover: its border and its background. A small card (size sm) is for a compact view: see the Pokémon card.">
           <CardDemo />
         </Section>
-        <Section title="Tooltip" rule="A short text on hover or on keyboard focus, for an icon or a number.">
-          <div class="flex items-center gap-3 text-sm">
-            <Tooltip text="frame 393,168">
-              <span class="cursor-default underline decoration-faint decoration-dotted underline-offset-4">1:49:42</span>
-            </Tooltip>
-            <Tooltip text="Copy the prompt">
-              <Button size="icon" aria-label="Copy the prompt">
-                <Copy size={15} />
-              </Button>
+        <Section title="Tooltip" rule="A short text on hover or on keyboard focus, for an icon or a number. A wide tooltip is on a full row, and its text can have more than one line.">
+          <div class="flex max-w-[520px] flex-col gap-4">
+            <div class="flex items-center gap-3 text-sm">
+              <Tooltip text="frame 393,168">
+                <span class="cursor-default underline decoration-faint decoration-dotted underline-offset-4">1:49:42</span>
+              </Tooltip>
+              <Tooltip text="Copy the prompt">
+                <Button size="icon" aria-label="Copy the prompt">
+                  <Copy size={15} />
+                </Button>
+              </Tooltip>
+            </div>
+            <Tooltip wide text="A sleep-inducing dust is scattered in high volume around a foe.">
+              <div class="flex flex-1 cursor-default justify-between rounded-sm px-2 py-1 text-sm hover:bg-raised">
+                <span class="font-semibold">SLEEP POWDER</span>
+                <span class="text-muted">1/15</span>
+              </div>
             </Tooltip>
           </div>
+        </Section>
+        <Section title="HoverCard" rule="A card that opens after a short hover, or at the keyboard focus, next to its trigger. The pointer can go into the card.">
+          <HoverCardDemo />
+        </Section>
+        <Section
+          title="Pokémon card"
+          rule="A Pokémon of the party: the nickname, the species when it is different, the level, the status (FNT at 0 HP), the HP in the colors of the game, and the PP of each move in the color of its type. A hover opens its summary."
+        >
+          <PokemonCardDemo />
+        </Section>
+        <Section
+          title="Pokémon hover card"
+          rule="The summary on one card: the types, the HP, the ability, the nature, the held item, the stats, the EXP and the moves. A hover on a move shows its description."
+        >
+          <PokemonSummaryDemo />
         </Section>
       </div>
     </div>
