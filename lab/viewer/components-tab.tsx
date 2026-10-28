@@ -2,6 +2,7 @@ import { BookOpen, Bot, ChartColumn, CircleCheck, Clock, Coins, Copy, Info, Layo
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PartyMon, PartyMove } from "../src/party";
+import type { RunSummary, ShownRun } from "../src/protocol";
 import {
   Badges,
   Bar,
@@ -32,7 +33,7 @@ import {
   typeToken,
 } from "./components";
 import { PokemonCard, PokemonSummary } from "./pokemon";
-import { BotsPanel } from "./runs";
+import { BotsPanel, RunSelect } from "./runs";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
 function colorTokens(): string[] {
@@ -643,25 +644,75 @@ function HoverCardDemo() {
 }
 
 function PopoverDemo() {
+  const body = <p class="w-[260px] text-sm text-muted">The content of the Popover: here, a short text. In the top bar, the form "Bots".</p>;
   return (
     <div class="flex flex-col gap-4">
       <div class="flex flex-wrap items-center gap-3">
         <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
+          {body}
         </Popover>
         <span class="flex w-[220px]">
-          <Popover label="Replay of model-10-2026-10-27T09-38-59.686Z.json">
-            <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
-          </Popover>
+          <Popover label="A long label that does not fit in its button">{body}</Popover>
         </span>
-        <Popover label="No Run" disabled>
-          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
+        <Popover label="Disabled" disabled>
+          {body}
         </Popover>
       </div>
       <div>
         <p class="mb-1.5 text-xs text-faint">open</p>
+        <PopoverBody>{body}</PopoverBody>
+      </div>
+    </div>
+  );
+}
+
+const DEMO_RUNS: RunSummary[] = [
+  {
+    id: 3,
+    bot: "model",
+    playing: true,
+    stopAsked: false,
+    endReason: null,
+    error: null,
+    parent: null,
+    continued: null,
+    model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "low", starter: "free", cost: 0.37, callsStarted: 120 },
+  },
+  { id: 4, bot: "model", playing: false, stopAsked: false, endReason: "cost limit", error: null, parent: RECORD, continued: null, model: null },
+];
+
+const DEMO_SHOWN: { label: string; shown: ShownRun }[] = [
+  { label: "the Run of the Viewer", shown: { kind: "viewer", replay: null } },
+  { label: "a Run of a Bot that plays", shown: { kind: "bot", run: DEMO_RUNS[0] } },
+  { label: "a replay", shown: { kind: "viewer", replay: { name: RECORD, frames: 1200, ended: false, endReason: "cost limit", model: null, continued: null } } },
+];
+
+function RunSelectDemo() {
+  return (
+    <div class="grid max-w-[720px] gap-4 sm:grid-cols-3">
+      {DEMO_SHOWN.map(({ label, shown }) => (
+        <div key={label}>
+          <p class="mb-1.5 text-xs text-faint">{label}</p>
+          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "starter-3-2026-10-24T08-13-38.892Z.json"]} send={() => {}} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BotsDemo() {
+  return (
+    <div class="flex flex-col gap-6">
+      <div>
+        <p class="mb-1.5 text-xs text-faint">the shown Run is a Run of a Bot that plays: "Stop the shown Run" works, and the model of the Run shows under the buttons</p>
         <PopoverBody>
-          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
+          <BotsPanel shown={{ kind: "bot", run: DEMO_RUNS[0] }} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
+        </PopoverBody>
+      </div>
+      <div>
+        <p class="mb-1.5 text-xs text-faint">no Bot in bots/: "Start the Bot" is disabled</p>
+        <PopoverBody>
+          <BotsPanel shown={{ kind: "viewer", replay: null }} bots={[]} records={[]} send={() => {}} />
         </PopoverBody>
       </div>
     </div>
@@ -889,6 +940,18 @@ function ComponentsSheet() {
           rule="A panel that a click on its button opens, under the button. A click outside or Esc closes it. The button takes the accent while it is open. An icon can come before the label. A long label ends with “…”."
         >
           <PopoverDemo />
+        </Section>
+        <Section
+          title="Run select"
+          rule="The Select of the top bar: all that the Viewer can show, in three groups. The Run of the Viewer, the Runs of the Bots with their state, and the Run records to replay. A replay shows the name of its record."
+        >
+          <RunSelectDemo />
+        </Section>
+        <Section
+          title="Bots"
+          rule="The form of the button “Bots” of the top bar: it starts a Bot, from the Starting save or as the continuation of a Run record, and it stops the shown Run. Empty fields take the defaults. Made with Field, Input, Select, Checkbox and Button."
+        >
+          <BotsDemo />
         </Section>
         <Section
           title="Toast"
