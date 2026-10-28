@@ -188,7 +188,8 @@
   }
 }
 
-/* The reset is scoped to .ds: the legacy CSS styles the global elements (button, section, h2) of the old panels. */
+/* The reset is scoped to .ds: the legacy CSS styles the global elements (button, section, h2) of the old panels.
+   A .ds part inside an old panel (a Select in place of a select) gets the reset again. */
 @layer base {
   .ds {
     font-family: var(--font-sans);
@@ -204,7 +205,8 @@
   .ds *::after {
     box-sizing: border-box;
   }
-  .ds :where(button, input, select, section, h1, h2, h3, p, dl, dd):not(.legacy *) {
+  .ds :where(button, input, select, section, h1, h2, h3, p, dl, dd):not(.legacy *),
+  .legacy .ds :where(button, input, select, section, h1, h2, h3, p, dl, dd) {
     margin: 0;
     padding: 0;
     border: 0;

@@ -4,11 +4,10 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import type { GameState } from "../src/game";
 import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Select, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
 import { PokemonCard } from "./pokemon";
-import { runLabel } from "./runs";
 import { clock, stuckLevel } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
@@ -39,6 +38,66 @@ function Legacy({ id }: { id: string }) {
     if (node) host.current?.append(node);
   }, [id]);
   return <div ref={host} class="legacy contents" />;
+}
+
+// A property set on a select (value, selectedIndex) does not change its DOM, so no MutationObserver sees it.
+function watchValue(select: HTMLSelectElement, changed: () => void): () => void {
+  const keys = ["value", "selectedIndex"] as const;
+  for (const key of keys) {
+    const base = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, key)!;
+    Object.defineProperty(select, key, {
+      configurable: true,
+      get: base.get,
+      set(next) {
+        base.set!.call(this, next);
+        changed();
+      },
+    });
+  }
+  return () => {
+    for (const key of keys) Reflect.deleteProperty(select, key);
+  };
+}
+
+// The Select of a select of an old panel: it shows the options, the value and the state of the select, and a choice sets its value and sends "change".
+function NativeSelect({ select }: { select: HTMLSelectElement }) {
+  const [, setChanges] = useState(0);
+  useEffect(() => {
+    const changed = () => setChanges((n) => n + 1);
+    const observer = new MutationObserver(changed);
+    observer.observe(select, { subtree: true, childList: true, attributes: true, characterData: true });
+    const unwatch = watchValue(select, changed);
+    changed();
+    return () => {
+      observer.disconnect();
+      unwatch();
+    };
+  }, [select]);
+  return (
+    <Select
+      options={[...select.options].map((option) => ({ value: option.value, label: option.text }))}
+      value={select.value}
+      disabled={select.disabled}
+      title={select.title || undefined}
+      onChange={(value) => {
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }}
+    />
+  );
+}
+
+function legacySelect(id: string): HTMLSelectElement {
+  return document.getElementById(id) as HTMLSelectElement;
+}
+
+// The old panel keeps its select, hidden, and its code: the Select takes its place.
+function bridgeSelect(select: HTMLSelectElement): void {
+  const host = document.createElement("span");
+  host.className = "ds inline-block min-w-[160px] max-w-[320px] bg-none";
+  select.hidden = true;
+  select.after(host);
+  render(<NativeSelect select={select} />, host);
 }
 
 // The size of a zone or of a panel at each breakpoint: the width of the live column, the height of the top bar and of the panels.
@@ -112,11 +171,6 @@ const STUCK_TONES: Record<ReturnType<typeof stuckLevel>, Tone> = { low: "ok", mi
 
 const MODES = { overworld: "map", battle: "battle", other: "menu" };
 
-function runName(shown: ShownRun): string {
-  if (shown.kind === "bot") return runLabel(shown.run);
-  return shown.replay ? `Replay of ${shown.replay.name}` : "Viewer Run (keyboard)";
-}
-
 function useCursorCall() {
   const { data, shared } = useLab();
   const lab = useStore(data);
@@ -133,14 +187,16 @@ function TopBar() {
   const frame = cursor?.frame ?? status?.frame ?? 0;
   const from = model?.continued?.events ?? 0;
   const cost = useMemo(() => costTo(events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, from), [events, cursor, from]);
-  const name = shown ? runName(shown) : "connecting…";
   return (
     <header
       style={sizeVars(ZONES.top.size)}
       class="@container flex h-(--narrow) shrink-0 items-center gap-5 border-b border-line px-4 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
     >
-      <span class="flex max-w-[420px] min-w-[120px] shrink">
-        <Popover label={name} title={name}>
+      <span class="flex max-w-[420px] min-w-[120px] shrink grow">
+        <NativeSelect select={legacySelect("runs")} />
+      </span>
+      <span class="shrink-0">
+        <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
           <Legacy id="runs-panel" />
         </Popover>
       </span>
@@ -350,6 +406,9 @@ export class LabTab {
       root,
     );
     render(<Toasts toasts={this.#toasts} close={(id) => this.#close(id)} />, toastRoot);
+    // The Select of the Runs is in the top bar.
+    legacySelect("runs").hidden = true;
+    for (const id of ["bots", "reasoning", "starter", "run-from", "records"]) bridgeSelect(legacySelect(id));
   }
 
   #patch(next: Partial<LabData>): void {

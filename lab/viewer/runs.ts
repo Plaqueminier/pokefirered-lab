@@ -21,8 +21,13 @@ function runState(run: RunSummary): string {
   return `end: ${run.endReason}`;
 }
 
-export function runLabel(run: RunSummary): string {
+function runLabel(run: RunSummary): string {
   return `Run ${run.id} · ${run.bot}${run.parent ? ` (continues ${run.parent})` : ""} · ${runState(run)}`;
+}
+
+function viewerLabel(shown: ShownRun): string {
+  if (shown.kind === "bot") return "Viewer Run (keyboard or replay)";
+  return shown.replay ? `Viewer Run · replay of ${shown.replay.name}` : "Viewer Run (keyboard)";
 }
 
 // A scripted Bot refuses any model option: a default value goes as no option.
@@ -95,7 +100,7 @@ export class RunsPanel {
   }
 
   onStatus(runs: RunSummary[], shown: ShownRun): void {
-    const labels = ["Viewer Run (keyboard or replay)", ...runs.map(runLabel)];
+    const labels = [viewerLabel(shown), ...runs.map(runLabel)];
     const values = [VIEWER_RUN, ...runs.map((run) => String(run.id))];
     const { options } = this.ui.runs;
     if (options.length !== labels.length || labels.some((label, i) => options[i].text !== label)) {
