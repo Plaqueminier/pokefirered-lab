@@ -380,8 +380,8 @@ export function Toast({ tone = "info", icon, title, onClose, children }: { tone?
   return (
     <div
       role="status"
-      class="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] animate-toast items-start gap-3 rounded-card border border-line-strong bg-bg py-3 pr-3 pl-4 shadow-xl"
-      style={{ borderLeft: `3px solid var(--color-${tone})` }}
+      class="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] animate-toast items-start gap-3 rounded-card border bg-bg py-3 pr-3 pl-4 shadow-xl"
+      style={{ borderColor: `color-mix(in oklab, var(--color-${tone}) 55%, transparent)` }}
     >
       {icon && <span class={`mt-0.5 shrink-0 ${TONES[tone].text}`}>{icon}</span>}
       <div class="min-w-0 flex-1">

@@ -799,7 +799,7 @@ function ComponentsSheet() {
         </Section>
         <Section
           title="Toast"
-          rule="A short message at the bottom right: a notice of the server, a Milestone. The color of its tone is on its left edge. It closes after 6 s, or with its button. 4 toasts at most."
+          rule="A short message at the bottom right: a notice of the server, a Milestone. Its border has the color of its tone. It closes after 6 s, or with its button. 4 toasts at most."
         >
           <ToastDemo />
         </Section>
