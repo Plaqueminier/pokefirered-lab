@@ -96,7 +96,6 @@ export class ModelPanel {
   #run = "";
 
   constructor(private readonly ui: ModelPanelElements) {
-    // "Follow the last call" takes the cursor of all the panels back to now.
     ui.follow.addEventListener("click", () => ui.shared.set({ ...ui.shared.value, cursor: null }));
     ui.calls.addEventListener("click", (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>("[data-call]");
@@ -119,7 +118,6 @@ export class ModelPanel {
     this.render();
   }
 
-  /** The call at the shared cursor; null: follow the last call. */
   get #selected(): number | null {
     const { cursor } = this.ui.shared.value;
     return cursor ? callAt(modelCalls(this.#events).calls, cursor) : null;
@@ -153,7 +151,6 @@ export class ModelPanel {
     if (selected === null) ui.calls.scrollTop = ui.calls.scrollHeight;
     const key = view.call ? `${view.selected} ${view.call.title}` : "";
     if (key === this.#shownCall) return;
-    // The cursor moved from another panel: show its call in the list.
     const row = selected === null ? null : ui.calls.children[selected];
     if (row) {
       const top = row.getBoundingClientRect().top - ui.calls.getBoundingClientRect().top;

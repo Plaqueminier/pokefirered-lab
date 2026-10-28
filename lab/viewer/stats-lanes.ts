@@ -83,7 +83,6 @@ function fitLabel(text: string, className: string, x: number, width: number, y: 
   return width > text.length * 6.6 + 8 ? `<text class="${className}" x="${x + 4}" y="${y}">${esc(text)}</text>` : "";
 }
 
-/** `cursor`: the frame of the shared cursor of the Viewer, a line through all the lanes. */
 export type LanesInput = { view: StatsView; scale: AxisScale; played: number; costLimit: number | null; selection: Span | null; cursor?: number | null };
 
 export function lanesSvg({ view, scale, played, costLimit, selection, cursor = null }: LanesInput): string {

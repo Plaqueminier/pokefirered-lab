@@ -1,7 +1,6 @@
 import type { PartyMon, Status } from "../src/party";
 import { Bar, Card, ExpBar, HoverCard, hpTone, Num, Pill, StatBar, Tooltip, TypeChip } from "./components";
 
-// The abbreviations of the game.
 const STATUS: Record<Exclude<Status, "none">, string> = { sleep: "SLP", poison: "PSN", burn: "BRN", freeze: "FRZ", paralysis: "PAR" };
 
 const STATS = [
@@ -12,7 +11,6 @@ const STATS = [
   ["speed", "Speed"],
 ] as const;
 
-/** FNT at 0 HP, as the game shows it. A Pokémon with 0 HP keeps its status. */
 function StatusPill({ mon }: { mon: PartyMon }) {
   if (mon.hp === 0) return <Pill tone="bad">FNT</Pill>;
   return mon.status === "none" ? null : <Pill tone="warn">{STATUS[mon.status]}</Pill>;
@@ -39,7 +37,6 @@ function hpBar(mon: PartyMon) {
   return <Bar value={mon.hp} max={mon.maxHp} tone={hpTone(mon.maxHp > 0 ? mon.hp / mon.maxHp : 0)} />;
 }
 
-/** The compact card of a party Pokémon. A hover opens its summary. */
 export function PokemonCard({ mon }: { mon: PartyMon }) {
   return (
     <HoverCard card={<PokemonSummary mon={mon} />}>
@@ -65,7 +62,6 @@ export function PokemonCard({ mon }: { mon: PartyMon }) {
 
 const MOVE_ROW = "grid flex-1 grid-cols-[1fr_64px_32px_36px_44px_40px] items-center gap-2";
 
-/** The summary of a party Pokémon on one card (the hover card H1 of issue #57). */
 export function PokemonSummary({ mon }: { mon: PartyMon }) {
   const best = Math.max(...Object.values(mon.stats));
   return (

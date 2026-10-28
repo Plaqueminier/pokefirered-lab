@@ -81,7 +81,6 @@ const runsPanel = new RunsPanel(
   send,
 );
 let shownRunId: number | null = null;
-/** The cursor and the selection of all the panels. */
 const shared = new SharedCursor();
 let eventCount = 0;
 const modelPanel = new ModelPanel({
@@ -221,7 +220,7 @@ function onMessage(message: ServerMessage): void {
       tabs.setBots(message.bots);
       break;
     case "events":
-      // A replay that starts again sends fewer events, with the same name.
+      // A replay that restarts sends fewer events under the same name.
       if (message.events.length < eventCount) shared.clear();
       eventCount = message.events.length;
       lab.onEvents(message.events);
@@ -545,7 +544,6 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.repeat) return;
   const key = event.key.toLowerCase();
-  // Esc takes the cursor back to now and selects the whole Run; an open popover takes it first.
   if (key === "escape" && !document.querySelector(":popover-open")) shared.clear();
   else if (key === "g") setOverlay(!overlayOn);
   else if (key === "m") setSound(!soundOn);

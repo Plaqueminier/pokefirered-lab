@@ -43,7 +43,6 @@ function colorTokens(): string[] {
     }
   };
   for (const sheet of document.styleSheets) walk(sheet.cssRules);
-  // The type colors have their own section.
   return [...names].filter((name) => !name.startsWith("type-"));
 }
 
@@ -307,7 +306,6 @@ function mon(data: MonData): PartyMon {
   return { nickname: data.species, heldItem: null, status: "none", ...data };
 }
 
-// Data from the Run model-10, and made-up Pokémon for the states that it does not have.
 const IVYSAUR = mon({
   species: "IVYSAUR",
   types: ["GRASS", "POISON"],

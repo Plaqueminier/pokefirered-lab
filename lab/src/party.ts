@@ -56,7 +56,6 @@ export type PartyMon = {
   nature: string;
   level: number;
   exp: number;
-  /** The EXP at the start of the level, for the EXP bar of the Viewer. The model prompt does not show it. */
   levelExp: number;
   expToNextLevel: number;
   hp: number;

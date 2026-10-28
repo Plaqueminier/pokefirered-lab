@@ -109,7 +109,6 @@
   --color-bad: #f27393;
   --color-info: #6cc8f0;
 
-  /* The usual colors of the 18 types of the game. The ROM names them NORMAL, FIGHT, …, ??? (mystery), ELECTR, PSYCHC. */
   --color-type-normal: #a8a878;
   --color-type-fight: #c03028;
   --color-type-flying: #a890f0;
@@ -174,7 +173,6 @@
       translate: 0 14px;
     }
   }
-  /* A ring that grows from the badge and fades. */
   @keyframes shine {
     0% {
       scale: 1.7;
@@ -206,7 +204,6 @@
   .ds *::after {
     box-sizing: border-box;
   }
-  /* Not inside .legacy: an old panel in a part of the design system keeps the CSS of the layer legacy. */
   .ds :where(button, input, select, section, h1, h2, h3, p, dl, dd):not(.legacy *) {
     margin: 0;
     padding: 0;
@@ -241,7 +238,6 @@
   }
 }
 
-/* From 900 px wide, the Lab tab fills the window and the page does not scroll: its zones scroll inside. */
 @layer base {
   @media (min-width: 900px) {
     body:has(> #lab:not([hidden])) {

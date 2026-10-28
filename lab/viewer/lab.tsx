@@ -1,5 +1,3 @@
-// The Lab tab: the layout C1 of issue #57. A top bar, a left column with the live state, a rail of icons that chooses
-// one tool panel at full height. The old panels keep their DOM: the layout moves their nodes into its zones.
 import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useEffect, useState } from "preact/hooks";
@@ -15,10 +13,8 @@ import { clock, stuckLevel } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
-/** What the server sent last. `statusLine`: the status line, which the Viewer makes with the state of its sound. */
 type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; statusLine: string };
 
-/** The nodes of the old panels. The layout moves each one into its zone and never takes it out of the page. */
 export type LabParts = Record<"screen" | "controls" | "help" | "runs" | "replay" | "map" | "model" | "stats" | "memory", HTMLElement>;
 
 type Lab = { data: Store<LabData>; shared: SharedCursor; parts: LabParts };
@@ -31,19 +27,11 @@ function useStore<T>(store: Store<T>): T {
   return store.value;
 }
 
-/** An old panel: its node goes into this zone. */
 function Legacy({ part }: { part: keyof LabParts }) {
   const { parts } = useContext(LabContext);
   return <div class="legacy contents" ref={(element) => element?.append(parts[part])} />;
 }
 
-// ---- The registry of the zones and of the panels of the rail
-
-/**
- * The size of a zone at each breakpoint: under 900 px (`narrow`, the zones stack and the page scrolls), from 900 px
- * (`medium`) and from 1280 px (`wide`). For a column, its width in the row; for a panel of the rail, the height of the
- * focus panel.
- */
 type Sizes = { narrow: string; medium: string; wide: string };
 
 type Entry = { id: string; title: string; icon?: ComponentType<{ size?: number }>; size: Sizes; render: () => ComponentChildren };
@@ -57,7 +45,6 @@ const ZONES = {
 
 const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
 
-/** The panels of the rail, in their order. A new panel is one entry here. */
 const RAIL: Entry[] = [
   { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy part="map" /> },
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <Legacy part="model" /> },
@@ -90,7 +77,6 @@ function LabLayout() {
           ))}
         </nav>
         <div style={sizeVars(panel.size)} class="h-(--narrow) min-w-0 overflow-auto p-4 min-[900px]:h-(--medium) min-[900px]:flex-1 min-[1280px]:h-(--wide)">
-          {/* All the panels stay in the page: the old code finds their nodes by id at any time. */}
           {RAIL.map((entry) => (
             <div key={entry.id} hidden={entry.id !== shown} class="h-full">
               {entry.render()}
@@ -102,15 +88,11 @@ function LabLayout() {
   );
 }
 
-// ---- The top bar: always one line
-
-/** The model settings of the shown Run, for the cost and its limit. */
 function modelOf(shown: ShownRun): { costLimit: number; continued: Continuation | null } | null {
   if (shown.kind === "bot") return shown.run.model && { costLimit: shown.run.model.costLimit, continued: shown.run.continued };
   return shown.replay?.model ? { costLimit: shown.replay.model.costLimit, continued: shown.replay.continued } : null;
 }
 
-/** The cost of the events up to a frame. For a Continued Run, `from` skips the events of its parent: its cost limit does not count them. */
 function costTo(events: readonly RunEvent[], frame: number, from = 0): number {
   let cost = 0;
   for (let i = from; i < events.length && events[i].frame <= frame; i++) {
@@ -129,7 +111,6 @@ function runName(shown: ShownRun): string {
   return shown.replay ? `Replay of ${shown.replay.name}` : "Viewer Run (keyboard)";
 }
 
-/** One number of the top bar. Numbers are tabular, and `width` keeps the place of the largest value. */
 function Stat({ tip, icon, hide = "", children }: { tip: string; icon?: ComponentChildren; hide?: string; children: ComponentChildren }) {
   return (
     <span class={`shrink-0 ${hide}`}>
@@ -184,7 +165,6 @@ function TopBar() {
             </Stat>
           </>
         )}
-        {/* The hide order when the bar is narrow: the time, the map, the money, the badges. The widths come from the largest values. */}
         <span class="shrink-0 @max-[700px]:hidden">
           <Badges got={state?.badges ?? null} />
         </span>
@@ -208,14 +188,11 @@ function TopBar() {
   );
 }
 
-// ---- The left column: the live state
-
 function turnOf(call: ModelEvent): { text: string; tone: Tone } | null {
   if (call.reflection) return { text: "Reflection turn", tone: "warn" };
   return call.review ? { text: "Review turn", tone: "accent" } : null;
 }
 
-/** The answer of a Model call, in the hover card of the decision line. */
 function CallCard({ call, index, count }: { call: ModelEvent; index: number; count: number }) {
   const turn = turnOf(call);
   const { decision } = call;
@@ -257,7 +234,6 @@ function CallCard({ call, index, count }: { call: ModelEvent; index: number; cou
   );
 }
 
-/** The Model call at the cursor on one line. A hover shows its answer. */
 function DecisionLine() {
   const { data, shared } = useContext(LabContext);
   const { status, events } = useStore(data);
@@ -300,7 +276,6 @@ function Party() {
   const { state } = useStore(useContext(LabContext).data);
   if (!state || state.party.length === 0) return <p class="text-sm text-muted">{state ? "no Pokémon" : "–"}</p>;
   return (
-    // 3 × 2 cards; 2 columns when the column is narrow.
     <div class="grid grid-cols-2 gap-2 @min-[460px]:grid-cols-3">
       {state.party.map((mon, i) => (
         <PokemonCard key={i} mon={mon} />
@@ -323,8 +298,6 @@ function LiveColumn() {
   );
 }
 
-// ---- Toasts
-
 type ToastItem = { id: number; tone: Tone; icon: ComponentChildren; title: string; text: string };
 
 const TOAST_MS = 6000;
@@ -343,7 +316,6 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
   );
 }
 
-/** Events that continue the events before: the same Run, with new events at the end. */
 function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boolean {
   const last = before.at(-1);
   const same = after[before.length - 1];
@@ -372,7 +344,6 @@ export class LabTab {
 
   onStatus(status: Status, statusLine: string): void {
     const run = runKey(status.shown);
-    // The state of the old Run is not the state of this one: the badges must not shine for it.
     this.#patch({ status, statusLine, ...(run === this.#run ? {} : { state: null }) });
     this.#run = run;
   }
@@ -381,7 +352,6 @@ export class LabTab {
     this.#patch({ state });
   }
 
-  /** A toast at each new Milestone. All the events of another Run, or of a replay that starts again, show no toast. */
   onEvents(events: readonly RunEvent[]): void {
     const before = this.#data.value.events;
     if (continues(before, events)) {

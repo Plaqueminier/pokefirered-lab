@@ -180,13 +180,10 @@ export function hpTone(ratio: number): Tone {
   return ratio > 0.5 ? "ok" : ratio > 0.2 ? "warn" : "bad";
 }
 
-/** The 18 types of the game, with the names of the ROM. */
 export const TYPES = ["NORMAL", "FIGHT", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL", "???", "FIRE", "WATER", "GRASS", "ELECTR", "PSYCHC", "ICE", "DRAGON", "DARK"];
 
-// White text on these type colors, dark text on the others: the contrast is higher.
 const DARK_TYPES = new Set(["FIGHT", "POISON", "GHOST", "DRAGON", "DARK"]);
 
-/** The token of a type color: "type-" and the ROM name in lower case, "type-mystery" for ??? and for a type that the list does not have. */
 export function typeToken(type: string): string {
   return `type-${TYPES.includes(type) && type !== "???" ? type.toLowerCase() : "mystery"}`;
 }
@@ -202,7 +199,6 @@ export function TypeChip({ type }: { type: string }) {
   );
 }
 
-/** A bar takes a tone, or the color of a type (the PP of a move). */
 export function Bar({ value, max, tone = "accent", type }: { value: number; max: number; tone?: Tone; type?: string }) {
   const width = `${max > 0 ? Math.max(0, Math.min(1, value / max)) * 100 : 0}%`;
   return (
@@ -216,7 +212,6 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
   );
 }
 
-/** The EXP bar of the game: it starts at the EXP of the level and ends at the EXP of the next level. It is empty at level 100. */
 export function ExpBar({ level, exp, levelExp, expToNextLevel }: { level: number; exp: number; levelExp: number; expToNextLevel: number }) {
   const last = expToNextLevel === 0;
   return (
@@ -230,7 +225,6 @@ export function ExpBar({ level, exp, levelExp, expToNextLevel }: { level: number
   );
 }
 
-/** One stat: its name, a bar to `max` and its number. */
 export function StatBar({ label, value, max }: { label: string; value: number; max: number }) {
   return (
     <div class="grid grid-cols-[52px_1fr_32px] items-center gap-2 text-xs">
@@ -283,7 +277,6 @@ export function Card({ interactive, size = "md", children }: { interactive?: boo
   );
 }
 
-/** `wide`: the tooltip is on a full row, and its text can have more than one line. */
 export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
   return (
     <span class={`group relative ${wide ? "flex" : "inline-flex"}`}>
@@ -298,7 +291,6 @@ export function Tooltip({ text, wide, children }: { text: string; wide?: boolean
   );
 }
 
-/** The surface of a hover card. */
 export function HoverCardBody({ children }: { children: ComponentChildren }) {
   return <div class="w-max max-w-[calc(100vw-16px)] animate-pop rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
 }
@@ -306,11 +298,6 @@ export function HoverCardBody({ children }: { children: ComponentChildren }) {
 const OPEN_DELAY = 300;
 const CLOSE_DELAY = 150;
 
-/**
- * A card that opens after a short hover of its trigger, or at the keyboard focus. It is a native popover, placed next to the
- * trigger with CSS anchor positioning: right of it, else left, above or below when there is no space. The pointer can go
- * from the trigger into the card: the card stays open.
- */
 export function HoverCard({ card, children }: { card: ComponentChildren; children: ComponentChildren }) {
   const anchor = `--hover-card-${useId().replace(/[^\w-]/g, "")}`;
   const popover = useRef<HTMLDivElement>(null);
@@ -353,21 +340,14 @@ export function HoverCard({ card, children }: { card: ComponentChildren; childre
   );
 }
 
-/** The surface of a popover: it scrolls when its content is higher than the window. */
 export function PopoverBody({ children }: { children: ComponentChildren }) {
   return <div class="max-h-[calc(100dvh-96px)] w-max max-w-[calc(100vw-16px)] animate-pop overflow-auto rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
 }
 
-/**
- * A panel that a click on its button opens. It is a native popover: a click outside it or Esc closes it. CSS anchor
- * positioning places it under the button, else above it. Its content stays in the page when it is closed. A long label
- * ends with "…".
- */
 export function Popover({ label, title, disabled, children }: { label: ComponentChildren; title?: string; disabled?: boolean; children: ComponentChildren }) {
   const id = `popover-${useId().replace(/[^\w-]/g, "")}`;
   const [open, setOpen] = useState(false);
   return (
-    // The button shrinks below the width of its label: the label ends with "…".
     <span class="flex min-w-0 *:min-w-0" style={`anchor-name: --${id}`}>
       <Button popovertarget={id} pressed={open} disabled={disabled} title={title}>
         <span class="min-w-0 truncate">{label}</span>
@@ -386,7 +366,6 @@ export function Popover({ label, title, disabled, children }: { label: Component
   );
 }
 
-/** A short message that comes in at the bottom right of the window, with the color of its tone on its left edge. */
 export function Toast({ tone = "info", icon, title, onClose, children }: { tone?: Tone; icon?: ComponentChildren; title: string; onClose?: () => void; children?: ComponentChildren }) {
   return (
     <div
@@ -408,12 +387,10 @@ export function Toast({ tone = "info", icon, title, onClose, children }: { tone?
   );
 }
 
-/** The stack of the toasts, the newest at the bottom. */
 export function Toaster({ children }: { children: ComponentChildren }) {
   return <div class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">{children}</div>;
 }
 
-/** The 8 badges as dots. A badge that the player gets shines. `got` is null when no state is known: the next state does not shine. */
 export function Badges({ got }: { got: readonly boolean[] | null }) {
   const before = useRef(got);
   const [shining, setShining] = useState<number[]>([]);

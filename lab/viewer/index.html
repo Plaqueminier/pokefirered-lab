@@ -36,7 +36,6 @@
         color: var(--text);
         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
       }
-      /* An old part in a zone of the Lab tab keeps the font of the old page. */
       .legacy { font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--text); }
       .screen {
         position: relative;
@@ -46,7 +45,6 @@
         background: #000;
         border: 1px solid var(--line);
       }
-      /* From 900 px wide, the page does not scroll: the screen leaves room for the decision line and two rows of the party. */
       @media (min-width: 900px) {
         .screen { max-width: max(300px, calc((100dvh - 420px) * 1.5)); }
       }
@@ -91,7 +89,7 @@
       }
       .map-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
       .map-head h2 { margin: 0; flex: 1; }
-      /* A height of 0 that grows: a height from the content gives a ResizeObserver loop. */
+      /* Height from the content gives a ResizeObserver loop. */
       #map {
         width: 100%;
         height: 0;
@@ -310,7 +308,6 @@
   </head>
   <body>
     <nav id="nav" class="ds border-b border-line"></nav>
-    <!-- Issue #57: the user chose the layout C1 "Live column" from five prototypes. viewer/lab.tsx renders it and moves the old parts below into its zones. -->
     <main id="lab" class="ds flex flex-col min-[900px]:min-h-0 min-[900px]:flex-1"></main>
     <div id="parking" hidden>
       <div class="screen" id="screen">
