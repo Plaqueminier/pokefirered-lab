@@ -223,7 +223,7 @@ The code compares the game now with the game at the last new conversation, and r
 
 ### The rules for notes
 
-The rules and the description of `note` say: a note is a fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:". When one of its notes becomes false or ends (a guess that the game disproves, a person that moves, a trainer that the model beats), the model writes a new note that says so. A note is never HP values. The model writes a note after an important event or when it learns a lesson, and never writes the same note again.
+The rules and the description of `note` say: a note is a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with "Guess:", or the advice of a person that helps later ("A person said: you can never have too many Poké Balls"). In the Run of version 11, the model wrote no note for the 4 texts about the PC, because the advice did not help its Mission then. When one of its notes becomes false or ends (a guess that the game disproves, a person that moves, a trainer that the model beats), the model writes a new note that says so. A note is never HP values. The model writes a note after an important event or when it learns a lesson, and never writes the same note again.
 
 ### Blocked edges
 
