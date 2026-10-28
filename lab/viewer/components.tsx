@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentChildren, InputHTMLAttributes, SelectHTMLAttributes } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -179,12 +179,63 @@ export function hpTone(ratio: number): Tone {
   return ratio > 0.5 ? "ok" : ratio > 0.2 ? "warn" : "bad";
 }
 
-export function Bar({ value, max, tone = "accent" }: { value: number; max: number; tone?: Tone }) {
-  const width = `${Math.max(0, Math.min(1, value / max)) * 100}%`;
+/** The 18 types of the game, with the names of the ROM. */
+export const TYPES = ["NORMAL", "FIGHT", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL", "???", "FIRE", "WATER", "GRASS", "ELECTR", "PSYCHC", "ICE", "DRAGON", "DARK"];
+
+// White text on these type colors, dark text on the others: the contrast is higher.
+const DARK_TYPES = new Set(["FIGHT", "POISON", "GHOST", "DRAGON", "DARK"]);
+
+/** The token of a type color: "type-" and the ROM name in lower case, "type-mystery" for ??? and for a type that the list does not have. */
+export function typeToken(type: string): string {
+  return `type-${TYPES.includes(type) && type !== "???" ? type.toLowerCase() : "mystery"}`;
+}
+
+export function TypeChip({ type }: { type: string }) {
+  return (
+    <span
+      class={`inline-flex h-5 items-center rounded-sm px-1.5 text-xs font-bold tracking-wide whitespace-nowrap ${DARK_TYPES.has(type) ? "text-white" : "text-bg"}`}
+      style={{ background: `var(--color-${typeToken(type)})` }}
+    >
+      {type}
+    </span>
+  );
+}
+
+/** A bar takes a tone, or the color of a type (the PP of a move). */
+export function Bar({ value, max, tone = "accent", type }: { value: number; max: number; tone?: Tone; type?: string }) {
+  const width = `${max > 0 ? Math.max(0, Math.min(1, value / max)) * 100 : 0}%`;
   return (
     <div class="relative h-1.5 overflow-hidden rounded-full bg-track">
       <span class="absolute inset-y-0 left-0 rounded-full bg-trail transition-[width] delay-300 duration-500 ease-out" style={{ width }} />
-      <span class={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${TONES[tone].fill}`} style={{ width }} />
+      <span
+        class={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${type ? "" : TONES[tone].fill}`}
+        style={{ width, background: type ? `var(--color-${typeToken(type)})` : undefined }}
+      />
+    </div>
+  );
+}
+
+/** The EXP bar of the game: it starts at the EXP of the level and ends at the EXP of the next level. It is empty at level 100. */
+export function ExpBar({ level, exp, levelExp, expToNextLevel }: { level: number; exp: number; levelExp: number; expToNextLevel: number }) {
+  const last = expToNextLevel === 0;
+  return (
+    <div>
+      <div class="mb-1 flex justify-between text-xs">
+        <span class="font-semibold text-muted">EXP</span>
+        <span class="text-muted">{last ? "Max level" : `${expToNextLevel.toLocaleString("en-US")} to Lv. ${level + 1}`}</span>
+      </div>
+      <Bar value={last ? 0 : exp - levelExp} max={last ? 0 : exp - levelExp + expToNextLevel} tone="info" />
+    </div>
+  );
+}
+
+/** One stat: its name, a bar to `max` and its number. */
+export function StatBar({ label, value, max }: { label: string; value: number; max: number }) {
+  return (
+    <div class="grid grid-cols-[52px_1fr_32px] items-center gap-2 text-xs">
+      <span class="text-muted">{label}</span>
+      <Bar value={value} max={max} />
+      <span class="text-right font-semibold">{value}</span>
     </div>
   );
 }
@@ -224,21 +275,79 @@ export function Num({ value, format = (n) => Math.round(n).toLocaleString("en-US
   );
 }
 
-export function Card({ interactive, children }: { interactive?: boolean; children: ComponentChildren }) {
+export function Card({ interactive, size = "md", children }: { interactive?: boolean; size?: "md" | "sm"; children: ComponentChildren }) {
   const hover = interactive ? "cursor-pointer hover:border-accent/45 hover:bg-accent/7" : "";
-  return <div class={`rounded-card border border-line bg-surface p-4.5 backdrop-blur-md transition-[border-color,background-color] duration-200 ${hover}`}>{children}</div>;
+  return (
+    <div class={`rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`}>{children}</div>
+  );
 }
 
-export function Tooltip({ text, children }: { text: string; children: ComponentChildren }) {
+/** `wide`: the tooltip is on a full row, and its text can have more than one line. */
+export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
   return (
-    <span class="group relative inline-flex">
+    <span class={`group relative ${wide ? "flex" : "inline-flex"}`}>
       {children}
       <span
         role="tooltip"
-        class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-10 hidden -translate-x-1/2 rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium whitespace-nowrap text-fg group-focus-within:block group-focus-within:animate-rise group-hover:block group-hover:animate-rise"
+        class={`pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-10 hidden -translate-x-1/2 rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg group-focus-within:block group-focus-within:animate-rise group-hover:block group-hover:animate-rise ${wide ? "w-max max-w-[300px] leading-snug" : "whitespace-nowrap"}`}
       >
         {text}
       </span>
     </span>
+  );
+}
+
+/** The surface of a hover card. */
+export function HoverCardBody({ children }: { children: ComponentChildren }) {
+  return <div class="w-max max-w-[calc(100vw-16px)] animate-pop rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
+}
+
+const OPEN_DELAY = 300;
+const CLOSE_DELAY = 150;
+
+/**
+ * A card that opens after a short hover of its trigger, or at the keyboard focus. It is a native popover, placed next to the
+ * trigger with CSS anchor positioning: right of it, else left, above or below when there is no space. The pointer can go
+ * from the trigger into the card: the card stays open.
+ */
+export function HoverCard({ card, children }: { card: ComponentChildren; children: ComponentChildren }) {
+  const anchor = `--hover-card-${useId().replace(/[^\w-]/g, "")}`;
+  const popover = useRef<HTMLDivElement>(null);
+  const timer = useRef(0);
+  const [open, setOpen] = useState(false);
+  const later = (next: boolean, delay: number) => {
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOpen(next), delay);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useLayoutEffect(() => {
+    const element = popover.current;
+    if (!element || open === element.matches(":popover-open")) return;
+    if (open) element.showPopover();
+    else element.hidePopover();
+  }, [open]);
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: the trigger holds a card with blocks, and a button holds only a phrase.
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      class="rounded-card outline-none focus-visible:ring-3 focus-visible:ring-accent/35"
+      style={`anchor-name: ${anchor}`}
+      onMouseEnter={() => later(true, OPEN_DELAY)}
+      onMouseLeave={() => later(false, CLOSE_DELAY)}
+      onFocus={() => later(true, 0)}
+      onBlur={() => later(false, 0)}
+    >
+      {children}
+      <div
+        ref={popover}
+        popover="manual"
+        class="m-0 overflow-visible border-0 bg-transparent p-0"
+        style={`position-anchor: ${anchor}; inset: auto; margin-left: 8px; position-area: right span-bottom; position-try-fallbacks: flip-inline, flip-block, flip-block flip-inline`}
+      >
+        {open && <HoverCardBody>{card}</HoverCardBody>}
+      </div>
+    </div>
   );
 }

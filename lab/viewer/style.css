@@ -109,6 +109,26 @@
   --color-bad: #f27393;
   --color-info: #6cc8f0;
 
+  /* The usual colors of the 18 types of the game. The ROM names them NORMAL, FIGHT, …, ??? (mystery), ELECTR, PSYCHC. */
+  --color-type-normal: #a8a878;
+  --color-type-fight: #c03028;
+  --color-type-flying: #a890f0;
+  --color-type-poison: #a040a0;
+  --color-type-ground: #e0c068;
+  --color-type-rock: #b8a038;
+  --color-type-bug: #a8b820;
+  --color-type-ghost: #705898;
+  --color-type-steel: #b8b8d0;
+  --color-type-mystery: #68a090;
+  --color-type-fire: #f08030;
+  --color-type-water: #6890f0;
+  --color-type-grass: #78c850;
+  --color-type-electr: #f8d030;
+  --color-type-psychc: #f85888;
+  --color-type-ice: #98d8d8;
+  --color-type-dragon: #7038f8;
+  --color-type-dark: #705848;
+
   --radius-card: 16px;
   --radius-ctl: 10px;
   --radius-sm: 6px;
@@ -126,12 +146,19 @@
 
   --animate-rise: rise 0.14s var(--ease-out);
   --animate-changed: changed 1s var(--ease-out);
+  --animate-pop: pop 0.16s var(--ease-out);
 
   /* translate, not transform: the Tooltip is centered with the translate property. */
   @keyframes rise {
     from {
       opacity: 0;
       translate: -50% 3px;
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      scale: 0.97;
     }
   }
   @keyframes changed {
