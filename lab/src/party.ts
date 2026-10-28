@@ -56,6 +56,8 @@ export type PartyMon = {
   nature: string;
   level: number;
   exp: number;
+  /** The EXP at the start of the level, for the EXP bar of the Viewer. The model prompt does not show it. */
+  levelExp: number;
   expToNextLevel: number;
   hp: number;
   maxHp: number;
@@ -80,7 +82,8 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     const item = substructs.getUint16(growth + GROWTH_HELD_ITEM, true);
     const level = mon.field("level").int();
     const exp = substructs.getUint32(growth + GROWTH_EXPERIENCE, true);
-    const nextLevel = level < MAX_LEVEL ? mem.global("gExperienceTables").at(info.field("growthRate").int()).at(level + 1).int() : exp;
+    const expTable = mem.global("gExperienceTables").at(info.field("growthRate").int());
+    const nextLevel = level < MAX_LEVEL ? expTable.at(level + 1).int() : exp;
     return {
       species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(box.field("nickname").bytes()),
@@ -90,6 +93,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
       level,
       exp,
+      levelExp: expTable.at(level).int(),
       expToNextLevel: nextLevel - exp,
       hp: mon.field("hp").int(),
       maxHp: mon.field("maxHP").int(),

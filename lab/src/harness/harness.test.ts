@@ -214,6 +214,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       heldItem: null,
       // Medium Slow growth: 135 EXP at level 5, 179 at level 6.
       exp: 135,
+      levelExp: 135,
       expToNextLevel: 44,
       moves: [
         { name: "TACKLE", type: "NORMAL", power: 35, accuracy: 95, pp: 35, maxPp: 35, description: "A physical attack in which the user charges, full body, into the foe." },

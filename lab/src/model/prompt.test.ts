@@ -35,7 +35,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
-    party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 }],
+    party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 }],
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     milestones: [],
@@ -136,7 +136,7 @@ describe("the next Milestone", () => {
 function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
   const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-  const pidgey = { nickname: "PIDGEY", species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hp: 10, maxHp: 10, status: "none", moves: [], ability: { name: "KEEN EYE", description: "" }, heldItem: null, nature: "BOLD", stats, exp: 0, expToNextLevel: 1 };
+  const pidgey = { nickname: "PIDGEY", species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hp: 10, maxHp: 10, status: "none", moves: [], ability: { name: "KEEN EYE", description: "" }, heldItem: null, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 };
   return {
     mode: "battle",
     waitingFor: { kind: "battleAction" },
