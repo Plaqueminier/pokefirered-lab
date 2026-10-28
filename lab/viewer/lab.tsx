@@ -192,13 +192,15 @@ function TopBar() {
       style={sizeVars(ZONES.top.size)}
       class="@container flex h-(--narrow) shrink-0 items-center gap-5 border-b border-line px-4 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
     >
-      <span class="flex max-w-[420px] min-w-[120px] shrink grow">
-        <NativeSelect select={legacySelect("runs")} />
-      </span>
-      <span class="shrink-0">
-        <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-          <Legacy id="runs-panel" />
-        </Popover>
+      <span class="flex min-w-0 shrink items-center gap-2">
+        <span class="flex max-w-[420px] min-w-[120px] shrink">
+          <NativeSelect select={legacySelect("runs")} />
+        </span>
+        <span class="shrink-0">
+          <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
+            <Legacy id="runs-panel" />
+          </Popover>
+        </span>
       </span>
       <span class="ml-auto flex shrink-0 items-center gap-5">
         {(model || calls.length > 0) && (

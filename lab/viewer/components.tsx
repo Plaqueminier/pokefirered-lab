@@ -339,7 +339,7 @@ export function Metric({
       <span class="flex items-center gap-1.5 text-sm whitespace-nowrap tabular-nums">
         {icon && <span class="flex text-faint">{icon}</span>}
         {value !== undefined && (
-          <span class={`max-w-[200px] truncate ${chars ? "text-right" : ""}`} style={chars ? { minWidth: `${chars}ch` } : undefined}>
+          <span class="max-w-[200px] truncate" style={chars ? { minWidth: `${chars}ch` } : undefined}>
             {value}
           </span>
         )}
