@@ -32,6 +32,7 @@ import {
   typeToken,
 } from "./components";
 import { PokemonCard, PokemonSummary } from "./pokemon";
+import { BotsPanel } from "./runs";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
 function colorTokens(): string[] {
@@ -174,28 +175,34 @@ function FieldDemo() {
   );
 }
 
+const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
+
 const RUN_OPTIONS = [
-  { value: "", label: "Viewer Run · replay of model-10-2026-10-27T09-38-59.686Z.json" },
-  { value: "3", label: "Run 3 · model · plays" },
-  { value: "4", label: "Run 4 · model (continues model-10-2026-10-27T09-38-59.686Z.json) · end: cost limit" },
+  { value: "viewer", label: "Viewer Run (keyboard)", group: "Viewer Run" },
+  { value: "run:3", label: "Run 3 · model · plays", group: "Runs of the Bots" },
+  { value: "run:4", label: `Run 4 · model (continues ${RECORD}) · end: cost limit`, group: "Runs of the Bots" },
+  { value: `replay:${RECORD}`, label: RECORD, group: "Replay a Run record" },
+  { value: "replay:starter-3-2026-10-24T08-13-38.892Z.json", label: "starter-3-2026-10-24T08-13-38.892Z.json", group: "Replay a Run record" },
 ];
+
+const RECORD_OPTIONS = RUN_OPTIONS.filter((option) => option.value.startsWith("replay:")).map(({ value, label }) => ({ value, label }));
 
 const TYPE_OPTIONS = TYPES.map((type) => ({ value: type, label: type }));
 
 function SelectDemo() {
-  const [run, setRun] = useState("3");
+  const [run, setRun] = useState("run:3");
   const [type, setType] = useState("GRASS");
   const [record, setRecord] = useState("");
   return (
     <div class="grid max-w-[640px] gap-4 sm:grid-cols-2">
-      <Field label="Run" hint="A long text ends with “…”.">
+      <Field label="Run" hint="Groups: the name of each group is above its options. A long text ends with “…”.">
         <Select options={RUN_OPTIONS} value={run} onChange={setRun} />
       </Field>
       <Field label="Type" hint="A long list scrolls.">
         <Select options={TYPE_OPTIONS} value={type} onChange={setType} />
       </Field>
       <Field label="Run record" hint="No value yet.">
-        <Select options={RUN_OPTIONS.slice(1)} value={record} onChange={setRecord} placeholder="Choose a Run record" />
+        <Select options={RECORD_OPTIONS} value={record} onChange={setRecord} placeholder="Choose a Run record" />
       </Field>
       <Field label="Starter" hint="Disabled.">
         <Select options={[{ value: "free", label: "starter free" }]} value="free" onChange={() => {}} disabled />
@@ -338,36 +345,46 @@ function MetricDemo() {
 function CardDemo() {
   const [money, setMoney] = useState(3434);
   return (
-    <div class="grid gap-4 sm:grid-cols-3">
-      <Card>
-        <p class={`${LABEL} mb-2`}>Money</p>
-        <p class="text-2xl font-semibold">
-          ₽<Num value={money} />
-        </p>
-        <div class="mt-3 flex gap-2">
-          <Button size="sm" onClick={() => setMoney((m) => m + 450)}>
-            +450
-          </Button>
-          <Button size="sm" onClick={() => setMoney((m) => m - 600)}>
-            −600
-          </Button>
-        </div>
-      </Card>
-      <Card>
-        <div class="mb-2 flex items-center">
-          <p class={`${LABEL} flex-1`}>Run</p>
-          <Pill>user stop</Pill>
-        </div>
-        <p class="text-sm leading-relaxed">
-          model-10, deepseek-v4-flash
-          <br />
-          <span class="text-muted">456,974 frames, 717 calls</span>
-        </p>
-      </Card>
-      <Card interactive>
-        <p class={`${LABEL} mb-2`}>Review turn, 1:49:42</p>
-        <p class="text-sm leading-relaxed">“Bug Catcher Greg is defeated; I'm on Route 3 heading east.”</p>
-      </Card>
+    <div class="flex flex-col gap-4">
+      <p class="text-xs text-faint">Card: it shows data, and a pointer on it changes nothing.</p>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <p class={`${LABEL} mb-2`}>Money</p>
+          <p class="text-2xl font-semibold">
+            ₽<Num value={money} />
+          </p>
+          <div class="mt-3 flex gap-2">
+            <Button size="sm" onClick={() => setMoney((m) => m + 450)}>
+              +450
+            </Button>
+            <Button size="sm" onClick={() => setMoney((m) => m - 600)}>
+              −600
+            </Button>
+          </div>
+        </Card>
+        <Card>
+          <div class="mb-2 flex items-center">
+            <p class={`${LABEL} flex-1`}>Run</p>
+            <Pill>user stop</Pill>
+          </div>
+          <p class="text-sm leading-relaxed">
+            model-10, deepseek-v4-flash
+            <br />
+            <span class="text-muted">456,974 frames, 717 calls</span>
+          </p>
+        </Card>
+      </div>
+      <p class="text-xs text-faint">Interactive card: it opens something. Put the pointer on it: its border and its background take the accent.</p>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <Card interactive>
+          <p class={`${LABEL} mb-2`}>Review turn, 1:49:42</p>
+          <p class="text-sm leading-relaxed">“Bug Catcher Greg is defeated; I'm on Route 3 heading east.”</p>
+        </Card>
+        <Card interactive size="sm">
+          <p class={`${LABEL} mb-1`}>Small, 0:12:05</p>
+          <p class="text-sm text-muted">A small interactive card, as the Pokémon card.</p>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -625,43 +642,26 @@ function HoverCardDemo() {
   );
 }
 
-const BOT_OPTIONS = ["model", "random", "walker"].map((name) => ({ value: name, label: name }));
-
-function RunForm() {
-  const [bot, setBot] = useState("model");
-  return (
-    <div class="flex w-[300px] flex-col gap-3">
-      <Field label="Bot">
-        <Select options={BOT_OPTIONS} value={bot} onChange={setBot} />
-      </Field>
-      <Button variant="primary">
-        <Play size={14} />
-        Start the Bot
-      </Button>
-    </div>
-  );
-}
-
 function PopoverDemo() {
   return (
     <div class="flex flex-col gap-4">
       <div class="flex flex-wrap items-center gap-3">
         <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-          <RunForm />
+          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
         </Popover>
         <span class="flex w-[220px]">
           <Popover label="Replay of model-10-2026-10-27T09-38-59.686Z.json">
-            <RunForm />
+            <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
           </Popover>
         </span>
         <Popover label="No Run" disabled>
-          <RunForm />
+          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
         </Popover>
       </div>
       <div>
         <p class="mb-1.5 text-xs text-faint">open</p>
         <PopoverBody>
-          <RunForm />
+          <BotsPanel shown={null} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
         </PopoverBody>
       </div>
     </div>
@@ -858,7 +858,7 @@ function ComponentsSheet() {
         >
           <MetricDemo />
         </Section>
-        <Section title="Card" rule="The base of each panel. A card that opens something takes the accent on hover: its border and its background. A small card (size sm) is for a compact view: see the Pokémon card.">
+        <Section title="Card" rule="The base of each panel. Only a card that opens something is interactive: on hover, its border and its background take the accent. A small card (size sm) is for a compact view: see the Pokémon card.">
           <CardDemo />
         </Section>
         <Section title="Tooltip" rule="A short text on hover or on keyboard focus, for an icon or a number. A wide tooltip is on a full row, and its text can have more than one line.">

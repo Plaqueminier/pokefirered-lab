@@ -56,8 +56,6 @@ function modelStatus(model: ReplayModel): string {
 }
 
 export type ReplayElements = {
-  records: HTMLSelectElement;
-  start: HTMLButtonElement;
   end: HTMLButtonElement;
   status: HTMLElement;
   action: HTMLElement;
@@ -75,18 +73,7 @@ export class ReplayPanel {
     private readonly ui: ReplayElements,
     send: (message: ClientMessage) => void,
   ) {
-    ui.start.addEventListener("click", () => {
-      if (ui.records.value) send({ type: "replay", name: ui.records.value });
-    });
     ui.end.addEventListener("click", () => send({ type: "end-replay" }));
-    // A focused list takes the arrow keys, and they must go to the game.
-    ui.records.addEventListener("change", () => ui.records.blur());
-  }
-
-  setRecords(names: string[]): void {
-    this.ui.records.replaceChildren(...names.map((name) => new Option(name, name)));
-    this.ui.start.disabled = names.length === 0;
-    if (names.length === 0) this.ui.records.append(new Option("no Run record in lab/runs/", ""));
   }
 
   onEvents(events: RunEvent[]): void {

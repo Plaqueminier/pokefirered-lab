@@ -10,7 +10,6 @@ import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
 import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
-import { RunsPanel } from "./runs";
 import { StatsPanel } from "./stats-panel";
 import { ViewerTabs } from "./tabs";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
@@ -52,8 +51,6 @@ let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
 const replayPanel = new ReplayPanel(
   {
-    records: $<HTMLSelectElement>("records"),
-    start: $<HTMLButtonElement>("replay-start"),
     end: $<HTMLButtonElement>("replay-end"),
     status: $("replay-status"),
     action: $("action"),
@@ -64,22 +61,6 @@ const replayPanel = new ReplayPanel(
   send,
 );
 
-const runsPanel = new RunsPanel(
-  {
-    runs: $<HTMLSelectElement>("runs"),
-    bots: $<HTMLSelectElement>("bots"),
-    model: $<HTMLInputElement>("model-id"),
-    costLimit: $<HTMLInputElement>("cost-limit"),
-    reasoning: $<HTMLSelectElement>("reasoning"),
-    starter: $<HTMLSelectElement>("starter"),
-    stopAtWhiteout: $<HTMLInputElement>("stop-at-whiteout"),
-    from: $<HTMLSelectElement>("run-from"),
-    start: $<HTMLButtonElement>("bot-start"),
-    stop: $<HTMLButtonElement>("run-stop"),
-    shownModel: $("shown-model"),
-  },
-  send,
-);
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
 const modelPanel = new ModelPanel(
@@ -103,7 +84,7 @@ const tabs = new ViewerTabs(
   releaseKeys,
 );
 mountComponentsTab($("components"));
-const lab = new LabTab($("lab"), $("toasts"), shared);
+const lab = new LabTab($("lab"), $("toasts"), shared, send);
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -157,7 +138,6 @@ function onMessage(message: ServerMessage): void {
       replayPanel.onStatus(message.frame, message.shown);
       modelPanel.onStatus(message.shown, runChanged);
       statsPanel.onStatus(message.frame, message.shown, runChanged);
-      runsPanel.onStatus(message.runs, message.shown);
       break;
     }
     case "state":
@@ -198,11 +178,10 @@ function onMessage(message: ServerMessage): void {
       lab.notice(message.text);
       break;
     case "records":
-      replayPanel.setRecords(message.names);
-      runsPanel.setRecords(message.names);
+      lab.onRecords(message.names);
       break;
     case "bots":
-      runsPanel.setBots(message.bots.map((bot) => bot.name));
+      lab.onBots(message.bots.map((bot) => bot.name));
       tabs.setBots(message.bots);
       break;
     case "events":

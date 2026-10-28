@@ -445,7 +445,8 @@ export function Popover({ label, icon, title, disabled, children }: { label: Com
   );
 }
 
-type SelectOption<T extends string> = { value: T; label: string };
+// Options with the same group follow each other: the list shows the name of the group above them.
+type SelectOption<T extends string> = { value: T; label: string; group?: string };
 
 const TYPE_AHEAD_MS = 600;
 
@@ -475,14 +476,14 @@ export function Select<T extends string>({
   const selected = options.findIndex((option) => option.value === value);
   const current = options[selected];
   useLayoutEffect(() => {
-    const item = list.current?.children[active];
+    const item = document.getElementById(`${id}-${active}`);
     const scroller = layer.current?.firstElementChild;
     if (!open || !item || !scroller) return;
     const box = item.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
     if (box.top < view.top) scroller.scrollTop -= view.top - box.top + 4;
     else if (box.bottom > view.bottom) scroller.scrollTop += box.bottom - view.bottom + 4;
-  }, [open, active]);
+  }, [open, active, id]);
   const close = () => {
     if (layer.current?.matches(":popover-open")) layer.current.hidePopover();
     trigger.current?.focus();
@@ -573,7 +574,12 @@ export function Select<T extends string>({
       >
         <PopoverBody list>
           <div ref={list} id={`${id}-list`} role="listbox" tabIndex={-1} aria-activedescendant={open ? `${id}-${active}` : undefined} onKeyDown={onListKey} class="outline-none">
-            {options.map((option, index) => (
+            {options.map((option, index) => [
+              option.group && option.group !== options[index - 1]?.group && (
+                <div key={`group-${option.group}`} role="presentation" class={`${LABEL} px-2.5 pt-2.5 pb-1 first:pt-1`}>
+                  {option.group}
+                </div>
+              ),
               // biome-ignore lint/a11y/useKeyWithClickEvents: the list takes the keys.
               <div
                 key={`${index}-${option.value}`}
@@ -588,8 +594,8 @@ export function Select<T extends string>({
               >
                 <span class="min-w-0 flex-1 truncate">{option.label}</span>
                 {index === selected && <Check size={14} class="shrink-0" />}
-              </div>
-            ))}
+              </div>,
+            ])}
           </div>
         </PopoverBody>
       </div>

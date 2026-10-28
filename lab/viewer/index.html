@@ -140,7 +140,6 @@
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: var(--muted); }
       #help { display: flex; flex-direction: column; gap: 8px; }
-      .runs-panel { width: min(760px, calc(100vw - 48px)); }
       .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
       .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
       .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -153,8 +152,6 @@
         padding: 6px 10px;
         font: inherit;
       }
-      #model-id { width: 240px; }
-      #cost-limit { width: 110px; }
       #replay-status { white-space: pre-line; }
       .panel-head select {
         background: var(--panel);
@@ -349,28 +346,9 @@
           With the overlay, point at a cell to see its data.
         </div>
       </div>
-      <section id="runs-panel" class="runs-panel">
-        <div class="panel-head">
-          <h2>Runs</h2>
-          <select id="runs"></select>
-          <button id="run-stop" disabled title="Stops the shown Run after the action or the Model call that plays, and writes its Run record">Stop the Run</button>
-          <select id="bots"></select>
-          <input id="model-id" autocomplete="off" title="OpenRouter model of the model bot" />
-          <input id="cost-limit" type="number" min="0.01" step="0.05" placeholder="limit in $" title="Cost limit of the model bot, in $" />
-          <select id="reasoning" title="Reasoning effort of the model bot"></select>
-          <select id="starter" title="First Pokémon that the model bot must choose. Free: it chooses."></select>
-          <label title="The Run of the model bot ends when all the Pokémon of the party faint"><input id="stop-at-whiteout" type="checkbox" checked /> stop at a whiteout</label>
-          <select id="run-from" title="Start from the Starting save, or continue a Run record: the Bot plays from the end of that Run, with its Memory tree, its Mission and its Atlas"></select>
-          <button id="bot-start">Start the Bot</button>
-        </div>
-        <div class="mono" id="shown-model"></div>
-        <div class="muted">The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them: "Stop the Run" stops the shown Run, with the end <code>user stop</code> and a Run record. Empty, the model and the cost limit take the default model and <code>LAB_COST_LIMIT</code> (or 0.50 $). The reasoning is <code>low</code> by default; <code>off</code> is cheaper, but the model makes more mistakes. The starter is the first Pokémon that the model must choose; with <code>free</code>, it chooses. With "stop at a whiteout" (on by default), the Run ends with <code>whiteout</code> when all the Pokémon of the party faint. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas; the cost limit counts the new Model calls only, and the model can be another one.</div>
-      </section>
       <section id="replay-panel">
         <div class="panel-head">
           <h2>Replay</h2>
-          <select id="records"></select>
-          <button id="replay-start">Replay</button>
           <button id="replay-end" hidden>Back to the keyboard</button>
         </div>
         <div class="mono muted" id="replay-status"></div>
@@ -451,7 +429,7 @@
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
             <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps, but only the fixed obstacles seen</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
-            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run in its list), a button "Bots" (stop the Run, start a Bot), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the decision line (a hover shows the answer of the call), the party and the controls. A rail of icons: Whole map, Model, Stats, Memory tree, Replay. One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
+            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the decision line (a hover shows the answer of the call), the party and the controls. A rail of icons: Whole map, Model, Stats, Memory tree, Replay. One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
             <dt>Components</dt><dd>the third tab: the design system of the Viewer (ADR 0004), each component in all its states, also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast and the badges. A new part of the Viewer uses these components</dd>
           </dl>
         </section>
@@ -518,7 +496,7 @@
           <h2>Run record and parallel Runs</h2>
           <p>
             A Run of a Bot has a Run record: origin (ROM, seed, save), Bot, keys at each frame, events and result. It goes to
-            <code>lab/runs/</code> at the end of the Run. The keys alone replay the Run: panel "Replay". A Run can continue a stopped Run ("continue" in the panel "Runs"): the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot plays on. The new record has the old keys and events, then the new ones. Its cost limit counts the new Model calls only.
+            <code>lab/runs/</code> at the end of the Run. The keys alone replay the Run: choose the record in the list of the Run, in the top bar. A Run can continue a stopped Run ("continue" in the form "Bots"): the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot plays on. The new record has the old keys and events, then the new ones. Its cost limit counts the new Model calls only.
           </p>
           <p>
             The Harness plays 4 Runs at most: the Viewer Run, and 3 Runs of Bots in workers, at full speed and with no sound.

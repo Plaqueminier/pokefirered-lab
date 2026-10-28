@@ -3,18 +3,19 @@ import { type ComponentChildren, type ComponentType, createContext, render } fro
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { GameState } from "../src/game";
 import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
-import type { ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Select, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import type { ClientMessage, ServerMessage, ShownRun } from "../src/protocol";
+import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
 import { PokemonCard } from "./pokemon";
+import { BotsPanel, RunSelect } from "./runs";
 import { clock, stuckLevel } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
-type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; statusLine: string };
+type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
 
-type Lab = { data: Store<LabData>; shared: SharedCursor };
+type Lab = { data: Store<LabData>; shared: SharedCursor; send: (message: ClientMessage) => void };
 
 const LabContext = createContext<Lab | null>(null);
 
@@ -38,66 +39,6 @@ function Legacy({ id }: { id: string }) {
     if (node) host.current?.append(node);
   }, [id]);
   return <div ref={host} class="legacy contents" />;
-}
-
-// A property set on a select (value, selectedIndex) does not change its DOM, so no MutationObserver sees it.
-function watchValue(select: HTMLSelectElement, changed: () => void): () => void {
-  const keys = ["value", "selectedIndex"] as const;
-  for (const key of keys) {
-    const base = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, key)!;
-    Object.defineProperty(select, key, {
-      configurable: true,
-      get: base.get,
-      set(next) {
-        base.set!.call(this, next);
-        changed();
-      },
-    });
-  }
-  return () => {
-    for (const key of keys) Reflect.deleteProperty(select, key);
-  };
-}
-
-// The Select of a select of an old panel: it shows the options, the value and the state of the select, and a choice sets its value and sends "change".
-function NativeSelect({ select }: { select: HTMLSelectElement }) {
-  const [, setChanges] = useState(0);
-  useEffect(() => {
-    const changed = () => setChanges((n) => n + 1);
-    const observer = new MutationObserver(changed);
-    observer.observe(select, { subtree: true, childList: true, attributes: true, characterData: true });
-    const unwatch = watchValue(select, changed);
-    changed();
-    return () => {
-      observer.disconnect();
-      unwatch();
-    };
-  }, [select]);
-  return (
-    <Select
-      options={[...select.options].map((option) => ({ value: option.value, label: option.text }))}
-      value={select.value}
-      disabled={select.disabled}
-      title={select.title || undefined}
-      onChange={(value) => {
-        select.value = value;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      }}
-    />
-  );
-}
-
-function legacySelect(id: string): HTMLSelectElement {
-  return document.getElementById(id) as HTMLSelectElement;
-}
-
-// The old panel keeps its select, hidden, and its code: the Select takes its place.
-function bridgeSelect(select: HTMLSelectElement): void {
-  const host = document.createElement("span");
-  host.className = "ds inline-block min-w-[160px] max-w-[320px] bg-none";
-  select.hidden = true;
-  select.after(host);
-  render(<NativeSelect select={select} />, host);
 }
 
 // The size of a zone or of a panel at each breakpoint: the width of the live column, the height of the top bar and of the panels.
@@ -181,7 +122,8 @@ function useCursorCall() {
 }
 
 function TopBar() {
-  const { status, state, events, cursor, calls, index, call } = useCursorCall();
+  const { send } = useLab();
+  const { status, state, events, cursor, calls, index, call, bots, records } = useCursorCall();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
   const frame = cursor?.frame ?? status?.frame ?? 0;
@@ -194,11 +136,11 @@ function TopBar() {
     >
       <span class="flex min-w-0 shrink items-center gap-2">
         <span class="flex max-w-[420px] min-w-[120px] shrink">
-          <NativeSelect select={legacySelect("runs")} />
+          <RunSelect shown={shown} runs={status?.runs ?? []} records={records} send={send} />
         </span>
         <span class="shrink-0">
           <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-            <Legacy id="runs-panel" />
+            <BotsPanel shown={shown} bots={bots} records={records} send={send} />
           </Popover>
         </span>
       </span>
@@ -396,21 +338,26 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
 }
 
 export class LabTab {
-  readonly #data = new Store<LabData>({ status: null, state: null, events: [], statusLine: "connecting…" });
+  readonly #data = new Store<LabData>({ status: null, state: null, events: [], statusLine: "connecting…", bots: [], records: [] });
   readonly #toasts = new Store<ToastItem[]>([]);
   #toastId = 0;
 
-  constructor(root: HTMLElement, toastRoot: HTMLElement, shared: SharedCursor) {
+  constructor(root: HTMLElement, toastRoot: HTMLElement, shared: SharedCursor, send: (message: ClientMessage) => void) {
     render(
-      <LabContext.Provider value={{ data: this.#data, shared }}>
+      <LabContext.Provider value={{ data: this.#data, shared, send }}>
         <LabLayout />
       </LabContext.Provider>,
       root,
     );
     render(<Toasts toasts={this.#toasts} close={(id) => this.#close(id)} />, toastRoot);
-    // The Select of the Runs is in the top bar.
-    legacySelect("runs").hidden = true;
-    for (const id of ["bots", "reasoning", "starter", "run-from", "records"]) bridgeSelect(legacySelect(id));
+  }
+
+  onBots(bots: readonly string[]): void {
+    this.#patch({ bots });
+  }
+
+  onRecords(records: readonly string[]): void {
+    this.#patch({ records });
   }
 
   #patch(next: Partial<LabData>): void {
