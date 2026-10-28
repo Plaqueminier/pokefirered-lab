@@ -1,8 +1,35 @@
-import { BookOpen, Copy, LayoutGrid, Pause, Play, RotateCcw, Search, Shapes, Square } from "lucide-preact";
+import { BookOpen, CircleCheck, Copy, Info, LayoutGrid, OctagonAlert, Pause, Play, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PartyMon, PartyMove } from "../src/party";
-import { Bar, Button, Card, Checkbox, ExpBar, Field, HoverCard, HoverCardBody, Input, Num, Pill, Select, StatBar, Switch, Tabs, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
+import {
+  Badges,
+  Bar,
+  Button,
+  Card,
+  Checkbox,
+  ExpBar,
+  Field,
+  HoverCard,
+  HoverCardBody,
+  Input,
+  Num,
+  Pill,
+  Popover,
+  PopoverBody,
+  Select,
+  StatBar,
+  Switch,
+  Tabs,
+  Toast,
+  Toaster,
+  type Tone,
+  Tooltip,
+  TYPES,
+  TypeChip,
+  hpTone,
+  typeToken,
+} from "./components";
 import { PokemonCard, PokemonSummary } from "./pokemon";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
@@ -521,6 +548,130 @@ function HoverCardDemo() {
   );
 }
 
+function RunForm() {
+  return (
+    <div class="flex w-[300px] flex-col gap-3">
+      <Field label="Run">
+        <Select>
+          <option>Run 3 · model · plays</option>
+          <option>Viewer Run (keyboard)</option>
+        </Select>
+      </Field>
+      <Button variant="primary">
+        <Play size={14} />
+        Start the Bot
+      </Button>
+    </div>
+  );
+}
+
+function PopoverDemo() {
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <Popover label="Run 3 · model · plays">
+          <RunForm />
+        </Popover>
+        <span class="flex w-[220px]">
+          <Popover label="Replay of model-10-2026-10-27T09-38-59.686Z.json">
+            <RunForm />
+          </Popover>
+        </span>
+        <Popover label="No Run" disabled>
+          <RunForm />
+        </Popover>
+      </div>
+      <div>
+        <p class="mb-1.5 text-xs text-faint">open</p>
+        <PopoverBody>
+          <RunForm />
+        </PopoverBody>
+      </div>
+    </div>
+  );
+}
+
+type DemoToast = { id: number; tone: Tone; icon: ComponentChildren; title: string; text: string };
+
+const TOASTS: Omit<DemoToast, "id">[] = [
+  { tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: "badge-1 at 1:49:42" },
+  { tone: "info", icon: <Info size={16} />, title: "Notice", text: "Savestate loaded." },
+  { tone: "ok", icon: <CircleCheck size={16} />, title: "Run 3", text: "end: user stop. The Run record is written." },
+  { tone: "bad", icon: <OctagonAlert size={16} />, title: "Run 4", text: "the Run record is not written (disk full)." },
+];
+
+function ToastDemo() {
+  const [shown, setShown] = useState<DemoToast[]>([]);
+  const next = useRef(0);
+  const close = (id: number) => setShown((now) => now.filter((toast) => toast.id !== id));
+  const show = (toast: Omit<DemoToast, "id">) => {
+    const id = ++next.current;
+    setShown((now) => [...now, { ...toast, id }].slice(-4));
+    setTimeout(() => close(id), 6000);
+  };
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-wrap gap-2">
+        {TOASTS.map((toast) => (
+          <Button key={toast.tone} size="sm" onClick={() => show(toast)}>
+            {toast.title}
+          </Button>
+        ))}
+      </div>
+      <div class="flex flex-col gap-2">
+        {TOASTS.map((toast) => (
+          <Toast key={toast.tone} tone={toast.tone} icon={toast.icon} title={toast.title} onClose={() => {}}>
+            {toast.text}
+          </Toast>
+        ))}
+        <Toast title="A title only" />
+      </div>
+      <Toaster>
+        {shown.map((toast) => (
+          <Toast key={toast.id} tone={toast.tone} icon={toast.icon} title={toast.title} onClose={() => close(toast.id)}>
+            {toast.text}
+          </Toast>
+        ))}
+      </Toaster>
+    </div>
+  );
+}
+
+const NO_BADGE = Array.from({ length: 8 }, () => false);
+
+function BadgesDemo() {
+  const [got, setGot] = useState(NO_BADGE.map((_, i) => i < 2));
+  const count = got.filter(Boolean).length;
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+        {(
+          [
+            ["no state yet", null],
+            ["no badge", NO_BADGE],
+            ["3 badges", NO_BADGE.map((_, i) => i < 3)],
+            ["all the badges", NO_BADGE.map(() => true)],
+          ] as const
+        ).map(([state, badges]) => (
+          <div key={state}>
+            <p class="mb-1.5 text-xs text-faint">{state}</p>
+            <Badges got={badges} />
+          </div>
+        ))}
+      </div>
+      <div class="flex items-center gap-3">
+        <Badges got={got} />
+        <Button size="sm" disabled={count === 8} onClick={() => setGot(got.map((on, i) => on || i === count))}>
+          Get the next badge
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setGot(NO_BADGE)}>
+          Reset
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function PokemonCardDemo() {
   const [hp, setHp] = useState(IVYSAUR.hp);
   return (
@@ -643,6 +794,21 @@ function ComponentsSheet() {
         </Section>
         <Section title="HoverCard" rule="A card that opens after a short hover, or at the keyboard focus, next to its trigger. The pointer can go into the card.">
           <HoverCardDemo />
+        </Section>
+        <Section
+          title="Popover"
+          rule="A panel that a click on its button opens, under the button. A click outside or Esc closes it. The button takes the accent while it is open. A long label ends with “…”."
+        >
+          <PopoverDemo />
+        </Section>
+        <Section
+          title="Toast"
+          rule="A short message at the bottom right: a notice of the server, a Milestone. The color of its tone is on its left edge. It closes after 6 s, or with its button. 4 toasts at most."
+        >
+          <ToastDemo />
+        </Section>
+        <Section title="Badges" rule="The 8 badges of the player as dots. A badge that the player gets shines. Reduced motion stops the shine.">
+          <BadgesDemo />
         </Section>
         <Section
           title="Pokémon card"

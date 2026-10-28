@@ -1,3 +1,4 @@
+import { ChevronDown, X } from "lucide-preact";
 import type { ButtonHTMLAttributes, ComponentChildren, InputHTMLAttributes, SelectHTMLAttributes } from "preact";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 
@@ -349,5 +350,92 @@ export function HoverCard({ card, children }: { card: ComponentChildren; childre
         {open && <HoverCardBody>{card}</HoverCardBody>}
       </div>
     </div>
+  );
+}
+
+/** The surface of a popover: it scrolls when its content is higher than the window. */
+export function PopoverBody({ children }: { children: ComponentChildren }) {
+  return <div class="max-h-[calc(100dvh-96px)] w-max max-w-[calc(100vw-16px)] animate-pop overflow-auto rounded-card border border-line-strong bg-bg p-4 text-fg shadow-xl">{children}</div>;
+}
+
+/**
+ * A panel that a click on its button opens. It is a native popover: a click outside it or Esc closes it. CSS anchor
+ * positioning places it under the button, else above it. Its content stays in the page when it is closed. A long label
+ * ends with "…".
+ */
+export function Popover({ label, title, disabled, children }: { label: ComponentChildren; title?: string; disabled?: boolean; children: ComponentChildren }) {
+  const id = `popover-${useId().replace(/[^\w-]/g, "")}`;
+  const [open, setOpen] = useState(false);
+  return (
+    // The button shrinks below the width of its label: the label ends with "…".
+    <span class="flex min-w-0 *:min-w-0" style={`anchor-name: --${id}`}>
+      <Button popovertarget={id} pressed={open} disabled={disabled} title={title}>
+        <span class="min-w-0 truncate">{label}</span>
+        <ChevronDown size={14} class={`shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </Button>
+      <div
+        id={id}
+        popover="auto"
+        onToggle={(event) => setOpen(event.newState === "open")}
+        class="m-0 overflow-visible border-0 bg-transparent p-0"
+        style={`position-anchor: --${id}; inset: auto; margin-top: 6px; position-area: bottom span-right; position-try-fallbacks: flip-inline, flip-block`}
+      >
+        <PopoverBody>{children}</PopoverBody>
+      </div>
+    </span>
+  );
+}
+
+/** A short message that comes in at the bottom right of the window, with the color of its tone on its left edge. */
+export function Toast({ tone = "info", icon, title, onClose, children }: { tone?: Tone; icon?: ComponentChildren; title: string; onClose?: () => void; children?: ComponentChildren }) {
+  return (
+    <div
+      role="status"
+      class="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] animate-toast items-start gap-3 rounded-card border border-line-strong bg-bg py-3 pr-3 pl-4 shadow-xl"
+      style={{ borderLeft: `3px solid var(--color-${tone})` }}
+    >
+      {icon && <span class={`mt-0.5 shrink-0 ${TONES[tone].text}`}>{icon}</span>}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-semibold">{title}</p>
+        {children && <p class="mt-0.5 text-sm leading-snug text-muted">{children}</p>}
+      </div>
+      {onClose && (
+        <button type="button" aria-label="Close" onClick={onClose} class="shrink-0 rounded-sm p-0.5 text-faint transition-colors hover:text-fg">
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The stack of the toasts, the newest at the bottom. */
+export function Toaster({ children }: { children: ComponentChildren }) {
+  return <div class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2">{children}</div>;
+}
+
+/** The 8 badges as dots. A badge that the player gets shines. `got` is null when no state is known: the next state does not shine. */
+export function Badges({ got }: { got: readonly boolean[] | null }) {
+  const before = useRef(got);
+  const [shining, setShining] = useState<number[]>([]);
+  useEffect(() => {
+    const old = before.current;
+    before.current = got;
+    if (!old || !got) return;
+    const fresh = got.flatMap((on, i) => (on && !old[i] ? [i] : []));
+    if (fresh.length > 0) setShining((now) => [...now, ...fresh]);
+  }, [got]);
+  const count = got?.filter(Boolean).length ?? 0;
+  return (
+    <Tooltip text={`${count} badge${count === 1 ? "" : "s"} of 8`}>
+      <span class="flex items-center gap-1.5">
+        {Array.from({ length: 8 }, (_, i) => (
+          <span
+            key={i}
+            onAnimationEnd={() => setShining((now) => now.filter((index) => index !== i))}
+            class={`size-2.5 rounded-full border transition-colors duration-300 ${got?.[i] ? "border-accent bg-accent" : "border-line-strong"} ${shining.includes(i) ? "animate-shine" : ""}`}
+          />
+        ))}
+      </span>
+    </Tooltip>
   );
 }
