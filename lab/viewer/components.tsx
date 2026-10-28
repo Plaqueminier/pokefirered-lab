@@ -289,6 +289,44 @@ export function Tooltip({ text, wide, children }: { text: string; wide?: boolean
   );
 }
 
+// A value with a fixed width (in characters) does not move the parts next to it when its digits change.
+export function Metric({
+  tip,
+  icon,
+  value,
+  chars,
+  detail,
+  detailChars,
+  children,
+}: {
+  tip: string;
+  icon?: ComponentChildren;
+  value?: ComponentChildren;
+  chars?: number;
+  detail?: ComponentChildren;
+  detailChars?: number;
+  children?: ComponentChildren;
+}) {
+  return (
+    <Tooltip text={tip}>
+      <span class="flex items-center gap-1.5 text-sm whitespace-nowrap tabular-nums">
+        {icon && <span class="flex text-faint">{icon}</span>}
+        {value !== undefined && (
+          <span class={`max-w-[200px] truncate ${chars ? "text-right" : ""}`} style={chars ? { minWidth: `${chars}ch` } : undefined}>
+            {value}
+          </span>
+        )}
+        {detail !== undefined && (
+          <span class="text-muted" style={detailChars ? { minWidth: `${detailChars}ch` } : undefined}>
+            {detail}
+          </span>
+        )}
+        {children}
+      </span>
+    </Tooltip>
+  );
+}
+
 export const LABEL = "text-xs font-semibold tracking-[0.08em] text-muted uppercase";
 
 // The body of a floating layer: the card of a HoverCard and the content of a Popover.

@@ -4,7 +4,7 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import type { GameState } from "../src/game";
 import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, LABEL, Pill, Popover, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
 import { PokemonCard } from "./pokemon";
@@ -123,19 +123,6 @@ function runName(shown: ShownRun): string {
   return shown.replay ? `Replay of ${shown.replay.name}` : "Viewer Run (keyboard)";
 }
 
-function Stat({ tip, icon, hide = "", children }: { tip: string; icon?: ComponentChildren; hide?: string; children: ComponentChildren }) {
-  return (
-    <span class={`shrink-0 ${hide}`}>
-      <Tooltip text={tip}>
-        <span class="flex items-center gap-1.5 text-sm whitespace-nowrap">
-          {icon && <span class="text-faint">{icon}</span>}
-          {children}
-        </span>
-      </Tooltip>
-    </span>
-  );
-}
-
 function useCursorCall() {
   const { data, shared } = useLab();
   const lab = useStore(data);
@@ -166,43 +153,58 @@ function TopBar() {
       <span class="ml-auto flex shrink-0 items-center gap-5">
         {(model || calls.length > 0) && (
           <>
-            <Stat tip={model ? "Cost of the Model calls at the cursor / cost limit" : "Cost of the Model calls at the cursor"} icon={<Coins size={14} />}>
-              <span class="inline-block min-w-[7ch] text-right">{cost.toFixed(2)} $</span>
-              {model && <span class="text-muted">/ {model.costLimit.toFixed(2)} $</span>}
-            </Stat>
-            <Stat tip="Stuck counter at the cursor" hide="@max-[440px]:hidden">
-              {call?.stuck === undefined ? (
-                <Pill>Stuck –</Pill>
-              ) : (
-                <Pill tone={STUCK_TONES[stuckLevel(call.stuck)]}>
-                  Stuck <span class="inline-block min-w-[2ch] text-right">{call.stuck}</span>
-                </Pill>
-              )}
-            </Stat>
-            <Stat tip="The Model call at the cursor / all the Model calls" icon={<MessageSquare size={14} />} hide="@max-[560px]:hidden">
-              <span class="inline-block min-w-[4ch] text-right">{index === null ? "–" : index + 1}</span>
-              <span class="inline-block min-w-[6ch] text-muted">/ {calls.length}</span>
-            </Stat>
+            <span class="shrink-0">
+              <Metric
+                tip={model ? "Cost of the Model calls at the cursor / cost limit" : "Cost of the Model calls at the cursor"}
+                icon={<Coins size={14} />}
+                value={`${cost.toFixed(2)} $`}
+                chars={7}
+                detail={model ? `/ ${model.costLimit.toFixed(2)} $` : undefined}
+              />
+            </span>
+            <span class="shrink-0 @max-[440px]:hidden">
+              <Metric tip="Stuck counter at the cursor">
+                {call?.stuck === undefined ? (
+                  <Pill>Stuck –</Pill>
+                ) : (
+                  <Pill tone={STUCK_TONES[stuckLevel(call.stuck)]}>
+                    Stuck <span class="inline-block min-w-[2ch] text-right">{call.stuck}</span>
+                  </Pill>
+                )}
+              </Metric>
+            </span>
+            <span class="shrink-0 @max-[560px]:hidden">
+              <Metric
+                tip="The Model call at the cursor / all the Model calls"
+                icon={<MessageSquare size={14} />}
+                value={index === null ? "–" : index + 1}
+                chars={4}
+                detail={`/ ${calls.length}`}
+                detailChars={6}
+              />
+            </span>
           </>
         )}
         <span class="shrink-0 @max-[700px]:hidden">
           <Badges got={state?.badges ?? null} />
         </span>
-        <Stat tip="Money (live)" icon={<span class="text-sm">₽</span>} hide="@max-[800px]:hidden">
-          <span class="inline-block min-w-[7ch] text-right">{state ? state.money.toLocaleString("en-US") : "–"}</span>
-        </Stat>
-        <Stat
-          tip={state ? `group ${state.map.group}, map ${state.map.num} · callback2 ${state.context.callback2} · callback1 ${state.context.callback1}` : "no state yet"}
-          icon={<MapPin size={14} />}
-          hide="@max-[1140px]:hidden"
-        >
-          <span class="max-w-[200px] truncate">{state?.player ? state.map.name : "–"}</span>
-          <span class="inline-block min-w-[7ch] text-muted">{state?.player ? `${state.player.x}, ${state.player.y}` : ""}</span>
-          {state && <Pill>{MODES[state.context.mode]}</Pill>}
-        </Stat>
-        <Stat tip={`${cursor ? "Cursor" : "Now"}: frame ${frame.toLocaleString("en-US")}`} icon={<Clock size={14} />} hide="@max-[1240px]:hidden">
-          <span class="inline-block min-w-[7ch] text-right">{clock(frame)}</span>
-        </Stat>
+        <span class="shrink-0 @max-[800px]:hidden">
+          <Metric tip="Money (live)" icon={<span class="text-sm">₽</span>} value={state ? state.money.toLocaleString("en-US") : "–"} chars={7} />
+        </span>
+        <span class="shrink-0 @max-[1140px]:hidden">
+          <Metric
+            tip={state ? `group ${state.map.group}, map ${state.map.num} · callback2 ${state.context.callback2} · callback1 ${state.context.callback1}` : "no state yet"}
+            icon={<MapPin size={14} />}
+            value={state?.player ? state.map.name : "–"}
+            detail={state?.player ? `${state.player.x}, ${state.player.y}` : ""}
+            detailChars={7}
+          >
+            {state && <Pill>{MODES[state.context.mode]}</Pill>}
+          </Metric>
+        </span>
+        <span class="shrink-0 @max-[1240px]:hidden">
+          <Metric tip={`${cursor ? "Cursor" : "Now"}: frame ${frame.toLocaleString("en-US")}`} icon={<Clock size={14} />} value={clock(frame)} chars={7} />
+        </span>
       </span>
     </header>
   );

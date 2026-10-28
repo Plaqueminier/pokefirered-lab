@@ -1,4 +1,4 @@
-import { BookOpen, CircleCheck, Copy, Info, LayoutGrid, OctagonAlert, Pause, Play, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
+import { BookOpen, CircleCheck, Clock, Coins, Copy, Info, LayoutGrid, MessageSquare, OctagonAlert, Pause, Play, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PartyMon, PartyMove } from "../src/party";
@@ -13,6 +13,7 @@ import {
   HoverCard,
   Input,
   LABEL,
+  Metric,
   Num,
   Pill,
   Popover,
@@ -248,6 +249,43 @@ function BarDemo() {
         </Button>
         <Button size="sm" onClick={() => setCost((c) => Math.min(0.5, c + 0.02))}>
           Model call
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MetricDemo() {
+  const [calls, setCalls] = useState(9);
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {(
+          [
+            ["with an icon", <Metric key="icon" tip="Time of the cursor" icon={<Clock size={14} />} value="1:49:42" chars={7} />],
+            ["no icon", <Metric key="plain" tip="Money (live)" value="3,434" chars={7} />],
+            ["a muted part", <Metric key="muted" tip="Cost / cost limit" icon={<Coins size={14} />} value="0.37 $" chars={7} detail="/ 1.00 $" />],
+            [
+              "a Pill inside",
+              <Metric key="pill" tip="Stuck counter at the cursor">
+                <Pill tone="warn">Stuck 4</Pill>
+              </Metric>,
+            ],
+          ] as const
+        ).map(([state, metric]) => (
+          <div key={state}>
+            <p class="mb-1.5 text-xs text-faint">{state}</p>
+            {metric}
+          </div>
+        ))}
+      </div>
+      <div class="flex items-center gap-3">
+        <Metric tip="The Model call at the cursor / all the Model calls" icon={<MessageSquare size={14} />} value={calls} chars={4} detail={`/ ${calls * 4}`} detailChars={6} />
+        <Button size="sm" onClick={() => setCalls((n) => n * 3 + 1)}>
+          More calls
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setCalls(9)}>
+          Reset
         </Button>
       </div>
     </div>
@@ -764,6 +802,12 @@ function ComponentsSheet() {
         </Section>
         <Section title="TypeChip" rule="The name of a type on its color. White text on a dark type color, dark text on the others.">
           <TypeChipDemo />
+        </Section>
+        <Section
+          title="Metric"
+          rule="A short value of the top bar, with an optional icon and a tooltip that tells what it is. A number has a fixed width: it does not move its neighbors when its digits change. A muted part gives the total or the limit."
+        >
+          <MetricDemo />
         </Section>
         <Section title="Card" rule="The base of each panel. A card that opens something takes the accent on hover: its border and its background. A small card (size sm) is for a compact view: see the Pokémon card.">
           <CardDemo />
