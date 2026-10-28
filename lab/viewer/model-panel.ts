@@ -2,7 +2,6 @@ import type { Decision, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
 import { callAt, type SharedCursor } from "./cursor";
 import { element } from "./dom";
-import { runKey } from "./runs";
 
 const BLOCK_TITLES: [RegExp, string][] = [
   [/^Milestones/, "Progress"],
@@ -66,8 +65,18 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function turnText({ reflection, review }: ModelEvent): string | undefined {
-  return reflection ? "reflection turn" : review ? "review turn" : undefined;
+export function turnKind({ reflection, review }: ModelEvent): "reflection" | "review" | undefined {
+  return reflection ? "reflection" : review ? "review" : undefined;
+}
+
+function turnText(call: ModelEvent): string | undefined {
+  const kind = turnKind(call);
+  return kind && `${kind} turn`;
+}
+
+// The request of a Review turn is in the prompt of the Model call: the question, then the checks as a list.
+export function reviewText({ prompt }: ModelEvent): string | null {
+  return /^Review turn:.*(\n- .*)*/m.exec(prompt.user)?.[0] ?? null;
 }
 
 function stuckText(stuck: number | undefined, turn: string | undefined): string[] {
@@ -87,21 +96,23 @@ export function callsStarted(shown: ShownRun): number {
   return shown.kind === "bot" && shown.run.playing ? (shown.run.model?.callsStarted ?? 0) : 0;
 }
 
-export type ModelPanelElements = { title: HTMLElement; follow: HTMLButtonElement; calls: HTMLElement; answer: HTMLElement; blocks: HTMLElement; shared: SharedCursor };
+export type ModelPanelElements = { title: HTMLElement; follow: HTMLButtonElement; calls: HTMLElement; answer: HTMLElement; blocks: HTMLElement };
 
 export class ModelPanel {
   #events: readonly RunEvent[] = [];
   #callsStarted = 0;
   #shownCall = "";
-  #run = "";
 
-  constructor(private readonly ui: ModelPanelElements) {
-    ui.follow.addEventListener("click", () => ui.shared.set({ ...ui.shared.value, cursor: null }));
+  constructor(
+    private readonly ui: ModelPanelElements,
+    private readonly shared: SharedCursor,
+  ) {
+    ui.follow.addEventListener("click", () => shared.clear());
     ui.calls.addEventListener("click", (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>("[data-call]");
-      if (row) ui.shared.pickCall(Number(row.dataset.call), Number(row.dataset.frame));
+      if (row) shared.pickCall(Number(row.dataset.call), Number(row.dataset.frame));
     });
-    ui.shared.subscribe(() => this.render());
+    shared.subscribe(() => this.render());
   }
 
   onEvents(events: readonly RunEvent[]): void {
@@ -109,17 +120,15 @@ export class ModelPanel {
     this.render();
   }
 
-  onStatus(shown: ShownRun): void {
-    const run = runKey(shown);
+  onStatus(shown: ShownRun, runChanged: boolean): void {
     const started = callsStarted(shown);
-    if (run === this.#run && started === this.#callsStarted) return;
-    this.#run = run;
+    if (!runChanged && started === this.#callsStarted) return;
     this.#callsStarted = started;
     this.render();
   }
 
   get #selected(): number | null {
-    const { cursor } = this.ui.shared.value;
+    const { cursor } = this.shared.value;
     return cursor ? callAt(modelCalls(this.#events).calls, cursor) : null;
   }
 

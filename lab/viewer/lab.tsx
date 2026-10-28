@@ -1,56 +1,64 @@
 import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
-import { useContext, useEffect, useState } from "preact/hooks";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { GameState } from "../src/game";
 import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
 import type { ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, HoverCard, Pill, Popover, Toast, Toaster, type Tone, Tooltip } from "./components";
-import { callAt, type SharedCursor, Store } from "./cursor";
-import { callsStarted, modelCalls } from "./model-panel";
+import { Badges, Button, Card, HoverCard, LABEL, Pill, Popover, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
+import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
 import { PokemonCard } from "./pokemon";
-import { runKey, runLabel } from "./runs";
+import { runLabel } from "./runs";
 import { clock, stuckLevel } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
 type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; statusLine: string };
 
-export type LabParts = Record<"screen" | "controls" | "help" | "runs" | "replay" | "map" | "model" | "stats" | "memory", HTMLElement>;
+type Lab = { data: Store<LabData>; shared: SharedCursor };
 
-type Lab = { data: Store<LabData>; shared: SharedCursor; parts: LabParts };
+const LabContext = createContext<Lab | null>(null);
 
-const LabContext = createContext<Lab>(null!);
+function useLab(): Lab {
+  const lab = useContext(LabContext);
+  if (!lab) throw new Error("The Lab tab needs its context.");
+  return lab;
+}
 
-function useStore<T>(store: Store<T>): T {
+function useStore<T>(store: Readable<T>): T {
   const [, setChanges] = useState(0);
   useEffect(() => store.subscribe(() => setChanges((n) => n + 1)), [store]);
   return store.value;
 }
 
-function Legacy({ part }: { part: keyof LabParts }) {
-  const { parts } = useContext(LabContext);
-  return <div class="legacy contents" ref={(element) => element?.append(parts[part])} />;
+// A panel with its own DOM in the page: it moves into its place once, and stays in the document.
+function Legacy({ id }: { id: string }) {
+  const host = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = document.getElementById(id);
+    if (node) host.current?.append(node);
+  }, [id]);
+  return <div ref={host} class="legacy contents" />;
 }
 
+// The size of a zone or of a panel at each breakpoint: the width of the live column, the height of the top bar and of the panels.
 type Sizes = { narrow: string; medium: string; wide: string };
 
 type Entry = { id: string; title: string; icon?: ComponentType<{ size?: number }>; size: Sizes; render: () => ComponentChildren };
 
-const AUTO: Sizes = { narrow: "auto", medium: "auto", wide: "auto" };
-
 const ZONES = {
-  top: { id: "top", title: "Top bar", size: AUTO, render: () => <TopBar /> },
+  top: { id: "top", title: "Top bar", size: { narrow: "3rem", medium: "3rem", wide: "3rem" }, render: () => <TopBar /> },
   live: { id: "live", title: "Live column", size: { narrow: "auto", medium: "40%", wide: "46%" }, render: () => <LiveColumn /> },
 } satisfies Record<string, Entry>;
 
 const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
 
 const RAIL: Entry[] = [
-  { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy part="map" /> },
-  { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <Legacy part="model" /> },
-  { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy part="stats" /> },
-  { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <Legacy part="memory" /> },
-  { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <Legacy part="replay" /> },
+  { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy id="map-panel" /> },
+  { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <Legacy id="model-panel" /> },
+  { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
+  { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <Legacy id="memory-panel" /> },
+  { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <Legacy id="replay-panel" /> },
 ];
 
 function sizeVars({ narrow, medium, wide }: Sizes): Record<string, string> {
@@ -64,9 +72,13 @@ function LabLayout() {
     <>
       {ZONES.top.render()}
       <div class="flex flex-col min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:flex-row">
-        <div style={sizeVars(ZONES.live.size)} class="@container shrink-0 min-[900px]:w-(--medium) min-[900px]:overflow-y-auto min-[1280px]:w-(--wide)">
+        <section
+          aria-label={ZONES.live.title}
+          style={sizeVars(ZONES.live.size)}
+          class="@container w-(--narrow) shrink-0 min-[900px]:w-(--medium) min-[900px]:overflow-y-auto min-[1280px]:w-(--wide)"
+        >
           {ZONES.live.render()}
-        </div>
+        </section>
         <nav aria-label="Panels" class="flex shrink-0 gap-1 border-y border-line p-2 min-[900px]:flex-col min-[900px]:border-x min-[900px]:border-y-0">
           {RAIL.map(({ id, title, icon: Icon }) => (
             <Tooltip key={id} text={title}>
@@ -124,23 +136,31 @@ function Stat({ tip, icon, hide = "", children }: { tip: string; icon?: Componen
   );
 }
 
-function TopBar() {
-  const { data, shared } = useContext(LabContext);
-  const { status, state, events } = useStore(data);
+function useCursorCall() {
+  const { data, shared } = useLab();
+  const lab = useStore(data);
   const { cursor } = useStore(shared);
+  const calls = useMemo(() => modelCalls(lab.events).calls, [lab.events]);
+  const index = callAt(calls, cursor);
+  return { ...lab, cursor, calls, index, call: index === null ? null : (calls[index] ?? null) };
+}
+
+function TopBar() {
+  const { status, state, events, cursor, calls, index, call } = useCursorCall();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
-  const calls = modelCalls(events).calls;
-  const index = callAt(calls, cursor);
-  const call = index === null ? null : calls[index];
   const frame = cursor?.frame ?? status?.frame ?? 0;
-  const cost = costTo(events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, model?.continued?.events ?? 0);
+  const from = model?.continued?.events ?? 0;
+  const cost = useMemo(() => costTo(events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, from), [events, cursor, from]);
   const name = shown ? runName(shown) : "connecting…";
   return (
-    <header class="@container flex h-12 shrink-0 items-center gap-5 border-b border-line px-4">
+    <header
+      style={sizeVars(ZONES.top.size)}
+      class="@container flex h-(--narrow) shrink-0 items-center gap-5 border-b border-line px-4 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
+    >
       <span class="flex max-w-[420px] min-w-[120px] shrink">
         <Popover label={name} title={name}>
-          <Legacy part="runs" />
+          <Legacy id="runs-panel" />
         </Popover>
       </span>
       <span class="ml-auto flex shrink-0 items-center gap-5">
@@ -188,18 +208,24 @@ function TopBar() {
   );
 }
 
+const TURNS: Record<NonNullable<ReturnType<typeof turnKind>>, { text: string; tone: Tone }> = {
+  reflection: { text: "Reflection turn", tone: "warn" },
+  review: { text: "Review turn", tone: "accent" },
+};
+
 function turnOf(call: ModelEvent): { text: string; tone: Tone } | null {
-  if (call.reflection) return { text: "Reflection turn", tone: "warn" };
-  return call.review ? { text: "Review turn", tone: "accent" } : null;
+  const kind = turnKind(call);
+  return kind ? TURNS[kind] : null;
 }
 
 function CallCard({ call, index, count }: { call: ModelEvent; index: number; count: number }) {
   const turn = turnOf(call);
+  const review = turnKind(call) === "review" ? reviewText(call) : null;
   const { decision } = call;
   return (
     <div class="flex w-[420px] max-w-full flex-col gap-2 text-sm">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-semibold tracking-[0.08em] text-muted uppercase">
+        <span class={LABEL}>
           Model call {index + 1} of {count} · {clock(call.frame)}
         </span>
         <span class="ml-auto flex gap-1.5">
@@ -229,22 +255,20 @@ function CallCard({ call, index, count }: { call: ModelEvent; index: number; cou
       ) : (
         <p class="text-bad">Unreadable answer: {call.error}</p>
       )}
+      {review && <p class="border-t border-line pt-2 text-xs leading-snug whitespace-pre-line text-muted">{review}</p>}
       <p class="text-xs text-faint">frame {call.frame.toLocaleString("en-US")}</p>
     </div>
   );
 }
 
 function DecisionLine() {
-  const { data, shared } = useContext(LabContext);
-  const { status, events } = useStore(data);
-  const { cursor } = useStore(shared);
-  const calls = modelCalls(events).calls;
-  const index = callAt(calls, cursor);
-  const call = index === null ? null : calls[index];
+  const { shared } = useLab();
+  const { status, cursor, calls, index, call } = useCursorCall();
   const thinking = !cursor && status !== null && callsStarted(status.shown) > calls.length;
   const turn = call && turnOf(call);
   const line = (
-    <div class="flex h-11 items-center gap-2.5 rounded-card border border-line bg-surface px-3 text-sm">
+    <Card size="sm">
+      <div class="flex h-5 items-center gap-2.5 text-sm">
       <Pill tone={cursor ? "accent" : "ok"}>{cursor ? `At cursor ${clock(cursor.frame)}` : "Now"}</Pill>
       {call ? (
         <>
@@ -256,7 +280,8 @@ function DecisionLine() {
         <span class="flex-1 text-muted">{cursor ? "no Model call at the cursor" : "no Model call yet"}</span>
       )}
       {thinking && <Pill tone="info">the model thinks…</Pill>}
-    </div>
+      </div>
+    </Card>
   );
   return (
     <div class="flex items-center gap-2">
@@ -273,7 +298,7 @@ function DecisionLine() {
 }
 
 function Party() {
-  const { state } = useStore(useContext(LabContext).data);
+  const { state } = useStore(useLab().data);
   if (!state || state.party.length === 0) return <p class="text-sm text-muted">{state ? "no Pokémon" : "–"}</p>;
   return (
     <div class="grid grid-cols-2 gap-2 @min-[460px]:grid-cols-3">
@@ -285,15 +310,15 @@ function Party() {
 }
 
 function LiveColumn() {
-  const { statusLine } = useStore(useContext(LabContext).data);
+  const { statusLine } = useStore(useLab().data);
   return (
     <div class="flex flex-col gap-3 p-4">
-      <Legacy part="screen" />
+      <Legacy id="screen" />
       <DecisionLine />
       <Party />
-      <Legacy part="controls" />
+      <Legacy id="controls" />
       <p class="font-mono text-xs text-muted">{statusLine}</p>
-      <Legacy part="help" />
+      <Legacy id="help" />
     </div>
   );
 }
@@ -316,21 +341,14 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
   );
 }
 
-function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boolean {
-  const last = before.at(-1);
-  const same = after[before.length - 1];
-  return last !== undefined && after.length > before.length && same.frame === last.frame && same.type === last.type && after[0].frame === before[0].frame;
-}
-
 export class LabTab {
   readonly #data = new Store<LabData>({ status: null, state: null, events: [], statusLine: "connecting…" });
   readonly #toasts = new Store<ToastItem[]>([]);
   #toastId = 0;
-  #run = "";
 
-  constructor(root: HTMLElement, toastRoot: HTMLElement, parts: LabParts, shared: SharedCursor) {
+  constructor(root: HTMLElement, toastRoot: HTMLElement, shared: SharedCursor) {
     render(
-      <LabContext.Provider value={{ data: this.#data, shared, parts }}>
+      <LabContext.Provider value={{ data: this.#data, shared }}>
         <LabLayout />
       </LabContext.Provider>,
       root,
@@ -342,22 +360,18 @@ export class LabTab {
     this.#data.set({ ...this.#data.value, ...next });
   }
 
-  onStatus(status: Status, statusLine: string): void {
-    const run = runKey(status.shown);
-    this.#patch({ status, statusLine, ...(run === this.#run ? {} : { state: null }) });
-    this.#run = run;
+  onStatus(status: Status, statusLine: string, runChanged: boolean): void {
+    this.#patch({ status, statusLine, ...(runChanged ? { state: null } : {}) });
   }
 
   onState(state: GameState): void {
     this.#patch({ state });
   }
 
-  onEvents(events: readonly RunEvent[]): void {
-    const before = this.#data.value.events;
-    if (continues(before, events)) {
-      for (const event of events.slice(before.length)) {
-        if (event.type === "milestone") this.toast({ tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: `${event.milestone} at ${clock(event.frame)}` });
-      }
+  // The added events are null when the events restarted: no toast for the old events.
+  onEvents(events: readonly RunEvent[], added: readonly RunEvent[] | null): void {
+    for (const event of added ?? []) {
+      if (event.type === "milestone") this.#toast({ tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: `${event.milestone} at ${clock(event.frame)}` });
     }
     this.#patch({ events });
   }
@@ -367,10 +381,10 @@ export class LabTab {
   }
 
   notice(text: string): void {
-    this.toast({ tone: "info", icon: <Info size={16} />, title: "Notice", text });
+    this.#toast({ tone: "info", icon: <Info size={16} />, title: "Notice", text });
   }
 
-  toast(item: Omit<ToastItem, "id">): void {
+  #toast(item: Omit<ToastItem, "id">): void {
     const id = ++this.#toastId;
     this.#toasts.set([...this.#toasts.value, { ...item, id }].slice(-MAX_TOASTS));
     setTimeout(() => this.#close(id), TOAST_MS);

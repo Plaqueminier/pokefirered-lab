@@ -4,15 +4,15 @@ import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { SharedCursor } from "./cursor";
-import { ViewerTabs } from "./tabs";
 import { showTooltip } from "./dom";
 import { LabTab } from "./lab";
 import { describe, draw, howLabel } from "./mapdraw";
 import { MemoryPanel } from "./memory-panel";
 import { ModelPanel } from "./model-panel";
 import { ReplayPanel } from "./replay";
-import { RunsPanel, runKey } from "./runs";
+import { RunsPanel } from "./runs";
 import { StatsPanel } from "./stats-panel";
+import { ViewerTabs } from "./tabs";
 import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
@@ -82,16 +82,17 @@ const runsPanel = new RunsPanel(
 );
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
-let eventCount = 0;
-const modelPanel = new ModelPanel({
+const modelPanel = new ModelPanel(
+  {
+    title: $("model-title"),
+    follow: $<HTMLButtonElement>("model-follow"),
+    calls: $("model-calls"),
+    answer: $("model-answer"),
+    blocks: $("model-blocks"),
+  },
   shared,
-  title: $("model-title"),
-  follow: $<HTMLButtonElement>("model-follow"),
-  calls: $("model-calls"),
-  answer: $("model-answer"),
-  blocks: $("model-blocks"),
-});
-const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip, shared });
+);
+const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip }, shared);
 const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const tabs = new ViewerTabs(
   {
@@ -102,22 +103,7 @@ const tabs = new ViewerTabs(
   releaseKeys,
 );
 mountComponentsTab($("components"));
-const lab = new LabTab(
-  $("lab"),
-  $("toasts"),
-  {
-    screen: $("screen"),
-    controls: $("controls"),
-    help: $("help"),
-    runs: $("runs-panel"),
-    replay: $("replay-panel"),
-    map: $("map-panel"),
-    model: $("model-panel"),
-    stats: $("stats-panel"),
-    memory: $("memory-panel"),
-  },
-  shared,
-);
+const lab = new LabTab($("lab"), $("toasts"), shared);
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -166,11 +152,11 @@ function onMessage(message: ServerMessage): void {
         `${message.rom} · frame ${message.frame} · ` +
         (run ? `Run ${run.id} of the Bot ${run.bot}, no sound` : `${message.fps} frames/s · ${soundText(message.audio)}`) +
         (message.hasStartSave ? "" : " · no Starting save yet");
-      shared.onRun(runKey(message.shown));
-      lab.onStatus(message, statusLine);
+      const runChanged = shared.onStatus(message.shown);
+      lab.onStatus(message, statusLine, runChanged);
       replayPanel.onStatus(message.frame, message.shown);
-      modelPanel.onStatus(message.shown);
-      statsPanel.onStatus(message.frame, message.shown);
+      modelPanel.onStatus(message.shown, runChanged);
+      statsPanel.onStatus(message.frame, message.shown, runChanged);
       runsPanel.onStatus(message.runs, message.shown);
       break;
     }
@@ -220,10 +206,7 @@ function onMessage(message: ServerMessage): void {
       tabs.setBots(message.bots);
       break;
     case "events":
-      // A replay that restarts sends fewer events under the same name.
-      if (message.events.length < eventCount) shared.clear();
-      eventCount = message.events.length;
-      lab.onEvents(message.events);
+      lab.onEvents(message.events, shared.onEvents(message.events));
       replayPanel.onEvents(message.events);
       modelPanel.onEvents(message.events);
       statsPanel.onEvents(message.events);
@@ -544,7 +527,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.repeat) return;
   const key = event.key.toLowerCase();
-  if (key === "escape" && !document.querySelector(":popover-open")) shared.clear();
+  if (key === "escape" && !document.querySelector("[popover]:not([popover=manual]):popover-open")) shared.clear();
   else if (key === "g") setOverlay(!overlayOn);
   else if (key === "m") setSound(!soundOn);
   else if (key === "k") send({ type: "quick-save" });

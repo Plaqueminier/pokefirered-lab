@@ -4,9 +4,9 @@ import type { Continuation, RunEvent } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { isNewNote } from "../src/model/memory-tree";
 import { actionText, type ShownRun } from "../src/protocol";
-import type { Selection, SharedCursor, Span } from "./cursor";
+import type { SharedCursor, Span } from "./cursor";
 import { card, element, line, rows, showTooltip } from "./dom";
-import { dollars, runKey, tokens } from "./runs";
+import { dollars, tokens } from "./runs";
 import { type AxisScale, axisScale, clock, lanesSvg, stuckLevel } from "./stats-lanes";
 
 type Count = { name: string; count: number };
@@ -137,6 +137,8 @@ type Selected = Span & {
   unreadable: Count[];
 };
 
+type Selection = ({ kind: "range" } & Span) | { kind: "call"; index: number };
+
 function selectionSpan(view: StatsView, selection: Selection | null): Span {
   if (selection?.kind === "range") return selection;
   const call = selection && view.calls[selection.index];
@@ -200,15 +202,14 @@ function pointLines(view: StatsView, frame: number, near: number): string[] {
   return lines;
 }
 
-export type StatsPanelElements = { cost: HTMLElement; body: HTMLElement; tooltip: HTMLElement; shared: SharedCursor };
+export type StatsPanelElements = { cost: HTMLElement; body: HTMLElement; tooltip: HTMLElement };
 
-type Shown = { key: string; replayFrames: number | null; costLimit: number | null; continued: Continuation | null };
+type Shown = { replayFrames: number | null; costLimit: number | null; continued: Continuation | null };
 
 function shownOf(shown: ShownRun): Shown {
-  const key = runKey(shown);
-  if (shown.kind === "bot") return { key, replayFrames: null, costLimit: shown.run.model?.costLimit ?? null, continued: shown.run.continued };
+  if (shown.kind === "bot") return { replayFrames: null, costLimit: shown.run.model?.costLimit ?? null, continued: shown.run.continued };
   const { replay } = shown;
-  return { key, replayFrames: replay?.frames ?? null, costLimit: replay?.model?.costLimit ?? null, continued: replay?.continued ?? null };
+  return { replayFrames: replay?.frames ?? null, costLimit: replay?.model?.costLimit ?? null, continued: replay?.continued ?? null };
 }
 
 const EVENT_REDRAW_MS = 250;
@@ -220,7 +221,7 @@ const MAX_CALL_ROWS = 400;
 export class StatsPanel {
   #events: readonly RunEvent[] = [];
   #areas: Areas = {};
-  #shown: Shown = { key: "", replayFrames: null, costLimit: null, continued: null };
+  #shown: Shown = { replayFrames: null, costLimit: null, continued: null };
   #frame = 0;
   #view: StatsView | null = null;
   #scale: AxisScale = axisScale(0, 1);
@@ -234,7 +235,10 @@ export class StatsPanel {
   readonly #head = element("div", "", "stats-head");
   readonly #cards = element("div", "", "stats-cards");
 
-  constructor(private readonly ui: StatsPanelElements) {
+  constructor(
+    private readonly ui: StatsPanelElements,
+    private readonly shared: SharedCursor,
+  ) {
     ui.body.replaceChildren(this.#lanes, this.#readout, this.#head, this.#cards);
     this.#lanes.addEventListener("mousedown", (event) => this.onDown(event));
     this.#lanes.addEventListener("mousemove", (event) => this.onMove(event));
@@ -244,7 +248,7 @@ export class StatsPanel {
       showTooltip(ui.tooltip, null, 0, 0);
     });
     document.addEventListener("mouseup", (event) => this.onUp(event));
-    ui.shared.subscribe(() => this.draw());
+    shared.subscribe(() => this.draw());
     window.addEventListener("blur", () => {
       if (this.#dragStart === null) return;
       this.#dragStart = null;
@@ -264,10 +268,9 @@ export class StatsPanel {
     this.drawWithin(EVENT_REDRAW_MS);
   }
 
-  onStatus(frame: number, shown: ShownRun): void {
+  onStatus(frame: number, shown: ShownRun, otherRun: boolean): void {
     const next = shownOf(shown);
     const old = this.#shown;
-    const otherRun = next.key !== old.key;
     const changed = next.replayFrames !== old.replayFrames || next.costLimit !== old.costLimit || next.continued?.frame !== old.continued?.frame || next.continued?.events !== old.continued?.events;
     this.#shown = next;
     const moved = frame !== this.#frame;
@@ -277,7 +280,9 @@ export class StatsPanel {
   }
 
   get #selection(): Selection | null {
-    return this.ui.shared.value.selection;
+    const { cursor, range } = this.shared.value;
+    if (range) return { kind: "range", ...range };
+    return cursor?.call != null ? { kind: "call", index: cursor.call } : null;
   }
 
   private drawWithin(ms: number): void {
@@ -301,7 +306,7 @@ export class StatsPanel {
     this.#view = view;
     this.#scale = axisScale(width, Math.max(1, now, this.#shown.replayFrames ?? 0));
     this.ui.cost.textContent = `${view.calls.length} Model calls · ${dollars(view.cost)}`;
-    const cursor = this.ui.shared.value.cursor?.frame ?? null;
+    const cursor = this.shared.value.cursor?.frame ?? null;
     this.#lanes.innerHTML = lanesSvg({ view, scale: this.#scale, played: now, costLimit: this.#shown.costLimit, selection: this.#selection && part, cursor });
     if (this.#mouseX !== null) this.follow(this.#mouseX);
     this.#head.replaceChildren(...this.head(view, part));
@@ -323,7 +328,7 @@ export class StatsPanel {
     if (part.prompt) add(element("span", `prompt ${tokens(part.prompt.min)} to ${tokens(part.prompt.max)} tokens`, "blue"));
     if (this.#selection) {
       const all = element("button", "select all");
-      all.addEventListener("click", () => this.ui.shared.select(null));
+      all.addEventListener("click", () => this.shared.clear());
       nodes.push(document.createTextNode(" "), all);
     }
     return nodes;
@@ -378,11 +383,10 @@ export class StatsPanel {
     if (Math.abs(x - start) < DRAG_PIXELS) {
       const frame = this.#scale.frame(x);
       const call = this.#view.calls.findLast((c) => c.frame <= frame);
-      if (call) return this.ui.shared.pickCall(call.index, call.frame);
-      return this.ui.shared.set({ cursor: { frame, call: null }, selection: null });
+      return call ? this.shared.pickCall(call.index, call.frame) : this.shared.pickFrame(frame);
     }
     const [from, to] = [this.#scale.frame(start), this.#scale.frame(x)].sort((a, b) => a - b);
-    this.ui.shared.select({ kind: "range", from, to });
+    this.shared.selectRange({ from, to });
   }
 }
 
