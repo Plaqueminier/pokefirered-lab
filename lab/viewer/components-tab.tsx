@@ -139,7 +139,10 @@ function ButtonDemo() {
   );
 }
 
+const REASONING_OPTIONS = ["off", "low", "medium", "high"].map((level) => ({ value: level, label: `reasoning ${level}` }));
+
 function FieldDemo() {
+  const [reasoning, setReasoning] = useState("low");
   const [whiteout, setWhiteout] = useState(true);
   const [sound, setSound] = useState(false);
   return (
@@ -151,12 +154,7 @@ function FieldDemo() {
         <Input type="number" step="0.05" value="0.50" unit="$" />
       </Field>
       <Field label="Reasoning">
-        <Select>
-          <option>low</option>
-          <option>off</option>
-          <option>medium</option>
-          <option>high</option>
-        </Select>
+        <Select options={REASONING_OPTIONS} value={reasoning} onChange={setReasoning} />
       </Field>
       <Field label="Go to a map">
         <Input placeholder="Viridian City" icon={<Search size={14} />} />
@@ -172,6 +170,36 @@ function FieldDemo() {
           Sound
         </Checkbox>
       </div>
+    </div>
+  );
+}
+
+const RUN_OPTIONS = [
+  { value: "", label: "Viewer Run · replay of model-10-2026-10-27T09-38-59.686Z.json" },
+  { value: "3", label: "Run 3 · model · plays" },
+  { value: "4", label: "Run 4 · model (continues model-10-2026-10-27T09-38-59.686Z.json) · end: cost limit" },
+];
+
+const TYPE_OPTIONS = TYPES.map((type) => ({ value: type, label: type }));
+
+function SelectDemo() {
+  const [run, setRun] = useState("3");
+  const [type, setType] = useState("GRASS");
+  const [record, setRecord] = useState("");
+  return (
+    <div class="grid max-w-[640px] gap-4 sm:grid-cols-2">
+      <Field label="Run" hint="A long text ends with “…”.">
+        <Select options={RUN_OPTIONS} value={run} onChange={setRun} />
+      </Field>
+      <Field label="Type" hint="A long list scrolls.">
+        <Select options={TYPE_OPTIONS} value={type} onChange={setType} />
+      </Field>
+      <Field label="Run record" hint="No value yet.">
+        <Select options={RUN_OPTIONS.slice(1)} value={record} onChange={setRecord} placeholder="Choose a Run record" />
+      </Field>
+      <Field label="Starter" hint="Disabled.">
+        <Select options={[{ value: "free", label: "starter free" }]} value="free" onChange={() => {}} disabled />
+      </Field>
     </div>
   );
 }
@@ -597,14 +625,14 @@ function HoverCardDemo() {
   );
 }
 
+const BOT_OPTIONS = ["model", "random", "walker"].map((name) => ({ value: name, label: name }));
+
 function RunForm() {
+  const [bot, setBot] = useState("model");
   return (
     <div class="flex w-[300px] flex-col gap-3">
-      <Field label="Run">
-        <Select>
-          <option>Run 3 · model · plays</option>
-          <option>Viewer Run (keyboard)</option>
-        </Select>
+      <Field label="Bot">
+        <Select options={BOT_OPTIONS} value={bot} onChange={setBot} />
       </Field>
       <Button variant="primary">
         <Play size={14} />
@@ -618,7 +646,7 @@ function PopoverDemo() {
   return (
     <div class="flex flex-col gap-4">
       <div class="flex flex-wrap items-center gap-3">
-        <Popover label="Run 3 · model · plays">
+        <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
           <RunForm />
         </Popover>
         <span class="flex w-[220px]">
@@ -795,6 +823,12 @@ function ComponentsSheet() {
         <Section title="Field" rule="Focus: the border and a soft ring. An error has a red border and a short text under it.">
           <FieldDemo />
         </Section>
+        <Section
+          title="Select"
+          rule="A choice in a list: all the dropdowns of the Viewer. A click or Enter opens the list under the field. Arrows, Home and End move in it, a letter goes to the next option with that letter, Enter or a click chooses, Esc closes. The focus then goes back to the field. The chosen option has the accent and a check."
+        >
+          <SelectDemo />
+        </Section>
         <Section title="Tabs" rule="The indicator slides to the selected tab. Line tabs for the navigation bar and the blocks of a panel, segmented tabs for a choice of values. A rail chooses the panel of the Lab tab: icons only, the name in a tooltip, vertical from 900 px wide and horizontal under it.">
           <TabsDemo />
         </Section>
@@ -852,7 +886,7 @@ function ComponentsSheet() {
         </Section>
         <Section
           title="Popover"
-          rule="A panel that a click on its button opens, under the button. A click outside or Esc closes it. The button takes the accent while it is open. A long label ends with “…”."
+          rule="A panel that a click on its button opens, under the button. A click outside or Esc closes it. The button takes the accent while it is open. An icon can come before the label. A long label ends with “…”."
         >
           <PopoverDemo />
         </Section>
