@@ -51,10 +51,10 @@ function colorTokens(): string[] {
 
 function Section({ title, rule, children }: { title: string; rule: string; children: ComponentChildren }) {
   return (
-    <section class="grid gap-3 border-t border-line py-7 first:border-t-0 md:grid-cols-[200px_1fr]">
-      <div>
-        <h2 class="text-lg font-semibold">{title}</h2>
-        <p class="mt-1 text-sm leading-relaxed text-muted">{rule}</p>
+    <section class="border-t border-line py-5 first:border-t-0 first:pt-2">
+      <div class="mb-3">
+        <h2 class="text-base font-semibold">{title}</h2>
+        <p class="mt-0.5 max-w-[100ch] text-xs leading-relaxed text-muted">{rule}</p>
       </div>
       <div class="min-w-0">{children}</div>
     </section>
@@ -67,9 +67,9 @@ function Swatch({ token }: { token: string }) {
   useEffect(() => setValue(getComputedStyle(ref.current!).getPropertyValue(`--color-${token}`).trim()), [token]);
   return (
     <div ref={ref} class="flex items-center gap-2.5">
-      <span class="size-8 shrink-0 rounded-sm border border-line" style={{ background: `var(--color-${token})` }} />
+      <span class="size-6 shrink-0 rounded-sm border border-line" style={{ background: `var(--color-${token})` }} />
       <span class="min-w-0">
-        <span class="block text-sm font-semibold">{token}</span>
+        <span class="block text-xs font-semibold">{token}</span>
         <span class="block truncate font-mono text-xs text-faint">{value}</span>
       </span>
     </div>
@@ -553,9 +553,12 @@ const PARTY: { state: string; mon: PartyMon }[] = [
 function TypeChipDemo() {
   return (
     <div class="flex flex-col gap-4">
-      <div class="flex flex-wrap gap-1.5">
+      <div class="grid grid-cols-3 gap-x-4 gap-y-2 sm:grid-cols-6">
         {TYPES.map((type) => (
-          <TypeChip key={type} type={type} />
+          <span key={type} class="flex flex-col items-start gap-0.5">
+            <TypeChip type={type} />
+            <span class="font-mono text-[11px] text-faint">{typeToken(type)}</span>
+          </span>
         ))}
       </div>
       <div class="flex flex-wrap items-center gap-4 text-sm">
@@ -700,21 +703,20 @@ function RunSelectDemo() {
   );
 }
 
+const BOTS_STATES = {
+  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: ["model", "starter"] },
+  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null } as ShownRun, bots: [] },
+};
+
 function BotsDemo() {
+  const [state, setState] = useState<keyof typeof BOTS_STATES>("plays");
+  const { shown, bots } = BOTS_STATES[state];
   return (
-    <div class="flex flex-col gap-6">
-      <div>
-        <p class="mb-1.5 text-xs text-faint">the shown Run is a Run of a Bot that plays: "Stop the shown Run" works, and the model of the Run shows under the buttons</p>
-        <PopoverBody>
-          <BotsPanel shown={{ kind: "bot", run: DEMO_RUNS[0] }} bots={["model", "starter"]} records={[RECORD]} send={() => {}} />
-        </PopoverBody>
-      </div>
-      <div>
-        <p class="mb-1.5 text-xs text-faint">no Bot in bots/: "Start the Bot" is disabled</p>
-        <PopoverBody>
-          <BotsPanel shown={{ kind: "viewer", replay: null }} bots={[]} records={[]} send={() => {}} />
-        </PopoverBody>
-      </div>
+    <div class="flex flex-col items-start gap-3">
+      <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
+      <PopoverBody>
+        <BotsPanel shown={shown} bots={bots} records={[RECORD]} send={() => {}} />
+      </PopoverBody>
     </div>
   );
 }
@@ -804,7 +806,7 @@ function PokemonCardDemo() {
   const [hp, setHp] = useState(IVYSAUR.hp);
   return (
     <div class="flex flex-col gap-4">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {PARTY.map(({ state, mon }, i) => (
           <div key={state}>
             <p class="mb-1.5 text-xs text-faint">{state}</p>
@@ -824,156 +826,168 @@ function PokemonCardDemo() {
   );
 }
 
+const SUMMARY_STATES = [PARTY[0], PARTY[1], PARTY[5], PARTY[6]];
+
 function PokemonSummaryDemo() {
+  const [state, setState] = useState(SUMMARY_STATES[0].state);
+  const shown = SUMMARY_STATES.find((item) => item.state === state) ?? SUMMARY_STATES[0];
   return (
-    <div class="flex flex-col gap-5">
-      {[PARTY[0], PARTY[1], PARTY[5], PARTY[6]].map(({ state, mon }) => (
-        <div key={state}>
-          <p class="mb-1.5 text-xs text-faint">{state}</p>
-          <PopoverBody>
-            <PokemonSummary mon={mon} />
-          </PopoverBody>
+    <div class="flex flex-col items-start gap-3">
+      <Tabs kind="segmented" items={SUMMARY_STATES.map((item) => ({ id: item.state, label: item.mon.nickname }))} value={state} onChange={setState} />
+      <p class="text-xs text-faint">{shown.state}</p>
+      <PopoverBody>
+        <PokemonSummary mon={shown.mon} />
+      </PopoverBody>
+    </div>
+  );
+}
+
+function PillDemo() {
+  return (
+    <div class="flex flex-wrap gap-2">
+      <Pill>walk</Pill>
+      <Pill tone="ok">done</Pill>
+      <Pill tone="info">interrupted</Pill>
+      <Pill tone="warn">blocked</Pill>
+      <Pill tone="bad">impossible</Pill>
+      <Pill tone="accent">Review turn</Pill>
+      <Pill>717 calls</Pill>
+    </div>
+  );
+}
+
+function TooltipDemo() {
+  return (
+    <div class="flex flex-wrap items-center gap-6">
+      <div class="flex items-center gap-3 text-sm">
+        <Tooltip text="frame 393,168">
+          <span class="cursor-default underline decoration-faint decoration-dotted underline-offset-4">1:49:42</span>
+        </Tooltip>
+        <Tooltip text="Copy the prompt">
+          <Button size="icon" aria-label="Copy the prompt">
+            <Copy size={15} />
+          </Button>
+        </Tooltip>
+      </div>
+      <Tooltip wide text="A sleep-inducing dust is scattered in high volume around a foe.">
+        <div class="flex w-[260px] cursor-default justify-between rounded-sm px-2 py-1 text-sm hover:bg-raised">
+          <span class="font-semibold">SLEEP POWDER</span>
+          <span class="text-muted">1/15</span>
         </div>
+      </Tooltip>
+    </div>
+  );
+}
+
+function ColorDemo() {
+  return (
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
+      {colorTokens().map((token) => (
+        <Swatch key={token} token={token} />
       ))}
     </div>
   );
 }
 
+type Category = "base" | "controls" | "data" | "surfaces" | "lab";
+
+const CATEGORIES: { id: Category; label: string }[] = [
+  { id: "base", label: "Base" },
+  { id: "controls", label: "Controls" },
+  { id: "data", label: "Data" },
+  { id: "surfaces", label: "Surfaces" },
+  { id: "lab", label: "Lab" },
+];
+
+type Entry = { category: Category; title: string; rule: string; demo: () => ComponentChildren };
+
+const ENTRIES: Entry[] = [
+  { category: "base", title: "Type", rule: "Raleway for text, JetBrains Mono for prompts, frames and code. Numbers are tabular.", demo: () => <TypeDemo /> },
+  { category: "base", title: "Color", rule: "All the color tokens. One accent. Green, amber and red only for a state: ok, warning, problem.", demo: () => <ColorDemo /> },
+  {
+    category: "base",
+    title: "Type colors and TypeChip",
+    rule: "One color token for each type of the game; the token of ??? is type-mystery. TypeChip: the name of a type on its color, with white text on a dark color.",
+    demo: () => <TypeChipDemo />,
+  },
+  { category: "controls", title: "Button", rule: "Press: a small scale. Focus: a ring. One primary button for each area.", demo: () => <ButtonDemo /> },
+  { category: "controls", title: "Field", rule: "Focus: the border and a soft ring. An error has a red border and a short text under it.", demo: () => <FieldDemo /> },
+  {
+    category: "controls",
+    title: "Select",
+    rule: "All the dropdowns of the Viewer. A click or Enter opens the list. Arrows, Home, End and a letter move in it, Enter or a click chooses, Esc closes. Options can have groups.",
+    demo: () => <SelectDemo />,
+  },
+  {
+    category: "controls",
+    title: "Tabs",
+    rule: "The indicator slides to the selected tab. Line tabs for the navigation, segmented tabs for a choice of values, a rail of icons for the panels of the Lab tab.",
+    demo: () => <TabsDemo />,
+  },
+  { category: "data", title: "Pill", rule: "A short state or count. The text has the color of the state, or the accent.", demo: () => <PillDemo /> },
+  { category: "data", title: "Bar and number", rule: "The fill moves, and a light trail follows it when the value falls. HP uses the colors of the game. A number counts to its new value.", demo: () => <BarDemo /> },
+  {
+    category: "data",
+    title: "Bars of the game",
+    rule: "The PP of a move in the color of its type. The EXP from the start of the level to the next level. A stat compared with the largest stat of the Pokémon.",
+    demo: () => <GameBarDemo />,
+  },
+  { category: "data", title: "Metric", rule: "A short value of the top bar with an icon and a tooltip. Its number has a fixed width, so it never moves its neighbors.", demo: () => <MetricDemo /> },
+  { category: "data", title: "Badges", rule: "The 8 badges of the player as dots. A new badge shines.", demo: () => <BadgesDemo /> },
+  {
+    category: "surfaces",
+    title: "Card",
+    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. Size sm for a compact view.",
+    demo: () => <CardDemo />,
+  },
+  { category: "surfaces", title: "Tooltip", rule: "A short text on hover or keyboard focus. A wide tooltip can have more than one line.", demo: () => <TooltipDemo /> },
+  { category: "surfaces", title: "HoverCard", rule: "A card that opens after a short hover, or at the keyboard focus, next to its trigger.", demo: () => <HoverCardDemo /> },
+  { category: "surfaces", title: "Popover", rule: "A panel that a click on its button opens under it. A click outside or Esc closes it.", demo: () => <PopoverDemo /> },
+  { category: "surfaces", title: "Toast", rule: "A message at the bottom right, with a border in the color of its tone. It closes after 6 s or with its button; 4 at most.", demo: () => <ToastDemo /> },
+  {
+    category: "lab",
+    title: "Run select",
+    rule: "The Select of the top bar: the Run of the Viewer, the Runs of the Bots and the Run records to replay.",
+    demo: () => <RunSelectDemo />,
+  },
+  {
+    category: "lab",
+    title: "Bots",
+    rule: "The form of the button “Bots”: it starts a Bot, from the Starting save or as the continuation of a Run record, and it stops the shown Run.",
+    demo: () => <BotsDemo />,
+  },
+  {
+    category: "lab",
+    title: "Pokémon card",
+    rule: "A Pokémon of the party: the name, the level, the status, the HP in the colors of the game, and the PP of each move in the color of its type. A hover opens its summary.",
+    demo: () => <PokemonCardDemo />,
+  },
+  {
+    category: "lab",
+    title: "Pokémon hover card",
+    rule: "The summary on one card: types, HP, ability, nature, held item, stats, EXP and moves. A hover on a move shows its description.",
+    demo: () => <PokemonSummaryDemo />,
+  },
+];
+
 function ComponentsSheet() {
   const [reduced, setReduced] = useState(false);
+  const [category, setCategory] = useState<Category>("base");
   return (
     <div data-motion={reduced ? "reduce" : undefined} class="ds min-h-screen">
-      <div class="mx-auto max-w-[1080px] px-6 pb-24">
-        <header class="flex h-16 items-center gap-6">
-          <h1 class="text-lg font-bold">Components</h1>
-          <span class="flex-1 text-sm text-muted">The design system of the Viewer. A new part uses these components; a new component needs the agreement of the user, then it goes on this page.</span>
+      <div class="mx-auto max-w-[1080px] px-6 pb-16">
+        <header class="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
+          <Tabs items={CATEGORIES} value={category} onChange={setCategory} />
+          <span class="min-w-[240px] flex-1 text-xs text-muted">A new part uses these components; a new component needs the agreement of the user, then it goes here.</span>
           <Checkbox on={reduced} onChange={setReduced}>
             <span class="text-muted">Reduced motion</span>
           </Checkbox>
         </header>
-        <Section title="Type" rule="Raleway for text, JetBrains Mono for prompts, frames and code. Numbers are tabular.">
-          <TypeDemo />
-        </Section>
-        <Section title="Color" rule="All the color tokens. One accent. Green, amber and red only for a state: ok, warning, problem.">
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {colorTokens().map((token) => (
-              <Swatch key={token} token={token} />
-            ))}
-          </div>
-        </Section>
-        <Section title="Type colors" rule="One token for each type of the game, with its usual color. The token of ??? is type-mystery.">
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {TYPES.map((type) => (
-              <Swatch key={type} token={typeToken(type)} />
-            ))}
-          </div>
-        </Section>
-        <Section title="Button" rule="Press: a small scale. Focus: a ring. One primary button for each area.">
-          <ButtonDemo />
-        </Section>
-        <Section title="Field" rule="Focus: the border and a soft ring. An error has a red border and a short text under it.">
-          <FieldDemo />
-        </Section>
-        <Section
-          title="Select"
-          rule="A choice in a list: all the dropdowns of the Viewer. A click or Enter opens the list under the field. Arrows, Home and End move in it, a letter goes to the next option with that letter, Enter or a click chooses, Esc closes. The focus then goes back to the field. The chosen option has the accent and a check."
-        >
-          <SelectDemo />
-        </Section>
-        <Section title="Tabs" rule="The indicator slides to the selected tab. Line tabs for the navigation bar and the blocks of a panel, segmented tabs for a choice of values. A rail chooses the panel of the Lab tab: icons only, the name in a tooltip, vertical from 900 px wide and horizontal under it.">
-          <TabsDemo />
-        </Section>
-        <Section title="Pill" rule="A short state or count. The text has the color of the state: ok, warning, problem, information, or the accent.">
-          <div class="flex flex-wrap gap-2">
-            <Pill>walk</Pill>
-            <Pill tone="ok">done</Pill>
-            <Pill tone="info">interrupted</Pill>
-            <Pill tone="warn">blocked</Pill>
-            <Pill tone="bad">impossible</Pill>
-            <Pill tone="accent">Review turn</Pill>
-            <Pill>717 calls</Pill>
-          </div>
-        </Section>
-        <Section title="Bar and number" rule="The fill moves, and a light trail follows it when the value falls. HP uses the colors of the game. A number counts to its new value.">
-          <BarDemo />
-        </Section>
-        <Section title="Bars of the game" rule="A bar takes the color of a type for the PP of a move. The EXP bar starts at the EXP of the level and is empty at level 100. A stat bar compares the stats of one Pokémon: the largest stat fills its bar.">
-          <GameBarDemo />
-        </Section>
-        <Section title="TypeChip" rule="The name of a type on its color. White text on a dark type color, dark text on the others.">
-          <TypeChipDemo />
-        </Section>
-        <Section
-          title="Metric"
-          rule="A short value of the top bar, with an optional icon and a tooltip that tells what it is. A number has a fixed width: it does not move its neighbors when its digits change. A muted part gives the total or the limit."
-        >
-          <MetricDemo />
-        </Section>
-        <Section title="Card" rule="The base of each panel. On hover, the border of each card takes the accent. A card that opens something is interactive: on hover, its background also takes the accent. A small card (size sm) is for a compact view: see the Pokémon card.">
-          <CardDemo />
-        </Section>
-        <Section title="Tooltip" rule="A short text on hover or on keyboard focus, for an icon or a number. A wide tooltip is on a full row, and its text can have more than one line.">
-          <div class="flex max-w-[520px] flex-col gap-4">
-            <div class="flex items-center gap-3 text-sm">
-              <Tooltip text="frame 393,168">
-                <span class="cursor-default underline decoration-faint decoration-dotted underline-offset-4">1:49:42</span>
-              </Tooltip>
-              <Tooltip text="Copy the prompt">
-                <Button size="icon" aria-label="Copy the prompt">
-                  <Copy size={15} />
-                </Button>
-              </Tooltip>
-            </div>
-            <Tooltip wide text="A sleep-inducing dust is scattered in high volume around a foe.">
-              <div class="flex flex-1 cursor-default justify-between rounded-sm px-2 py-1 text-sm hover:bg-raised">
-                <span class="font-semibold">SLEEP POWDER</span>
-                <span class="text-muted">1/15</span>
-              </div>
-            </Tooltip>
-          </div>
-        </Section>
-        <Section title="HoverCard" rule="A card that opens after a short hover, or at the keyboard focus, next to its trigger. The pointer can go into the card.">
-          <HoverCardDemo />
-        </Section>
-        <Section
-          title="Popover"
-          rule="A panel that a click on its button opens, under the button. A click outside or Esc closes it. The button takes the accent while it is open. An icon can come before the label. A long label ends with “…”."
-        >
-          <PopoverDemo />
-        </Section>
-        <Section
-          title="Run select"
-          rule="The Select of the top bar: all that the Viewer can show, in three groups. The Run of the Viewer, the Runs of the Bots with their state, and the Run records to replay. A replay shows the name of its record."
-        >
-          <RunSelectDemo />
-        </Section>
-        <Section
-          title="Bots"
-          rule="The form of the button “Bots” of the top bar: it starts a Bot, from the Starting save or as the continuation of a Run record, and it stops the shown Run. Empty fields take the defaults. Made with Field, Input, Select, Checkbox and Button."
-        >
-          <BotsDemo />
-        </Section>
-        <Section
-          title="Toast"
-          rule="A short message at the bottom right: a notice of the server, a Milestone. Its border has the color of its tone. It closes after 6 s, or with its button. 4 toasts at most."
-        >
-          <ToastDemo />
-        </Section>
-        <Section title="Badges" rule="The 8 badges of the player as dots. A badge that the player gets shines. Reduced motion stops the shine.">
-          <BadgesDemo />
-        </Section>
-        <Section
-          title="Pokémon card"
-          rule="A Pokémon of the party: the nickname, the species when it is different, the level, the status (FNT at 0 HP), the HP in the colors of the game, and the PP of each move in the color of its type. A hover opens its summary."
-        >
-          <PokemonCardDemo />
-        </Section>
-        <Section
-          title="Pokémon hover card"
-          rule="The summary on one card: the types, the HP, the ability, the nature, the held item, the stats, the EXP and the moves. A hover on a move shows its description."
-        >
-          <PokemonSummaryDemo />
-        </Section>
+        {ENTRIES.filter((entry) => entry.category === category).map((entry) => (
+          <Section key={entry.title} title={entry.title} rule={entry.rule}>
+            {entry.demo()}
+          </Section>
+        ))}
       </div>
     </div>
   );
