@@ -346,7 +346,7 @@ function CardDemo() {
   const [money, setMoney] = useState(3434);
   return (
     <div class="flex flex-col gap-4">
-      <p class="text-xs text-faint">Card: it shows data, and a pointer on it changes nothing.</p>
+      <p class="text-xs text-faint">Card: it shows data. Put the pointer on it: its border takes the accent.</p>
       <div class="grid gap-4 sm:grid-cols-2">
         <Card>
           <p class={`${LABEL} mb-2`}>Money</p>
@@ -374,7 +374,7 @@ function CardDemo() {
           </p>
         </Card>
       </div>
-      <p class="text-xs text-faint">Interactive card: it opens something. Put the pointer on it: its border and its background take the accent.</p>
+      <p class="text-xs text-faint">Interactive card: it opens something. On hover, its background also takes the accent, and the pointer is a hand.</p>
       <div class="grid gap-4 sm:grid-cols-2">
         <Card interactive>
           <p class={`${LABEL} mb-2`}>Review turn, 1:49:42</p>
@@ -858,7 +858,7 @@ function ComponentsSheet() {
         >
           <MetricDemo />
         </Section>
-        <Section title="Card" rule="The base of each panel. Only a card that opens something is interactive: on hover, its border and its background take the accent. A small card (size sm) is for a compact view: see the Pokémon card.">
+        <Section title="Card" rule="The base of each panel. On hover, the border of each card takes the accent. A card that opens something is interactive: on hover, its background also takes the accent. A small card (size sm) is for a compact view: see the Pokémon card.">
           <CardDemo />
         </Section>
         <Section title="Tooltip" rule="A short text on hover or on keyboard focus, for an icon or a number. A wide tooltip is on a full row, and its text can have more than one line.">

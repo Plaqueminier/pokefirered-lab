@@ -296,9 +296,9 @@ export function Num({ value, format = (n) => Math.round(n).toLocaleString("en-US
 }
 
 export function Card({ interactive, size = "md", children }: { interactive?: boolean; size?: "md" | "sm"; children: ComponentChildren }) {
-  const hover = interactive ? "cursor-pointer hover:border-accent/45 hover:bg-accent/7" : "";
+  const hover = interactive ? "cursor-pointer hover:bg-accent/7" : "";
   return (
-    <div class={`rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`}>{children}</div>
+    <div class={`rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`}>{children}</div>
   );
 }
 
