@@ -13,6 +13,16 @@ export function dollars(cost: number): string {
   return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
 }
 
+// Under 0.1 m$, 2 decimals would show 0.00.
+export function milliDollars(cost: number): string {
+  const milli = cost * 1000;
+  return `${milli.toFixed(milli < 0.1 ? 3 : 2)} m$`;
+}
+
+export function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
 export function tokens(count: number): string {
   return count.toLocaleString("en-US");
 }

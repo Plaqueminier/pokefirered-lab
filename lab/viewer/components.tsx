@@ -1,4 +1,4 @@
-import { Check, ChevronDown, X } from "lucide-preact";
+import { Check, ChevronDown, ChevronRight, X } from "lucide-preact";
 import type { ButtonHTMLAttributes, ComponentChildren, InputHTMLAttributes } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
@@ -299,10 +299,14 @@ export function Num({ value, format = (n) => Math.round(n).toLocaleString("en-US
   );
 }
 
-export function Card({ interactive, size = "md", children }: { interactive?: boolean; size?: "md" | "sm"; children: ComponentChildren }) {
-  const hover = interactive ? "cursor-pointer hover:bg-accent/7" : "";
+export function Card({ interactive, size = "md", onClick, children }: { interactive?: boolean; size?: "md" | "sm"; onClick?: () => void; children: ComponentChildren }) {
+  const hover = interactive || onClick ? "cursor-pointer hover:bg-accent/7" : "";
+  const look = `rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`;
+  if (!onClick) return <div class={look}>{children}</div>;
   return (
-    <div class={`rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`}>{children}</div>
+    <button type="button" onClick={onClick} class={`${look} block w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35`}>
+      {children}
+    </button>
   );
 }
 
@@ -708,6 +712,24 @@ export function FilterChip({
     </Button>
   );
   return hideLabel ? <Tooltip text={label}>{chip}</Tooltip> : chip;
+}
+
+export function Breadcrumb({ steps, onPick }: { steps: string[]; onPick: (index: number) => void }) {
+  return (
+    <nav aria-label="Breadcrumb" class="flex flex-wrap items-center gap-1">
+      {steps.map((label, i) => {
+        const current = i === steps.length - 1;
+        return (
+          <span key={i} class="flex items-center gap-1">
+            {i > 0 && <ChevronRight size={14} class="text-faint" />}
+            <Button size="sm" variant="ghost" pressed={current} aria-current={current ? "step" : undefined} onClick={() => onPick(i)}>
+              {label}
+            </Button>
+          </span>
+        );
+      })}
+    </nav>
+  );
 }
 
 // Controlled: the panel keeps the state of each block by its id.

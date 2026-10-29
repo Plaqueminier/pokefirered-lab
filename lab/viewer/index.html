@@ -170,7 +170,6 @@
         border-radius: 4px;
         padding: 0 4px;
       }
-      .model-pre { margin: 0; white-space: pre; overflow: auto; max-height: 460px; padding: 6px 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
       .stats-lanes { user-select: none; cursor: crosshair; }
       .stats-lanes svg { display: block; overflow: visible; }
       .stats-lanes text { fill: var(--muted); font: 11px ui-sans-serif, system-ui, sans-serif; pointer-events: none; }
@@ -245,21 +244,6 @@
       .stats-card h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
       .stats-card table { border-collapse: collapse; width: 100%; }
       .stats-card td { padding: 2px 8px 2px 0; border-top: 1px solid var(--line); vertical-align: top; }
-      .memory-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
-      .memory-outline, .memory-log { max-height: 720px; overflow: auto; font-size: 13px; }
-      .memory-node > summary { list-style: none; cursor: pointer; }
-      .memory-node > summary::-webkit-details-marker { display: none; }
-      .memory-node > summary .memory-line::before { content: "▸ "; color: var(--muted); }
-      .memory-node[open] > summary .memory-line::before { content: "▾ "; }
-      .memory-node > :not(summary) { margin-left: 18px; border-left: 1px solid var(--line); padding-left: 8px; }
-      .memory-line { padding: 3px 4px; border-radius: 4px; }
-      .memory-line:hover { background: var(--code-bg); }
-      .memory-calls { width: 100%; border-collapse: collapse; font-size: 12px; }
-      .memory-calls th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 8px 4px 0; position: sticky; top: 0; background: var(--panel); }
-      .memory-calls td { padding: 4px 8px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
-      .memory-calls td:not(:nth-child(3)) { white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
-      .memory-calls summary { cursor: pointer; }
-      .memory-calls .model-pre { white-space: pre-wrap; max-height: 260px; margin-top: 4px; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
       .doc-head h1 { margin: 0; font-size: 20px; }
@@ -370,16 +354,6 @@
           <span class="muted" id="stats-cost"></span>
         </div>
         <div id="stats"></div>
-      </section>
-      <section class="memory-panel" id="memory-panel">
-        <div class="panel-head">
-          <h2>Memory tree</h2>
-          <span class="muted" id="memory-title"></span>
-        </div>
-        <div class="memory-columns">
-          <div class="memory-outline" id="memory-outline"></div>
-          <div class="memory-log" id="memory-calls"></div>
-        </div>
       </section>
     </div>
     <article id="doc" hidden>
@@ -517,7 +491,7 @@
             <dt><code>press</code></dt><dd>only at a walk, at the move menu of a battle and in the party menu, never at a battle action, a choice, the shop menu, the item PC, the naming screen or a move to forget. It has no Start: the model bot does not know the Start menu. The reason of a <code>press Start</code> answer tells to <code>use &lt;item&gt;</code>, with the items that work now, or that the Bag is empty.</dd>
             <dt>Forms of an action</dt><dd>a call is read too: <code>press(Up)</code> is <code>press Up</code>, <code>use(POTION, SQUIRTLE)</code> is <code>use POTION on SQUIRTLE</code>. A comma between the arguments is a space: <code>goTo 9, 42</code> is <code>goTo 9 42</code>. The commas of <code>choose</code> and <code>name</code> stay in the text.</dd>
             <dt>Impossible action</dt><dd>the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example.</dd>
-            <dt>Panels</dt><dd>in the rail of the Lab tab. "Model" lists the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag, and shows one call in full: the answer, what it played, the cost, then the blocks of its prompt, in colors, that fold; a click on a call moves the cursor of all the panels. "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, prompt tokens, Model calls, played actions, Summary calls, battles); a drag selects a part of the Run, and a click selects a Model call and moves the cursor, with the smallest and the largest prompt in tokens. "Memory tree" shows the top nodes with zoom, and the Summary calls.</dd>
+            <dt>Panels</dt><dd>in the rail of the Lab tab. "Model" lists the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag, and shows one call in full: the answer, what it played, the cost, then the blocks of its prompt, in colors, that fold; a click on a call moves the cursor of all the panels. "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, prompt tokens, Model calls, played actions, Summary calls, battles); a drag selects a part of the Run, and a click selects a Model call and moves the cursor, with the smallest and the largest prompt in tokens. "Memory tree" shows the tree at the cursor, one node at a time: the top nodes as the model sees them, then a click opens a node, its two halves and the Summary call that made it (its prompt and answer); a tab lists the Summary calls of the selection.</dd>
           </dl>
         </section>
         <section>

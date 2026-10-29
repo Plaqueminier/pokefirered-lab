@@ -6,6 +6,8 @@ import type { Continuation, RunEvent } from "../src/harness/record";
 import type { ClientMessage, ServerMessage, ShownRun } from "../src/protocol";
 import { Badges, Button, Card, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
+import { memoryPanelView } from "./memory-panel";
+import { MemoryTreePanel } from "./memory-tree-panel";
 import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
 import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
@@ -59,7 +61,7 @@ const RAIL: Entry[] = [
   { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy id="map-panel" /> },
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
-  { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <Legacy id="memory-panel" /> },
+  { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
   { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <Legacy id="replay-panel" /> },
 ];
 
@@ -255,6 +257,14 @@ function ModelPanelHost() {
   const { shared } = useLab();
   const { rows, cursor, index, thinking } = useCursorCall();
   return <ModelPanel rows={rows} index={index} following={!cursor} thinking={thinking} pick={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
+}
+
+function MemoryPanelHost() {
+  const { data, shared } = useLab();
+  const { events } = useStore(data);
+  const { cursor, range } = useStore(shared);
+  const view = useMemo(() => memoryPanelView(events, cursor, range), [events, cursor, range]);
+  return <MemoryTreePanel view={view} following={!cursor} pickCall={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
 }
 
 function Party() {

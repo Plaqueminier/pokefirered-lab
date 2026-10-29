@@ -36,7 +36,7 @@ import { actionText } from "../src/protocol";
 import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText } from "./components";
 import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
-import { tokens } from "./runs";
+import { milliDollars, seconds, tokens } from "./runs";
 import { clock, stuckTone } from "./stats-lanes";
 
 type Icon = ComponentType<{ size?: number }>;
@@ -154,18 +154,36 @@ function UsagePills({ call }: { call: ModelEvent }) {
           <Pill tone={stuckTone(call.stuck)}>Stuck {call.stuck}</Pill>
         </Tooltip>
       )}
+      <CostPills cost={cost} latencyMs={call.latencyMs} promptTokens={promptTokens} completionTokens={completionTokens} />
+    </div>
+  );
+}
+
+export function CostPills({ cost, latencyMs, promptTokens, completionTokens }: { cost: number; latencyMs: number; promptTokens: number; completionTokens: number }) {
+  return (
+    <>
       <Tooltip text="Cost of the call">
-        <Pill>{(cost * 1000).toFixed(2)} m$</Pill>
+        <Pill>{milliDollars(cost)}</Pill>
       </Tooltip>
       <Tooltip text="Latency">
-        <Pill>{(call.latencyMs / 1000).toFixed(1)} s</Pill>
+        <Pill>{seconds(latencyMs)}</Pill>
       </Tooltip>
       <Tooltip text="Prompt tokens / completion tokens">
         <Pill>
           {tokens(promptTokens)} / {tokens(completionTokens)} tok
         </Pill>
       </Tooltip>
-    </div>
+    </>
+  );
+}
+
+export function NowButton({ following, now }: { following: boolean; now: () => void }) {
+  return (
+    <Tooltip text={following ? "The panel follows the last call" : "Back to now (Esc)"}>
+      <Button size="sm" pressed={following} onClick={now}>
+        Now
+      </Button>
+    </Tooltip>
   );
 }
 
@@ -301,11 +319,7 @@ export function ModelPanel({ rows, index, following, thinking, pick, now }: Mode
             {shown.length} / {rows.length}
           </span>
           <span class="ml-auto">
-            <Tooltip text={following ? "The panel follows the last call" : "Back to now (Esc)"}>
-              <Button size="sm" pressed={following} onClick={now}>
-                Now
-              </Button>
-            </Tooltip>
+            <NowButton following={following} now={now} />
           </span>
         </div>
         <FilterChips rows={rows} on={on} toggle={(flag) => setOn(toggled(on, flag))} clear={() => setOn(new Set())} />

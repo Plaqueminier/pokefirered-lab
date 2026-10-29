@@ -7,7 +7,6 @@ import { SharedCursor } from "./cursor";
 import { showTooltip } from "./dom";
 import { LabTab } from "./lab";
 import { describe, draw, howLabel } from "./mapdraw";
-import { MemoryPanel } from "./memory-panel";
 import { ReplayPanel } from "./replay";
 import { StatsPanel } from "./stats-panel";
 import { ViewerTabs } from "./tabs";
@@ -63,7 +62,6 @@ const replayPanel = new ReplayPanel(
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
 const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip }, shared);
-const memoryPanel = new MemoryPanel({ title: $("memory-title"), outline: $("memory-outline"), calls: $("memory-calls") });
 const tabs = new ViewerTabs(
   {
     nav: $("nav"),
@@ -176,7 +174,6 @@ function onMessage(message: ServerMessage): void {
       lab.onEvents(message.events, shared.onEvents(message.events));
       replayPanel.onEvents(message.events);
       statsPanel.onEvents(message.events);
-      memoryPanel.onEvents(message.events);
       break;
   }
 }

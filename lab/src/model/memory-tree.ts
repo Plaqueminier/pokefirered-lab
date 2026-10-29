@@ -18,14 +18,24 @@ export function summarySchema(node: NodeRange): object {
 const SUMMARY_SYSTEM = `You keep the memory of a player of Pokémon FireRed. The memory is the list of the notes that the player wrote, oldest first. Two neighbour parts of the memory get one summary, and the player then sees the summary in place of the two parts.`;
 
 export function memoryTree(events: readonly RunEvent[]): MemoryTree {
-  const tree: MemoryTree = { notes: [], summaries: new Map() };
+  const tree: MemoryTree = { notes: newNotes(events).map(({ note }) => note), summaries: new Map() };
   for (const event of events) {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
-    if (event.type !== "model" || !event.decision) continue;
-    const { note } = event.decision;
-    if (isNewNote(note, tree.notes.at(-1))) tree.notes.push(note);
   }
   return tree;
+}
+
+export type NewNote = { note: string; call: number; frame: number };
+
+export function newNotes(events: readonly RunEvent[]): NewNote[] {
+  const notes: NewNote[] = [];
+  let call = -1;
+  for (const event of events) {
+    if (event.type !== "model") continue;
+    call++;
+    if (event.decision && isNewNote(event.decision.note, notes.at(-1)?.note)) notes.push({ note: event.decision.note, call, frame: event.frame });
+  }
+  return notes;
 }
 
 // The answer after viewAtlas or zoom can give the same note again.

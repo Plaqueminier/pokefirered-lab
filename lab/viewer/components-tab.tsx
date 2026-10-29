@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Badges,
   Bar,
+  Breadcrumb,
   Button,
   Card,
   Checkbox,
@@ -345,6 +346,7 @@ function MetricDemo() {
 
 function CardDemo() {
   const [money, setMoney] = useState(3434);
+  const [clicks, setClicks] = useState(0);
   return (
     <div class="flex flex-col gap-4">
       <p class="text-xs text-faint">Card: it shows data. Put the pointer on it: its border takes the accent.</p>
@@ -384,6 +386,13 @@ function CardDemo() {
         <Card interactive size="sm">
           <p class={`${LABEL} mb-1`}>Small, 0:12:05</p>
           <p class="text-sm text-muted">A small interactive card, as the Pokémon card.</p>
+        </Card>
+      </div>
+      <p class="text-xs text-faint">Clickable card: with onClick, the card is a button. Tab focuses it (a ring), Enter or a click presses it.</p>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <Card size="sm" onClick={() => setClicks((n) => n + 1)}>
+          <p class={`${LABEL} mb-1`}>Node #1-128 · 128 notes</p>
+          <p class="text-sm text-muted">Pressed {clicks} times.</p>
         </Card>
       </div>
     </div>
@@ -637,6 +646,24 @@ function ColorDemo() {
   );
 }
 
+const DEMO_PATH = ["What the model sees", "#1-128", "#65-128", "#97-128"];
+
+function BreadcrumbDemo() {
+  const [at, setAt] = useState(2);
+  return (
+    <div class="flex flex-col gap-3">
+      <Breadcrumb steps={DEMO_PATH.slice(0, at + 1)} onPick={setAt} />
+      <p class="text-xs text-faint">The root only:</p>
+      <Breadcrumb steps={DEMO_PATH.slice(0, 1)} onPick={() => {}} />
+      <div>
+        <Button size="sm" disabled={at === DEMO_PATH.length - 1} onClick={() => setAt(at + 1)}>
+          One step down
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function FilterChipDemo() {
   const [on, setOn] = useState<Set<string>>(new Set(["review"]));
   const toggle = (id: string) => setOn(toggled(on, id));
@@ -759,6 +786,12 @@ const ENTRIES: Entry[] = [
   },
   {
     category: "controls",
+    title: "Breadcrumb",
+    rule: "The path from the root to the current step, with a chevron between two steps. Each step is a ghost Button; the current step is pressed. A click goes back to a step.",
+    demo: () => <BreadcrumbDemo />,
+  },
+  {
+    category: "controls",
     title: "FilterChip",
     rule: "A filter that a click turns on or off: a colored icon, an optional label and a count. On, it has the accent border of a pressed Button. With the label hidden, a Tooltip gives it.",
     demo: () => <FilterChipDemo />,
@@ -788,7 +821,7 @@ const ENTRIES: Entry[] = [
   {
     category: "surfaces",
     title: "Card",
-    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. Size sm for a compact view.",
+    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view.",
     demo: () => <CardDemo />,
   },
   {

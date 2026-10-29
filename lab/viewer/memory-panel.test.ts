@@ -5,7 +5,7 @@ import { Harness } from "../src/harness/harness";
 import { type ModelEvent, RecordPlayer, type RunEvent, type RunRecord } from "../src/harness/record";
 import type { ModelClient } from "../src/model/openrouter";
 import { ROM_FILE, START_SAVE } from "../src/run";
-import { memoryPanelView, type OutlineNode } from "./memory-panel";
+import { memoryPanelView, type TreeNode } from "./memory-panel";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -80,7 +80,7 @@ test("a click on a node opens its two halves down to the notes, and a failed Sum
   });
   const events = [call(1, "a"), call(2, "b"), summary(2, 1, 2, "ab"), call(3, "c"), call(4, "d"), summary(4, 3, 4, null), summary(5, 3, 4, "cd"), summary(5, 1, 4, "abcd"), call(6, "e"), call(7, "f"), summary(7, 5, 6, null)];
   const view = memoryPanelView(events);
-  const lines = (nodes: OutlineNode[]): unknown[] => nodes.map((node) => (node.halves.length ? [node.line, lines(node.halves)] : node.line));
+  const lines = (nodes: TreeNode[]): unknown[] => nodes.map((node) => (node.halves.length ? [node.line, lines(node.halves)] : node.line));
   expect(lines(view.tops)).toEqual([["#1-4: abcd", [["#1-2: ab", ["#1: a", "#2: b"]], ["#3-4: cd", ["#3: c", "#4: d"]]]], "#5: e", "#6: f"]);
   expect(view.calls.map((c) => [c.frame, c.node, c.result, c.failed])).toEqual([
     [7, "#5-6", "the request failed: 502", true],
@@ -89,6 +89,6 @@ test("a click on a node opens its two halves down to the notes, and a failed Sum
     [4, "#3-4", "the request failed: 502", true],
     [2, "#1-2", "ab", false],
   ]);
-  expect(view.calls[0]).toMatchObject({ cost: "0.25 $", time: "1.5 s", prompt: "rules\n\ntwo parts", answer: "(no answer: the request failed)" });
+  expect(view.calls[0]).toMatchObject({ cost: 0.25, latencyMs: 1500, prompt: { system: "rules", user: "two parts" }, answer: "(no answer: the request failed: 502)" });
   expect(view.cost).toBe(1.25);
 });
