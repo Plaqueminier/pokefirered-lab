@@ -1,10 +1,10 @@
 import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { GameState } from "../src/game";
-import type { Continuation, RunEvent } from "../src/harness/record";
+import type { Areas, GameState } from "../src/game";
+import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
-import { Badges, Button, Card, Cover, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Badges, Button, Card, Cover, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip, usePending } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
@@ -12,14 +12,27 @@ import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./mode
 import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
-import { ReplayPanel } from "./replay-panel";
+import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
 import { clock, stuckTone } from "./stats-lanes";
+import { storedKinds, storeKinds, Timeline, type TimelineKind, timelineEvents } from "./timeline";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
 // The flags of the Model calls, calculated once for each list of events: the panels share them.
-type LabData = { settings: ScreenSettings; status: Status | null; state: GameState | null; events: readonly RunEvent[]; rows: readonly UnusualCall[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
+// `record`: the Game events of the whole Run record of the last replay.
+type LabData = {
+  settings: ScreenSettings;
+  status: Status | null;
+  state: GameState | null;
+  events: readonly RunEvent[];
+  rows: readonly UnusualCall[];
+  statusLine: string;
+  bots: readonly string[];
+  records: readonly string[];
+  areas: Areas;
+  record: { name: string; events: readonly GameEvent[] } | null;
+};
 
 // What viewer.ts gives to the Lab tab.
 type LabOptions = { shared: SharedCursor; send: (message: ClientMessage) => void; settings: ScreenSettings; settingsActions: ScreenSettingsActions };
@@ -58,6 +71,7 @@ type Entry = { id: string; title: string; icon?: ComponentType<{ size?: number }
 const ZONES = {
   top: { id: "top", title: "Top bar", size: { narrow: "3rem", medium: "3rem", wide: "3rem" }, render: () => <TopBar /> },
   live: { id: "live", title: "Live column", size: { narrow: "auto", medium: "40%", wide: "46%" }, render: () => <LiveColumn /> },
+  timeline: { id: "timeline", title: "Timeline", size: { narrow: "107px", medium: "107px", wide: "107px" }, render: () => <TimelineHost /> },
 } satisfies Record<string, Entry>;
 
 const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
@@ -67,17 +81,10 @@ const RAIL: Entry[] = [
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
-  { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <ReplayPanelHost /> },
 ];
 
 function sizeVars({ narrow, medium, wide }: Sizes): Record<string, string> {
   return { "--narrow": narrow, "--medium": medium, "--wide": wide };
-}
-
-function ReplayPanelHost() {
-  const { data, send } = useLab();
-  const { status } = useStore(data);
-  return <ReplayPanel shown={status?.shown ?? null} frame={status?.frame ?? 0} seek={(frame) => send({ type: "seek", frame })} />;
 }
 
 function LabLayout() {
@@ -105,7 +112,69 @@ function LabLayout() {
           ))}
         </div>
       </div>
+      <section
+        aria-label={ZONES.timeline.title}
+        style={sizeVars(ZONES.timeline.size)}
+        class="h-(--narrow) shrink-0 border-t border-line px-4 py-2 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
+      >
+        {ZONES.timeline.render()}
+      </section>
     </>
+  );
+}
+
+// In a replay, a click jumps the screen: the cursor goes back to now, so the panels follow the frame of the replay. Else it moves the cursor only.
+function TimelineHost() {
+  const { data, shared, send } = useLab();
+  const { status, events, areas, record } = useStore(data);
+  const { cursor, range } = useStore(shared);
+  const [kinds, setKinds] = useState(storedKinds);
+  const replay = replayOf(status?.shown ?? null);
+  const live = status?.frame ?? 0;
+  const source = replay && record?.name === replay.name ? record.events : events;
+  const shown = useMemo(() => timelineEvents(source, areas), [source, areas]);
+  const [replayAt, setReplayAt] = usePending(replay?.seeking?.to ?? live, (a, b) => Math.abs(a - b) < 120, 2000);
+  return (
+    <Timeline
+      events={shown}
+      end={replay ? replay.frames : Math.max(1, live)}
+      at={cursor?.frame ?? (replay ? replayAt : live)}
+      cursor={cursor !== null}
+      reached={replay ? Math.max(replay.reached, live) : undefined}
+      selection={range}
+      ended={replay?.ended ? replay.endReason : undefined}
+      gameEvents={replay?.gameEvents !== null}
+      kinds={kinds}
+      onKinds={(next: ReadonlySet<TimelineKind>) => {
+        setKinds(next);
+        storeKinds(next);
+      }}
+      onPick={(frame) => {
+        if (!replay) return shared.pickFrame(frame);
+        setReplayAt(frame);
+        send({ type: "seek", frame });
+        shared.clear();
+      }}
+      onRange={(span) => shared.selectRange(span)}
+      onNow={() => shared.clear()}
+    />
+  );
+}
+
+// Always in the top bar, so nothing moves when a replay starts or ends.
+function RecordButton() {
+  const { status } = useStore(useLab().data);
+  const replay = replayOf(status?.shown ?? null);
+  const button = (
+    <Button size="icon" variant="ghost" aria-label="Run record" disabled={!replay}>
+      <Info size={16} />
+    </Button>
+  );
+  if (!replay) return <Tooltip text="No replay: choose a Run record in the Run select">{button}</Tooltip>;
+  return (
+    <HoverCard control card={<RecordCard replay={replay} />}>
+      {button}
+    </HoverCard>
   );
 }
 
@@ -152,8 +221,11 @@ function TopBar() {
       class="@container flex h-(--narrow) shrink-0 items-center gap-5 border-b border-line px-4 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
     >
       <span class="flex shrink-0 items-center gap-2">
-        <span class="flex w-[300px] shrink-0">
-          <RunSelect shown={shown} runs={status?.runs ?? []} records={records} send={send} />
+        <span class="flex w-[300px] shrink-0 items-center gap-1">
+          <span class="min-w-0 flex-1">
+            <RunSelect shown={shown} runs={status?.runs ?? []} records={records} send={send} />
+          </span>
+          <RecordButton />
         </span>
         <span class="shrink-0">
           <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
@@ -354,7 +426,7 @@ export class LabTab {
   #toastId = 0;
 
   constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
-    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [] });
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [], areas: {}, record: null });
     render(
       <LabContext.Provider value={{ ...lab, data: this.#data }}>
         <LabLayout />
@@ -366,6 +438,14 @@ export class LabTab {
 
   onSettings(settings: ScreenSettings): void {
     this.#patch({ settings });
+  }
+
+  onAreas(areas: Areas): void {
+    this.#patch({ areas });
+  }
+
+  onReplayEvents(name: string, events: readonly GameEvent[]): void {
+    this.#patch({ record: { name, events } });
   }
 
   onBots(bots: readonly string[]): void {

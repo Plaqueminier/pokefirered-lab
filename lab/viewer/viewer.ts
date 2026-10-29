@@ -140,6 +140,10 @@ function onMessage(message: ServerMessage): void {
       break;
     case "areas":
       statsPanel.onAreas(message.areas);
+      lab.onAreas(message.areas);
+      break;
+    case "replay-events":
+      lab.onReplayEvents(message.name, message.events);
       break;
     case "preview":
       showPreview(message.grid, message.actors);

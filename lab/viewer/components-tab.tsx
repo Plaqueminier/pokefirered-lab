@@ -1,4 +1,4 @@
-import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, Rewind, RotateCcw, Search, Shapes, Square } from "lucide-preact";
+import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Square } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
@@ -31,7 +31,7 @@ import {
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-lanes";
-import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RunSelectDemo, ScreenControlsDemo } from "./components-tab-lab";
+import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
@@ -249,7 +249,6 @@ function TabsDemo() {
             { id: "model", label: "Model", icon: <Bot size={16} /> },
             { id: "stats", label: "Stats", icon: <ChartColumn size={16} /> },
             { id: "memory", label: "Memory tree", icon: <ListTree size={16} /> },
-            { id: "replay", label: "Replay", icon: <Rewind size={16} /> },
           ]}
         />
       </div>
@@ -534,6 +533,7 @@ function FilterChipDemo() {
         <FilterChip icon={<ClipboardCheck size={13} />} tone="accent" label="Review" hideLabel count={26} on={on.has("review")} onToggle={() => toggle("review")} />
         <FilterChip icon={<Flame size={13} />} tone="warn" label="Expensive" hideLabel count={74} on={on.has("expensive")} onToggle={() => toggle("expensive")} />
         <FilterChip icon={<Eye size={13} />} label="No tone, no count" hideLabel on={on.has("plain")} onToggle={() => toggle("plain")} />
+        <FilterChip icon={<Brain size={13} />} tone="warn" label="Disabled: the Tooltip tells why" hideLabel disabled on={false} onToggle={() => {}} />
       </div>
     </div>
   );
@@ -630,7 +630,7 @@ const ENTRIES: Entry[] = [
   {
     category: "controls",
     title: "FilterChip",
-    rule: "A filter that a click turns on or off: a colored icon, an optional label and a count. On, it has the accent border of a pressed Button. With the label hidden, a Tooltip gives it.",
+    rule: "A filter that a click turns on or off: a colored icon, an optional label and a count. On, it has the accent border of a pressed Button. With the label hidden, a Tooltip gives it. Disabled, it is faint, and its Tooltip tells why.",
     demo: () => <FilterChipDemo />,
   },
   { category: "data", title: "Pill", rule: "A short state or count. The text has the color of the state, or the accent.", demo: () => <PillDemo /> },
@@ -710,6 +710,18 @@ const ENTRIES: Entry[] = [
     title: "Screen controls",
     rule: "The bar under the screen: pause and the speeds, the overlay (its legend on a hover), the sound and its volume, the savestate, the Starting save (a second click writes it) and the keys on a hover.",
     demo: () => <ScreenControlsDemo />,
+  },
+  {
+    category: "lab",
+    title: "Timeline",
+    rule: "The zone at the bottom of the Lab tab: the Game events of the shown Run as icons on one track, with linear time. The chips choose the kinds. Icons closer than 18 px make one group with the most important icon and a count. A hover shows the events of a group, or the time at the pointer. A click moves the cursor, or jumps a replay; a drag selects a range; Now or Esc goes back to now.",
+    demo: () => <TimelineDemo />,
+  },
+  {
+    category: "lab",
+    title: "Run record",
+    rule: "The card of the HoverCard of the button next to the Run select: the state of the replay, the name of the Run record and its facts. Out of a replay, the button is disabled.",
+    demo: () => <RecordCardDemo />,
   },
   {
     category: "lab",

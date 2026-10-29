@@ -217,9 +217,14 @@ export class RecordPlayer {
     return this.#record.header;
   }
 
-  /** The Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
+  /** The number of Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
   get gameEvents(): number | null {
-    return hasStateEvents(this.#record) ? this.#record.events.filter(isGameEvent).length : null;
+    return hasStateEvents(this.#record) ? this.allGameEvents().length : null;
+  }
+
+  /** The Game events of the whole record, also after the frame of the replay. */
+  allGameEvents(): GameEvent[] {
+    return this.#record.events.filter(isGameEvent);
   }
 
   /** The Model calls of the whole record. */

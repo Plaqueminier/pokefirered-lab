@@ -2,7 +2,7 @@
 import type { Areas, Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { Sight } from "./harness/atlas";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
-import type { Continuation, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
+import type { Continuation, GameEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -115,6 +115,8 @@ export type ServerMessage =
   | { type: "records"; names: string[] }
   | { type: "bots"; bots: BotInfo[] }
   | { type: "areas"; areas: Areas }
+  /** The Game events of the whole Run record of a replay, for the Timeline. Sent once when the replay starts. */
+  | { type: "replay-events"; name: string; events: GameEvent[] }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   /** `quiet`: the events after a jump; the Viewer gives no toast for them. */
   | { type: "events"; events: RunEvent[]; quiet?: boolean };

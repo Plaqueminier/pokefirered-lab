@@ -241,7 +241,7 @@ export function TypeChip({ type }: { type: string }) {
   );
 }
 
-export function fraction(value: number, max: number): number {
+function fraction(value: number, max: number): number {
   return max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
 }
 
@@ -464,7 +464,8 @@ export function Cover({
   );
 }
 
-const TIP = "animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg";
+/** The look of a tip: the Tooltip, the Slider and the Timeline use it. */
+export const TIP = "animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg";
 
 // In the top layer: the overflow of a panel cuts an absolute tip.
 export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
@@ -855,6 +856,7 @@ export function FilterChip({
   label,
   hideLabel,
   count,
+  disabled,
   on,
   onToggle,
 }: {
@@ -863,11 +865,12 @@ export function FilterChip({
   label: string;
   hideLabel?: boolean;
   count?: number;
+  disabled?: boolean;
   on: boolean;
   onToggle: () => void;
 }) {
   const chip = (
-    <Button size="sm" pressed={on} aria-label={hideLabel ? label : undefined} onClick={onToggle}>
+    <Button size="sm" pressed={on} disabled={disabled} aria-label={hideLabel ? label : undefined} onClick={onToggle}>
       <span class={`flex ${toneText(tone)}`}>{icon}</span>
       {!hideLabel && label}
       {count !== undefined && <span class="font-medium text-faint tabular-nums">{count}</span>}

@@ -1,10 +1,14 @@
 import { useState } from "preact/hooks";
+import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { ClientMessage, RunSummary, ShownRun } from "../src/protocol";
+import type { ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Button, PopoverBody, Tabs } from "./components";
+import type { Span } from "./cursor";
 import { PokemonCard, PokemonSummary } from "./pokemon";
+import { RecordCard } from "./record-card";
 import { BotsPanel, RunSelect } from "./runs";
 import { ScreenControls, type ScreenRun, type ScreenSettings } from "./screen-controls";
+import { Timeline, type TimelineKind, timelineEvents } from "./timeline";
 
 export const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
 
@@ -282,6 +286,139 @@ export function PokemonSummaryDemo() {
       <p class="text-xs text-faint">{shown.state}</p>
       <PopoverBody>
         <PokemonSummary mon={shown.mon} />
+      </PopoverBody>
+    </div>
+  );
+}
+
+const MINUTE = 3584;
+
+const AREAS = {
+  PalletTown: { area: "Pallet Town", place: null },
+  Route1: { area: "Route 1", place: null },
+  ViridianCity: { area: "Viridian City", place: null },
+  ViridianCity_PokemonCenter_1F: { area: "Viridian City", place: "Pokémon Center" },
+  ViridianForest: { area: "Viridian Forest", place: null },
+  PewterCity_Gym: { area: "Pewter City", place: "Gym" },
+};
+
+function battle(minute: number, minutes: number, trainer?: string): RunEvent[] {
+  const from = Math.round(minute * MINUTE);
+  const to = from + Math.round(minutes * MINUTE);
+  return [{ frame: from, type: "battle", state: "start" }, { frame: to, type: "battle", state: "end" }, ...(trainer ? [{ frame: to + 5, type: "trainer", trainer, id: 1 } as const] : [])];
+}
+
+const at = (minute: number) => Math.round(minute * MINUTE);
+
+// battle() gives the end of a battle and its trainer event before the events between them: sort the list by frame.
+function byFrame(events: RunEvent[]): RunEvent[] {
+  return events.toSorted((a, b) => a.frame - b.frame);
+}
+
+const DEMO_EVENTS = byFrame([
+  { frame: at(0.1), type: "map", map: "PalletTown" },
+  { frame: at(1), type: "milestone", milestone: "has-pokemon" },
+  ...battle(1.5, 1.2, "RIVAL BOB"),
+  { frame: at(2.8), type: "level", species: "BULBASAUR", from: 5, level: 6, moves: [], evolution: null },
+  { frame: at(3), type: "milestone", milestone: "first-rival-battle" },
+  { frame: at(4), type: "map", map: "Route1" },
+  ...battle(4.5, 0.5),
+  ...battle(5.5, 0.4),
+  { frame: at(6), type: "level", species: "BULBASAUR", from: 6, level: 8, moves: ["VINE WHIP"], evolution: null },
+  { frame: at(7), type: "map", map: "ViridianCity" },
+  { frame: at(7.5), type: "item", how: "received", item: "OAK'S PARCEL", count: 1 },
+  { frame: at(9), type: "milestone", milestone: "pokedex" },
+  { frame: at(10), type: "map", map: "ViridianCity_PokemonCenter_1F" },
+  { frame: at(10.4), type: "heal", source: "center", item: null, party: [] },
+  { frame: at(11), type: "purchase", item: "POTION", count: 3, money: 900 },
+  { frame: at(13), type: "map", map: "ViridianForest" },
+  ...battle(13.5, 0.6),
+  { frame: at(14), type: "catch", species: "CATERPIE" },
+  ...battle(15, 1, "BUG CATCHER RICK"),
+  ...battle(17, 0.8),
+  { frame: at(17.5), type: "faint", species: "CATERPIE", side: "player" },
+  { frame: at(18), type: "heal", source: "item", item: "POTION", party: [] },
+  { frame: at(19), type: "level", species: "CATERPIE", from: 7, level: 7, moves: [], evolution: "METAPOD" },
+  { frame: at(24), type: "map", map: "PewterCity_Gym" },
+  ...battle(25, 1.5, "LEADER BROCK"),
+  { frame: at(26.6), type: "milestone", milestone: "badge-1" },
+]);
+
+const OLD_EVENTS = DEMO_EVENTS.filter((event) => event.type === "map" || event.type === "battle" || event.type === "milestone");
+
+const TIMELINE_STATES = {
+  live: { label: "A live Run", events: DEMO_EVENTS, end: at(30), now: at(30), reached: undefined, ended: undefined, gameEvents: true },
+  jump: { label: "A replay during a jump", events: DEMO_EVENTS, end: at(40), now: at(22), reached: at(12), ended: undefined, gameEvents: true },
+  old: { label: "An old record with no Game events", events: OLD_EVENTS, end: at(40), now: at(40), reached: at(40), ended: "cost limit", gameEvents: false },
+};
+
+export function TimelineDemo() {
+  const [state, setState] = useState<keyof typeof TIMELINE_STATES>("live");
+  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place"]));
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [selection, setSelection] = useState<Span | null>(null);
+  const { events, end, now, reached, ended, gameEvents } = TIMELINE_STATES[state];
+  const shown = timelineEvents(events, AREAS);
+  return (
+    <div class="flex flex-col items-start gap-3">
+      <Tabs
+        kind="segmented"
+        items={Object.entries(TIMELINE_STATES).map(([id, { label }]) => ({ id: id as keyof typeof TIMELINE_STATES, label }))}
+        value={state}
+        onChange={(next) => {
+          setState(next);
+          setCursor(null);
+          setSelection(null);
+        }}
+      />
+      <div class="w-full pt-12">
+        <Timeline
+          events={shown}
+          end={end}
+          at={cursor ?? now}
+          cursor={cursor !== null}
+          reached={reached}
+          selection={selection}
+          ended={ended}
+          gameEvents={gameEvents}
+          kinds={kinds}
+          onKinds={setKinds}
+          onPick={setCursor}
+          onRange={setSelection}
+          onNow={() => {
+            setCursor(null);
+            setSelection(null);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const DEMO_REPLAY: ReplayStatus = {
+  name: RECORD,
+  frames: 457065,
+  ended: false,
+  endReason: "cost limit",
+  model: { id: "deepseek/deepseek-v4-flash", costLimit: 10, reasoning: "low", starter: "free", calls: 312, cost: 4.21, totalCalls: 717, totalCost: 10.02 },
+  continued: null,
+  gameEvents: 393,
+  reached: 200000,
+  seeking: null,
+};
+
+const RECORD_STATES = {
+  plays: { label: "A replay that plays", replay: DEMO_REPLAY },
+  ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, cost: 10.02 } } },
+};
+
+export function RecordCardDemo() {
+  const [state, setState] = useState<keyof typeof RECORD_STATES>("plays");
+  return (
+    <div class="flex flex-col items-start gap-3">
+      <Tabs kind="segmented" items={Object.entries(RECORD_STATES).map(([id, { label }]) => ({ id: id as keyof typeof RECORD_STATES, label }))} value={state} onChange={setState} />
+      <PopoverBody>
+        <RecordCard replay={RECORD_STATES[state].replay} />
       </PopoverBody>
     </div>
   );

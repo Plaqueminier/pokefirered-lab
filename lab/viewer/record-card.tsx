@@ -1,10 +1,8 @@
 import { Fragment } from "preact";
-import { type ReplayStatus, replayOf, type ShownRun } from "../src/protocol";
-import { Card, fraction, LABEL, Pill, Slider } from "./components";
+import type { ReplayStatus } from "../src/protocol";
+import { LABEL, Pill } from "./components";
 import { dollars } from "./runs";
 import { clock } from "./stats-lanes";
-
-const SEEK_STEP = 60;
 
 function ReplayState({ replay }: { replay: ReplayStatus }) {
   if (replay.seeking) return <Pill tone="info">jumps to {clock(replay.seeking.to)}…</Pill>;
@@ -42,45 +40,18 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
   );
 }
 
-function NoReplay({ shown }: { shown: ShownRun | null }) {
-  const text =
-    shown?.kind === "bot"
-      ? `The Viewer shows Run ${shown.run.id} of the Bot ${shown.run.bot}. The Replay panel shows a replay only.`
-      : "No replay: the keyboard plays the Viewer Run. Choose a Run record in the Run select of the top bar to replay it.";
+/** The card of the Run record of a replay, in the HoverCard of the button next to the Run select. */
+export function RecordCard({ replay }: { replay: ReplayStatus }) {
   return (
-    <Card>
-      <p class="text-sm text-muted">{text}</p>
-    </Card>
-  );
-}
-
-export function ReplayPanel({ shown, frame, seek }: { shown: ShownRun | null; frame: number; seek: (frame: number) => void }) {
-  const replay = replayOf(shown);
-  if (!replay) return <NoReplay shown={shown} />;
-  const at = replay.seeking?.to ?? frame;
-  return (
-    <div class="flex max-w-[560px] flex-col gap-4">
-      <div class="flex h-6.5 items-center gap-2">
-        <span class={LABEL}>Replay</span>
-        <ReplayState replay={replay} />
+    <div class="flex w-[460px] max-w-full flex-col gap-3">
+      <div class="flex items-center gap-2">
+        <span class={LABEL}>Run record</span>
+        <span class="ml-auto">
+          <ReplayState replay={replay} />
+        </span>
       </div>
-      <Card>
-        <div class="flex flex-col gap-3">
-          <span class="truncate font-mono text-sm">{replay.name}</span>
-          <Slider label="Frame of the replay" value={at} max={replay.frames} reached={replay.reached} step={SEEK_STEP} format={clock} onSeek={seek} />
-          <div class="grid grid-cols-3 text-sm tabular-nums">
-            <span>{clock(at)}</span>
-            <span class="text-center text-muted">{replay.ended ? `end: ${replay.endReason}` : `${Math.round(fraction(at, replay.frames) * 100)} %`}</span>
-            <span class="text-right text-muted">{clock(replay.frames)}</span>
-          </div>
-        </div>
-      </Card>
-      <Card>
-        <div class="flex flex-col gap-3">
-          <span class={LABEL}>Run record</span>
-          <RecordFacts replay={replay} />
-        </div>
-      </Card>
+      <span class="truncate font-mono text-sm">{replay.name}</span>
+      <RecordFacts replay={replay} />
     </div>
   );
 }
