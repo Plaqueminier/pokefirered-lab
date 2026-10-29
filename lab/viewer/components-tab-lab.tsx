@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
 import type { ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
@@ -8,7 +9,8 @@ import { PokemonCard, PokemonSummary } from "./pokemon";
 import { RecordCard } from "./record-card";
 import { BotsPanel, RunSelect } from "./runs";
 import { ScreenControls, type ScreenRun, type ScreenSettings } from "./screen-controls";
-import { Timeline, type TimelineKind, timelineEvents } from "./timeline";
+import { availableKinds, Timeline } from "./timeline";
+import { type TimelineKind, timelineEvents } from "./timeline-events";
 
 export const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
 
@@ -302,13 +304,14 @@ const AREAS = {
   PewterCity_Gym: { area: "Pewter City", place: "Gym" },
 };
 
-function battle(minute: number, minutes: number, trainer?: string): RunEvent[] {
-  const from = Math.round(minute * MINUTE);
-  const to = from + Math.round(minutes * MINUTE);
-  return [{ frame: from, type: "battle", state: "start" }, { frame: to, type: "battle", state: "end" }, ...(trainer ? [{ frame: to + 5, type: "trainer", trainer, id: 1 } as const] : [])];
-}
-
 const at = (minute: number) => Math.round(minute * MINUTE);
+
+// `trainer`: the trainer of a battle that the player wins. `null`: a trainer battle that the player loses, with no flag of its trainer.
+function battle(minute: number, minutes: number, trainer?: string | null): RunEvent[] {
+  const to = at(minute + minutes);
+  const named: RunEvent[] = typeof trainer === "string" ? [{ frame: to + 5, type: "trainer", trainer, id: 1 }] : [];
+  return [{ frame: at(minute), type: "battle", state: "start", trainer: trainer !== undefined }, { frame: to, type: "battle", state: "end" }, ...named];
+}
 
 function byFrame(events: RunEvent[]): RunEvent[] {
   return events.toSorted((a, b) => a.frame - b.frame);
@@ -335,7 +338,8 @@ const DEMO_EVENTS = byFrame([
   { frame: at(14), type: "catch", species: "CATERPIE" },
   ...battle(15, 1, "BUG CATCHER RICK"),
   ...battle(17, 0.8),
-  { frame: at(17.5), type: "faint", species: "CATERPIE", side: "player" },
+  ...battle(17.9, 0.4, null),
+  { frame: at(17.95), type: "faint", species: "CATERPIE", side: "player" },
   { frame: at(18), type: "heal", source: "item", item: "POTION", party: [] },
   { frame: at(19), type: "level", species: "CATERPIE", from: 7, level: 7, moves: [], evolution: "METAPOD" },
   { frame: at(24), type: "map", map: "PewterCity_Gym" },
@@ -343,12 +347,12 @@ const DEMO_EVENTS = byFrame([
   { frame: at(26.6), type: "milestone", milestone: "badge-1" },
 ]);
 
-const OLD_EVENTS = DEMO_EVENTS.filter((event) => event.type === "map" || event.type === "battle" || event.type === "milestone");
+const OLD_EVENTS = withoutFormat(DEMO_EVENTS);
 
 const TIMELINE_STATES = {
-  live: { label: "A live Run", events: DEMO_EVENTS, end: at(30), now: at(30), reached: undefined, ended: undefined, gameEvents: true },
-  jump: { label: "A replay during a jump", events: DEMO_EVENTS, end: at(40), now: at(22), reached: at(12), ended: undefined, gameEvents: true },
-  old: { label: "An old record with no Game events", events: OLD_EVENTS, end: at(40), now: at(40), reached: at(40), ended: "cost limit", gameEvents: false },
+  live: { label: "A live Run", events: DEMO_EVENTS, end: at(30), now: at(30), reached: undefined, ended: undefined, available: availableKinds(true) },
+  jump: { label: "A replay during a jump", events: DEMO_EVENTS, end: at(40), now: at(22), reached: at(12), ended: undefined, available: availableKinds(true) },
+  old: { label: "An old record with no Game events", events: OLD_EVENTS, end: at(40), now: at(40), reached: at(40), ended: "cost limit", available: availableKinds(false) },
 };
 
 export function TimelineDemo() {
@@ -356,7 +360,7 @@ export function TimelineDemo() {
   const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place"]));
   const [cursor, setCursor] = useState<number | null>(null);
   const [selection, setSelection] = useState<Span | null>(null);
-  const { events, end, now, reached, ended, gameEvents } = TIMELINE_STATES[state];
+  const { events, end, now, reached, ended, available } = TIMELINE_STATES[state];
   const shown = timelineEvents(events, AREAS);
   return (
     <div class="flex flex-col items-start gap-3">
@@ -379,7 +383,7 @@ export function TimelineDemo() {
           reached={reached}
           selection={selection}
           ended={ended}
-          gameEvents={gameEvents}
+          available={available}
           kinds={kinds}
           onKinds={setKinds}
           onPick={setCursor}
@@ -409,6 +413,8 @@ const DEMO_REPLAY: ReplayStatus = {
 const RECORD_STATES = {
   plays: { label: "A replay that plays", replay: DEMO_REPLAY },
   ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, cost: 10.02 } } },
+  jumps: { label: "A replay that jumps", replay: { ...DEMO_REPLAY, seeking: { from: 200000, to: 80000 } } },
+  old: { label: "A record with no Game events", replay: { ...DEMO_REPLAY, gameEvents: null } },
 };
 
 export function RecordCardDemo() {

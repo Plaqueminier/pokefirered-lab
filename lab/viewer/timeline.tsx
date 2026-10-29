@@ -1,26 +1,22 @@
 import { ChevronsUp, CircleDot, Gift, Heart, MapPin, PawPrint, ShoppingBag, Skull, Sparkles, Swords, Trophy } from "lucide-preact";
 import type { ComponentChildren, ComponentType } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { Areas, Milestone } from "../src/game";
-import type { RunEvent } from "../src/harness/record";
 import { Button, FilterChip, LABEL, Pill, TIP, type Tone, Tooltip, toggled, toneText } from "./components";
 import type { Span } from "./cursor";
 import { clock } from "./stats-lanes";
+import { NO_GAME_EVENTS, type TimelineEvent, type TimelineKind } from "./timeline-events";
 
-export type TimelineKind = "milestone" | "faint" | "catch" | "evolution" | "trainer" | "heal" | "place" | "level" | "wild" | "purchase" | "item";
-
-export type TimelineEvent = { frame: number; kind: TimelineKind; text: string };
-
-type KindLook = { id: TimelineKind; label: string; icon: ComponentType<{ size?: number }>; tone?: Tone; on: boolean };
+// `legacy`: a record without the format 1 has this kind.
+type KindLook = { id: TimelineKind; label: string; icon: ComponentType<{ size?: number }>; tone?: Tone; on: boolean; legacy?: true };
 
 const KINDS: KindLook[] = [
-  { id: "milestone", label: "Milestones", icon: Trophy, tone: "warn", on: true },
+  { id: "milestone", label: "Milestones", icon: Trophy, tone: "warn", on: true, legacy: true },
   { id: "faint", label: "Fainted Pokémon", icon: Skull, tone: "bad", on: true },
   { id: "catch", label: "New Pokémon", icon: CircleDot, tone: "info", on: true },
   { id: "evolution", label: "Evolutions", icon: Sparkles, tone: "accent", on: true },
   { id: "trainer", label: "Trainer battles", icon: Swords, tone: "accent", on: true },
   { id: "heal", label: "Heals", icon: Heart, tone: "ok", on: true },
-  { id: "place", label: "New places", icon: MapPin, on: true },
+  { id: "place", label: "New places", icon: MapPin, on: true, legacy: true },
   { id: "level", label: "Levels", icon: ChevronsUp, on: false },
   { id: "wild", label: "Wild battles", icon: PawPrint, on: false },
   { id: "purchase", label: "Purchases", icon: ShoppingBag, on: false },
@@ -33,7 +29,7 @@ const LOOKS = new Map(KINDS.map((kind) => [kind.id, kind]));
 
 const KINDS_KEY = "lab.timeline";
 
-export function storedKinds(): ReadonlySet<TimelineKind> {
+function storedKinds(): ReadonlySet<TimelineKind> {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(KINDS_KEY) ?? "null");
     if (Array.isArray(saved)) return new Set(saved.filter((kind): kind is TimelineKind => LOOKS.has(kind)));
@@ -41,117 +37,24 @@ export function storedKinds(): ReadonlySet<TimelineKind> {
   return new Set(KINDS.filter((kind) => kind.on).map((kind) => kind.id));
 }
 
-export function storeKinds(kinds: ReadonlySet<TimelineKind>): void {
-  try {
-    localStorage.setItem(KINDS_KEY, JSON.stringify([...kinds]));
-  } catch {}
+/** The kinds that the user chose, kept in the browser. */
+export function useStoredKinds(): [ReadonlySet<TimelineKind>, (kinds: ReadonlySet<TimelineKind>) => void] {
+  const [kinds, setKinds] = useState(storedKinds);
+  return [
+    kinds,
+    (next) => {
+      setKinds(next);
+      try {
+        localStorage.setItem(KINDS_KEY, JSON.stringify([...next]));
+      } catch {}
+    },
+  ];
 }
 
-const OLD_KINDS = new Set<TimelineKind>(["milestone", "place"]);
-
-const MILESTONE_NAMES: Record<Milestone, string> = {
-  "has-pokemon": "First Pokémon",
-  "first-rival-battle": "Rival",
-  pokedex: "Pokédex",
-  "badge-1": "Brock",
-  "badge-2": "Misty",
-  "badge-3": "Lt. Surge",
-  "badge-4": "Erika",
-  "badge-5": "Koga",
-  "badge-6": "Sabrina",
-  "badge-7": "Blaine",
-  "badge-8": "Giovanni",
-};
-
-function titleCase(name: string): string {
-  return name.toLowerCase().replace(/(^|[\s.-])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
+/** The kinds that a record can show: a record without the format 1 has only the legacy kinds. */
+export function availableKinds(gameEvents: boolean): ReadonlySet<TimelineKind> {
+  return new Set(KINDS.filter((kind) => gameEvents || kind.legacy).map((kind) => kind.id));
 }
-
-type Battle = { from: number; to: number | null; area: string; trainer: string | null };
-
-export function timelineEvents(events: readonly RunEvent[], areas: Areas): TimelineEvent[] {
-  const shown: TimelineEvent[] = [];
-  const battles: Battle[] = [];
-  const visited = new Set<string>();
-  let area = "";
-  let stay = 0;
-  const levels = new Map<string, { event: TimelineEvent; from: number }>();
-  for (const event of events) {
-    switch (event.type) {
-      case "map": {
-        const next = areas[event.map]?.area ?? event.map;
-        if (next !== area) {
-          area = next;
-          stay++;
-          levels.clear();
-        }
-        if (!visited.has(area)) {
-          visited.add(area);
-          shown.push({ frame: event.frame, kind: "place", text: area });
-        }
-        break;
-      }
-      case "milestone":
-        shown.push({ frame: event.frame, kind: "milestone", text: MILESTONE_NAMES[event.milestone] ?? event.milestone });
-        break;
-      case "battle": {
-        const last = battles.at(-1);
-        if (event.state === "start") battles.push({ from: event.frame, to: null, area: `${stay}:${area}`, trainer: null });
-        else if (last && last.to === null) last.to = event.frame;
-        break;
-      }
-      // The flag of a trainer changes at the end of its battle, or just after it.
-      case "trainer": {
-        const last = battles.at(-1);
-        if (last && !last.trainer) last.trainer = event.trainer;
-        else shown.push({ frame: event.frame, kind: "trainer", text: `Trainer battle: ${titleCase(event.trainer)}` });
-        break;
-      }
-      case "faint":
-        if (event.side === "player") shown.push({ frame: event.frame, kind: "faint", text: `${titleCase(event.species)} fainted` });
-        break;
-      case "catch":
-        shown.push({ frame: event.frame, kind: "catch", text: `New Pokémon: ${titleCase(event.species)}` });
-        break;
-      case "level": {
-        if (event.evolution) shown.push({ frame: event.frame, kind: "evolution", text: `${titleCase(event.species)} evolved into ${titleCase(event.evolution)}` });
-        const group = levels.get(event.species) ?? { event: { frame: event.frame, kind: "level", text: "" }, from: event.from };
-        if (!levels.has(event.species)) shown.push(group.event);
-        group.event.text = `${titleCase(event.species)} Lv ${group.from} → ${event.level}`;
-        levels.delete(event.species);
-        levels.set(event.evolution ?? event.species, group);
-        break;
-      }
-      case "heal": {
-        const text = event.source === "center" ? "Healed at the Pokémon Center" : event.item ? `Healed with ${event.item}` : "Healed";
-        shown.push({ frame: event.frame, kind: "heal", text });
-        break;
-      }
-      case "purchase":
-        shown.push({ frame: event.frame, kind: "purchase", text: `Bought ${event.count} × ${event.item}` });
-        break;
-      case "item":
-        shown.push({ frame: event.frame, kind: "item", text: `Got ${event.count > 1 ? `${event.count} × ` : ""}${event.item}` });
-        break;
-    }
-  }
-  const wild = new Map<string, { event: TimelineEvent; count: number }>();
-  for (const battle of battles) {
-    const time = battle.to === null ? "" : ` (${clock(battle.to - battle.from)})`;
-    if (battle.trainer) {
-      shown.push({ frame: battle.from, kind: "trainer", text: `Trainer battle: ${titleCase(battle.trainer)}${time}` });
-      continue;
-    }
-    const group = wild.get(battle.area) ?? { event: { frame: battle.from, kind: "wild", text: "" }, count: 0 };
-    if (group.count === 0) shown.push(group.event);
-    group.count++;
-    wild.set(battle.area, group);
-    const name = battle.area.slice(battle.area.indexOf(":") + 1);
-    group.event.text = `${group.count} wild battle${group.count > 1 ? "s" : ""} in ${name}`;
-  }
-  return shown.sort((a, b) => a.frame - b.frame);
-}
-
 
 type Group = { x: number; events: TimelineEvent[]; top: TimelineEvent };
 
@@ -237,7 +140,7 @@ export type TimelineProps = {
   reached?: number;
   selection: Span | null;
   ended?: string;
-  gameEvents: boolean;
+  available: ReadonlySet<TimelineKind>;
   kinds: ReadonlySet<TimelineKind>;
   onKinds: (kinds: ReadonlySet<TimelineKind>) => void;
   onPick: (frame: number) => void;
@@ -245,20 +148,21 @@ export type TimelineProps = {
   onNow: () => void;
 };
 
-function Header({ events, at, end, cursor, ended, gameEvents, kinds, onKinds, onNow }: TimelineProps) {
+function Header({ events, at, end, cursor, ended, available, kinds, onKinds, onNow }: TimelineProps) {
   const counts = new Map<TimelineKind, number>();
   for (const event of events) counts.set(event.kind, (counts.get(event.kind) ?? 0) + 1);
   return (
     <div class="mb-1 flex h-7 items-center gap-1">
-      <span class={`${LABEL} mr-2`}>Timeline</span>
+      {/* At 900 px, the chips, the longest Pill and the time fill the header. */}
+      <span class={`${LABEL} mr-2 hidden min-[1000px]:inline`}>Timeline</span>
       {KINDS.map(({ id, label, icon: Icon, tone }) => {
-        const off = !gameEvents && !OLD_KINDS.has(id);
+        const off = !available.has(id);
         return (
           <FilterChip
             key={id}
             icon={<Icon size={14} />}
             tone={tone}
-            label={off ? "No Game events in this record" : `${label} (${counts.get(id) ?? 0})`}
+            label={off ? NO_GAME_EVENTS : `${label} (${counts.get(id) ?? 0})`}
             hideLabel
             disabled={off}
             on={!off && kinds.has(id)}
@@ -282,7 +186,7 @@ function Header({ events, at, end, cursor, ended, gameEvents, kinds, onKinds, on
   );
 }
 
-function Track({ events, end, at, reached, selection, gameEvents, kinds, onPick, onRange }: TimelineProps) {
+function Track({ events, end, at, reached, selection, available, kinds, onPick, onRange }: TimelineProps) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState<Span | null>(null);
@@ -292,7 +196,7 @@ function Track({ events, end, at, reached, selection, gameEvents, kinds, onPick,
   const x = (frame: number) => INSET + (Math.min(Math.max(frame, 0), span) / span) * (right - INSET);
   const frameAt = (px: number) => Math.round((Math.min(Math.max(px - INSET, 0), right - INSET) / (right - INSET)) * span);
   const groups = groupsOf(
-    events.filter((event) => kinds.has(event.kind) && (gameEvents || OLD_KINDS.has(event.kind))),
+    events.filter((event) => kinds.has(event.kind) && available.has(event.kind)),
     x,
   );
   const hovered = hover === null ? null : nearGroup(groups, hover);

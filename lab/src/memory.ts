@@ -6,6 +6,11 @@ export interface MemoryBus {
   read(address: number, length: number): Uint8Array;
 }
 
+/** The bit `id` of a flag array. */
+export function bitAt(bytes: Uint8Array, id: number): number {
+  return (bytes[id >> 3] >> (id & 7)) & 1;
+}
+
 /** The first index where `test` is true, for an array where `test` is false and then true. */
 function firstIndex<T>(sorted: T[], test: (item: T) => boolean): number {
   let low = 0;

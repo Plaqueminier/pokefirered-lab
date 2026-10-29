@@ -103,7 +103,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
       { type: "map", map: "PalletTown" },
       { type: "map", map: "PalletTown_ProfessorOaksLab" },
       { type: "milestone", milestone: "has-pokemon" },
-      { type: "battle", state: "start" },
+      { type: "battle", state: "start", trainer: true },
       { type: "faint", species: "BULBASAUR", side: "enemy" },
       { type: "money", before: 3000, after: 3080, cause: "battle" },
       { type: "battle", state: "end" },

@@ -32,10 +32,32 @@ const AUDIO_TARGET_MS = 60;
 
 type Keyframe = { frame: number; state: Uint8Array; atlas: AtlasWatch };
 
-type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframe[]; interval: number; reached: number; jump: Jump | null };
+type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframes; reached: number; jump: Jump | null };
 
 const KEYFRAME_FRAMES = 3600;
 const MAX_KEYFRAMES = 256;
+
+// The saved states of a replay, in order. Above MAX_KEYFRAMES, it keeps every second one and doubles the interval: a long Run stays within the limit.
+class Keyframes {
+  #list: Keyframe[] = [];
+  #interval = KEYFRAME_FRAMES;
+
+  due(frame: number): boolean {
+    return frame % this.#interval === 0;
+  }
+
+  add(keyframe: Keyframe): void {
+    this.#list.push(keyframe);
+    if (this.#list.length <= MAX_KEYFRAMES) return;
+    this.#list = this.#list.filter((_, i) => i % 2 === 0);
+    this.#interval *= 2;
+  }
+
+  /** The last keyframe at or before `frame`. */
+  before(frame: number): Keyframe | undefined {
+    return this.#list.findLast((keyframe) => keyframe.frame <= frame);
+  }
+}
 const TICK_MS = 12;
 const JUMP_TICK_MS = 40;
 
@@ -76,7 +98,7 @@ class LivePlay {
     // No await from here on: a tick in between would run frames that the record does not have.
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) return differences;
-    this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: [], interval: KEYFRAME_FRAMES, reached: 0, jump: null };
+    this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: new Keyframes(), reached: 0, jump: null };
     this.keepKeyframe(this.activeReplay);
     this.speed = 1;
     this.paused = false;
@@ -94,10 +116,7 @@ class LivePlay {
   }
 
   private keepKeyframe(replay: Replay): void {
-    replay.keyframes.push({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() });
-    if (replay.keyframes.length <= MAX_KEYFRAMES) return;
-    replay.keyframes = replay.keyframes.filter((_, i) => i % 2 === 0);
-    replay.interval *= 2;
+    replay.keyframes.add({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() });
   }
 
   // A jump starts from a keyframe or from now, so the replay plays each new frame in order: the keyframes come in order.
@@ -105,7 +124,7 @@ class LivePlay {
     const frame = this.run.frame;
     if (frame <= replay.reached) return;
     replay.reached = frame;
-    if (frame % replay.interval === 0) this.keepKeyframe(replay);
+    if (replay.keyframes.due(frame)) this.keepKeyframe(replay);
   }
 
   seek(target: number): void {
@@ -113,7 +132,7 @@ class LivePlay {
     if (!replay) return;
     const frame = Math.max(0, Math.min(Math.round(target), replay.player.frames));
     const now = this.run.frame;
-    const key = replay.keyframes.findLast((k) => k.frame <= frame);
+    const key = replay.keyframes.before(frame);
     const fromNow = key === undefined || (key.frame <= now && now <= frame);
     if (!fromNow) {
       if (!this.run.core.loadState(key.state)) return;
@@ -324,7 +343,7 @@ function replayStatus({ name, player, continued, reached }: Replay): ReplayStatu
     ended: player.ended,
     model: replayModel(player),
     continued,
-    gameEvents: player.gameEvents,
+    gameEvents: player.stateEvents ? player.gameEvents.length : null,
     reached,
     seeking: live.seeking,
   };
@@ -416,7 +435,7 @@ async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promi
 
 function sendReplayEvents(to?: ServerWebSocket<unknown>): void {
   const replay = live.replay;
-  if (replay) send({ type: "replay-events", name: replay.name, events: replay.player.allGameEvents() }, to);
+  if (replay) send({ type: "replay-events", name: replay.name, events: replay.player.gameEvents }, to);
 }
 
 let eventsSent = 0;

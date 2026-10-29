@@ -35,8 +35,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(ELF_FILE))("the party of th
     const plain = ram.slice(secure, secure + 48);
     for (let offset = 0; offset < 48; offset += 4) view.setUint32(secure + offset, (view.getUint32(secure + offset, true) ^ PERSONALITY ^ OT_ID) >>> 0, true);
 
-    expect(readWatchedParty(mem, decode, "player")?.map((mon) => mon.species)).toEqual([nameAt(mem, "gSpeciesNames", SPECIES_BULBASAUR, decode)]);
+    expect(readWatchedParty(mem, decode, "gPlayerParty", 1)?.map((mon) => mon.species)).toEqual([nameAt(mem, "gSpeciesNames", SPECIES_BULBASAUR, decode)]);
     ram.set(plain, secure);
-    expect(readWatchedParty(mem, decode, "player")).toBeNull();
+    expect(readWatchedParty(mem, decode, "gPlayerParty", 1)).toBeNull();
   });
 });

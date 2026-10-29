@@ -22,6 +22,7 @@ import { isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
+import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
 import {
@@ -29,7 +30,6 @@ import {
   GameWatch,
   hasStateEvents,
   isGameEvent,
-  isStateEvent,
   type ModelAnswer,
   type ModelEvent,
   type ModelOptions,
@@ -678,9 +678,10 @@ export class Harness {
       this.advance(player.next());
     }
     actionsEnded();
-    const watched = hasStateEvents(record) ? this.#events : this.#events.filter((e) => !isStateEvent(e));
+    const current = hasStateEvents(record);
+    const watched = current ? this.#events : withoutFormat(this.#events);
     if (!Bun.deepEquals(watched, record.events.filter(isGameEvent))) throw new Error("the Run record does not replay the same game: its Game events are different");
-    this.#events.splice(0, this.#events.length, ...(hasStateEvents(record) ? record.events : withStateEvents(record.events, this.#events)));
+    this.#events.splice(0, this.#events.length, ...(current ? record.events : withStateEvents(record.events, this.#events)));
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 

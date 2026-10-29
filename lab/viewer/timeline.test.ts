@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { RunEvent } from "../src/harness/record";
-import { timelineEvents } from "./timeline";
+import { timelineEvents } from "./timeline-events";
 
 const AREAS = {
   PalletTown: { area: "Pallet Town", place: null },
@@ -36,6 +36,9 @@ test("the Timeline shows the Game events of a Run with names, and groups the lev
     { frame: 6400, type: "heal", source: "item", item: "POTION", party: [] },
     { frame: 6500, type: "map", map: "PalletTown" },
     { frame: 7000, type: "whiteout" },
+    { frame: 7100, type: "battle", state: "start", trainer: true },
+    { frame: 10700, type: "battle", state: "end" },
+    { frame: 10800, type: "whiteout" },
   ];
 
   expect(timelineEvents(events, AREAS)).toEqual([
@@ -54,5 +57,6 @@ test("the Timeline shows the Game events of a Run with names, and groups the lev
     { frame: 6200, kind: "place", text: "Viridian City" },
     { frame: 6300, kind: "heal", text: "Healed at the Pokémon Center" },
     { frame: 6400, kind: "heal", text: "Healed with POTION" },
+    { frame: 7100, kind: "trainer", text: "Trainer battle (1:00)" },
   ]);
 });

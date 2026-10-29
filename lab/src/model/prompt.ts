@@ -3,6 +3,7 @@ import { struggles } from "../battle";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { mapNamed } from "../harness/atlas";
+import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
 import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
@@ -323,6 +324,8 @@ function outcome({ result, texts }: Try): string {
 }
 
 function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
+  // The prompt does not use the state events yet.
+  if (isStateEvent(event)) return [];
   switch (event.type) {
     case "action": {
       const { action, result } = event;
@@ -337,7 +340,8 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
       return [`now on map ${event.map}`];
     case "battle":
       return [event.state === "start" ? "a battle starts" : "the battle ends"];
-    default:
+    case "milestone":
+    case "summary":
       return [];
   }
 }

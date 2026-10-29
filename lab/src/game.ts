@@ -19,9 +19,10 @@ import {
   readBattle,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
-import type { Memory, Ref } from "./memory";
+import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
+import { bitAt, type Memory, type Ref } from "./memory";
 import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
-import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies, readWatchedParty, type WatchedMon } from "./party";
+import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
 import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -67,15 +68,7 @@ const PUSH_WARPS: Record<string, { direction: Direction; from: "cell" | "below" 
 const BG_EVENT_HIDDEN_ITEM = 7;
 const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
-const TRAINER_FLAGS_START = 0x500;
-const FLAG_HIDDEN_ITEMS_START = 0x3e8;
-const FLAG_HIDDEN_ITEMS_COUNT = 200;
-const TRAINER_FLAGS_COUNT = 768;
 const VARS_START = 0x4000;
-const RIVAL_CLASSES = new Set([81, 89, 90]);
-const B_OUTCOME_CAUGHT = 7;
-const SPECIES_NONE = 0;
-const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
 // BG_EVENT_PLAYER_FACING_NORTH, _SOUTH, _EAST and _WEST.
@@ -103,9 +96,6 @@ export type GameState = {
 };
 
 export type Camera = { x: number; y: number };
-
-// A map load moves the save blocks, and a frame can end in the middle of the copy.
-export type EventKeys = { blocks: string; money: number; party: Uint8Array; items: Uint8Array; flags: Uint8Array };
 
 export type WaitingFor =
   | { kind: "walk" }
@@ -222,10 +212,6 @@ async function readItemBallFlags(): Promise<number[]> {
 // The ROM data does not change in a process, and the tests open many Games.
 let itemBallFlagsOnce: Promise<number[]> | undefined;
 
-function bitAt(bytes: Uint8Array, id: number): number {
-  return (bytes[id >> 3] >> (id & 7)) & 1;
-}
-
 /** The number of set bits in `count` bits of a flag array, from bit `first`. */
 function countSet(bytes: Uint8Array, first: number, count: number): number {
   let total = 0;
@@ -282,6 +268,7 @@ export class Game {
   private readonly itemBallFlags: number[];
   private readonly attributeCache = new Map<number, Uint32Array>();
   private chart: TypeChart | null = null;
+  private reads: EventReads | null = null;
 
   private constructor(
     private readonly mem: Memory,
@@ -624,7 +611,7 @@ export class Game {
     return this.context().callback2 === "CB2_WhiteOut";
   }
 
-  private context(): GameState["context"] {
+  context(): GameState["context"] {
     const main = this.mem.global("gMain");
     const name = (field: string) => {
       const address = main.field(field).pointer();
@@ -665,59 +652,9 @@ export class Game {
     return countSet(flags, TRAINER_FLAGS_START, TRAINER_FLAGS_COUNT) + itemBalls + countSet(flags, FLAG_HIDDEN_ITEMS_START, FLAG_HIDDEN_ITEMS_COUNT) + countSet(owned, 0, owned.length * 8);
   }
 
-  eventKeys(): EventKeys {
-    const block = this.saveBlock1;
-    // The item PC and the five pockets of the Bag follow each other in SaveBlock1.
-    const first = block.field("pcItems");
-    const last = block.field("bagPocket_Berries");
-    const block2 = this.mem.global("gSaveBlock2Ptr");
-    return {
-      blocks: `${this.mem.global("gSaveBlock1Ptr").pointer()} ${block2.pointer()} ${block2.deref().field("encryptionKey").int()}`,
-      money: this.money(),
-      party: this.mem.global("gPlayerParty").bytes(),
-      items: this.mem.bus.read(first.addr, last.addr + last.size - first.addr),
-      flags: block.field("flags").bytes(),
-    };
-  }
-
-  enemyPartyBytes(): Uint8Array {
-    return this.mem.global("gEnemyParty").bytes();
-  }
-
-  watchedParty(side: "player" | "enemy"): WatchedMon[] | null {
-    return readWatchedParty(this.mem, this.decode, side);
-  }
-
-  flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean } {
-    const set = (id: number) => bitAt(before, id) === 0 && bitAt(after, id) === 1;
-    const trainers = Array.from({ length: TRAINER_FLAGS_COUNT }, (_, i) => i).filter((i) => set(TRAINER_FLAGS_START + i));
-    return { trainers, itemBall: this.itemBallFlags.some(set) };
-  }
-
-  trainerName(id: number): string {
-    const trainer = this.mem.global("gTrainers").at(id);
-    const trainerClass = trainer.field("trainerClass").int();
-    const name = RIVAL_CLASSES.has(trainerClass) ? this.rivalName() : this.decode(trainer.field("trainerName").bytes());
-    return `${this.decode(this.mem.global("gTrainerClassNames").at(trainerClass).bytes())} ${name}`;
-  }
-
-  // The script of a hidden item sets its flag only after its text.
-  hiddenItemPickup(): string | null {
-    const flag = this.mem.global("gSpecialVar_0x8004").int();
-    if (flag < FLAG_HIDDEN_ITEMS_START || flag >= FLAG_HIDDEN_ITEMS_START + FLAG_HIDDEN_ITEMS_COUNT || this.flag(flag)) return null;
-    return this.decode(this.mem.global("gItems").at(this.mem.global("gSpecialVar_0x8005").int()).field("name").bytes());
-  }
-
-  // The buy list puts the item in the Bag first, and takes the money after its text.
-  buying(): boolean {
-    return this.context().callback2 === "CB2_BuyMenu";
-  }
-
-  // A tutorial battle leaves its outcome in memory with species 0 up to the next battle: that is not a catch.
-  caughtSpecies(): string | null {
-    if (this.mem.global("gBattleOutcome").int() !== B_OUTCOME_CAUGHT || this.mem.global("gBattleTypeFlags").int() & TUTORIAL_BATTLES) return null;
-    const species = this.mem.global("gBattleResults").field("caughtMonSpecies").int();
-    return species === SPECIES_NONE ? null : nameAt(this.mem, "gSpeciesNames", species, this.decode);
+  /** The reads that only the Game events use. */
+  eventReads(): EventReads {
+    return (this.reads ??= new EventReads(this, this.mem, this.decode, this.itemBallFlags));
   }
 
   /** Metatile attributes of a tileset, read once per tileset. */

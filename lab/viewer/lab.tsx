@@ -15,7 +15,8 @@ import { BotsPanel, RunSelect } from "./runs";
 import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
 import { clock, stuckTone } from "./stats-lanes";
-import { storedKinds, storeKinds, Timeline, type TimelineKind, timelineEvents } from "./timeline";
+import { availableKinds, Timeline, useStoredKinds } from "./timeline";
+import { timelineEvents } from "./timeline-events";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
@@ -70,7 +71,6 @@ type Entry = { id: string; title: string; icon?: ComponentType<{ size?: number }
 const ZONES = {
   top: { id: "top", title: "Top bar", size: { narrow: "3rem", medium: "3rem", wide: "3rem" }, render: () => <TopBar /> },
   live: { id: "live", title: "Live column", size: { narrow: "auto", medium: "40%", wide: "46%" }, render: () => <LiveColumn /> },
-  timeline: { id: "timeline", title: "Timeline", size: { narrow: "107px", medium: "107px", wide: "107px" }, render: () => <TimelineHost /> },
 } satisfies Record<string, Entry>;
 
 const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
@@ -111,12 +111,8 @@ function LabLayout() {
           ))}
         </div>
       </div>
-      <section
-        aria-label={ZONES.timeline.title}
-        style={sizeVars(ZONES.timeline.size)}
-        class="h-(--narrow) shrink-0 border-t border-line px-4 py-2 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
-      >
-        {ZONES.timeline.render()}
+      <section aria-label="Timeline" class="shrink-0 border-t border-line px-4 py-2">
+        <TimelineHost />
       </section>
     </>
   );
@@ -126,11 +122,14 @@ function TimelineHost() {
   const { data, shared, send } = useLab();
   const { status, events, areas, record } = useStore(data);
   const { cursor, range } = useStore(shared);
-  const [kinds, setKinds] = useState(storedKinds);
+  const [kinds, setKinds] = useStoredKinds();
   const replay = replayOf(status?.shown ?? null);
   const live = status?.frame ?? 0;
   const source = replay && record?.name === replay.name ? record.events : events;
   const shown = useMemo(() => timelineEvents(source, areas), [source, areas]);
+  // A Run that plays has all the Game events. A replay has them only when its record has the format 1.
+  const gameEvents = !replay || replay.gameEvents !== null;
+  const available = useMemo(() => availableKinds(gameEvents), [gameEvents]);
   const [replayAt, setReplayAt] = usePending(replay?.seeking?.to ?? live, (a, b) => Math.abs(a - b) < 120, 2000);
   return (
     <Timeline
@@ -141,12 +140,9 @@ function TimelineHost() {
       reached={replay ? Math.max(replay.reached, live) : undefined}
       selection={range}
       ended={replay?.ended ? replay.endReason : undefined}
-      gameEvents={replay?.gameEvents !== null}
+      available={available}
       kinds={kinds}
-      onKinds={(next: ReadonlySet<TimelineKind>) => {
-        setKinds(next);
-        storeKinds(next);
-      }}
+      onKinds={setKinds}
       onPick={(frame) => {
         if (!replay) return shared.pickFrame(frame);
         setReplayAt(frame);

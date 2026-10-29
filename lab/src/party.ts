@@ -17,7 +17,7 @@ const ABILITY_NUM_BIT = 31;
 const NUM_NATURES = 25;
 const MAX_LEVEL = 100;
 const ITEM_NONE = 0;
-const SPECIES_NONE = 0;
+export const SPECIES_NONE = 0;
 // The Summary screen shows "---" for a power below 2 and for an accuracy of 0 (pokemon_summary_screen.c).
 const MIN_SHOWN_POWER = 2;
 const FIXED_DAMAGE_POWER = 1;
@@ -106,9 +106,8 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
 export type WatchedMon = { personality: number; species: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
 // GetBoxMonData and SetBoxMonData decrypt a box in place, and a frame can end before they encrypt it again.
-export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "enemy"): WatchedMon[] | null {
-  const party = mem.global(side === "player" ? "gPlayerParty" : "gEnemyParty");
-  const count = side === "player" ? Math.min(mem.global("gPlayerPartyCount").int(), PARTY_SIZE) : PARTY_SIZE;
+export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerParty" | "gEnemyParty", count: number): WatchedMon[] | null {
+  const party = mem.global(global);
   const watched: WatchedMon[] = [];
   for (let i = 0; i < count; i++) {
     const mon = party.at(i);

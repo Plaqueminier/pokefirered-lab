@@ -4,31 +4,30 @@ import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import type { REASONING, STARTERS } from "../protocol";
 import { Run, type RunOrigin } from "../run";
-import { STATE_EVENT_TYPES, type StateEvent, StateWatch } from "./game-events";
+import { isStateEvent, type StateEvent, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
+
+export const RECORD_FORMAT = 1;
 
 export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
 export type ButtonHold = [keys: number, frames: number];
 
-export const RECORD_FORMAT = 1;
-
-export type GameEvent = { frame: number } & ({ type: "map"; map: string } | { type: "battle"; state: "start" | "end" } | { type: "milestone"; milestone: Milestone } | StateEvent);
-
-const GAME_EVENT_TYPES = new Set<RunEvent["type"]>(["map", "battle", "milestone", ...STATE_EVENT_TYPES]);
-
-const STATE_TYPES = new Set<RunEvent["type"]>(STATE_EVENT_TYPES);
+/** `trainer`: the battle is against a trainer. A record without the format 1 does not tell it. */
+export type GameEvent = { frame: number } & (
+  | { type: "map"; map: string }
+  | { type: "battle"; state: "start"; trainer?: boolean }
+  | { type: "battle"; state: "end" }
+  | { type: "milestone"; milestone: Milestone }
+  | StateEvent
+);
 
 export function isGameEvent(event: RunEvent): event is GameEvent {
-  return GAME_EVENT_TYPES.has(event.type);
-}
-
-export function isStateEvent(event: RunEvent): boolean {
-  return STATE_TYPES.has(event.type);
+  return event.type === "map" || event.type === "battle" || event.type === "milestone" || isStateEvent(event);
 }
 
 export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
-  return record.format !== undefined;
+  return (record.format ?? 0) >= RECORD_FORMAT;
 }
 
 type Reasoning = (typeof REASONING)[number];
@@ -66,6 +65,7 @@ export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
 
 export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
+// A Run that continues a record without the format 1 writes a record with the format 1: the Game events of the whole Run must be in it.
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
   const merged: RunEvent[] = [];
@@ -143,7 +143,7 @@ export class GameWatch {
   onFrame(frame: number): GameEvent[] {
     const events: GameEvent[] = [];
     const battle = this.game.battleUnderway();
-    if (battle !== this.#battle) events.push({ frame, type: "battle", state: battle ? "start" : "end" });
+    if (battle !== this.#battle) events.push(battle ? { frame, type: "battle", state: "start", trainer: this.game.eventReads().trainerBattle() } : { frame, type: "battle", state: "end" });
     this.#battle = battle;
     const mode = this.game.mode();
     if (mode !== "other") {
@@ -165,6 +165,9 @@ export class GameWatch {
 
 export class RecordPlayer {
   readonly frames: number;
+  readonly gameEvents: GameEvent[];
+  /** False for a record without the format 1. */
+  readonly stateEvents: boolean;
   #frame = 0;
   #hold = 0;
   #inHold = 0;
@@ -174,6 +177,8 @@ export class RecordPlayer {
   constructor(record: RunRecord) {
     this.#record = record;
     this.frames = record.buttons.reduce((frames, [, count]) => frames + count, 0);
+    this.gameEvents = record.events.filter(isGameEvent);
+    this.stateEvents = hasStateEvents(record);
   }
 
   get frame(): number {
@@ -213,14 +218,6 @@ export class RecordPlayer {
     return this.#record.header;
   }
 
-  get gameEvents(): number | null {
-    return hasStateEvents(this.#record) ? this.allGameEvents().length : null;
-  }
-
-  allGameEvents(): GameEvent[] {
-    return this.#record.events.filter(isGameEvent);
-  }
-
   /** The Model calls of the whole record. */
   get modelTotals(): ModelTotals {
     return modelTotals(this.#record.events);
@@ -239,14 +236,15 @@ export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin
   return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
 }
 
-const EVENT_TYPES = new Set<unknown>(["action", "model", "summary", ...GAME_EVENT_TYPES]);
+const EVENT_TYPES = new Set<unknown>(["action", "model", "summary", "map", "battle", "milestone"] satisfies RunEvent["type"][]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function isRunEvent(value: unknown): value is RunEvent {
-  if (!isObject(value) || !Number.isInteger(value.frame) || !EVENT_TYPES.has(value.type)) return false;
+  if (!isObject(value) || !Number.isInteger(value.frame)) return false;
+  if (!EVENT_TYPES.has(value.type) && !(typeof value.type === "string" && isStateEvent({ type: value.type }))) return false;
   return value.type !== "action" || (isObject(value.action) && isObject(value.result));
 }
 

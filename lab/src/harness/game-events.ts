@@ -1,5 +1,7 @@
-import type { EventKeys, Game } from "../game";
+import type { EventKeys, EventReads } from "../event-reads";
+import type { Game } from "../game";
 import type { WatchedMon } from "../party";
+import type { RunEvent } from "./record";
 
 type HealedMon = { species: string; before: number; after: number; maxHp: number };
 
@@ -14,74 +16,139 @@ export type StateEvent =
   | { type: "trainer"; trainer: string; id: number }
   | { type: "whiteout" };
 
-export const STATE_EVENT_TYPES = ["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "whiteout"] as const satisfies StateEvent["type"][];
+const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "whiteout"] satisfies StateEvent["type"][]);
+
+export function isStateEvent<E extends { type: string }>(event: E): event is Extract<E, { type: StateEvent["type"] }> {
+  return STATE_EVENT_TYPES.has(event.type);
+}
+
+/** The Game events that a record without the format 1 has: no state event, and no `trainer` in the start of a battle. */
+export function withoutFormat(events: readonly RunEvent[]): RunEvent[] {
+  return events.filter((event) => !isStateEvent(event)).map((event) => (event.type === "battle" && event.state === "start" ? { frame: event.frame, type: "battle", state: "start" } : event));
+}
 
 type Seen = { keys: EventKeys; party: WatchedMon[]; bag: Map<string, number>; pc: Map<string, number> };
 
 type Mode = ReturnType<Game["mode"]>;
 
+type Moment = { inBattle: boolean; whitingOut: boolean };
+
 export class StateWatch {
+  readonly #game: Game;
+  readonly #reads: EventReads;
+  readonly #battle = new BattleWatch();
+  readonly #levels = new LevelWatch();
+  readonly #pending = new PendingPurchase();
   #seen: Seen | null = null;
-  #levels: WatchedMon[] = [];
-  #enemy: { key: Uint8Array; party: WatchedMon[] } | null = null;
   #inBattle = false;
-  #caught = false;
   #whitingOut = false;
-  #purchase: { item: string; count: number } | null = null;
   #blocks = "";
 
-  constructor(private readonly game: Game) {}
+  constructor(game: Game) {
+    this.#game = game;
+    this.#reads = game.eventReads();
+  }
 
   onFrame(mode: Mode): StateEvent[] {
     const inBattle = mode === "battle";
     const events: StateEvent[] = [];
-    const whitingOut = mode === "other" && this.game.whitingOut();
+    const whitingOut = mode === "other" && this.#game.whitingOut();
     if (whitingOut && !this.#whitingOut) events.push({ type: "whiteout" });
     this.#whitingOut = whitingOut;
-    if (inBattle) events.push(...this.battleEvents());
-    else this.#enemy = null;
-    const keys = this.game.eventKeys();
+    events.push(...this.#battle.onFrame(this.#reads, inBattle));
+    const keys = this.#reads.keys();
     const moving = keys.blocks !== this.#blocks;
     this.#blocks = keys.blocks;
     const seen = this.#seen;
     if (moving) return events;
     if (!seen) {
-      this.#seen = this.read(keys, null);
-      this.#levels = this.#seen?.party ?? [];
+      this.#seen = this.#read(keys, null);
+      this.#levels.reset(this.#seen?.party ?? []);
       return events;
     }
     const partyChanged = !same(keys.party, seen.keys.party);
     if (partyChanged || keys.money !== seen.keys.money || !same(keys.items, seen.keys.items) || !same(keys.flags, seen.keys.flags)) {
-      const now = this.read(keys, seen);
+      const now = this.#read(keys, seen);
       if (!now) return events;
-      events.push(...this.changes(seen, now, inBattle));
+      events.push(...this.#changes(seen, now, { inBattle, whitingOut }));
       this.#seen = now;
     }
-    if (!inBattle && (partyChanged || this.#inBattle)) events.push(...this.levelEvents());
+    if (!inBattle && (partyChanged || this.#inBattle)) events.push(...this.#levels.events(this.#seen?.party ?? []));
     this.#inBattle = inBattle;
     return events;
   }
 
-  private read(keys: EventKeys, seen: Seen | null): Seen | null {
-    const party = seen && same(keys.party, seen.keys.party) ? seen.party : this.game.watchedParty("player");
+  #read(keys: EventKeys, seen: Seen | null): Seen | null {
+    const party = seen && same(keys.party, seen.keys.party) ? seen.party : this.#reads.playerParty();
     if (!party) return null;
     const itemsSame = seen !== null && same(keys.items, seen.keys.items);
     return {
       keys,
       party,
-      bag: itemsSame ? seen.bag : counts(this.game.bag().flatMap((pocket) => pocket.items)),
-      pc: itemsSame ? seen.pc : counts(this.game.pcItems()),
+      bag: itemsSame ? seen.bag : counts(this.#game.bag().flatMap((pocket) => pocket.items)),
+      pc: itemsSame ? seen.pc : counts(this.#game.pcItems()),
     };
   }
 
-  private battleEvents(): StateEvent[] {
+  #changes(before: Seen, after: Seen, moment: Moment): StateEvent[] {
+    const reads = this.#reads;
+    const bag = withoutPcMoves(difference(before.bag, after.bag), difference(before.pc, after.pc));
+    const gained = [...bag].filter(([, count]) => count > 0);
+    const spent = [...bag].filter(([, count]) => count < 0);
+    const money = after.keys.money - before.keys.money;
+    const flags = same(before.keys.flags, after.keys.flags) ? null : reads.flagChanges(before.keys.flags, after.keys.flags);
     const events: StateEvent[] = [];
-    const caught = this.game.caughtSpecies();
+    if (gained.length > 0 && (money < 0 || reads.buying())) this.#pending.remember(gained[0][0], gained[0][1]);
+    else if (gained.length > 0) {
+      const hidden = reads.hiddenItemPickup();
+      for (const [item, count] of gained) events.push({ type: "item", how: flags?.itemBall || hidden === item ? "found" : "received", item, count });
+    }
+    const purchase = money < 0 ? this.#pending.take() : null;
+    if (purchase) events.push({ type: "purchase", ...purchase, money: -money });
+    if (money !== 0) events.push({ type: "money", before: before.keys.money, after: after.keys.money, cause: moneyCause(money, purchase !== null, spent.length > 0, moment) });
+    const used = money === 0 ? (spent[0]?.[0] ?? null) : null;
+    events.push(...this.#partyEvents(before.party, after.party, used, moment));
+    for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: reads.trainerName(id), id });
+    return events;
+  }
+
+  // A level or an evolution adds the same HP to the HP and to the max HP: that is not a heal.
+  #partyEvents(before: WatchedMon[], after: WatchedMon[], item: string | null, { inBattle, whitingOut }: Moment): StateEvent[] {
+    const both = pairs(before, after);
+    const events: StateEvent[] = both.flatMap(([old, mon]): StateEvent[] => (old.hp > 0 && mon.hp === 0 ? [{ type: "faint", species: old.species, side: "player" }] : []));
+    const healed = both.some(([old, mon]) => mon.hp > 0 && (mon.hp - old.hp > Math.max(0, mon.maxHp - old.maxHp) || (old.hp > 0 && old.status !== "none" && mon.status === "none")));
+    // In a battle, only an item heals: a move or the end of a status is not a heal. The whiteout heals the party, and the whiteout event tells it.
+    if (!healed || whitingOut || (inBattle && !item)) return events;
+    const source = item ? "item" : this.#game.map().name.includes("PokemonCenter") ? "center" : "other";
+    events.push({ type: "heal", source, item, party: both.map(([old, mon]) => ({ species: mon.species, before: old.hp, after: mon.hp, maxHp: mon.maxHp })) });
+    return events;
+  }
+}
+
+function moneyCause(change: number, purchase: boolean, sold: boolean, { inBattle, whitingOut }: Moment): Extract<StateEvent, { type: "money" }>["cause"] {
+  if (purchase) return "purchase";
+  if (change > 0 && sold) return "sale";
+  if (inBattle) return "battle";
+  return whitingOut ? "whiteout" : "other";
+}
+
+// The faint of an enemy, and the catch.
+class BattleWatch {
+  #enemy: { key: Uint8Array; party: WatchedMon[] } | null = null;
+  #caught = false;
+
+  onFrame(reads: EventReads, inBattle: boolean): StateEvent[] {
+    if (!inBattle) {
+      this.#enemy = null;
+      return [];
+    }
+    const events: StateEvent[] = [];
+    const caught = reads.caughtSpecies();
     if (caught && !this.#caught) events.push({ type: "catch", species: caught });
     this.#caught = caught !== null;
-    const key = this.game.enemyPartyBytes();
+    const key = reads.enemyPartyBytes();
     if (this.#enemy && same(key, this.#enemy.key)) return events;
-    const party = this.game.watchedParty("enemy");
+    const party = reads.enemyParty();
     if (!party) return events;
     for (const [before, after] of this.#enemy ? pairs(this.#enemy.party, party) : []) {
       if (before.hp > 0 && after.hp === 0) events.push({ type: "faint", species: before.species, side: "enemy" });
@@ -89,55 +156,39 @@ export class StateWatch {
     this.#enemy = { key, party };
     return events;
   }
+}
 
-  private changes(before: Seen, after: Seen, inBattle: boolean): StateEvent[] {
-    const bag = withoutPcMoves(difference(before.bag, after.bag), difference(before.pc, after.pc));
-    const gained = [...bag].filter(([, count]) => count > 0);
-    const spent = [...bag].filter(([, count]) => count < 0);
-    const money = after.keys.money - before.keys.money;
-    const flags = same(before.keys.flags, after.keys.flags) ? null : this.game.flagChanges(before.keys.flags, after.keys.flags);
-    const events: StateEvent[] = [];
-    if (gained.length > 0 && (money < 0 || this.game.buying())) this.#purchase = { item: gained[0][0], count: gained[0][1] };
-    else if (gained.length > 0) {
-      const hidden = this.game.hiddenItemPickup();
-      for (const [item, count] of gained) events.push({ type: "item", how: flags?.itemBall || hidden === item ? "found" : "received", item, count });
-    }
-    const purchase = money < 0 ? this.#purchase : null;
-    if (purchase) {
-      events.push({ type: "purchase", ...purchase, money: -money });
-      this.#purchase = null;
-    }
-    if (money !== 0) {
-      const cause = purchase ? "purchase" : money > 0 && spent.length > 0 ? "sale" : inBattle ? "battle" : this.#whitingOut ? "whiteout" : "other";
-      events.push({ type: "money", before: before.keys.money, after: after.keys.money, cause });
-    }
-    const used = money === 0 ? (spent[0]?.[0] ?? null) : null;
-    events.push(...this.partyEvents(before.party, after.party, inBattle, used));
-    for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: this.game.trainerName(id), id });
-    return events;
+// The level and the evolution: the party outside a battle, against the party at the last check.
+class LevelWatch {
+  #party: WatchedMon[] = [];
+
+  reset(party: WatchedMon[]): void {
+    this.#party = party;
   }
 
-  // A level or an evolution adds the same HP to the HP and to the max HP: that is not a heal.
-  private partyEvents(before: WatchedMon[], after: WatchedMon[], inBattle: boolean, item: string | null): StateEvent[] {
-    const both = pairs(before, after);
-    const events: StateEvent[] = both.flatMap(([old, mon]): StateEvent[] => (old.hp > 0 && mon.hp === 0 ? [{ type: "faint", species: old.species, side: "player" }] : []));
-    const healed = both.some(([old, mon]) => mon.hp > 0 && (mon.hp - old.hp > Math.max(0, mon.maxHp - old.maxHp) || (old.hp > 0 && old.status !== "none" && mon.status === "none")));
-    // In a battle, only an item heals: a move or the end of a status is not a heal. The whiteout heals the party, and the whiteout event tells it.
-    if (!healed || this.#whitingOut || (inBattle && !item)) return events;
-    const source = item ? "item" : this.game.map().name.includes("PokemonCenter") ? "center" : "other";
-    events.push({ type: "heal", source, item, party: both.map(([old, mon]) => ({ species: mon.species, before: old.hp, after: mon.hp, maxHp: mon.maxHp })) });
-    return events;
-  }
-
-  private levelEvents(): StateEvent[] {
-    const party = this.#seen?.party ?? [];
-    const events = pairs(this.#levels, party).flatMap(([old, mon]): StateEvent[] => {
+  events(party: WatchedMon[]): StateEvent[] {
+    const events = pairs(this.#party, party).flatMap(([old, mon]): StateEvent[] => {
       if (mon.level <= old.level && mon.species === old.species) return [];
       const evolution = mon.species === old.species ? null : mon.species;
       return [{ type: "level", species: old.species, from: old.level, level: mon.level, moves: mon.moves.filter((move) => !old.moves.includes(move)), evolution }];
     });
-    this.#levels = party;
+    this.#party = party;
     return events;
+  }
+}
+
+// The buy list puts the item in the Bag in one frame, and takes the money in a later one.
+class PendingPurchase {
+  #item: { item: string; count: number } | null = null;
+
+  remember(item: string, count: number): void {
+    this.#item = { item, count };
+  }
+
+  take(): { item: string; count: number } | null {
+    const item = this.#item;
+    this.#item = null;
+    return item;
   }
 }
 

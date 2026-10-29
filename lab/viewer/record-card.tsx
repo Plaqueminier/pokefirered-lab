@@ -3,6 +3,7 @@ import type { ReplayStatus } from "../src/protocol";
 import { LABEL, Pill } from "./components";
 import { dollars } from "./runs";
 import { clock } from "./stats-lanes";
+import { NO_GAME_EVENTS } from "./timeline-events";
 
 function ReplayState({ replay }: { replay: ReplayStatus }) {
   if (replay.seeking) return <Pill tone="info">jumps to {clock(replay.seeking.to)}…</Pill>;
@@ -24,7 +25,7 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
         ]
       : [{ label: "Model", value: "none (a scripted Bot)" }]),
     ...(continued ? [{ label: "Continues", value: `from ${clock(continued.frame)}`, detail: `${continued.events} events` }] : []),
-    replay.gameEvents === null ? { label: "Game events", value: "No Game events in this record", detail: "only maps, battles and Milestones" } : { label: "Game events", value: String(replay.gameEvents) },
+    replay.gameEvents === null ? { label: "Game events", value: NO_GAME_EVENTS, detail: "only maps, battles and Milestones" } : { label: "Game events", value: String(replay.gameEvents) },
   ];
   return (
     <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">
