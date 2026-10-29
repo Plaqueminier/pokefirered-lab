@@ -47,7 +47,9 @@ export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | nu
 
 export type SummaryEvent = { type: "summary"; frame: number; latencyMs: number } & SummaryAnswer;
 
-export type RunEvent = GameEvent | ({ type: "action"; frame: number } & ActionEntry) | ModelEvent | SummaryEvent;
+export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
+
+export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
 export type ModelTotals = { calls: number } & Usage;
 

@@ -1,5 +1,6 @@
 import { REFLECTION_EVERY } from "../src/model/decision";
 import { GBA_FPS } from "../src/protocol";
+import type { Tone } from "./components";
 import type { Span } from "./cursor";
 import { dollars, tokens } from "./runs";
 import type { Call, StatsView } from "./stats-panel";
@@ -51,6 +52,12 @@ export type StuckLevel = "low" | "mid" | "high";
 export function stuckLevel(stuck: number): StuckLevel {
   if (stuck < REFLECTION_EVERY / 3) return "low";
   return stuck < (2 * REFLECTION_EVERY) / 3 ? "mid" : "high";
+}
+
+const STUCK_TONES: Record<StuckLevel, Tone> = { low: "ok", mid: "warn", high: "bad" };
+
+export function stuckTone(stuck: number): Tone {
+  return STUCK_TONES[stuckLevel(stuck)];
 }
 
 /** A scale up to a limit far above the cost gives a flat curve. `base`: the cost of the parent of a Continued Run, which its limit does not count. */

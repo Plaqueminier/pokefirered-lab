@@ -5,7 +5,7 @@ import { modelBot, unknownScreen } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
-import { modelPanelView } from "../../viewer/model-panel";
+import { modelPanelView } from "../../viewer/model-calls";
 import type { ModelClient } from "./openrouter";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);

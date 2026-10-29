@@ -2,18 +2,20 @@ import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon,
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { GameState } from "../src/game";
-import type { Continuation, ModelEvent, RunEvent } from "../src/harness/record";
+import type { Continuation, RunEvent } from "../src/harness/record";
 import type { ClientMessage, ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, LABEL, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Badges, Button, Card, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
-import { callsStarted, modelCalls, reviewText, turnKind } from "./model-panel";
+import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
+import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
-import { clock, stuckLevel } from "./stats-lanes";
+import { clock, stuckTone } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
-type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
+// The flags of the Model calls, calculated once for each list of events: the panels share them.
+type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; rows: readonly UnusualCall[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
 
 type Lab = { data: Store<LabData>; shared: SharedCursor; send: (message: ClientMessage) => void };
 
@@ -55,7 +57,7 @@ const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
 
 const RAIL: Entry[] = [
   { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy id="map-panel" /> },
-  { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <Legacy id="model-panel" /> },
+  { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <Legacy id="memory-panel" /> },
   { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <Legacy id="replay-panel" /> },
@@ -108,17 +110,18 @@ function costTo(events: readonly RunEvent[], frame: number, from = 0): number {
   return cost;
 }
 
-const STUCK_TONES: Record<ReturnType<typeof stuckLevel>, Tone> = { low: "ok", mid: "warn", high: "bad" };
-
 const MODES = { overworld: "map", battle: "battle", other: "menu" };
 
 function useCursorCall() {
   const { data, shared } = useLab();
   const lab = useStore(data);
   const { cursor } = useStore(shared);
-  const calls = useMemo(() => modelCalls(lab.events).calls, [lab.events]);
+  const calls = useMemo(() => lab.rows.map((row) => row.call), [lab.rows]);
+  const waiting = useMemo(() => modelCalls(lab.events).thinking, [lab.events]);
   const index = callAt(calls, cursor);
-  return { ...lab, cursor, calls, index, call: index === null ? null : (calls[index] ?? null) };
+  const thinking = !cursor && lab.status !== null && waiting(callsStarted(lab.status.shown));
+  const row = index === null ? null : (lab.rows[index] ?? null);
+  return { ...lab, cursor, calls, index, thinking, row, call: row?.call ?? null };
 }
 
 function TopBar() {
@@ -161,7 +164,7 @@ function TopBar() {
                 {call?.stuck === undefined ? (
                   <Pill>Stuck –</Pill>
                 ) : (
-                  <Pill tone={STUCK_TONES[stuckLevel(call.stuck)]}>
+                  <Pill tone={stuckTone(call.stuck)}>
                     Stuck <span class="inline-block min-w-[2ch] text-right">{call.stuck}</span>
                   </Pill>
                 )}
@@ -204,64 +207,10 @@ function TopBar() {
   );
 }
 
-const TURNS: Record<NonNullable<ReturnType<typeof turnKind>>, { text: string; tone: Tone }> = {
-  reflection: { text: "Reflection turn", tone: "warn" },
-  review: { text: "Review turn", tone: "accent" },
-};
-
-function turnOf(call: ModelEvent): { text: string; tone: Tone } | null {
-  const kind = turnKind(call);
-  return kind ? TURNS[kind] : null;
-}
-
-function CallCard({ call, index, count }: { call: ModelEvent; index: number; count: number }) {
-  const turn = turnOf(call);
-  const review = turnKind(call) === "review" ? reviewText(call) : null;
-  const { decision } = call;
-  return (
-    <div class="flex w-[420px] max-w-full flex-col gap-2 text-sm">
-      <div class="flex items-center gap-2">
-        <span class={LABEL}>
-          Model call {index + 1} of {count} · {clock(call.frame)}
-        </span>
-        <span class="ml-auto flex gap-1.5">
-          {call.stuck !== undefined && <Pill tone={STUCK_TONES[stuckLevel(call.stuck)]}>Stuck {call.stuck}</Pill>}
-          {turn && <Pill tone={turn.tone}>{turn.text}</Pill>}
-        </span>
-      </div>
-      {decision ? (
-        <>
-          <p class="font-mono text-accent">→ {decision.action}</p>
-          <p class="leading-relaxed">{decision.reason}</p>
-          <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
-            {(
-              [
-                ["Mission", decision.mission],
-                ["Objective", decision.objective],
-                ["Note", decision.note],
-              ] as const
-            ).map(([term, text]) => (
-              <div key={term} class="contents">
-                <dt class="text-muted">{term}</dt>
-                <dd>{text || "–"}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      ) : (
-        <p class="text-bad">Unreadable answer: {call.error}</p>
-      )}
-      {review && <p class="border-t border-line pt-2 text-xs leading-snug whitespace-pre-line text-muted">{review}</p>}
-      <p class="text-xs text-faint">frame {call.frame.toLocaleString("en-US")}</p>
-    </div>
-  );
-}
-
 function DecisionLine() {
   const { shared } = useLab();
-  const { status, cursor, calls, index, call } = useCursorCall();
-  const thinking = !cursor && status !== null && callsStarted(status.shown) > calls.length;
-  const turn = call && turnOf(call);
+  const { rows, cursor, row, call, thinking } = useCursorCall();
+  const turns = row?.flags.filter(({ flag }) => flag === "reflection" || flag === "review") ?? [];
   const line = (
     <Card size="sm">
       <div class="flex h-5 items-center gap-2.5 text-sm">
@@ -270,7 +219,11 @@ function DecisionLine() {
         <>
           <span class={`max-w-[45%] shrink-0 truncate font-mono ${call.decision ? "text-accent" : "text-bad"}`}>{call.decision?.action ?? "unreadable"}</span>
           <span class="min-w-0 flex-1 truncate text-muted">{call.decision?.reason ?? call.error}</span>
-          {turn && <Pill tone={turn.tone}>{turn.text}</Pill>}
+          {turns.map(({ flag }) => (
+            <Pill key={flag} tone={FLAG_LOOKS[flag].tone}>
+              {FLAG_LOOKS[flag].label} turn
+            </Pill>
+          ))}
         </>
       ) : (
         <span class="flex-1 text-muted">{cursor ? "no Model call at the cursor" : "no Model call yet"}</span>
@@ -279,9 +232,14 @@ function DecisionLine() {
       </div>
     </Card>
   );
+  const card = row && (
+    <div class="w-[420px] max-w-full text-sm">
+      <CallSummary row={row} count={rows.length} />
+    </div>
+  );
   return (
     <div class="flex items-center gap-2">
-      <div class="min-w-0 flex-1">{call && index !== null ? <HoverCard card={<CallCard call={call} index={index} count={calls.length} />}>{line}</HoverCard> : line}</div>
+      <div class="min-w-0 flex-1">{card ? <HoverCard card={card}>{line}</HoverCard> : line}</div>
       {cursor && (
         <Tooltip text="Back to now (Esc)">
           <Button size="sm" variant="ghost" onClick={() => shared.clear()}>
@@ -291,6 +249,12 @@ function DecisionLine() {
       )}
     </div>
   );
+}
+
+function ModelPanelHost() {
+  const { shared } = useLab();
+  const { rows, cursor, index, thinking } = useCursorCall();
+  return <ModelPanel rows={rows} index={index} following={!cursor} thinking={thinking} pick={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
 }
 
 function Party() {
@@ -338,7 +302,7 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
 }
 
 export class LabTab {
-  readonly #data = new Store<LabData>({ status: null, state: null, events: [], statusLine: "connecting…", bots: [], records: [] });
+  readonly #data = new Store<LabData>({ status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [] });
   readonly #toasts = new Store<ToastItem[]>([]);
   #toastId = 0;
 
@@ -377,7 +341,7 @@ export class LabTab {
     for (const event of added ?? []) {
       if (event.type === "milestone") this.#toast({ tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: `${event.milestone} at ${clock(event.frame)}` });
     }
-    this.#patch({ events });
+    this.#patch({ events, rows: unusualCalls(events) });
   }
 
   onStatusLine(statusLine: string): void {

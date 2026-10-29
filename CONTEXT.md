@@ -49,7 +49,7 @@ One request of a model bot to its AI model, and its answer: one action, with a s
 _Avoid_: prompt, turn, step
 
 **Unusual call**:
-A **Model call** that the **Viewer** marks with one or more flags: an answer that the Bot cannot read, an `impossible` or `blocked` action, a **Reflection turn** or a **Review turn**, a cost, a latency or prompt tokens above 3 times the median of its **Run**, a conversation with more turns (`zoom`, `viewAtlas`), a change of the **Mission** or the **Objective**, or the same action 3 times in a row with no progress. The **Viewer** calculates the flags from the **Run record**: they are not in it.
+A **Model call** that the **Viewer** marks with one or more flags: an answer that the Bot cannot read, an `impossible` or `blocked` action, a **Reflection turn** or a **Review turn**, a cost, a latency or prompt tokens above 3 times the median of its **Run**, a conversation with more turns (`zoom`, `viewAtlas`), a change of the **Mission**, or the same action 3 times in a row with no progress. The **Viewer** calculates the flags from the **Run record**: they are not in it.
 _Avoid_: bad call, error (an error is only one of the flags)
 
 **Memory tree**:

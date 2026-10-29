@@ -1,9 +1,8 @@
-import type { RunEvent } from "../src/harness/record";
+import type { ActionEvent, RunEvent } from "../src/harness/record";
 import { actionText, type ClientMessage, type ReplayModel, type ShownRun } from "../src/protocol";
-import { callsStarted, modelCalls } from "./model-panel";
+import { callsStarted, modelCalls } from "./model-calls";
 import { dollars } from "./runs";
 
-type ActionEvent = Extract<RunEvent, { type: "action" }>;
 
 function resultLabel({ result }: ActionEvent): string {
   const reason = "reason" in result ? ` (${result.reason})` : "";

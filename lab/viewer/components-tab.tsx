@@ -1,19 +1,20 @@
-import { BookOpen, Bot, ChartColumn, CircleCheck, Clock, Coins, Copy, Info, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, OctagonAlert, Pause, Play, Rewind, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
+import { Ban, BookOpen, Bot, Brain, ChartColumn, CircleCheck, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, Info, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, OctagonAlert, Pause, Play, Rewind, RotateCcw, Search, Shapes, Square, Trophy } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { PartyMon, PartyMove } from "../src/party";
-import type { RunSummary, ShownRun } from "../src/protocol";
 import {
   Badges,
   Bar,
   Button,
   Card,
   Checkbox,
+  Collapsible,
   ExpBar,
+  FilterChip,
   Field,
   HoverCard,
   Input,
   LABEL,
+  ListRow,
   Metric,
   Num,
   Pill,
@@ -25,6 +26,7 @@ import {
   Tabs,
   Toast,
   Toaster,
+  toggled,
   type Tone,
   Tooltip,
   TYPES,
@@ -32,8 +34,8 @@ import {
   hpTone,
   typeToken,
 } from "./components";
-import { PokemonCard, PokemonSummary } from "./pokemon";
-import { BotsPanel, RunSelect } from "./runs";
+import { PromptText } from "./prompt-text";
+import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RunSelectDemo } from "./components-tab-lab";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
 function colorTokens(): string[] {
@@ -175,8 +177,6 @@ function FieldDemo() {
     </div>
   );
 }
-
-const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
 
 const RUN_OPTIONS = [
   { value: "viewer", label: "Viewer Run (keyboard)", group: "Viewer Run" },
@@ -390,166 +390,6 @@ function CardDemo() {
   );
 }
 
-function move(name: string, type: string, power: number | null, accuracy: number | null, pp: number, maxPp: number, description: string): PartyMove {
-  return { name, type, effect: 0, power, accuracy, pp, maxPp, description };
-}
-
-const TACKLE = move("TACKLE", "NORMAL", 35, 95, 35, 35, "A physical attack in which the user charges, full body, into the foe.");
-const STRING_SHOT = move("STRING SHOT", "BUG", null, 95, 40, 40, "The foe is bound with strings shot from the mouth to reduce its SPEED.");
-
-type MonData = Omit<PartyMon, "nickname" | "heldItem" | "status"> & Partial<Pick<PartyMon, "nickname" | "heldItem" | "status">>;
-
-function mon(data: MonData): PartyMon {
-  return { nickname: data.species, heldItem: null, status: "none", ...data };
-}
-
-const IVYSAUR = mon({
-  species: "IVYSAUR",
-  types: ["GRASS", "POISON"],
-  ability: { name: "OVERGROW", description: "Ups GRASS moves in a pinch." },
-  nature: "JOLLY",
-  level: 18,
-  exp: 3929,
-  levelExp: 3798,
-  expToNextLevel: 646,
-  hp: 53,
-  maxHp: 53,
-  stats: { attack: 32, defense: 29, speed: 33, spAttack: 33, spDefense: 38 },
-  moves: [
-    move("POISONPOWDER", "POISON", null, 75, 33, 35, "A cloud of toxic dust is scattered. It may poison the foe."),
-    move("SLEEP POWDER", "GRASS", null, 75, 1, 15, "A sleep-inducing dust is scattered in high volume around a foe."),
-    move("LEECH SEED", "GRASS", null, 90, 6, 10, "A seed is planted on the foe to steal some HP for the user on every turn."),
-    move("VINE WHIP", "GRASS", 35, 100, 0, 10, "The foe is struck with slender, whip-like vines."),
-  ],
-});
-
-const PARTY: { state: string; mon: PartyMon }[] = [
-  { state: "full HP, 4 moves, a move with 0 PP", mon: IVYSAUR },
-  {
-    state: "a nickname, sleep, 3 moves",
-    mon: mon({
-      nickname: "SHELLY",
-      species: "SQUIRTLE",
-      types: ["WATER"],
-      ability: { name: "TORRENT", description: "Ups WATER moves in a pinch." },
-      heldItem: "ORAN BERRY",
-      nature: "MODEST",
-      status: "sleep",
-      level: 7,
-      exp: 260,
-      levelExp: 236,
-      expToNextLevel: 54,
-      hp: 18,
-      maxHp: 24,
-      stats: { attack: 11, defense: 14, speed: 10, spAttack: 11, spDefense: 13 },
-      moves: [
-        { ...TACKLE, pp: 30 },
-        move("TAIL WHIP", "NORMAL", null, 100, 28, 30, "The user wags its tail cutely, making the foe lower its DEFENSE stat."),
-        move("BUBBLE", "WATER", 20, 100, 25, 30, "A spray of countless bubbles is jetted at the foe. It may lower the foe's SPEED stat."),
-      ],
-    }),
-  },
-  {
-    state: "half HP, freeze, 3 moves",
-    mon: mon({
-      species: "PIKACHU",
-      types: ["ELECTR"],
-      ability: { name: "STATIC", description: "Paralyzes on contact." },
-      nature: "HASTY",
-      status: "freeze",
-      level: 9,
-      exp: 850,
-      levelExp: 729,
-      expToNextLevel: 150,
-      hp: 12,
-      maxHp: 25,
-      stats: { attack: 14, defense: 10, speed: 20, spAttack: 13, spDefense: 13 },
-      moves: [
-        move("THUNDERSHOCK", "ELECTR", 40, 100, 21, 30, "An electric shock attack that may also leave the foe paralyzed."),
-        move("GROWL", "NORMAL", null, 100, 40, 40, "The user growls in a cute way, making the foe lower its ATTACK stat."),
-        move("THUNDER WAVE", "ELECTR", null, 100, 18, 20, "A weak jolt of electricity that paralyzes the foe."),
-      ],
-    }),
-  },
-  {
-    state: "low HP, poison, 2 moves",
-    mon: mon({
-      species: "WEEDLE",
-      types: ["BUG", "POISON"],
-      ability: { name: "SHIELD DUST", description: "Prevents added effects." },
-      nature: "MILD",
-      status: "poison",
-      level: 6,
-      exp: 257,
-      levelExp: 216,
-      expToNextLevel: 86,
-      hp: 4,
-      maxHp: 22,
-      stats: { attack: 10, defense: 9, speed: 11, spAttack: 9, spDefense: 7 },
-      moves: [move("POISON STING", "POISON", 15, 100, 31, 35, "The foe is stabbed with a toxic barb, etc. It may poison the foe."), STRING_SHOT],
-    }),
-  },
-  {
-    state: "burn, 1 move",
-    mon: mon({
-      species: "MAGIKARP",
-      types: ["WATER"],
-      ability: { name: "SWIFT SWIM", description: "Raises SPEED in rain." },
-      nature: "NAIVE",
-      status: "burn",
-      level: 5,
-      exp: 190,
-      levelExp: 156,
-      expToNextLevel: 80,
-      hp: 15,
-      maxHp: 19,
-      stats: { attack: 6, defense: 11, speed: 14, spAttack: 6, spDefense: 7 },
-      moves: [move("SPLASH", "NORMAL", null, null, 40, 40, "The user just flops and splashes around without having any effect.")],
-    }),
-  },
-  {
-    state: "fainted (FNT at 0 HP), 2 moves",
-    mon: mon({
-      species: "CATERPIE",
-      types: ["BUG"],
-      ability: { name: "SHIELD DUST", description: "Prevents added effects." },
-      nature: "BASHFUL",
-      level: 4,
-      exp: 79,
-      levelExp: 64,
-      expToNextLevel: 46,
-      hp: 0,
-      maxHp: 18,
-      stats: { attack: 8, defense: 8, speed: 8, spAttack: 7, spDefense: 6 },
-      moves: [{ ...TACKLE, pp: 32 }, STRING_SHOT],
-    }),
-  },
-  {
-    state: "level 100, paralysis, 4 moves",
-    mon: mon({
-      species: "CHARIZARD",
-      types: ["FIRE", "FLYING"],
-      ability: { name: "BLAZE", description: "Ups FIRE moves in a pinch." },
-      heldItem: "CHARCOAL",
-      nature: "TIMID",
-      status: "paralysis",
-      level: 100,
-      exp: 1059860,
-      levelExp: 1059860,
-      expToNextLevel: 0,
-      hp: 180,
-      maxHp: 297,
-      stats: { attack: 204, defense: 192, speed: 236, spAttack: 254, spDefense: 206 },
-      moves: [
-        move("FLAMETHROWER", "FIRE", 95, 100, 12, 15, "A powerful fire attack that may inflict a burn on the foe."),
-        move("FLY", "FLYING", 70, 95, 15, 15, "A 2-turn move that hits on the 2nd turn. Use it to fly to any known town."),
-        move("EARTHQUAKE", "GROUND", 100, 100, 4, 10, "An earthquake that strikes all POKéMON in battle excluding the user."),
-        move("DRAGON CLAW", "DRAGON", 80, 100, 15, 15, "Sharp, huge claws hook and slash the foe quickly and with great power."),
-      ],
-    }),
-  },
-];
-
 function TypeChipDemo() {
   return (
     <div class="flex flex-col gap-4">
@@ -669,58 +509,6 @@ function PopoverDemo() {
   );
 }
 
-const DEMO_RUNS: RunSummary[] = [
-  {
-    id: 3,
-    bot: "model",
-    playing: true,
-    stopAsked: false,
-    endReason: null,
-    error: null,
-    parent: null,
-    continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "low", starter: "free", cost: 0.37, callsStarted: 120 },
-  },
-  { id: 4, bot: "model", playing: false, stopAsked: false, endReason: "cost limit", error: null, parent: RECORD, continued: null, model: null },
-];
-
-const DEMO_SHOWN: { label: string; shown: ShownRun }[] = [
-  { label: "the Run of the Viewer", shown: { kind: "viewer", replay: null } },
-  { label: "a Run of a Bot that plays", shown: { kind: "bot", run: DEMO_RUNS[0] } },
-  { label: "a replay", shown: { kind: "viewer", replay: { name: RECORD, frames: 1200, ended: false, endReason: "cost limit", model: null, continued: null } } },
-];
-
-function RunSelectDemo() {
-  return (
-    <div class="grid max-w-[720px] gap-4 sm:grid-cols-3">
-      {DEMO_SHOWN.map(({ label, shown }) => (
-        <div key={label}>
-          <p class="mb-1.5 text-xs text-faint">{label}</p>
-          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "starter-3-2026-10-24T08-13-38.892Z.json"]} send={() => {}} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const BOTS_STATES = {
-  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: ["model", "starter"] },
-  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null } as ShownRun, bots: [] },
-};
-
-function BotsDemo() {
-  const [state, setState] = useState<keyof typeof BOTS_STATES>("plays");
-  const { shown, bots } = BOTS_STATES[state];
-  return (
-    <div class="flex flex-col items-start gap-3">
-      <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
-      <PopoverBody>
-        <BotsPanel shown={shown} bots={bots} records={[RECORD]} send={() => {}} />
-      </PopoverBody>
-    </div>
-  );
-}
-
 type DemoToast = { id: number; tone: Tone; icon: ComponentChildren; title: string; text: string };
 
 const TOASTS: Omit<DemoToast, "id">[] = [
@@ -802,46 +590,6 @@ function BadgesDemo() {
   );
 }
 
-function PokemonCardDemo() {
-  const [hp, setHp] = useState(IVYSAUR.hp);
-  return (
-    <div class="flex flex-col gap-4">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {PARTY.map(({ state, mon }, i) => (
-          <div key={state}>
-            <p class="mb-1.5 text-xs text-faint">{state}</p>
-            <PokemonCard mon={i === 0 ? { ...mon, hp } : mon} />
-          </div>
-        ))}
-      </div>
-      <div class="flex gap-2">
-        <Button size="sm" onClick={() => setHp((v) => Math.max(0, v - 12))}>
-          Damage IVYSAUR
-        </Button>
-        <Button size="sm" onClick={() => setHp(IVYSAUR.maxHp)}>
-          Heal
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-const SUMMARY_STATES = [PARTY[0], PARTY[1], PARTY[5], PARTY[6]];
-
-function PokemonSummaryDemo() {
-  const [state, setState] = useState(SUMMARY_STATES[0].state);
-  const shown = SUMMARY_STATES.find((item) => item.state === state) ?? SUMMARY_STATES[0];
-  return (
-    <div class="flex flex-col items-start gap-3">
-      <Tabs kind="segmented" items={SUMMARY_STATES.map((item) => ({ id: item.state, label: item.mon.nickname }))} value={state} onChange={setState} />
-      <p class="text-xs text-faint">{shown.state}</p>
-      <PopoverBody>
-        <PokemonSummary mon={shown.mon} />
-      </PopoverBody>
-    </div>
-  );
-}
-
 function PillDemo() {
   return (
     <div class="flex flex-wrap gap-2">
@@ -889,6 +637,91 @@ function ColorDemo() {
   );
 }
 
+function FilterChipDemo() {
+  const [on, setOn] = useState<Set<string>>(new Set(["review"]));
+  const toggle = (id: string) => setOn(toggled(on, id));
+  return (
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <FilterChip icon={<ClipboardCheck size={13} />} tone="accent" label="Review" count={26} on={on.has("review")} onToggle={() => toggle("review")} />
+        <FilterChip icon={<Ban size={13} />} tone="bad" label="Impossible" count={44} on={on.has("impossible")} onToggle={() => toggle("impossible")} />
+        <FilterChip icon={<Brain size={13} />} tone="warn" label="Reflection" count={0} on={on.has("reflection")} onToggle={() => toggle("reflection")} />
+      </div>
+      <p class="text-xs text-faint">With the label hidden: the Tooltip gives it.</p>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <FilterChip icon={<ClipboardCheck size={13} />} tone="accent" label="Review" hideLabel count={26} on={on.has("review")} onToggle={() => toggle("review")} />
+        <FilterChip icon={<Flame size={13} />} tone="warn" label="Expensive" hideLabel count={74} on={on.has("expensive")} onToggle={() => toggle("expensive")} />
+        <FilterChip icon={<Eye size={13} />} label="No tone, no count" hideLabel on={on.has("plain")} onToggle={() => toggle("plain")} />
+      </div>
+    </div>
+  );
+}
+
+const DEMO_ROWS = [
+  { index: 19, time: "4:21", text: "goTo 6 12" },
+  { index: 20, time: "4:37", text: "fight 1", icons: [<ClipboardCheck key="review" size={13} class="text-accent" />] },
+  { index: 21, time: "4:52", text: "unreadable", error: true, icons: [<Ban key="bad" size={13} class="text-bad" />, <Flame key="flame" size={13} class="text-warn" />] },
+  { index: 22, time: "5:03", text: "interact 8 4 and a long action that does not fit in the row of the list" },
+];
+
+function ListRowDemo() {
+  const [selected, setSelected] = useState(20);
+  return (
+    <div class="flex w-[360px] max-w-full flex-col gap-px">
+      {DEMO_ROWS.map((row) => (
+        <ListRow
+          key={row.index}
+          cells={[
+            { text: String(row.index + 1), chars: 4 },
+            { text: row.time, chars: 7 },
+          ]}
+          text={row.text}
+          error={row.error}
+          icons={row.icons}
+          selected={row.index === selected}
+          onClick={() => setSelected(row.index)}
+        />
+      ))}
+    </div>
+  );
+}
+
+const DEMO_PROMPT = `Your last decisions, oldest first:
+- goTo(6, 4): done. "Oh, okay then!"
+- interact 8 4: impossible: nothing at (8, 4) starts a script
+- Objective: Leave ViridianCity_PokemonCenter_2F by the stairs, then go to #1-2 with zoom <a-b>.
+- Review turn: check the way to the next Milestone, the facts against the Mission, the guesses from the signs and the people, and the team (levels, HP, status, PP).
+{"reason": "The stairs are south.", "action": "go S"}`;
+
+function PromptTextDemo() {
+  return (
+    <div class="flex flex-col gap-3">
+      <p class="text-xs text-faint">Colored (highlight): texts of the game, calls and actions, results, numbers, places, labels. A long line wraps under its own text.</p>
+      <PromptText text={DEMO_PROMPT} highlight />
+      <p class="text-xs text-faint">Plain.</p>
+      <PromptText text={DEMO_PROMPT} />
+    </div>
+  );
+}
+
+function CollapsibleDemo() {
+  const [open, setOpen] = useState<Record<string, boolean>>({ Situation: true });
+  const block = (title: string, icon: ComponentChildren, text: string) => (
+    <Collapsible title={title} icon={icon} detail={`${text.split("\n").length} lines`} open={!!open[title]} onToggle={() => setOpen({ ...open, [title]: !open[title] })}>
+      <PromptText text={text} highlight />
+    </Collapsible>
+  );
+  return (
+    <div class="flex max-w-[560px] flex-col gap-1">
+      {block("Situation", <Eye size={13} />, "The game waits for a walk on Route1 (12, 30).\nThe player faces north.")}
+      {block("Rules", <BookOpen size={13} />, "You play Pokémon FireRed.\nAnswer with JSON only.\n- action: one action of the list.")}
+      <Collapsible title="No icon, no detail" open={!!open.plain} onToggle={() => setOpen({ ...open, plain: !open.plain })}>
+        <p class="px-2 text-sm text-muted">Any content.</p>
+      </Collapsible>
+    </div>
+  );
+}
+
 type Category = "base" | "controls" | "data" | "surfaces" | "lab";
 
 const CATEGORIES: { id: Category; label: string }[] = [
@@ -924,6 +757,12 @@ const ENTRIES: Entry[] = [
     rule: "The indicator slides to the selected tab. Line tabs for the navigation, segmented tabs for a choice of values, a rail of icons for the panels of the Lab tab.",
     demo: () => <TabsDemo />,
   },
+  {
+    category: "controls",
+    title: "FilterChip",
+    rule: "A filter that a click turns on or off: a colored icon, an optional label and a count. On, it has the accent border of a pressed Button. With the label hidden, a Tooltip gives it.",
+    demo: () => <FilterChipDemo />,
+  },
   { category: "data", title: "Pill", rule: "A short state or count. The text has the color of the state, or the accent.", demo: () => <PillDemo /> },
   { category: "data", title: "Bar and number", rule: "The fill moves, and a light trail follows it when the value falls. HP uses the colors of the game. A number counts to its new value.", demo: () => <BarDemo /> },
   {
@@ -933,6 +772,18 @@ const ENTRIES: Entry[] = [
     demo: () => <GameBarDemo />,
   },
   { category: "data", title: "Metric", rule: "A short value of the top bar with an icon and a tooltip. Its number has a fixed width, so it never moves its neighbors.", demo: () => <MetricDemo /> },
+  {
+    category: "data",
+    title: "ListRow",
+    rule: "A row of a list that a click selects: cells with a fixed width at the left, a main text in mono, optional icons at the right. Selected: the accent border all around. An error text is red.",
+    demo: () => <ListRowDemo />,
+  },
+  {
+    category: "data",
+    title: "PromptText",
+    rule: "A text of a prompt in mono on a small Card. With highlight, its parts take the colors of the theme, line by line, as in a code editor.",
+    demo: () => <PromptTextDemo />,
+  },
   { category: "data", title: "Badges", rule: "The 8 badges of the player as dots. A new badge shines.", demo: () => <BadgesDemo /> },
   {
     category: "surfaces",
@@ -940,7 +791,18 @@ const ENTRIES: Entry[] = [
     rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. Size sm for a compact view.",
     demo: () => <CardDemo />,
   },
-  { category: "surfaces", title: "Tooltip", rule: "A short text on hover or keyboard focus. A wide tooltip can have more than one line.", demo: () => <TooltipDemo /> },
+  {
+    category: "surfaces",
+    title: "Tooltip",
+    rule: "A short text on hover or keyboard focus, in the top layer: a panel that scrolls does not cut it. A wide tooltip can have more than one line.",
+    demo: () => <TooltipDemo />,
+  },
+  {
+    category: "surfaces",
+    title: "Collapsible",
+    rule: "A title line that opens and closes its body: a chevron that turns, an optional icon and an optional detail at the right. The panel keeps its state.",
+    demo: () => <CollapsibleDemo />,
+  },
   { category: "surfaces", title: "HoverCard", rule: "A card that opens after a short hover, or at the keyboard focus, next to its trigger.", demo: () => <HoverCardDemo /> },
   { category: "surfaces", title: "Popover", rule: "A panel that a click on its button opens under it. A click outside or Esc closes it.", demo: () => <PopoverDemo /> },
   { category: "surfaces", title: "Toast", rule: "A message at the bottom right, with a border in the color of its tone. It closes after 6 s or with its button; 4 at most.", demo: () => <ToastDemo /> },

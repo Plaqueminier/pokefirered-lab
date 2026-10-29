@@ -4,7 +4,7 @@ import { modelBot } from "../bots/model";
 import { Harness } from "../src/harness/harness";
 import { type ModelEvent, readRecord, RecordPlayer, type RunRecord } from "../src/harness/record";
 import { ROM_FILE, START_SAVE } from "../src/run";
-import { modelPanelView } from "./model-panel";
+import { modelPanelView } from "./model-calls";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);

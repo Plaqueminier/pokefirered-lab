@@ -192,9 +192,13 @@ const TONES: Record<Tone, { text: string; fill: string }> = {
   accent: { text: "text-accent", fill: "bg-accent" },
 };
 
+export function toneText(tone?: Tone): string {
+  return tone ? TONES[tone].text : "text-muted";
+}
+
 export function Pill({ tone, children }: { tone?: Tone; children: ComponentChildren }) {
   return (
-    <span class={`inline-flex h-5 items-center gap-1.5 rounded-full bg-raised px-2 text-xs font-semibold ${tone ? TONES[tone].text : "text-muted"}`}>
+    <span class={`inline-flex h-5 items-center gap-1.5 rounded-full bg-raised px-2 text-xs font-semibold ${toneText(tone)}`}>
       {children}
     </span>
   );
@@ -302,13 +306,32 @@ export function Card({ interactive, size = "md", children }: { interactive?: boo
   );
 }
 
+// In the top layer: the overflow of a panel cuts an absolute tip.
 export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
+  const anchor = `--tooltip-${useAnchorId()}`;
+  const tip = useRef<HTMLSpanElement>(null);
+  const show = () => tip.current?.showPopover();
+  const hide = () => {
+    if (tip.current?.matches(":popover-open")) tip.current.hidePopover();
+  };
   return (
-    <span class={`group relative ${wide ? "flex" : "inline-flex"}`}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only shows the tip of its child.
+    <span
+      class={`relative ${wide ? "flex" : "inline-flex"}`}
+      style={`anchor-name: ${anchor}`}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocusIn={show}
+      onFocusOut={hide}
+      onPointerDown={hide}
+    >
       {children}
       <span
+        ref={tip}
         role="tooltip"
-        class={`pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-10 hidden -translate-x-1/2 rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg group-focus-within:block group-focus-within:animate-rise group-hover:block group-hover:animate-rise ${wide ? "w-max max-w-[300px] leading-snug" : "whitespace-nowrap"}`}
+        popover="manual"
+        style={anchoredStyle(anchor, "margin-bottom: 8px", "top", "flip-block")}
+        class={`pointer-events-none m-0 animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg ${wide ? "w-max max-w-[300px] leading-snug" : "whitespace-nowrap"}`}
       >
         {text}
       </span>
@@ -610,7 +633,7 @@ export function Toast({ tone = "info", icon, title, onClose, children }: { tone?
       class="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] animate-toast items-start gap-3 rounded-card border bg-bg py-3 pr-3 pl-4 shadow-xl"
       style={{ borderColor: `color-mix(in oklab, var(--color-${tone}) 55%, transparent)` }}
     >
-      {icon && <span class={`mt-0.5 shrink-0 ${TONES[tone].text}`}>{icon}</span>}
+      {icon && <span class={`mt-0.5 shrink-0 ${toneText(tone)}`}>{icon}</span>}
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold">{title}</p>
         {children && <p class="mt-0.5 text-sm leading-snug text-muted">{children}</p>}
@@ -651,5 +674,105 @@ export function Badges({ got }: { got: readonly boolean[] | null }) {
         ))}
       </span>
     </Tooltip>
+  );
+}
+
+export function toggled<T>(set: ReadonlySet<T>, item: T): Set<T> {
+  const next = new Set(set);
+  if (!next.delete(item)) next.add(item);
+  return next;
+}
+
+export function FilterChip({
+  icon,
+  tone,
+  label,
+  hideLabel,
+  count,
+  on,
+  onToggle,
+}: {
+  icon: ComponentChildren;
+  tone?: Tone;
+  label: string;
+  hideLabel?: boolean;
+  count?: number;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  const chip = (
+    <Button size="sm" pressed={on} aria-label={hideLabel ? label : undefined} onClick={onToggle}>
+      <span class={`flex ${toneText(tone)}`}>{icon}</span>
+      {!hideLabel && label}
+      {count !== undefined && <span class="font-medium text-faint tabular-nums">{count}</span>}
+    </Button>
+  );
+  return hideLabel ? <Tooltip text={label}>{chip}</Tooltip> : chip;
+}
+
+// Controlled: the panel keeps the state of each block by its id.
+export function Collapsible({
+  title,
+  icon,
+  detail,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon?: ComponentChildren;
+  detail?: ComponentChildren;
+  open: boolean;
+  onToggle: () => void;
+  children: ComponentChildren;
+}) {
+  return (
+    <div class="flex flex-col gap-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        class={`${LABEL} flex h-7 w-full items-center gap-2 rounded-ctl px-2 text-left transition-colors hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35`}
+      >
+        <ChevronDown size={14} class={`shrink-0 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+        {icon && <span class="flex shrink-0">{icon}</span>}
+        <span class="min-w-0 truncate">{title}</span>
+        {detail !== undefined && <span class="ml-auto shrink-0 font-normal tracking-normal text-faint normal-case">{detail}</span>}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+export function ListRow({
+  cells = [],
+  text,
+  error,
+  icons,
+  selected,
+  onClick,
+}: {
+  cells?: { text: string; chars: number }[];
+  text: ComponentChildren;
+  error?: boolean;
+  icons?: ComponentChildren;
+  selected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      class={`flex h-7 w-full min-w-0 shrink-0 items-center gap-2 rounded-ctl border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${selected ? "border-accent bg-raised" : "border-transparent hover:bg-raised"}`}
+    >
+      {cells.map((cell, i) => (
+        <span key={i} class="shrink-0 text-faint tabular-nums" style={{ minWidth: `${cell.chars}ch` }}>
+          {cell.text}
+        </span>
+      ))}
+      <span class={`min-w-0 truncate font-mono ${error ? "text-bad" : "text-fg"}`}>{text}</span>
+      {icons && <span class="ml-auto flex shrink-0 items-center gap-1">{icons}</span>}
+    </button>
   );
 }
