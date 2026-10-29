@@ -36,8 +36,8 @@ type Keyframe = { frame: number; state: Uint8Array; atlas: AtlasWatch };
 type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframe[]; interval: number; reached: number; jump: Jump | null };
 
 const KEYFRAME_FRAMES = 3600;
-// A keyframe is about 470 KB: 64 keep the keyframes of one replay at about 30 MB.
-const MAX_KEYFRAMES = 64;
+// A keyframe is about 470 KB: a replay keeps at most 256, about 120 MB, and a run of 10 hours keeps about 150 at 14,400 frames.
+const MAX_KEYFRAMES = 256;
 const TICK_MS = 12;
 const JUMP_TICK_MS = 40;
 
