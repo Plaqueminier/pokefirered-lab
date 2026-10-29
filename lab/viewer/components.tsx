@@ -121,7 +121,19 @@ const TAB_BUTTONS: Record<TabKind, string> = {
 type Box = { left: number; top: number; width: number; height: number };
 
 // A rail is vertical from 900 px wide, and horizontal under it: its tabs show only their icon, with the label in a tooltip.
-export function Tabs<T extends string>({ items, value, onChange, kind = "line" }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; kind?: TabKind }) {
+export function Tabs<T extends string>({
+  items,
+  value,
+  onChange,
+  kind = "line",
+  disabled,
+}: {
+  items: TabItem<T>[];
+  value: T;
+  onChange: (id: T) => void;
+  kind?: TabKind;
+  disabled?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState<Box | null>(null);
   const index = items.findIndex((item) => item.id === value);
@@ -148,7 +160,7 @@ export function Tabs<T extends string>({ items, value, onChange, kind = "line" }
   }, [index]);
   const rail = kind === "rail";
   return (
-    <div ref={ref} role="tablist" class={`relative ${TAB_LISTS[kind]}`}>
+    <div ref={ref} role="tablist" aria-disabled={disabled} class={`relative ${TAB_LISTS[kind]} ${disabled ? "pointer-events-none opacity-40" : ""}`}>
       {indicator && (
         <span
           class={`absolute transition-[left,top,width,height] duration-300 ease-out ${TAB_INDICATORS[kind]}`}
@@ -163,6 +175,7 @@ export function Tabs<T extends string>({ items, value, onChange, kind = "line" }
             role="tab"
             aria-selected={selected}
             aria-label={rail ? item.label : undefined}
+            disabled={disabled}
             onClick={() => onChange(item.id)}
             class={`relative z-1 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${TAB_BUTTONS[kind]} ${selected ? (rail ? "text-accent" : "text-fg") : "text-muted hover:text-fg"}`}
           >
@@ -245,6 +258,20 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
   );
 }
 
+// The value that the user sent, until the value from the server is the same or the time is over: the control does not flicker back to the old value.
+export function usePending<T>(server: T, same: (a: T, b: T) => boolean, ms: number): [T, (sent: T) => void] {
+  const [pending, setPending] = useState<{ value: T } | null>(null);
+  const sameRef = useRef(same);
+  sameRef.current = same;
+  useEffect(() => {
+    if (!pending) return;
+    if (sameRef.current(server, pending.value)) return void setPending(null);
+    const timer = setTimeout(() => setPending(null), ms);
+    return () => clearTimeout(timer);
+  }, [server, pending, ms]);
+  return [pending ? pending.value : server, (value) => setPending({ value })];
+}
+
 export function Slider({
   value,
   max,
@@ -253,6 +280,7 @@ export function Slider({
   label,
   format = String,
   disabled,
+  live,
   onSeek,
 }: {
   value: number;
@@ -262,19 +290,13 @@ export function Slider({
   label: string;
   format?: (value: number) => string;
   disabled?: boolean;
+  live?: boolean;
   onSeek: (value: number) => void;
 }) {
   const [drag, setDrag] = useState<number | null>(null);
-  // Keep the released value until the value from the server is near it. If not, the thumb goes back to the old frame for a short time.
-  const [sent, setSent] = useState<number | null>(null);
+  const [pending, setPending] = usePending(value, (a, b) => Math.abs(a - b) <= step, 2000);
   const [hover, setHover] = useState<number | null>(null);
-  useEffect(() => {
-    if (sent === null) return;
-    if (Math.abs(value - sent) <= step) return void setSent(null);
-    const timer = setTimeout(() => setSent(null), 2000);
-    return () => clearTimeout(timer);
-  }, [value, sent, step]);
-  const shown = drag ?? sent ?? value;
+  const shown = drag ?? pending;
   // A native range stops at the last multiple of step: the track goes one step further, so the end is reachable.
   const inputMax = Math.ceil(max / step) * step;
   // The center of the 14 px thumb goes from 7 px to the width minus 7 px.
@@ -292,11 +314,16 @@ export function Slider({
         value={shown}
         disabled={disabled}
         style={{ "--value": part(shown), "--reached": reached >= max ? "100%" : part(Math.max(shown, reached)) }}
-        onInput={(event) => setDrag(Number(event.currentTarget.value))}
+        onInput={(event) => {
+          const next = Number(event.currentTarget.value);
+          setDrag(next);
+          if (live) onSeek(Math.min(next, max));
+        }}
         onChange={(event) => {
-          const next = Math.min(Number(event.currentTarget.value), max);
           setDrag(null);
-          setSent(next);
+          if (live) return;
+          const next = Math.min(Number(event.currentTarget.value), max);
+          setPending(next);
           onSeek(next);
         }}
         onPointerMove={(event) => {
@@ -304,6 +331,8 @@ export function Slider({
           setHover(Math.min(Math.round((fraction(event.clientX - box.left, box.width) * inputMax) / step) * step, max));
         }}
         onPointerLeave={() => setHover(null)}
+        // The game ignores keys while an input has the focus: after a drag, the arrows must go to the game again.
+        onPointerUp={(event) => event.currentTarget.blur()}
       />
       {tip !== null && !disabled && (
         <span
@@ -440,14 +469,20 @@ const TIP = "animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 te
 // In the top layer: the overflow of a panel cuts an absolute tip.
 export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
   const anchor = `--tooltip-${useAnchorId()}`;
+  const wrapper = useRef<HTMLSpanElement>(null);
   const tip = useRef<HTMLSpanElement>(null);
   const show = () => tip.current?.showPopover();
   const hide = () => {
     if (tip.current?.matches(":popover-open")) tip.current.hidePopover();
   };
+  // A click hides the tip; when the click changes the text, the pointer is still there to read it.
+  useEffect(() => {
+    if (text && wrapper.current?.matches(":hover") && !tip.current?.matches(":popover-open")) tip.current?.showPopover();
+  }, [text]);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only shows the tip of its child.
     <span
+      ref={wrapper}
       class={`relative max-w-full ${wide ? "flex" : "inline-flex"}`}
       style={`anchor-name: ${anchor}`}
       onMouseEnter={show}
@@ -534,7 +569,7 @@ const LAYER = "m-0 overflow-visible border-0 bg-transparent p-0";
 const OPEN_DELAY = 300;
 const CLOSE_DELAY = 150;
 
-export function HoverCard({ card, children }: { card: ComponentChildren; children: ComponentChildren }) {
+export function HoverCard({ card, control, children }: { card: ComponentChildren; control?: boolean; children: ComponentChildren }) {
   const anchor = `--hover-card-${useAnchorId()}`;
   const popover = useRef<HTMLDivElement>(null);
   const timer = useRef(0);
@@ -550,18 +585,18 @@ export function HoverCard({ card, children }: { card: ComponentChildren; childre
     if (open) element.showPopover();
     else element.hidePopover();
   }, [open]);
+  // A trigger with blocks (a card) cannot be a button element, which holds only a phrase.
+  const trigger = control ? {} : { role: "button" as const, tabIndex: 0, "aria-expanded": open, class: "rounded-card outline-none focus-visible:ring-3 focus-visible:ring-accent/35" };
   return (
-    // biome-ignore lint/a11y/useSemanticElements: the trigger holds a card with blocks, and a button holds only a phrase.
+    // biome-ignore lint/a11y/noStaticElementInteractions: the trigger is the button role of the spread, or the control in the children.
     <div
-      role="button"
-      tabIndex={0}
-      aria-expanded={open}
-      class="rounded-card outline-none focus-visible:ring-3 focus-visible:ring-accent/35"
+      {...trigger}
       style={`anchor-name: ${anchor}`}
       onMouseEnter={() => later(true, OPEN_DELAY)}
       onMouseLeave={() => later(false, CLOSE_DELAY)}
-      onFocus={() => later(true, 0)}
-      onBlur={() => later(false, 0)}
+      // A click also gives the focus: only a keyboard focus opens the card at once, and a blur does not close it under the pointer.
+      onFocusIn={(event) => (event.target as Element).matches(":focus-visible") && later(true, 0)}
+      onFocusOut={(event) => !event.currentTarget.matches(":hover") && later(false, 0)}
     >
       {children}
       <div

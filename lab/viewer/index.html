@@ -67,7 +67,6 @@
         white-space: pre;
         display: none;
       }
-      .controls { display: flex; flex-wrap: wrap; gap: 6px; }
       button {
         background: var(--panel);
         color: var(--text);
@@ -138,9 +137,6 @@
       }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: var(--muted); }
-      #help { display: flex; flex-direction: column; gap: 8px; }
-      .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
-      .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
       .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
       .panel-head h2 { margin: 0; flex: 1; }
       .panel-head input {
@@ -159,12 +155,6 @@
         padding: 6px 10px;
         font: inherit;
         max-width: 320px;
-      }
-      kbd {
-        font: 11px ui-monospace, Menlo, monospace;
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        padding: 0 4px;
       }
       .stats-lanes { user-select: none; cursor: crosshair; }
       .stats-lanes svg { display: block; overflow: visible; }
@@ -277,41 +267,6 @@
         <canvas id="game" width="240" height="160"></canvas>
         <canvas id="overlay" width="720" height="480"></canvas>
       </div>
-      <div class="controls" id="controls">
-        <button id="pause" data-viewer-run>Pause</button>
-        <button data-speed="1" data-viewer-run>×1</button>
-        <button data-speed="4" data-viewer-run>×4</button>
-        <button data-speed="max" data-viewer-run>Max</button>
-        <button id="overlay-toggle">Overlay (G)</button>
-        <button id="sound">Sound (M)</button>
-        <button id="quick-save" data-viewer-run>Save state (K)</button>
-        <button id="quick-load" data-viewer-run>Load state (L)</button>
-        <button id="reset" data-viewer-run>Restart</button>
-        <button id="start-save" data-viewer-run>Write the Starting save</button>
-      </div>
-      <div id="help">
-        <div class="legend" id="legend">
-          <span><span class="swatch" style="background: rgba(224, 70, 70, 0.55)"></span>blocked</span>
-          <span><span class="swatch" style="background: rgba(60, 130, 230, 0.55)"></span>water</span>
-          <span><span class="swatch" style="background: rgba(80, 200, 110, 0.35)"></span>tall grass</span>
-          <span>➜ ledge</span>
-          <span><span class="swatch" style="background: rgba(170, 90, 230, 0.75)"></span>warp (outline: inactive)</span>
-          <span><span class="swatch" style="border-radius: 50%; background: rgba(240, 200, 40, 0.8)"></span>person (hollow: off the screen)</span>
-          <span><span class="swatch" style="background: rgba(60, 170, 80, 0.85)"></span>fixed obstacle (cut tree, rock, boulder)</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)"></span>trainer</span>
-          <span><span class="swatch" style="background: rgba(255, 60, 60, 0.35)"></span>trainer sight</span>
-          <span><span class="swatch" style="border: 2px solid rgba(255, 110, 30, 0.95)"></span>active trigger (!)</span>
-          <span><span class="swatch" style="border: 2px dashed rgba(200, 200, 200, 0.6)"></span>inactive trigger</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(255, 170, 60, 0.85)"></span>sign</span>
-          <span><span class="swatch" style="border-radius: 50%; border: 2px solid rgba(80, 230, 230, 0.9)"></span>hidden item</span>
-          <span><span class="swatch" style="background: rgba(150, 155, 165, 0.8)"></span>never seen (whole map)</span>
-        </div>
-        <div class="muted">
-          Keys: arrows, <kbd>X</kbd> = A, <kbd>W</kbd> or <kbd>Z</kbd> = B, <kbd>Enter</kbd> = Start,
-          <kbd>⌫</kbd> = Select, <kbd>Q</kbd> = L, <kbd>S</kbd> = R, <kbd>G</kbd> = overlay, <kbd>M</kbd> = sound.
-          With the overlay, point at a cell to see its data.
-        </div>
-      </div>
       <section class="map-column" id="map-panel">
         <div class="map-head">
           <h2 id="map-title">Whole map</h2>
@@ -359,7 +314,7 @@
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
             <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps, but only the fixed obstacles seen</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
-            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the decision line (a hover shows the answer of the call), the party and the controls. A rail of icons: Whole map, Model, Stats, Memory tree, Replay (the replay of a Run record, a slider to jump in it, and the facts of the record). One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
+            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the screen controls (pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover), the decision line (a hover shows the answer of the call) and the party. A rail of icons: Whole map, Model, Stats, Memory tree, Replay (the replay of a Run record, a slider to jump in it, and the facts of the record). One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
             <dt>Components</dt><dd>the third tab: the design system of the Viewer (ADR 0004), each component in all its states, also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row and the prompt text with colors; the tooltip is in the top layer. A new part of the Viewer uses these components</dd>
           </dl>
         </section>

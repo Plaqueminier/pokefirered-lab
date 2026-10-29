@@ -49,7 +49,9 @@ export const STATE_INTERVAL_MS = 100;
 /** First byte of a binary message. */
 export const BinaryKind = { Screen: 1, Audio: 2 } as const;
 
-export type Speed = 1 | 4 | "max";
+export const SPEEDS = [1, 2, 4, 8, 16, "max"] as const;
+
+export type Speed = (typeof SPEEDS)[number];
 
 type BotKind = "scripted" | "model";
 

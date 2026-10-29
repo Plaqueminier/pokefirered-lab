@@ -188,7 +188,7 @@ class LivePlay {
     const trim = this.audioOn ? this.rateTrim : 1;
     this.credit += (elapsed / 1000) * GBA_FPS * this.speed * trim;
     // Too far behind (for example after a slow tick): do not try to catch up.
-    if (this.credit > 20) this.credit = 1;
+    if (this.credit > 20 * this.speed) this.credit = 1;
     return Math.floor(this.credit);
   }
 

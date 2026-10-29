@@ -1,9 +1,10 @@
 import { useState } from "preact/hooks";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { RunSummary, ShownRun } from "../src/protocol";
+import type { ClientMessage, RunSummary, ShownRun } from "../src/protocol";
 import { Button, PopoverBody, Tabs } from "./components";
 import { PokemonCard, PokemonSummary } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
+import { ScreenControls, type ScreenRun, type ScreenSettings } from "./screen-controls";
 
 export const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
 
@@ -215,6 +216,33 @@ export function BotsDemo() {
       <PopoverBody>
         <BotsPanel shown={shown} bots={bots} records={[RECORD]} send={() => {}} />
       </PopoverBody>
+    </div>
+  );
+}
+
+export function ScreenControlsDemo() {
+  const [run, setRun] = useState<ScreenRun>({ speed: 1, paused: false, hasQuickState: false, botRun: false, jumping: false });
+  const [settings, setSettings] = useState<ScreenSettings>({ overlay: false, sound: true, soundStarted: true, volume: 0.8 });
+  const actions = {
+    setOverlay: (overlay: boolean) => setSettings((now) => ({ ...now, overlay })),
+    setSound: (sound: boolean) => setSettings((now) => ({ ...now, sound })),
+    setVolume: (volume: number) => setSettings((now) => ({ ...now, volume })),
+  };
+  const send = (message: ClientMessage) => {
+    if (message.type === "speed") setRun((now) => ({ ...now, speed: message.speed }));
+    if (message.type === "pause") setRun((now) => ({ ...now, paused: message.paused }));
+    if (message.type === "quick-save") setRun((now) => ({ ...now, hasQuickState: true }));
+  };
+  return (
+    <div class="flex max-w-[680px] flex-col gap-4">
+      <div>
+        <p class="mb-1.5 text-xs text-faint">The Viewer Run: a hover on the overlay or on "?" shows the legend or the keys. Save state enables Load state.</p>
+        <ScreenControls run={run} settings={settings} actions={actions} send={send} />
+      </div>
+      <div>
+        <p class="mb-1.5 text-xs text-faint">A Run of a Bot: the controls of the Viewer Run are off; the overlay, the sound and the keys stay.</p>
+        <ScreenControls run={{ ...run, botRun: true }} settings={settings} actions={actions} send={() => {}} />
+      </div>
     </div>
   );
 }

@@ -75,6 +75,8 @@ registerProcessor("lab-audio", LabAudio);
 export class AudioOut {
   private context: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
+  private gainNode: GainNode | null = null;
+  private gain = 1;
   private starting: Promise<void> | null = null;
 
   constructor(private readonly onLevel: (ms: number) => void) {}
@@ -92,7 +94,9 @@ export class AudioOut {
     URL.revokeObjectURL(url);
     const node = new AudioWorkletNode(context, "lab-audio", { outputChannelCount: [2] });
     node.port.onmessage = (event) => this.onLevel(event.data as number);
-    node.connect(context.destination);
+    const gainNode = new GainNode(context, { gain: this.gain });
+    node.connect(gainNode).connect(context.destination);
+    this.gainNode = gainNode;
     await context.resume();
     this.context = context;
     this.node = node;
@@ -105,6 +109,12 @@ export class AudioOut {
   /** Takes interleaved stereo 16-bit samples. */
   push(samples: ArrayBuffer): void {
     this.node?.port.postMessage(samples, [samples]);
+  }
+
+  // The ear hears loudness on a log scale, so the gain is volume²; it glides for 20 ms, because a step of the gain clicks.
+  setVolume(volume: number): void {
+    this.gain = volume * volume;
+    if (this.context && this.gainNode) this.gainNode.gain.setTargetAtTime(this.gain, this.context.currentTime, 0.02);
   }
 
   clear(): void {

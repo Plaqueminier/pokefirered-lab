@@ -6,12 +6,15 @@ import { mountComponentsTab } from "./components-tab";
 import { SharedCursor } from "./cursor";
 import { showTooltip } from "./dom";
 import { LabTab } from "./lab";
+import type { ScreenSettings } from "./screen-controls";
 import { describe, draw, howLabel } from "./mapdraw";
 import { StatsPanel } from "./stats-panel";
 import { ViewerTabs } from "./tabs";
-import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage, type Speed } from "../src/protocol";
+import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
 
 const SCALE = 3;
+const VOLUME_KEY = "lab.volume";
+const DEFAULT_VOLUME = 0.8;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const gameCanvas = $<HTMLCanvasElement>("game");
@@ -37,15 +40,14 @@ const KEY_MAP: Record<string, number> = {
 
 let ws: WebSocket;
 let keys = 0;
-let overlayOn = false;
-let paused = false;
+let settings: ScreenSettings = { overlay: false, sound: false, soundStarted: false, volume: storedVolume() };
 let grid: MapGrid | null = null;
 let actors: MapActors | null = null;
 let camera: Camera | null = null;
 let sight: Sight = {};
-let soundOn = false;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
+audio.setVolume(settings.volume);
 
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
@@ -59,7 +61,7 @@ const tabs = new ViewerTabs(
   releaseKeys,
 );
 mountComponentsTab($("components"));
-const lab = new LabTab($("lab"), $("toasts"), shared, send);
+const lab = new LabTab($("lab"), $("toasts"), { shared, send, settings, settingsActions: { setOverlay, setSound, setVolume } });
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -82,8 +84,8 @@ function connect(): void {
     onMessage(JSON.parse(event.data) as ServerMessage);
   };
   ws.onopen = () => {
-    if (overlayOn) send({ type: "overlay", enabled: true });
-    if (soundOn && audio.running) send({ type: "audio", enabled: true });
+    if (settings.overlay) send({ type: "overlay", enabled: true });
+    if (settings.sound && audio.running) send({ type: "audio", enabled: true });
   };
   ws.onclose = () => {
     lab.onStatusLine("disconnected, trying again…");
@@ -94,16 +96,10 @@ function connect(): void {
 function onMessage(message: ServerMessage): void {
   switch (message.type) {
     case "status": {
-      paused = message.paused;
       const run = message.shown.kind === "bot" ? message.shown.run : null;
       // A preview shows the actors of one Run only.
       if ((run?.id ?? null) !== shownRunId && preview) backToPlayer();
       shownRunId = run?.id ?? null;
-      $("pause").classList.toggle("on", paused);
-      for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) b.classList.toggle("on", String(message.speed) === b.dataset.speed);
-      for (const b of document.querySelectorAll<HTMLButtonElement>("[data-viewer-run]")) b.disabled = run !== null;
-      if (!message.hasQuickState) $<HTMLButtonElement>("quick-load").disabled = true;
-      $("sound").classList.toggle("on", soundOn);
       const frame = replayOf(message.shown)?.seeking?.to ?? message.frame;
       const statusLine =
         `${message.rom} · frame ${frame} · ` +
@@ -167,23 +163,22 @@ function onMessage(message: ServerMessage): void {
   }
 }
 
+// No reason here: the tooltip of the sound button tells why no sound plays.
 function soundText(playing: boolean): string {
-  if (!soundOn) return "sound off";
-  if (!audio.running) return "sound: click or press a key";
-  if (playing) return `sound ${Math.round(audioLevel)} ms`;
-  return "sound only at ×1";
+  if (!settings.sound) return "sound off";
+  return playing ? `sound ${Math.round(audioLevel)} ms` : "no sound";
 }
 
 // ---- Overlay on the game screen
 
 function drawOverlay(): void {
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  if (!overlayOn || !grid || !camera) return;
+  if (!settings.overlay || !grid || !camera) return;
   draw(overlayCtx, grid, actors, { x: camera.x * SCALE, y: camera.y * SCALE, cell: 16 * SCALE }, "overlay");
 }
 
 $("screen").addEventListener("mousemove", (event) => {
-  if (!overlayOn || !grid || !camera) return showTooltip(tooltip, null, 0, 0);
+  if (!settings.overlay || !grid || !camera) return showTooltip(tooltip, null, 0, 0);
   const rect = overlayCanvas.getBoundingClientRect();
   const sx = ((event.clientX - rect.left) / rect.width) * 240;
   const sy = ((event.clientY - rect.top) / rect.height) * 160;
@@ -428,9 +423,13 @@ function renderMapLists(): void {
   stops.textContent = stopLines.length ? stopLines.join("\n") : "none";
 }
 
+function changeSettings(next: Partial<ScreenSettings>): void {
+  settings = { ...settings, ...next };
+  lab.onSettings(settings);
+}
+
 function setOverlay(on: boolean): void {
-  overlayOn = on;
-  $("overlay-toggle").classList.toggle("on", on);
+  changeSettings({ overlay: on });
   send({ type: "overlay", enabled: on });
   drawOverlay();
   if (!on) showTooltip(tooltip, null, 0, 0);
@@ -438,13 +437,15 @@ function setOverlay(on: boolean): void {
 
 /** Browsers allow sound only after a click or a key press. */
 function startSound(): void {
-  if (!soundOn || audio.running) return;
-  void audio.start().then(() => send({ type: "audio", enabled: true }));
+  if (!settings.sound || audio.running) return;
+  void audio.start().then(() => {
+    changeSettings({ soundStarted: audio.running });
+    send({ type: "audio", enabled: true });
+  });
 }
 
 function setSound(on: boolean): void {
-  soundOn = on;
-  $("sound").classList.toggle("on", on);
+  changeSettings({ sound: on });
   if (on) {
     startSound();
     if (audio.running) send({ type: "audio", enabled: true });
@@ -454,11 +455,29 @@ function setSound(on: boolean): void {
   }
 }
 
+// localStorage throws when the browser blocks the storage (for example in a private window).
+function storedVolume(): number {
+  try {
+    const volume = Number(localStorage.getItem(VOLUME_KEY) ?? DEFAULT_VOLUME);
+    return Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : DEFAULT_VOLUME;
+  } catch {
+    return DEFAULT_VOLUME;
+  }
+}
+
+function setVolume(volume: number): void {
+  audio.setVolume(volume);
+  changeSettings({ volume });
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  } catch {}
+}
+
 window.addEventListener("pointerdown", startSound);
 
 // The harness trims the Run speed from the queue length (the two clocks drift apart).
 setInterval(() => {
-  if (soundOn && audio.running) send({ type: "audio-level", ms: audioLevel });
+  if (settings.sound && audio.running) send({ type: "audio-level", ms: audioLevel });
 }, 250);
 
 function keyOf(event: KeyboardEvent): number | undefined {
@@ -480,8 +499,8 @@ window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   const key = event.key.toLowerCase();
   if (key === "escape" && !document.querySelector("[popover]:not([popover=manual]):popover-open")) shared.clear();
-  else if (key === "g") setOverlay(!overlayOn);
-  else if (key === "m") setSound(!soundOn);
+  else if (key === "g") setOverlay(!settings.overlay);
+  else if (key === "m") setSound(!settings.sound);
   else if (key === "k") send({ type: "quick-save" });
   else if (key === "l") send({ type: "quick-load" });
 });
@@ -501,24 +520,6 @@ function releaseKeys(): void {
 }
 
 window.addEventListener("blur", releaseKeys);
-
-$("pause").addEventListener("click", () => send({ type: "pause", paused: !paused }));
-for (const b of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
-  b.addEventListener("click", () => {
-    const value = b.dataset.speed!;
-    send({ type: "speed", speed: (value === "max" ? "max" : Number(value)) as Speed });
-  });
-}
-$("overlay-toggle").addEventListener("click", () => setOverlay(!overlayOn));
-$("sound").addEventListener("click", () => setSound(!soundOn));
-$("quick-save").addEventListener("click", () => send({ type: "quick-save" }));
-$("quick-load").addEventListener("click", () => send({ type: "quick-load" }));
-$("reset").addEventListener("click", () => send({ type: "reset" }));
-$("start-save").addEventListener("click", () => {
-  if (confirm("Write the save of the game as the Starting save?\n(Save in the game first. The old Starting save is kept.)")) {
-    send({ type: "write-start-save" });
-  }
-});
 
 // Buttons keep the focus after a click; give it back so Enter goes to the game.
 for (const b of document.querySelectorAll("button")) b.addEventListener("click", () => b.blur());

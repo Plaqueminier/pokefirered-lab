@@ -13,14 +13,18 @@ import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
 import { ReplayPanel } from "./replay-panel";
+import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
 import { clock, stuckTone } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
 // The flags of the Model calls, calculated once for each list of events: the panels share them.
-type LabData = { status: Status | null; state: GameState | null; events: readonly RunEvent[]; rows: readonly UnusualCall[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
+type LabData = { settings: ScreenSettings; status: Status | null; state: GameState | null; events: readonly RunEvent[]; rows: readonly UnusualCall[]; statusLine: string; bots: readonly string[]; records: readonly string[] };
 
-type Lab = { data: Store<LabData>; shared: SharedCursor; send: (message: ClientMessage) => void };
+// What viewer.ts gives to the Lab tab.
+type LabOptions = { shared: SharedCursor; send: (message: ClientMessage) => void; settings: ScreenSettings; settingsActions: ScreenSettingsActions };
+
+type Lab = Omit<LabOptions, "settings"> & { data: Store<LabData> };
 
 const LabContext = createContext<Lab | null>(null);
 
@@ -306,16 +310,22 @@ function Screen() {
   );
 }
 
+function ScreenControlsHost() {
+  const { data, send, settingsActions } = useLab();
+  const { status, settings } = useStore(data);
+  const run = status && { speed: status.speed, paused: status.paused, hasQuickState: status.hasQuickState, botRun: status.shown.kind === "bot", jumping: !!replayOf(status.shown)?.seeking };
+  return <ScreenControls run={run} settings={settings} actions={settingsActions} send={send} />;
+}
+
 function LiveColumn() {
   const { statusLine } = useStore(useLab().data);
   return (
     <div class="flex flex-col gap-3 p-4">
       <Screen />
+      <ScreenControlsHost />
       <DecisionLine />
       <Party />
-      <Legacy id="controls" />
       <p class="font-mono text-xs text-muted">{statusLine}</p>
-      <Legacy id="help" />
     </div>
   );
 }
@@ -339,18 +349,23 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
 }
 
 export class LabTab {
-  readonly #data = new Store<LabData>({ status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [] });
+  readonly #data: Store<LabData>;
   readonly #toasts = new Store<ToastItem[]>([]);
   #toastId = 0;
 
-  constructor(root: HTMLElement, toastRoot: HTMLElement, shared: SharedCursor, send: (message: ClientMessage) => void) {
+  constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [] });
     render(
-      <LabContext.Provider value={{ data: this.#data, shared, send }}>
+      <LabContext.Provider value={{ ...lab, data: this.#data }}>
         <LabLayout />
       </LabContext.Provider>,
       root,
     );
     render(<Toasts toasts={this.#toasts} close={(id) => this.#close(id)} />, toastRoot);
+  }
+
+  onSettings(settings: ScreenSettings): void {
+    this.#patch({ settings });
   }
 
   onBots(bots: readonly string[]): void {
