@@ -75,6 +75,7 @@ const VARS_START = 0x4000;
 // TRAINER_CLASS_RIVAL_EARLY, TRAINER_CLASS_RIVAL_LATE and TRAINER_CLASS_CHAMPION.
 const RIVAL_CLASSES = new Set([81, 89, 90]);
 const B_OUTCOME_CAUGHT = 7;
+const SPECIES_NONE = 0;
 // BATTLE_TYPE_OLD_MAN_TUTORIAL and BATTLE_TYPE_POKEDUDE.
 const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
 const SPECIAL_VARS_START = 0x8000;
@@ -686,7 +687,7 @@ export class Game {
     return this.mem.global("gEnemyParty").bytes();
   }
 
-  watchedParty(side: "player" | "enemy"): WatchedMon[] {
+  watchedParty(side: "player" | "enemy"): WatchedMon[] | null {
     return readWatchedParty(this.mem, this.decode, side);
   }
 
@@ -717,10 +718,14 @@ export class Game {
     return this.context().callback2 === "CB2_BuyMenu";
   }
 
-  /** The species that the player caught in this battle. The tutorials of the Old Man and of the Pokédude catch for the player. */
+  /**
+   * The species that the player caught in this battle. The tutorials of the Old Man and of the Pokédude catch for the player.
+   * A catch writes its species before its outcome. The outcome of a tutorial stays in memory with species 0 up to the start of the next battle: that is not a catch.
+   */
   caughtSpecies(): string | null {
     if (this.mem.global("gBattleOutcome").int() !== B_OUTCOME_CAUGHT || this.mem.global("gBattleTypeFlags").int() & TUTORIAL_BATTLES) return null;
-    return nameAt(this.mem, "gSpeciesNames", this.mem.global("gBattleResults").field("caughtMonSpecies").int(), this.decode);
+    const species = this.mem.global("gBattleResults").field("caughtMonSpecies").int();
+    return species === SPECIES_NONE ? null : nameAt(this.mem, "gSpeciesNames", species, this.decode);
   }
 
   /** Metatile attributes of a tileset, read once per tileset. */

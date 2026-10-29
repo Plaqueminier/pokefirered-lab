@@ -106,29 +106,41 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
 /** What the Game events compare in a party. The personality names one Pokémon through a level, an evolution and a swap. */
 export type WatchedMon = { personality: number; species: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
-/** The enemy party has no count that the game keeps up to date: its empty slots have no species. */
-export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "enemy"): WatchedMon[] {
+/**
+ * The enemy party has no count that the game keeps up to date: its empty slots have no species.
+ * Null when a box has a bad checksum: GetBoxMonData and SetBoxMonData (pokemon.c) decrypt the box in place, and a frame can end before they encrypt it again.
+ */
+export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "enemy"): WatchedMon[] | null {
   const party = mem.global(side === "player" ? "gPlayerParty" : "gEnemyParty");
   const count = side === "player" ? Math.min(mem.global("gPlayerPartyCount").int(), PARTY_SIZE) : PARTY_SIZE;
-  return Array.from({ length: count }, (_, i) => party.at(i)).flatMap((mon): WatchedMon[] => {
+  const watched: WatchedMon[] = [];
+  for (let i = 0; i < count; i++) {
+    const mon = party.at(i);
     const box = mon.field("box");
     const personality = box.field("personality").int();
     const { substructs, growth, attacks } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
+    if (checksum(substructs) !== box.field("checksum").int()) return null;
     const species = substructs.getUint16(growth, true);
-    if (species === SPECIES_NONE) return [];
+    if (species === SPECIES_NONE) continue;
     const moves = Array.from({ length: MAX_MON_MOVES }, (_, slot) => substructs.getUint16(attacks + slot * 2, true)).filter((move) => move !== MOVE_NONE);
-    return [
-      {
-        personality,
-        species: nameAt(mem, "gSpeciesNames", species, decode),
-        level: mon.field("level").int(),
-        hp: mon.field("hp").int(),
-        maxHp: mon.field("maxHP").int(),
-        status: statusOf(mon.field("status").int()),
-        moves: moves.map((move) => nameAt(mem, "gMoveNames", move, decode)),
-      },
-    ];
-  });
+    watched.push({
+      personality,
+      species: nameAt(mem, "gSpeciesNames", species, decode),
+      level: mon.field("level").int(),
+      hp: mon.field("hp").int(),
+      maxHp: mon.field("maxHP").int(),
+      status: statusOf(mon.field("status").int()),
+      moves: moves.map((move) => nameAt(mem, "gMoveNames", move, decode)),
+    });
+  }
+  return watched;
+}
+
+/** CalculateBoxMonChecksum (pokemon.c): the sum of the decrypted substructs, as 16-bit words. */
+function checksum(substructs: DataView): number {
+  let sum = 0;
+  for (let offset = 0; offset < substructs.byteLength; offset += 2) sum += substructs.getUint16(offset, true);
+  return sum & 0xffff;
 }
 
 export function readPcSpecies(mem: Memory, decode: Decode): string[] {

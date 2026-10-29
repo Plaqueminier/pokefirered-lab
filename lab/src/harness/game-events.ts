@@ -51,12 +51,14 @@ export class StateWatch {
     if (moving) return events;
     if (!seen) {
       this.#seen = this.read(keys, null);
-      this.#levels = this.#seen.party;
+      this.#levels = this.#seen?.party ?? [];
       return events;
     }
     const partyChanged = !same(keys.party, seen.keys.party);
     if (partyChanged || keys.money !== seen.keys.money || !same(keys.items, seen.keys.items) || !same(keys.flags, seen.keys.flags)) {
       const now = this.read(keys, seen);
+      // The next frame reads the party again, when the game has encrypted it.
+      if (!now) return events;
       events.push(...this.changes(seen, now, inBattle));
       this.#seen = now;
     }
@@ -65,11 +67,13 @@ export class StateWatch {
     return events;
   }
 
-  private read(keys: EventKeys, seen: Seen | null): Seen {
+  private read(keys: EventKeys, seen: Seen | null): Seen | null {
+    const party = seen && same(keys.party, seen.keys.party) ? seen.party : this.game.watchedParty("player");
+    if (!party) return null;
     const itemsSame = seen !== null && same(keys.items, seen.keys.items);
     return {
       keys,
-      party: seen && same(keys.party, seen.keys.party) ? seen.party : this.game.watchedParty("player"),
+      party,
       bag: itemsSame ? seen.bag : counts(this.game.bag().flatMap((pocket) => pocket.items)),
       pc: itemsSame ? seen.pc : counts(this.game.pcItems()),
     };
@@ -84,6 +88,7 @@ export class StateWatch {
     const key = this.game.enemyPartyBytes();
     if (this.#enemy && same(key, this.#enemy.key)) return events;
     const party = this.game.watchedParty("enemy");
+    if (!party) return events;
     for (const [before, after] of this.#enemy ? pairs(this.#enemy.party, party) : []) {
       if (before.hp > 0 && after.hp === 0) events.push({ type: "faint", species: before.species, side: "enemy" });
     }
