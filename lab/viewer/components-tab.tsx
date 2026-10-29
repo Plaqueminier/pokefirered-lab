@@ -486,6 +486,9 @@ function PillDemo() {
       <Pill tone="bad">impossible</Pill>
       <Pill tone="accent">Review turn</Pill>
       <Pill>717 calls</Pill>
+      <span class="flex w-40">
+        <Pill tone="warn">ended: the text is too long for the box</Pill>
+      </span>
     </div>
   );
 }
@@ -633,7 +636,12 @@ const ENTRIES: Entry[] = [
     rule: "A filter that a click turns on or off: a colored icon, an optional label and a count. On, it has the accent border of a pressed Button. With the label hidden, a Tooltip gives it. Disabled, it is faint, and its Tooltip tells why.",
     demo: () => <FilterChipDemo />,
   },
-  { category: "data", title: "Pill", rule: "A short state or count. The text has the color of the state, or the accent.", demo: () => <PillDemo /> },
+  {
+    category: "data",
+    title: "Pill",
+    rule: "A short state or count. The text has the color of the state, or the accent. A Pill keeps one line: a text too long for the box ends with an ellipsis. Put a long text, as a reason, next to the Pill.",
+    demo: () => <PillDemo />,
+  },
   {
     category: "controls",
     title: "Slider",

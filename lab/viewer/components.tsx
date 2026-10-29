@@ -211,8 +211,8 @@ export function toneText(tone?: Tone): string {
 
 export function Pill({ tone, children }: { tone?: Tone; children: ComponentChildren }) {
   return (
-    <span class={`inline-flex h-5 items-center gap-1.5 rounded-full bg-raised px-2 text-xs font-semibold ${toneText(tone)}`}>
-      {children}
+    <span class={`inline-flex h-5 max-w-full items-center rounded-full bg-raised px-2 text-xs font-semibold ${toneText(tone)}`}>
+      <span class="truncate">{children}</span>
     </span>
   );
 }

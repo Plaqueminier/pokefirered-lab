@@ -128,13 +128,15 @@ function Played({ row }: { row: UnusualCall }) {
         const { result } = entry;
         const texts = "text" in result ? result.text.join(" / ") : "";
         return (
-          <div key={i} class="flex min-w-0 items-center gap-1.5 text-xs">
-            <Pill tone={STATUS_TONES[result.status]}>
-              {result.status}
-              {"reason" in result && `: ${result.reason}`}
-            </Pill>
-            <span class="shrink-0 font-mono text-faint">{actionText(entry.action)}</span>
-            {texts && <span class="min-w-0 truncate text-muted">{texts}</span>}
+          <div key={i} class="flex min-w-0 items-start gap-1.5 text-xs leading-5">
+            <span class="shrink-0">
+              <Pill tone={STATUS_TONES[result.status]}>{result.status}</Pill>
+            </span>
+            <span class="max-w-[45%] shrink-0 truncate font-mono text-faint">{actionText(entry.action)}</span>
+            <span class="min-w-0 flex-1">
+              {"reason" in result && <span class={`block wrap-anywhere ${toneText(STATUS_TONES[result.status])}`}>{result.reason}</span>}
+              {texts && <span class="block truncate text-muted">{texts}</span>}
+            </span>
           </div>
         );
       })}
