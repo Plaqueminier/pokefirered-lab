@@ -103,6 +103,34 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
+/** What the Game events compare in a party. The personality names one Pokémon through a level, an evolution and a swap. */
+export type WatchedMon = { personality: number; species: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
+
+/** The enemy party has no count that the game keeps up to date: its empty slots have no species. */
+export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "enemy"): WatchedMon[] {
+  const party = mem.global(side === "player" ? "gPlayerParty" : "gEnemyParty");
+  const count = side === "player" ? Math.min(mem.global("gPlayerPartyCount").int(), PARTY_SIZE) : PARTY_SIZE;
+  return Array.from({ length: count }, (_, i) => party.at(i)).flatMap((mon): WatchedMon[] => {
+    const box = mon.field("box");
+    const personality = box.field("personality").int();
+    const { substructs, growth, attacks } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
+    const species = substructs.getUint16(growth, true);
+    if (species === SPECIES_NONE) return [];
+    const moves = Array.from({ length: MAX_MON_MOVES }, (_, slot) => substructs.getUint16(attacks + slot * 2, true)).filter((move) => move !== MOVE_NONE);
+    return [
+      {
+        personality,
+        species: nameAt(mem, "gSpeciesNames", species, decode),
+        level: mon.field("level").int(),
+        hp: mon.field("hp").int(),
+        maxHp: mon.field("maxHP").int(),
+        status: statusOf(mon.field("status").int()),
+        moves: moves.map((move) => nameAt(mem, "gMoveNames", move, decode)),
+      },
+    ];
+  });
+}
+
 export function readPcSpecies(mem: Memory, decode: Decode): string[] {
   const boxes = mem.global("gPokemonStoragePtr").deref().field("boxes");
   const first = boxes.at(0).at(0);

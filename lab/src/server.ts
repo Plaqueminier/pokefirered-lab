@@ -320,6 +320,7 @@ function replayStatus({ name, player, continued, reached }: Replay): ReplayStatu
     ended: player.ended,
     model: replayModel(player),
     continued,
+    gameEvents: player.gameEvents,
     reached,
     seeking: live.seeking,
   };

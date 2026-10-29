@@ -70,6 +70,8 @@ export type ReplayStatus = {
   endReason: EndReason;
   model: ReplayModel | null;
   continued: Continuation | null;
+  /** The Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
+  gameEvents: number | null;
   reached: number;
   seeking: Jump | null;
 };

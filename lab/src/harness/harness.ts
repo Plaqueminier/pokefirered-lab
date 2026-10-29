@@ -27,18 +27,23 @@ import { type BlockOf, type Destination, destinationOf, findRoute, inside, type 
 import {
   ButtonTrack,
   GameWatch,
+  hasStateEvents,
+  isGameEvent,
+  isStateEvent,
   type ModelAnswer,
   type ModelEvent,
   type ModelOptions,
   type ModelSettings,
   modelTotals,
   originDifferences,
+  RECORD_FORMAT,
   RecordPlayer,
   type RunEvent,
   type RunHeader,
   type RunRecord,
   type SummaryAnswer,
   type SummaryEvent,
+  withStateEvents,
 } from "./record";
 
 const STEP_FRAME_LIMIT = 60;
@@ -390,7 +395,7 @@ export class Harness {
     if (this.#phase.kind !== "ended") throw new Error("no Run record: play a Bot first");
     const { bot, result } = this.#phase;
     const header = { ...this.#run.origin, knowledge: this.#knowledge, bot, ...(this.#parent ? { parent: this.#parent } : {}) };
-    return { header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
+    return { format: RECORD_FORMAT, header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
   }
 
   waitingFor(): WaitingFor {
@@ -673,9 +678,10 @@ export class Harness {
       this.advance(player.next());
     }
     actionsEnded();
-    const gameEvents = record.events.filter((e) => e.type === "map" || e.type === "battle" || e.type === "milestone");
-    if (!Bun.deepEquals(this.#events, gameEvents)) throw new Error("the Run record does not replay the same game: its map, battle and Milestone events are different");
-    this.#events.splice(0, this.#events.length, ...record.events);
+    // A parent from before RECORD_FORMAT has only the map, battle and Milestone events: the Run adds the others that the replay found.
+    const watched = hasStateEvents(record) ? this.#events : this.#events.filter((e) => !isStateEvent(e));
+    if (!Bun.deepEquals(watched, record.events.filter(isGameEvent))) throw new Error("the Run record does not replay the same game: its Game events are different");
+    this.#events.splice(0, this.#events.length, ...(hasStateEvents(record) ? record.events : withStateEvents(record.events, this.#events)));
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 

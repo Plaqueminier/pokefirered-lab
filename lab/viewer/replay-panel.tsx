@@ -26,6 +26,7 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
         ]
       : [{ label: "Model", value: "none (a scripted Bot)" }]),
     ...(continued ? [{ label: "Continues", value: `from ${clock(continued.frame)}`, detail: `${continued.events} events` }] : []),
+    replay.gameEvents === null ? { label: "Game events", value: "No Game events in this record", detail: "only maps, battles and Milestones" } : { label: "Game events", value: String(replay.gameEvents) },
   ];
   return (
     <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">

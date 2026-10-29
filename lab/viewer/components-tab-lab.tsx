@@ -186,7 +186,7 @@ const DEMO_RUNS: RunSummary[] = [
 const DEMO_SHOWN: { label: string; shown: ShownRun }[] = [
   { label: "the Run of the Viewer", shown: { kind: "viewer", replay: null } },
   { label: "a Run of a Bot that plays", shown: { kind: "bot", run: DEMO_RUNS[0] } },
-  { label: "a replay", shown: { kind: "viewer", replay: { name: RECORD, frames: 1200, ended: false, endReason: "cost limit", model: null, continued: null, reached: 600, seeking: null } } },
+  { label: "a replay", shown: { kind: "viewer", replay: { name: RECORD, frames: 1200, ended: false, endReason: "cost limit", model: null, continued: null, gameEvents: null, reached: 600, seeking: null } } },
 ];
 
 export function RunSelectDemo() {

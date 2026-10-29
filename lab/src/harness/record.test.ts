@@ -4,7 +4,7 @@ import { join } from "node:path";
 import starter from "./scripted-bot";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
-import { isRunRecord, type ModelAnswer, type ModelEvent, RecordPlayer, replay, type RunRecord } from "./record";
+import { isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, RECORD_FORMAT, RecordPlayer, replay, type RunRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -80,7 +80,7 @@ describe("isRunRecord", () => {
 });
 
 describe.skipIf(!ready)("Run record on the Starting save", () => {
-  test("the Run record of the scripted bot has its header, its buttons at each frame and its events; the replay of the buttons alone gives the same map changes, battles and Milestones, the same frames and the same screen", async () => {
+  test("the Run record of the scripted bot has its header, its buttons at each frame and its events; the replay of the buttons alone gives the same Game events, the same frames and the same screen", async () => {
     const { harness, result } = await playStarter();
     const record = harness.record();
 
@@ -96,6 +96,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(actions).toHaveLength(25);
     expect(actions.slice(0, 3)).toEqual(["goTo", "goTo", "readText"]);
     const gameEvents = record.events.filter((e) => e.type !== "action").map(({ frame, ...event }) => event);
+    expect(record.format).toBe(RECORD_FORMAT);
     expect(gameEvents).toEqual([
       { type: "map", map: "PalletTown_PlayersHouse_2F" },
       { type: "map", map: "PalletTown_PlayersHouse_1F" },
@@ -103,14 +104,19 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
       { type: "map", map: "PalletTown_ProfessorOaksLab" },
       { type: "milestone", milestone: "has-pokemon" },
       { type: "battle", state: "start" },
+      { type: "faint", species: "BULBASAUR", side: "enemy" },
+      { type: "money", before: 3000, after: 3080, cause: "battle" },
       { type: "battle", state: "end" },
+      { type: "trainer", trainer: "RIVAL BOB", id: 327 },
+      { type: "level", species: "SQUIRTLE", from: 5, level: 6, moves: [], evolution: null },
+      { type: "heal", source: "other", item: null, party: [{ species: "SQUIRTLE", before: 7, after: 22, maxHp: 22 }] },
       { type: "milestone", milestone: "first-rival-battle" },
     ]);
     const frames = record.events.map((e) => e.frame);
     expect(frames).toEqual(frames.toSorted((a, b) => a - b));
 
     const replayed = await replay(record);
-    expect(replayed.events).toEqual(record.events.filter((e) => e.type === "map" || e.type === "battle" || e.type === "milestone"));
+    expect(replayed.events).toEqual(record.events.filter(isGameEvent));
     expect(replayed.events.length).toBeGreaterThan(0);
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());

@@ -548,6 +548,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     const restored = Math.min(20, maxHp - hp);
     expect(result.text[0]).toBe(`SQUIRTLE's HP was restored by ${restored} point(s).`);
     expect(harness.observe().bag[0].items[0].quantity).toBe(4);
+    expect(harness.events.filter((e) => e.type === "heal").map(({ frame, ...heal }) => heal)).toEqual([{ type: "heal", source: "item", item: "POTION", party: [{ species: "SQUIRTLE", before: hp, after: hp + restored, maxHp }] }]);
   });
 
   test("use POKé BALL throws a ball in a wild battle; after YES at the nickname question, name types the nickname on two pages of the keyboard, and the caught Pokémon joins the party with it", async () => {
@@ -568,6 +569,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
       ["SQUIRTLE", "SQUIRTLE"],
       [enemy.battle.enemy.species, "Bird"],
     ]);
+    expect(harness.events.filter((e) => e.type === "catch").map(({ frame, ...caught }) => caught)).toEqual([{ type: "catch", species: enemy.battle.enemy.species }]);
   });
 
   test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP each time", async () => {

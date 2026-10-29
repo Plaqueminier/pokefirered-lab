@@ -337,8 +337,8 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
       return [`now on map ${event.map}`];
     case "battle":
       return [event.state === "start" ? "a battle starts" : "the battle ends"];
-    case "milestone":
-    case "summary":
+    // The prompt does not use the Game events of RECORD_FORMAT yet.
+    default:
       return [];
   }
 }

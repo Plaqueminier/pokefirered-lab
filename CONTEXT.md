@@ -112,11 +112,11 @@ A story step that the **Harness** reads from the game flags, for example "has a 
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Run record**:
-The file that keeps one **Run**: its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**.
+The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**. A **Run record** from before the format version has only the map, battle and **Milestone** events of the **Game events**.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
-A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a whiteout. Each one has typed fields (species, item, count, money before and after, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
+A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:

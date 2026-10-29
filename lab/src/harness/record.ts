@@ -4,17 +4,35 @@ import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import type { REASONING, STARTERS } from "../protocol";
 import { Run, type RunOrigin } from "../run";
+import { STATE_EVENT_TYPES, type StateEvent, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
 export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
 export type ButtonHold = [keys: number, frames: number];
 
-export type GameEvent = { frame: number } & (
-  | { type: "map"; map: string }
-  | { type: "battle"; state: "start" | "end" }
-  | { type: "milestone"; milestone: Milestone }
-);
+/** The version of the format of a Run record. A Run record from before the heal, purchase, item, catch, faint, level, money, trainer and whiteout events has none. */
+export const RECORD_FORMAT = 1;
+
+export type GameEvent = { frame: number } & ({ type: "map"; map: string } | { type: "battle"; state: "start" | "end" } | { type: "milestone"; milestone: Milestone } | StateEvent);
+
+const GAME_EVENT_TYPES = new Set<RunEvent["type"]>(["map", "battle", "milestone", ...STATE_EVENT_TYPES]);
+
+const STATE_TYPES = new Set<RunEvent["type"]>(STATE_EVENT_TYPES);
+
+export function isGameEvent(event: RunEvent): event is GameEvent {
+  return GAME_EVENT_TYPES.has(event.type);
+}
+
+/** A Game event of RECORD_FORMAT: not a map, battle or Milestone event. */
+export function isStateEvent(event: RunEvent): boolean {
+  return STATE_TYPES.has(event.type);
+}
+
+/** A Run record from before RECORD_FORMAT has only the map, battle and Milestone events. */
+export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
+  return record.format !== undefined;
+}
 
 type Reasoning = (typeof REASONING)[number];
 
@@ -51,6 +69,18 @@ export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
 
 export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
+/** The events of a Run record from before RECORD_FORMAT, with the other Game events of its replay. At a frame, the Game events come before the actions and the calls. */
+export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
+  const added = replayed.filter(isStateEvent);
+  const merged: RunEvent[] = [];
+  let next = 0;
+  for (const event of events) {
+    while (next < added.length && (added[next].frame < event.frame || (added[next].frame === event.frame && !isGameEvent(event)))) merged.push(added[next++]);
+    merged.push(event);
+  }
+  return [...merged, ...added.slice(next)];
+}
+
 export type ModelTotals = { calls: number } & Usage;
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
@@ -83,7 +113,7 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
 /** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
 export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
 
-export type RunRecord = { header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; result: RunResult };
+export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; result: RunResult };
 
 export class ButtonTrack {
   readonly holds: ButtonHold[] = [];
@@ -102,8 +132,11 @@ export class GameWatch {
   #maps = new Set<string>();
   #levels = 0;
   #flags = 0;
+  readonly #state: StateWatch;
 
-  constructor(private readonly game: Game) {}
+  constructor(private readonly game: Game) {
+    this.#state = new StateWatch(game);
+  }
 
   get gameProgress(): number {
     this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
@@ -117,16 +150,19 @@ export class GameWatch {
     if (battle !== this.#battle) events.push({ frame, type: "battle", state: battle ? "start" : "end" });
     this.#battle = battle;
     const mode = this.game.mode();
-    if (mode === "other") return events;
-    const map = this.game.map().name;
-    if (map !== this.#map) events.push({ frame, type: "map", map });
-    this.#maps.add(map);
-    this.#map = map;
-    for (const milestone of this.game.milestones()) {
-      if (this.#milestones.has(milestone)) continue;
-      this.#milestones.add(milestone);
-      events.push({ frame, type: "milestone", milestone });
+    if (mode !== "other") {
+      const map = this.game.map().name;
+      if (map !== this.#map) events.push({ frame, type: "map", map });
+      this.#maps.add(map);
+      this.#map = map;
+      for (const milestone of this.game.milestones()) {
+        if (this.#milestones.has(milestone)) continue;
+        this.#milestones.add(milestone);
+        events.push({ frame, type: "milestone", milestone });
+      }
     }
+    // Before the first map, the game has not loaded the save yet.
+    if (this.#map !== null) events.push(...this.#state.onFrame(mode).map((event) => ({ frame, ...event })));
     return events;
   }
 }
@@ -181,6 +217,11 @@ export class RecordPlayer {
     return this.#record.header;
   }
 
+  /** The Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
+  get gameEvents(): number | null {
+    return hasStateEvents(this.#record) ? this.#record.events.filter(isGameEvent).length : null;
+  }
+
   /** The Model calls of the whole record. */
   get modelTotals(): ModelTotals {
     return modelTotals(this.#record.events);
@@ -199,7 +240,7 @@ export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin
   return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
 }
 
-const EVENT_TYPES = new Set<unknown>(["action", "map", "battle", "milestone", "model", "summary"] satisfies RunEvent["type"][]);
+const EVENT_TYPES = new Set<unknown>(["action", "model", "summary", ...GAME_EVENT_TYPES]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
