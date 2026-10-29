@@ -8,15 +8,20 @@ export type View = { x: number; y: number; cell: number };
 
 export type Style = "overlay" | "map";
 
+/** The parts of a drawing. `draw` with a set of layers draws only these: the videos make each one appear on its own. */
+export type Layer = "lines" | "ground" | "walls" | "water" | "grass" | "ledges" | "fog" | "sight" | "wander" | "triggers" | "signs" | "warps" | "people" | "player" | "connections";
+
 const KIND_FILL: Record<Style, Record<string, string | null>> = {
   overlay: { "#": "rgba(224, 70, 70, 0.45)", "~": "rgba(60, 130, 230, 0.45)", '"': "rgba(80, 200, 110, 0.3)" },
   map: { "#": "#1c1f25", "~": "#2d6cc0", '"': "#3d8a52", ".": "#4a515c", "^": "#4a515c", v: "#4a515c", "<": "#4a515c", ">": "#4a515c" },
 };
 const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
+const KIND_LAYER: Record<string, Layer> = { "#": "walls", "~": "water", '"': "grass", "^": "ledges", v: "ledges", "<": "ledges", ">": "ledges" };
 const NEVER_SEEN = "rgba(150, 155, 165, 0.8)";
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
 
-export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string): void {
+export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string, layers?: ReadonlySet<Layer>): void {
+  const has = (layer: Layer) => !layers || layers.has(layer);
   const { width, height } = ctx.canvas;
   const c = view.cell;
   const px = (x: number) => view.x + x * c;
@@ -35,28 +40,28 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
       if (!visible(x, y)) continue;
       const kind = grid.kinds[gy * grid.width + gx];
       const fill = fills[kind];
-      if (fill) {
+      if (fill && has(KIND_LAYER[kind] ?? "ground")) {
         ctx.fillStyle = fill;
         ctx.fillRect(px(x), py(y), c, c);
       }
       const arrow = LEDGE_ARROW[kind];
-      if (arrow && c >= 8) {
+      if (arrow && c >= 8 && has("ledges")) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
         ctx.font = `bold ${Math.round(c * 0.7)}px ui-sans-serif, system-ui`;
         ctx.fillText(arrow, px(x) + c / 2, py(y) + c / 2);
       }
-      if (c >= 12) {
+      if (c >= 12 && has("lines")) {
         ctx.strokeStyle = style === "overlay" ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.25)";
         ctx.strokeRect(px(x) + 0.5, py(y) + 0.5, c - 1, c - 1);
       }
       const inMap = x >= 0 && y >= 0 && x < grid.mapWidth && y < grid.mapHeight;
-      if (style === "map" && inMap && seen?.[y * grid.mapWidth + x] !== "1") {
+      if (style === "map" && inMap && seen?.[y * grid.mapWidth + x] !== "1" && has("fog")) {
         ctx.fillStyle = NEVER_SEEN;
         ctx.fillRect(px(x), py(y), c, c);
       }
     }
   }
-  if (style === "map") {
+  if (style === "map" && has("fog")) {
     // The border belongs to the neighbor maps: shade it.
     ctx.fillStyle = "rgba(10, 12, 15, 0.55)";
     ctx.fillRect(px(grid.x0), py(grid.y0), grid.width * c, -grid.y0 * c);
@@ -70,11 +75,11 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
 
   // Trainer sight and wander areas, under the people
   for (const p of actors?.people ?? []) {
-    for (const [sx, sy] of p.trainer?.sight ?? []) {
+    for (const [sx, sy] of has("sight") ? (p.trainer?.sight ?? []) : []) {
       ctx.fillStyle = "rgba(255, 60, 60, 0.35)";
       ctx.fillRect(px(sx), py(sy), c, c);
     }
-    if (p.wander && style === "map") {
+    if (p.wander && style === "map" && has("wander")) {
       ctx.setLineDash([Math.max(2, c * 0.2), Math.max(2, c * 0.2)]);
       ctx.strokeStyle = "rgba(240, 200, 40, 0.6)";
       ctx.lineWidth = 1;
@@ -85,7 +90,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
 
   // Triggers: solid when active, dashed when not
   grid.triggers.forEach((t, i) => {
-    if (t.weather) return;
+    if (t.weather || !has("triggers")) return;
     const active = actors?.triggers[i];
     ctx.lineWidth = line * 1.5;
     ctx.strokeStyle = active ? "rgba(255, 110, 30, 0.95)" : "rgba(200, 200, 200, 0.5)";
@@ -101,6 +106,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
 
   // Signs and hidden items
   grid.signs.forEach((s, i) => {
+    if (!has("signs")) return;
     const found = actors?.signs[i]?.found;
     ctx.strokeStyle = s.kind === "hidden-item" ? (found ? "rgba(150, 150, 150, 0.6)" : "rgba(80, 230, 230, 0.9)") : "rgba(255, 170, 60, 0.85)";
     ctx.lineWidth = line;
@@ -110,7 +116,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   });
 
   // Warps: filled when they work, outlined when the cell does not warp
-  for (const w of grid.warps) {
+  for (const w of has("warps") ? grid.warps : []) {
     ctx.fillStyle = "rgba(170, 90, 230, 0.75)";
     ctx.strokeStyle = "rgba(170, 90, 230, 0.75)";
     ctx.lineWidth = line;
@@ -139,16 +145,18 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
       ctx.stroke();
     }
   };
-  for (const p of actors?.people ?? []) {
+  for (const p of has("people") ? (actors?.people ?? []) : []) {
     const ring = p.trainer ? (p.trainer.defeated ? "rgba(150, 150, 150, 0.9)" : "rgba(255, 60, 60, 0.95)") : "rgba(240, 200, 40, 0.95)";
     person(p.x, p.y, p.facing, p.loaded ? "rgba(240, 200, 40, 0.75)" : null, ring);
   }
-  ctx.fillStyle = "rgba(60, 170, 80, 0.85)";
-  for (const o of actors?.obstacles ?? []) ctx.fillRect(px(o.x) + inset, py(o.y) + inset, c - 2 * inset, c - 2 * inset);
-  if (actors?.player) person(actors.player.x, actors.player.y, actors.player.facing, "rgba(255, 255, 255, 0.95)", "rgba(232, 100, 60, 1)");
+  if (has("walls")) {
+    ctx.fillStyle = "rgba(60, 170, 80, 0.85)";
+    for (const o of actors?.obstacles ?? []) ctx.fillRect(px(o.x) + inset, py(o.y) + inset, c - 2 * inset, c - 2 * inset);
+  }
+  if (actors?.player && has("player")) person(actors.player.x, actors.player.y, actors.player.facing, "rgba(255, 255, 255, 0.95)", "rgba(232, 100, 60, 1)");
 
   // Connections, as labels on the edges
-  if (style === "map" && c >= 4) {
+  if (style === "map" && c >= 4 && has("connections")) {
     ctx.font = `600 ${Math.round(13 * (window.devicePixelRatio || 1))}px ui-sans-serif, system-ui`;
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     for (const conn of grid.connections) {
