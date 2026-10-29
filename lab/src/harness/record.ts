@@ -11,7 +11,6 @@ export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
 export type ButtonHold = [keys: number, frames: number];
 
-/** The version of the format of a Run record. A Run record from before the heal, purchase, item, catch, faint, level, money, trainer and whiteout events has none. */
 export const RECORD_FORMAT = 1;
 
 export type GameEvent = { frame: number } & ({ type: "map"; map: string } | { type: "battle"; state: "start" | "end" } | { type: "milestone"; milestone: Milestone } | StateEvent);
@@ -24,12 +23,10 @@ export function isGameEvent(event: RunEvent): event is GameEvent {
   return GAME_EVENT_TYPES.has(event.type);
 }
 
-/** A Game event of RECORD_FORMAT: not a map, battle or Milestone event. */
 export function isStateEvent(event: RunEvent): boolean {
   return STATE_TYPES.has(event.type);
 }
 
-/** A Run record from before RECORD_FORMAT has only the map, battle and Milestone events. */
 export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
   return record.format !== undefined;
 }
@@ -69,7 +66,6 @@ export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
 
 export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
-/** The events of a Run record from before RECORD_FORMAT, with the other Game events of its replay. At a frame, the Game events come before the actions and the calls. */
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
   const merged: RunEvent[] = [];
@@ -217,12 +213,10 @@ export class RecordPlayer {
     return this.#record.header;
   }
 
-  /** The number of Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
   get gameEvents(): number | null {
     return hasStateEvents(this.#record) ? this.allGameEvents().length : null;
   }
 
-  /** The Game events of the whole record, also after the frame of the replay. */
   allGameEvents(): GameEvent[] {
     return this.#record.events.filter(isGameEvent);
   }

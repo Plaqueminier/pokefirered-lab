@@ -310,7 +310,6 @@ function battle(minute: number, minutes: number, trainer?: string): RunEvent[] {
 
 const at = (minute: number) => Math.round(minute * MINUTE);
 
-// battle() gives the end of a battle and its trainer event before the events between them: sort the list by frame.
 function byFrame(events: RunEvent[]): RunEvent[] {
   return events.toSorted((a, b) => a.frame - b.frame);
 }

@@ -70,7 +70,6 @@ export type ReplayStatus = {
   endReason: EndReason;
   model: ReplayModel | null;
   continued: Continuation | null;
-  /** The Game events of the whole record; null for a Run record from before RECORD_FORMAT. */
   gameEvents: number | null;
   reached: number;
   seeking: Jump | null;
@@ -115,7 +114,6 @@ export type ServerMessage =
   | { type: "records"; names: string[] }
   | { type: "bots"; bots: BotInfo[] }
   | { type: "areas"; areas: Areas }
-  /** The Game events of the whole Run record of a replay, for the Timeline. Sent once when the replay starts. */
   | { type: "replay-events"; name: string; events: GameEvent[] }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   /** `quiet`: the events after a jump; the Viewer gives no toast for them. */

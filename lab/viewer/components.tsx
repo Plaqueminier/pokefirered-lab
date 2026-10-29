@@ -464,7 +464,6 @@ export function Cover({
   );
 }
 
-/** The look of a tip: the Tooltip, the Slider and the Timeline use it. */
 export const TIP = "animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg";
 
 // In the top layer: the overflow of a panel cuts an absolute tip.

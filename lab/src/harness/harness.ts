@@ -678,7 +678,6 @@ export class Harness {
       this.advance(player.next());
     }
     actionsEnded();
-    // A parent from before RECORD_FORMAT has only the map, battle and Milestone events: the Run adds the others that the replay found.
     const watched = hasStateEvents(record) ? this.#events : this.#events.filter((e) => !isStateEvent(e));
     if (!Bun.deepEquals(watched, record.events.filter(isGameEvent))) throw new Error("the Run record does not replay the same game: its Game events are different");
     this.#events.splice(0, this.#events.length, ...(hasStateEvents(record) ? record.events : withStateEvents(record.events, this.#events)));

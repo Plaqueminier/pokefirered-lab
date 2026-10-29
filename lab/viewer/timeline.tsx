@@ -1,4 +1,3 @@
-// The Timeline at the bottom of the Lab tab: the Game events of the shown Run as icons on one track. A click moves the cursor, or jumps the replay.
 import { ChevronsUp, CircleDot, Gift, Heart, MapPin, PawPrint, ShoppingBag, Skull, Sparkles, Swords, Trophy } from "lucide-preact";
 import type { ComponentChildren, ComponentType } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
@@ -14,7 +13,6 @@ export type TimelineEvent = { frame: number; kind: TimelineKind; text: string };
 
 type KindLook = { id: TimelineKind; label: string; icon: ComponentType<{ size?: number }>; tone?: Tone; on: boolean };
 
-// In the order of importance: a group shows the icon of its most important event.
 const KINDS: KindLook[] = [
   { id: "milestone", label: "Milestones", icon: Trophy, tone: "warn", on: true },
   { id: "faint", label: "Fainted Pokémon", icon: Skull, tone: "bad", on: true },
@@ -35,7 +33,6 @@ const LOOKS = new Map(KINDS.map((kind) => [kind.id, kind]));
 
 const KINDS_KEY = "lab.timeline";
 
-// localStorage throws when the browser blocks the storage (for example in a private window).
 export function storedKinds(): ReadonlySet<TimelineKind> {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(KINDS_KEY) ?? "null");
@@ -50,7 +47,6 @@ export function storeKinds(kinds: ReadonlySet<TimelineKind>): void {
   } catch {}
 }
 
-/** The kinds that a Run record from before the Game events of RECORD_FORMAT has. */
 const OLD_KINDS = new Set<TimelineKind>(["milestone", "place"]);
 
 const MILESTONE_NAMES: Record<Milestone, string> = {
@@ -67,21 +63,18 @@ const MILESTONE_NAMES: Record<Milestone, string> = {
   "badge-8": "Giovanni",
 };
 
-// "RIVAL BOB" → "Rival Bob". The items keep the case of the game.
 function titleCase(name: string): string {
   return name.toLowerCase().replace(/(^|[\s.-])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
 }
 
 type Battle = { from: number; to: number | null; area: string; trainer: string | null };
 
-/** The events of the Timeline, in the order of their frames. The level-ups of one Pokémon and the wild battles of one stay in an Area make one event, at the first one. */
 export function timelineEvents(events: readonly RunEvent[], areas: Areas): TimelineEvent[] {
   const shown: TimelineEvent[] = [];
   const battles: Battle[] = [];
   const visited = new Set<string>();
   let area = "";
   let stay = 0;
-  // By species, for the current stay: the event and the first level.
   const levels = new Map<string, { event: TimelineEvent; from: number }>();
   for (const event of events) {
     switch (event.type) {
@@ -159,7 +152,6 @@ export function timelineEvents(events: readonly RunEvent[], areas: Areas): Timel
   return shown.sort((a, b) => a.frame - b.frame);
 }
 
-// ---- The view
 
 type Group = { x: number; events: TimelineEvent[]; top: TimelineEvent };
 
@@ -169,7 +161,6 @@ const DRAG = 4;
 const MAX_LINES = 8;
 const INSET = 8;
 
-// Icons closer than GROUP_GAP px make one group.
 function groupsOf(events: readonly TimelineEvent[], x: (frame: number) => number): Group[] {
   const groups: Group[] = [];
   for (const event of events) {
@@ -215,7 +206,6 @@ function EventLines({ events }: { events: readonly TimelineEvent[] }) {
   );
 }
 
-// The tip follows the pointer, as the tip of the Slider. Near an end of the track, it stays inside it.
 function Tip({ x, width, children }: { x: number; width: number; children: ComponentChildren }) {
   const align = x < 160 ? "-translate-x-4" : x > width - 160 ? "-translate-x-[calc(100%-16px)]" : "-translate-x-1/2";
   return (
@@ -241,17 +231,12 @@ function useWidth() {
 
 export type TimelineProps = {
   events: readonly TimelineEvent[];
-  /** The last frame: the frame of a live Run, or the frames of a Run record. */
   end: number;
-  /** The frame of the thumb: the cursor, or the frame of the replay or of the Run. */
   at: number;
   cursor: boolean;
-  /** In a replay: the frames that the replay played. */
   reached?: number;
   selection: Span | null;
-  /** In a replay that ended: the end reason of the Run record. */
   ended?: string;
-  /** False for a Run record from before the Game events: only the Milestones and the new places. */
   gameEvents: boolean;
   kinds: ReadonlySet<TimelineKind>;
   onKinds: (kinds: ReadonlySet<TimelineKind>) => void;

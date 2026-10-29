@@ -20,7 +20,6 @@ import { storedKinds, storeKinds, Timeline, type TimelineKind, timelineEvents } 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
 // The flags of the Model calls, calculated once for each list of events: the panels share them.
-// `record`: the Game events of the whole Run record of the last replay.
 type LabData = {
   settings: ScreenSettings;
   status: Status | null;
@@ -123,7 +122,6 @@ function LabLayout() {
   );
 }
 
-// In a replay, a click jumps the screen: the cursor goes back to now, so the panels follow the frame of the replay. Else it moves the cursor only.
 function TimelineHost() {
   const { data, shared, send } = useLab();
   const { status, events, areas, record } = useStore(data);
@@ -161,7 +159,6 @@ function TimelineHost() {
   );
 }
 
-// Always in the top bar, so nothing moves when a replay starts or ends.
 function RecordButton() {
   const { status } = useStore(useLab().data);
   const replay = replayOf(status?.shown ?? null);

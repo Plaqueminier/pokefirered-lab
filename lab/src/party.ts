@@ -103,13 +103,9 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
-/** What the Game events compare in a party. The personality names one Pokémon through a level, an evolution and a swap. */
 export type WatchedMon = { personality: number; species: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
-/**
- * The enemy party has no count that the game keeps up to date: its empty slots have no species.
- * Null when a box has a bad checksum: GetBoxMonData and SetBoxMonData (pokemon.c) decrypt the box in place, and a frame can end before they encrypt it again.
- */
+// GetBoxMonData and SetBoxMonData decrypt a box in place, and a frame can end before they encrypt it again.
 export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "enemy"): WatchedMon[] | null {
   const party = mem.global(side === "player" ? "gPlayerParty" : "gEnemyParty");
   const count = side === "player" ? Math.min(mem.global("gPlayerPartyCount").int(), PARTY_SIZE) : PARTY_SIZE;
@@ -136,7 +132,6 @@ export function readWatchedParty(mem: Memory, decode: Decode, side: "player" | "
   return watched;
 }
 
-/** CalculateBoxMonChecksum (pokemon.c): the sum of the decrypted substructs, as 16-bit words. */
 function checksum(substructs: DataView): number {
   let sum = 0;
   for (let offset = 0; offset < substructs.byteLength; offset += 2) sum += substructs.getUint16(offset, true);

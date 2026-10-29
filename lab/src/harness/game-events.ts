@@ -1,17 +1,14 @@
-// The Game events that the Harness reads from the party, the Bag, the money and the flags, next to the map, battle and Milestone events.
 import type { EventKeys, Game } from "../game";
 import type { WatchedMon } from "../party";
 
 type HealedMon = { species: string; before: number; after: number; maxHp: number };
 
-/** `item`: the item of a heal with an item, else null. `party`: the HP of each Pokémon of the party before and after the heal. */
 export type StateEvent =
   | { type: "heal"; source: "center" | "item" | "other"; item: string | null; party: HealedMon[] }
   | { type: "purchase"; item: string; count: number; money: number }
   | { type: "item"; how: "found" | "received"; item: string; count: number }
   | { type: "catch"; species: string }
   | { type: "faint"; species: string; side: "player" | "enemy" }
-  /** `from`: the level before. `moves`: the moves learned since then. `evolution`: the new species, else null. */
   | { type: "level"; species: string; from: number; level: number; moves: string[]; evolution: string | null }
   | { type: "money"; before: number; after: number; cause: "purchase" | "sale" | "battle" | "whiteout" | "other" }
   | { type: "trainer"; trainer: string; id: number }
@@ -23,7 +20,6 @@ type Seen = { keys: EventKeys; party: WatchedMon[]; bag: Map<string, number>; pc
 
 type Mode = ReturnType<Game["mode"]>;
 
-/** Reads the full state only when its raw bytes change. A battle keeps its level events to its end, with all the moves learned in it. */
 export class StateWatch {
   #seen: Seen | null = null;
   #levels: WatchedMon[] = [];
@@ -57,7 +53,6 @@ export class StateWatch {
     const partyChanged = !same(keys.party, seen.keys.party);
     if (partyChanged || keys.money !== seen.keys.money || !same(keys.items, seen.keys.items) || !same(keys.flags, seen.keys.flags)) {
       const now = this.read(keys, seen);
-      // The next frame reads the party again, when the game has encrypted it.
       if (!now) return events;
       events.push(...this.changes(seen, now, inBattle));
       this.#seen = now;
@@ -81,7 +76,6 @@ export class StateWatch {
 
   private battleEvents(): StateEvent[] {
     const events: StateEvent[] = [];
-    // The outcome of the last battle stays in memory up to the start of the next one: only a change to a catch counts.
     const caught = this.game.caughtSpecies();
     if (caught && !this.#caught) events.push({ type: "catch", species: caught });
     this.#caught = caught !== null;
@@ -147,7 +141,6 @@ export class StateWatch {
   }
 }
 
-// A plain loop: this compare runs at each frame.
 function same(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
@@ -169,7 +162,6 @@ function difference(before: Map<string, number>, after: Map<string, number>): Ma
   return changes;
 }
 
-/** The changes of the Bag without the items that went to the item PC or came from it. */
 function withoutPcMoves(bag: Map<string, number>, pc: Map<string, number>): Map<string, number> {
   const left = new Map<string, number>();
   for (const [name, change] of bag) {
@@ -180,7 +172,6 @@ function withoutPcMoves(bag: Map<string, number>, pc: Map<string, number>): Map<
   return left;
 }
 
-/** Each Pokémon that is in the two parties, by its personality. */
 function pairs(before: WatchedMon[], after: WatchedMon[]): [WatchedMon, WatchedMon][] {
   return after.flatMap((mon): [WatchedMon, WatchedMon][] => {
     const old = before.find((o) => o.personality === mon.personality);

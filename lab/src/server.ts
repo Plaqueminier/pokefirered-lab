@@ -32,11 +32,9 @@ const AUDIO_TARGET_MS = 60;
 
 type Keyframe = { frame: number; state: Uint8Array; atlas: AtlasWatch };
 
-/** `interval`: the frames between two keyframes. It doubles when the keyframes are more than MAX_KEYFRAMES. */
 type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframe[]; interval: number; reached: number; jump: Jump | null };
 
 const KEYFRAME_FRAMES = 3600;
-// A keyframe is about 470 KB: a replay keeps at most 256, about 120 MB, and a run of 10 hours keeps about 150 at 14,400 frames.
 const MAX_KEYFRAMES = 256;
 const TICK_MS = 12;
 const JUMP_TICK_MS = 40;
@@ -95,7 +93,6 @@ class LivePlay {
     return this.activeReplay?.jump ?? null;
   }
 
-  // Past MAX_KEYFRAMES, keep every second keyframe (frame 0 stays) and double the interval of this replay.
   private keepKeyframe(replay: Replay): void {
     replay.keyframes.push({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() });
     if (replay.keyframes.length <= MAX_KEYFRAMES) return;

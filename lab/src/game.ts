@@ -72,11 +72,9 @@ const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 const FLAG_HIDDEN_ITEMS_COUNT = 200;
 const TRAINER_FLAGS_COUNT = 768;
 const VARS_START = 0x4000;
-// TRAINER_CLASS_RIVAL_EARLY, TRAINER_CLASS_RIVAL_LATE and TRAINER_CLASS_CHAMPION.
 const RIVAL_CLASSES = new Set([81, 89, 90]);
 const B_OUTCOME_CAUGHT = 7;
 const SPECIES_NONE = 0;
-// BATTLE_TYPE_OLD_MAN_TUTORIAL and BATTLE_TYPE_POKEDUDE.
 const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
 const SPECIAL_VARS_START = 0x8000;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
@@ -106,7 +104,7 @@ export type GameState = {
 
 export type Camera = { x: number; y: number };
 
-/** `blocks`: the place of the save blocks and their encryption key. A map load moves the blocks, and a frame can end in the copy. */
+// A map load moves the save blocks, and a frame can end in the middle of the copy.
 export type EventKeys = { blocks: string; money: number; party: Uint8Array; items: Uint8Array; flags: Uint8Array };
 
 export type WaitingFor =
@@ -667,7 +665,6 @@ export class Game {
     return countSet(flags, TRAINER_FLAGS_START, TRAINER_FLAGS_COUNT) + itemBalls + countSet(flags, FLAG_HIDDEN_ITEMS_START, FLAG_HIDDEN_ITEMS_COUNT) + countSet(owned, 0, owned.length * 8);
   }
 
-  /** The raw bytes of what the Game events compare: a cheap test at each frame. The full reads run only when they change. */
   eventKeys(): EventKeys {
     const block = this.saveBlock1;
     // The item PC and the five pockets of the Bag follow each other in SaveBlock1.
@@ -691,14 +688,12 @@ export class Game {
     return readWatchedParty(this.mem, this.decode, side);
   }
 
-  /** The trainers beaten and the item balls taken between two copies of the flags. */
   flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean } {
     const set = (id: number) => bitAt(before, id) === 0 && bitAt(after, id) === 1;
     const trainers = Array.from({ length: TRAINER_FLAGS_COUNT }, (_, i) => i).filter((i) => set(TRAINER_FLAGS_START + i));
     return { trainers, itemBall: this.itemBallFlags.some(set) };
   }
 
-  /** The class and the name of a trainer, as the battle shows them: the rival has the name of the save. */
   trainerName(id: number): string {
     const trainer = this.mem.global("gTrainers").at(id);
     const trainerClass = trainer.field("trainerClass").int();
@@ -706,22 +701,19 @@ export class Game {
     return `${this.decode(this.mem.global("gTrainerClassNames").at(trainerClass).bytes())} ${name}`;
   }
 
-  /** The item of the hidden item that the player picks up now: its script sets its flag only after the text. */
+  // The script of a hidden item sets its flag only after its text.
   hiddenItemPickup(): string | null {
     const flag = this.mem.global("gSpecialVar_0x8004").int();
     if (flag < FLAG_HIDDEN_ITEMS_START || flag >= FLAG_HIDDEN_ITEMS_START + FLAG_HIDDEN_ITEMS_COUNT || this.flag(flag)) return null;
     return this.decode(this.mem.global("gItems").at(this.mem.global("gSpecialVar_0x8005").int()).field("name").bytes());
   }
 
-  /** The buy list of a Poké Mart puts the item in the Bag first, and takes the money after its text. */
+  // The buy list puts the item in the Bag first, and takes the money after its text.
   buying(): boolean {
     return this.context().callback2 === "CB2_BuyMenu";
   }
 
-  /**
-   * The species that the player caught in this battle. The tutorials of the Old Man and of the Pokédude catch for the player.
-   * A catch writes its species before its outcome. The outcome of a tutorial stays in memory with species 0 up to the start of the next battle: that is not a catch.
-   */
+  // A tutorial battle leaves its outcome in memory with species 0 up to the next battle: that is not a catch.
   caughtSpecies(): string | null {
     if (this.mem.global("gBattleOutcome").int() !== B_OUTCOME_CAUGHT || this.mem.global("gBattleTypeFlags").int() & TUTORIAL_BATTLES) return null;
     const species = this.mem.global("gBattleResults").field("caughtMonSpecies").int();

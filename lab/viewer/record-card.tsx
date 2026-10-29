@@ -40,7 +40,6 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
   );
 }
 
-/** The card of the Run record of a replay, in the HoverCard of the button next to the Run select. */
 export function RecordCard({ replay }: { replay: ReplayStatus }) {
   return (
     <div class="flex w-[460px] max-w-full flex-col gap-3">

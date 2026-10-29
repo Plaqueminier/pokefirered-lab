@@ -9,9 +9,9 @@ import { loadSymbols } from "./symbols";
 const ELF_FILE = ROM_FILE.replace(/\.gba$/, ".elf");
 const ROM_START = 0x08000000;
 const RAM_START = 0x02000000;
-const RAM_SIZE = 0x01010000; // EWRAM and IWRAM (0x03000000)
+const RAM_SIZE = 0x01010000;
 const SPECIES_BULBASAUR = 1;
-const PERSONALITY = 24; // The order of the substructs is growth, attacks, EVs, misc.
+const PERSONALITY = 24;
 const OT_ID = 0x1234abcd;
 
 const decode = (bytes: Uint8Array) => bytes.join(",");
