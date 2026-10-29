@@ -136,7 +136,6 @@
         text-transform: uppercase;
         color: var(--muted);
       }
-      .big { font-size: 18px; font-weight: 600; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: var(--muted); }
       #help { display: flex; flex-direction: column; gap: 8px; }
@@ -152,7 +151,6 @@
         padding: 6px 10px;
         font: inherit;
       }
-      #replay-status { white-space: pre-line; }
       .panel-head select {
         background: var(--panel);
         color: var(--text);
@@ -162,8 +160,6 @@
         font: inherit;
         max-width: 320px;
       }
-      #model { color: var(--accent); white-space: pre-wrap; }
-      #events { max-height: 180px; overflow: auto; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
       kbd {
         font: 11px ui-monospace, Menlo, monospace;
         border: 1px solid var(--line);
@@ -316,17 +312,6 @@
           With the overlay, point at a cell to see its data.
         </div>
       </div>
-      <section id="replay-panel">
-        <div class="panel-head">
-          <h2>Replay</h2>
-          <button id="replay-end" hidden>Back to the keyboard</button>
-        </div>
-        <div class="mono muted" id="replay-status"></div>
-        <div class="big" id="action">–</div>
-        <pre class="list muted" id="action-detail"></pre>
-        <div id="model"></div>
-        <pre class="list" id="events"></pre>
-      </section>
       <section class="map-column" id="map-panel">
         <div class="map-head">
           <h2 id="map-title">Whole map</h2>
@@ -374,7 +359,7 @@
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
             <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps, but only the fixed obstacles seen</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
-            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the decision line (a hover shows the answer of the call), the party and the controls. A rail of icons: Whole map, Model, Stats, Memory tree, Replay. One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
+            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the decision line (a hover shows the answer of the call), the party and the controls. A rail of icons: Whole map, Model, Stats, Memory tree, Replay (the replay of a Run record, a slider to jump in it, and the facts of the record). One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call moves them, Esc takes them back to now. A toast at each notice and each new Milestone</dd>
             <dt>Components</dt><dd>the third tab: the design system of the Viewer (ADR 0004), each component in all its states, also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row and the prompt text with colors; the tooltip is in the top layer. A new part of the Viewer uses these components</dd>
           </dl>
         </section>

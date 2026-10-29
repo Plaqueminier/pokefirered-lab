@@ -13,6 +13,7 @@ import {
   type ClientMessage,
   DEFAULT_STARTER,
   GBA_FPS,
+  type Jump,
   type ReplayModel,
   type ReplayStatus,
   type RunSummary,
@@ -29,7 +30,13 @@ const AUDIO_RATE = 48000;
 // The Viewer keeps this much audio queued; the Run speed is trimmed to hold it there.
 const AUDIO_TARGET_MS = 60;
 
-type Replay = { name: string; player: RecordPlayer; continued: Continuation | null };
+type Keyframe = { frame: number; state: Uint8Array; atlas: AtlasWatch };
+
+type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframe[]; reached: number; jump: Jump | null };
+
+const KEYFRAME_FRAMES = 3600;
+const TICK_MS = 12;
+const JUMP_TICK_MS = 40;
 
 class LivePlay {
   keys = 0;
@@ -57,7 +64,7 @@ class LivePlay {
   }
 
   async reset(): Promise<void> {
-    this.activeReplay = null;
+    this.endReplay();
     await this.run.reset();
     this.atlas = new AtlasWatch(this.run.game);
     this.resyncClock();
@@ -68,7 +75,8 @@ class LivePlay {
     // No await from here on: a tick in between would run frames that the record does not have.
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) return differences;
-    this.activeReplay = { name, player: new RecordPlayer(record), continued };
+    this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: [], reached: 0, jump: null };
+    this.keepKeyframe(this.activeReplay);
     this.speed = 1;
     this.paused = false;
     this.syncAudio();
@@ -77,6 +85,46 @@ class LivePlay {
 
   endReplay(): void {
     this.activeReplay = null;
+    this.syncAudio();
+  }
+
+  get seeking(): Jump | null {
+    return this.activeReplay?.jump ?? null;
+  }
+
+  private keepKeyframe(replay: Replay): void {
+    replay.keyframes.push({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() });
+  }
+
+  // A jump starts from a keyframe or from now, so the replay plays each new frame in order: the keyframes come in order.
+  private onReplayFrame(replay: Replay): void {
+    const frame = this.run.frame;
+    if (frame <= replay.reached) return;
+    replay.reached = frame;
+    if (frame % KEYFRAME_FRAMES === 0) this.keepKeyframe(replay);
+  }
+
+  seek(target: number): void {
+    const replay = this.activeReplay;
+    if (!replay) return;
+    const frame = Math.max(0, Math.min(Math.round(target), replay.player.frames));
+    const now = this.run.frame;
+    const key = replay.keyframes.findLast((k) => k.frame <= frame);
+    const fromNow = key === undefined || (key.frame <= now && now <= frame);
+    if (!fromNow) {
+      if (!this.run.core.loadState(key.state)) return;
+      replay.player.seek(key.frame);
+      this.atlas = key.atlas.clone();
+    }
+    replay.jump = frame === now ? null : { from: this.run.frame, to: frame };
+    this.resyncClock();
+    this.syncAudio();
+  }
+
+  private endJump(replay: Replay): void {
+    replay.jump = null;
+    this.resyncClock();
+    this.syncAudio();
   }
 
   get replay(): Replay | null {
@@ -96,7 +144,7 @@ class LivePlay {
 
   /** Audio only at normal speed: at other speeds it would sound wrong. */
   get audioActive(): boolean {
-    return this.audioWanted && this.speed === 1 && !this.paused;
+    return this.audioWanted && this.speed === 1 && !this.paused && !this.seeking;
   }
 
   syncAudio(): void {
@@ -110,18 +158,10 @@ class LivePlay {
   tick(now: number): number {
     const elapsed = now - this.lastTick;
     this.lastTick = now;
-    if (this.paused) return 0;
-    let due: number;
-    if (this.speed === "max") {
-      due = Number.POSITIVE_INFINITY;
-    } else {
-      const trim = this.audioOn ? this.rateTrim : 1;
-      this.credit += (elapsed / 1000) * GBA_FPS * this.speed * trim;
-      // Too far behind (for example after a slow tick): do not try to catch up.
-      if (this.credit > 20) this.credit = 1;
-      due = Math.floor(this.credit);
-    }
-    const budgetEnd = now + 12;
+    const replay = this.activeReplay;
+    const jump = replay?.jump ?? null;
+    const due = jump ? jump.to - this.run.frame : this.clockDue(elapsed);
+    const budgetEnd = now + (jump ? JUMP_TICK_MS : TICK_MS);
     let ran = 0;
     while (ran < due && performance.now() < budgetEnd) {
       const keys = this.nextKeys();
@@ -129,14 +169,27 @@ class LivePlay {
       this.run.runFrame(keys);
       this.atlas.onFrame();
       ran++;
+      if (replay) this.onReplayFrame(replay);
     }
-    if (this.speed !== "max") this.credit -= ran;
+    if (replay && jump) {
+      if (this.run.frame >= jump.to || replay.player.ended) this.endJump(replay);
+    } else if (this.speed !== "max") this.credit -= ran;
     this.fpsWindow.frames += ran;
     if (now - this.fpsWindow.start >= 1000) {
       this.fpsWindow.value = Math.round((this.fpsWindow.frames * 1000) / (now - this.fpsWindow.start));
       this.fpsWindow = { start: now, frames: 0, value: this.fpsWindow.value };
     }
     return ran;
+  }
+
+  private clockDue(elapsed: number): number {
+    if (this.paused) return 0;
+    if (this.speed === "max") return Number.POSITIVE_INFINITY;
+    const trim = this.audioOn ? this.rateTrim : 1;
+    this.credit += (elapsed / 1000) * GBA_FPS * this.speed * trim;
+    // Too far behind (for example after a slow tick): do not try to catch up.
+    if (this.credit > 20) this.credit = 1;
+    return Math.floor(this.credit);
   }
 
   get fps(): number {
@@ -184,7 +237,7 @@ function botRun(poolRun: PoolRun): RunSource {
 
 let shown = viewerRun;
 // The keyboard, the speeds, pause, the savestate and the Starting save act on the Run of the Viewer only.
-const VIEWER_RUN_MESSAGES = new Set<ClientMessage["type"]>(["keys", "speed", "pause", "audio-level", "quick-save", "quick-load", "reset", "write-start-save", "end-replay"]);
+const VIEWER_RUN_MESSAGES = new Set<ClientMessage["type"]>(["keys", "speed", "pause", "audio-level", "quick-save", "quick-load", "reset", "write-start-save", "end-replay", "seek"]);
 const clients = new Set<ServerWebSocket<unknown>>();
 const audioClients = new Set<ServerWebSocket<unknown>>();
 
@@ -259,8 +312,17 @@ async function recordNames(): Promise<string[]> {
   return names.filter((name) => name.endsWith(".json")).sort().reverse();
 }
 
-function replayStatus({ name, player, continued }: Replay): ReplayStatus {
-  return { name, endReason: player.result.endReason, frames: player.frames, ended: player.ended, model: replayModel(player), continued };
+function replayStatus({ name, player, continued, reached }: Replay): ReplayStatus {
+  return {
+    name,
+    endReason: player.result.endReason,
+    frames: player.frames,
+    ended: player.ended,
+    model: replayModel(player),
+    continued,
+    reached,
+    seeking: live.seeking,
+  };
 }
 
 function replayModel(player: RecordPlayer): ReplayModel | null {
@@ -348,10 +410,10 @@ async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promi
 
 let eventsSent = 0;
 
-function sendEvents(to?: ServerWebSocket<unknown>): void {
+function sendEvents({ to, quiet }: { to?: ServerWebSocket<unknown>; quiet?: boolean } = {}): void {
   const events = [...shown.events()];
   if (!to) eventsSent = events.length;
-  send({ type: "events", events }, to);
+  send({ type: "events", events, quiet }, to);
 }
 
 function sendNewEvents(): void {
@@ -422,6 +484,10 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       live.endReplay();
       send({ type: "notice", text: "End of the replay: the keyboard plays the Run from this frame." });
       break;
+    case "seek":
+      live.seek(message.frame);
+      void sendStatus();
+      break;
     case "start-bot":
       send({ type: "notice", text: await startBot(message.name, message.model, message.parent) });
       break;
@@ -479,7 +545,22 @@ function sendMap({ grid, actors }: RunState, to?: ServerWebSocket<unknown>): voi
 
 function loop(): void {
   const now = performance.now();
+  const jumped = live.seeking !== null;
   const ran = live.tick(now);
+  // The screens and the events of the frames between the two ends of a jump moved the panels forward and backward: a jump sends the status only.
+  if (shown === viewerRun && live.seeking) {
+    if (now - lastState >= STATE_INTERVAL_MS) {
+      lastState = now;
+      void sendStatus();
+    }
+    setTimeout(loop, 0);
+    return;
+  }
+  if (shown === viewerRun && jumped) {
+    screenFrame = null;
+    lastState = 0;
+    sendEvents({ quiet: true });
+  }
   if (ran > 0 && live.audioActive) sendAudio();
   sendNewEvents();
   const frame = shown.frame();
@@ -520,7 +601,7 @@ Bun.serve({
       send({ type: "areas", areas }, ws);
       void recordNames().then((names) => send({ type: "records", names }, ws));
       void botInfos().then((bots) => send({ type: "bots", bots }, ws));
-      sendEvents(ws);
+      sendEvents({ to: ws });
       sendMap(shown.state(), ws);
       sendSight(ws);
     },

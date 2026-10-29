@@ -59,7 +59,22 @@ export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal
 /** The Model calls of a replay: `calls` and `cost` up to the frame of the replay, the totals for the whole record. */
 export type ReplayModel = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { calls: number; cost: number; totalCalls: number; totalCost: number };
 
-export type ReplayStatus = { name: string; frames: number; ended: boolean; endReason: EndReason; model: ReplayModel | null; continued: Continuation | null };
+export type Jump = { from: number; to: number };
+
+export type ReplayStatus = {
+  name: string;
+  frames: number;
+  ended: boolean;
+  endReason: EndReason;
+  model: ReplayModel | null;
+  continued: Continuation | null;
+  reached: number;
+  seeking: Jump | null;
+};
+
+export function replayOf(shown: ShownRun | null): ReplayStatus | null {
+  return shown?.kind === "viewer" ? shown.replay : null;
+}
 
 export type RunSummary = {
   id: number;
@@ -97,7 +112,8 @@ export type ServerMessage =
   | { type: "bots"; bots: BotInfo[] }
   | { type: "areas"; areas: Areas }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
-  | { type: "events"; events: RunEvent[] };
+  /** `quiet`: the events after a jump; the Viewer gives no toast for them. */
+  | { type: "events"; events: RunEvent[]; quiet?: boolean };
 
 export type ClientMessage =
   | { type: "keys"; keys: number }
@@ -114,6 +130,7 @@ export type ClientMessage =
   | { type: "write-start-save" }
   | { type: "replay"; name: string }
   | { type: "end-replay" }
+  | { type: "seek"; frame: number }
   /** `parent`: continue this Run record of lab/runs/, not a Run from the Starting save. */
   | { type: "start-bot"; name: string; model: ModelOptions; parent?: string }
   | { type: "stop-run"; runId: number }

@@ -9,6 +9,7 @@ import {
   Card,
   Checkbox,
   Collapsible,
+  Cover,
   ExpBar,
   FilterChip,
   Field,
@@ -22,6 +23,7 @@ import {
   Popover,
   PopoverBody,
   Select,
+  Slider,
   StatBar,
   Switch,
   Tabs,
@@ -36,6 +38,7 @@ import {
   typeToken,
 } from "./components";
 import { PromptText } from "./prompt-text";
+import { clock } from "./stats-lanes";
 import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RunSelectDemo } from "./components-tab-lab";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
@@ -262,6 +265,86 @@ function TabsDemo() {
           ]}
         />
       </div>
+    </div>
+  );
+}
+
+function SliderDemo() {
+  const [value, setValue] = useState(1800);
+  const [reached, setReached] = useState(5400);
+  const seek = (frame: number) => {
+    setValue(frame);
+    setReached((r) => Math.max(r, frame));
+  };
+  return (
+    <div class="flex max-w-[520px] flex-col gap-5">
+      <div class="flex flex-col gap-1.5">
+        <span class="text-xs text-muted">Default: hover for the time, drag or use the arrow keys. The light part is the reached part: a jump into it is fast.</span>
+        <Slider label="Demo frame" value={value} max={14400} reached={reached} step={60} format={clock} onSeek={seek} />
+        <span class="text-sm tabular-nums">
+          {clock(value)} <span class="text-muted">/ {clock(14400)}</span>
+        </span>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <span class="text-xs text-muted">All reached</span>
+        <Slider label="Demo all reached" value={3600} max={14400} step={60} format={clock} onSeek={() => {}} />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <span class="text-xs text-muted">Disabled</span>
+        <Slider label="Demo disabled" value={7200} max={14400} reached={9000} disabled onSeek={() => {}} />
+      </div>
+    </div>
+  );
+}
+
+const COVER_FRAMES = 36000;
+
+const COVER_STATES = [
+  { id: "progress", label: "With a progress" },
+  { id: "plain", label: "No detail" },
+  { id: "toggle", label: "Show and hide" },
+] as const;
+
+function CoverDemo() {
+  const [state, setState] = useState<(typeof COVER_STATES)[number]["id"]>("progress");
+  const [done, setDone] = useState(0);
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    const timer = setInterval(() => setDone((n) => (n + 600) % COVER_FRAMES), 150);
+    return () => clearInterval(timer);
+  }, []);
+  const zone = <div class="grid h-[160px] place-items-center rounded-card border border-line bg-raised text-sm text-faint">The zone that waits</div>;
+  return (
+    <div class="flex max-w-[520px] flex-col gap-3">
+      <Tabs kind="segmented" items={[...COVER_STATES]} value={state} onChange={setState} />
+      {state === "progress" && (
+        <Cover
+          busy
+          icon={<Rewind size={16} />}
+          title={`Jump to ${clock(COVER_FRAMES)}`}
+          value={done}
+          max={COVER_FRAMES}
+          detail={`${(COVER_FRAMES - done).toLocaleString("en-US")} frames to play from 0:00`}
+        >
+          {zone}
+        </Cover>
+      )}
+      {state === "plain" && (
+        <Cover busy title="Loading the record" value={2} max={5}>
+          {zone}
+        </Cover>
+      )}
+      {state === "toggle" && (
+        <>
+          <div class="flex items-center gap-3">
+            <Button onClick={() => setBusy(!busy)}>{busy ? "End the wait" : "Start a wait"}</Button>
+            <span class="text-xs text-muted">The cover comes 250 ms after the start of a wait, with a fade.</span>
+          </div>
+          <Cover busy={busy} icon={<Rewind size={16} />} title="Jump to 10:00" value={done} max={COVER_FRAMES}>
+            {zone}
+          </Cover>
+        </>
+      )}
     </div>
   );
 }
@@ -797,6 +880,12 @@ const ENTRIES: Entry[] = [
     demo: () => <FilterChipDemo />,
   },
   { category: "data", title: "Pill", rule: "A short state or count. The text has the color of the state, or the accent.", demo: () => <PillDemo /> },
+  {
+    category: "controls",
+    title: "Slider",
+    rule: "A native range input, so the game does not take its keys. The accent part is the value, the light part is the reached part. Hover or drag shows the value above the track. The value goes out on release, or on each arrow key.",
+    demo: () => <SliderDemo />,
+  },
   { category: "data", title: "Bar and number", rule: "The fill moves, and a light trail follows it when the value falls. HP uses the colors of the game. A number counts to its new value.", demo: () => <BarDemo /> },
   {
     category: "data",
@@ -835,6 +924,12 @@ const ENTRIES: Entry[] = [
     title: "Collapsible",
     rule: "A title line that opens and closes its body: a chevron that turns, an optional icon and an optional detail at the right. The panel keeps its state.",
     demo: () => <CollapsibleDemo />,
+  },
+  {
+    category: "surfaces",
+    title: "Cover",
+    rule: "Covers one zone while it waits, never the whole page, and not a popup: a Card with the progress over a blur. It comes after 250 ms, with a fade, so a short wait shows nothing. The zone gets aria-busy, the text is a status.",
+    demo: () => <CoverDemo />,
   },
   { category: "surfaces", title: "HoverCard", rule: "A card that opens after a short hover, or at the keyboard focus, next to its trigger.", demo: () => <HoverCardDemo /> },
   { category: "surfaces", title: "Popover", rule: "A panel that a click on its button opens under it. A click outside or Esc closes it.", demo: () => <PopoverDemo /> },

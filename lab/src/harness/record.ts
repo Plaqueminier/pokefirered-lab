@@ -163,6 +163,16 @@ export class RecordPlayer {
     return keys;
   }
 
+  seek(frame: number): void {
+    let left = Math.max(0, Math.min(frame, this.frames));
+    this.#frame = left;
+    this.#hold = 0;
+    this.#event = 0;
+    const { buttons } = this.#record;
+    while (this.#hold < buttons.length && left >= buttons[this.#hold][1]) left -= buttons[this.#hold++][1];
+    this.#inHold = left;
+  }
+
   get result(): RunResult {
     return this.#record.result;
   }

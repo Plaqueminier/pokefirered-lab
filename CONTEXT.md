@@ -128,7 +128,7 @@ What a **Run** gives at its end: the end reason, the frames, the **Milestones** 
 _Avoid_: score, outcome
 
 **Viewer**:
-The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. It does not emulate. It has three tabs: Lab (the screen and the panels), Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
+The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps each minute of the replay. It does not emulate. It has three tabs: Lab (the screen and the panels), Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
 _Avoid_: emulator, web player
 
 ## Relationships

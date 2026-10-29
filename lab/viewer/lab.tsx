@@ -3,8 +3,8 @@ import { type ComponentChildren, type ComponentType, createContext, render } fro
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { GameState } from "../src/game";
 import type { Continuation, RunEvent } from "../src/harness/record";
-import type { ClientMessage, ServerMessage, ShownRun } from "../src/protocol";
-import { Badges, Button, Card, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
+import { Badges, Button, Card, Cover, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
 import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
@@ -12,6 +12,7 @@ import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./mode
 import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
+import { ReplayPanel } from "./replay-panel";
 import { clock, stuckTone } from "./stats-lanes";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
@@ -62,11 +63,17 @@ const RAIL: Entry[] = [
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
-  { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <Legacy id="replay-panel" /> },
+  { id: "replay", title: "Replay", icon: Rewind, size: PANEL, render: () => <ReplayPanelHost /> },
 ];
 
 function sizeVars({ narrow, medium, wide }: Sizes): Record<string, string> {
   return { "--narrow": narrow, "--medium": medium, "--wide": wide };
+}
+
+function ReplayPanelHost() {
+  const { data, send } = useLab();
+  const { status } = useStore(data);
+  return <ReplayPanel shown={status?.shown ?? null} frame={status?.frame ?? 0} seek={(frame) => send({ type: "seek", frame })} />;
 }
 
 function LabLayout() {
@@ -131,7 +138,8 @@ function TopBar() {
   const { status, state, events, cursor, calls, index, call, bots, records } = useCursorCall();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
-  const frame = cursor?.frame ?? status?.frame ?? 0;
+  const jump = replayOf(shown)?.seeking;
+  const frame = cursor?.frame ?? jump?.to ?? status?.frame ?? 0;
   const from = model?.continued?.events ?? 0;
   const cost = useMemo(() => costTo(events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, from), [events, cursor, from]);
   return (
@@ -139,8 +147,8 @@ function TopBar() {
       style={sizeVars(ZONES.top.size)}
       class="@container flex h-(--narrow) shrink-0 items-center gap-5 border-b border-line px-4 min-[900px]:h-(--medium) min-[1280px]:h-(--wide)"
     >
-      <span class="flex min-w-0 shrink items-center gap-2">
-        <span class="flex max-w-[420px] min-w-[120px] shrink">
+      <span class="flex shrink-0 items-center gap-2">
+        <span class="flex w-[300px] shrink-0">
           <RunSelect shown={shown} runs={status?.runs ?? []} records={records} send={send} />
         </span>
         <span class="shrink-0">
@@ -152,7 +160,7 @@ function TopBar() {
       <span class="ml-auto flex shrink-0 items-center gap-5">
         {(model || calls.length > 0) && (
           <>
-            <span class="shrink-0">
+            <span class="shrink-0 @max-[600px]:hidden">
               <Metric
                 tip={model ? "Cost of the Model calls at the cursor / cost limit" : "Cost of the Model calls at the cursor"}
                 icon={<Coins size={14} />}
@@ -161,7 +169,7 @@ function TopBar() {
                 detail={model ? `/ ${model.costLimit.toFixed(2)} $` : undefined}
               />
             </span>
-            <span class="shrink-0 @max-[440px]:hidden">
+            <span class="shrink-0 @max-[680px]:hidden">
               <Metric tip="Stuck counter at the cursor">
                 {call?.stuck === undefined ? (
                   <Pill>Stuck –</Pill>
@@ -172,7 +180,7 @@ function TopBar() {
                 )}
               </Metric>
             </span>
-            <span class="shrink-0 @max-[560px]:hidden">
+            <span class="shrink-0 @max-[790px]:hidden">
               <Metric
                 tip="The Model call at the cursor / all the Model calls"
                 icon={<MessageSquare size={14} />}
@@ -184,13 +192,13 @@ function TopBar() {
             </span>
           </>
         )}
-        <span class="shrink-0 @max-[700px]:hidden">
+        <span class="shrink-0 @max-[915px]:hidden">
           <Badges got={state?.badges ?? null} />
         </span>
-        <span class="shrink-0 @max-[800px]:hidden">
+        <span class="shrink-0 @max-[990px]:hidden">
           <Metric tip="Money (live)" icon={<span class="text-sm">₽</span>} value={state ? state.money.toLocaleString("en-US") : "–"} chars={7} />
         </span>
-        <span class="shrink-0 @max-[1140px]:hidden">
+        <span class="flex w-[290px] shrink-0 @max-[1300px]:hidden">
           <Metric
             tip={state ? `group ${state.map.group}, map ${state.map.num} · callback2 ${state.context.callback2} · callback1 ${state.context.callback1}` : "no state yet"}
             icon={<MapPin size={14} />}
@@ -201,7 +209,7 @@ function TopBar() {
             {state && <Pill>{MODES[state.context.mode]}</Pill>}
           </Metric>
         </span>
-        <span class="shrink-0 @max-[1240px]:hidden">
+        <span class="shrink-0 @max-[1380px]:hidden">
           <Metric tip={`${cursor ? "Cursor" : "Now"}: frame ${frame.toLocaleString("en-US")}`} icon={<Clock size={14} />} value={clock(frame)} chars={7} />
         </span>
       </span>
@@ -279,11 +287,30 @@ function Party() {
   );
 }
 
+function Screen() {
+  const { status } = useStore(useLab().data);
+  const jump = replayOf(status?.shown ?? null)?.seeking;
+  const done = jump && status ? Math.max(0, status.frame - jump.from) : 0;
+  const total = jump ? Math.max(1, jump.to - jump.from) : 1;
+  return (
+    <Cover
+      busy={!!jump}
+      icon={<Rewind size={16} />}
+      title={jump ? `Jump to ${clock(jump.to)}` : ""}
+      value={done}
+      max={total}
+      detail={jump ? `${Math.max(0, total - done).toLocaleString("en-US")} frames to play from ${clock(jump.from)}` : undefined}
+    >
+      <Legacy id="screen" />
+    </Cover>
+  );
+}
+
 function LiveColumn() {
   const { statusLine } = useStore(useLab().data);
   return (
     <div class="flex flex-col gap-3 p-4">
-      <Legacy id="screen" />
+      <Screen />
       <DecisionLine />
       <Party />
       <Legacy id="controls" />
@@ -346,7 +373,7 @@ export class LabTab {
     this.#patch({ state });
   }
 
-  // The added events are null when the events restarted: no toast for the old events.
+  // The added events are null when the events restarted, or after a jump: no toast for the old events.
   onEvents(events: readonly RunEvent[], added: readonly RunEvent[] | null): void {
     for (const event of added ?? []) {
       if (event.type === "milestone") this.#toast({ tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: `${event.milestone} at ${clock(event.frame)}` });

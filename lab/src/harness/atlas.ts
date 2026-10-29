@@ -88,6 +88,28 @@ export class AtlasWatch {
 
   constructor(private readonly game: Game) {}
 
+  // The grids are shared: they never change after the first visit.
+  clone(): AtlasWatch {
+    const copy = new AtlasWatch(this.game);
+    for (const [name, visit] of this.#visits) {
+      copy.#visits.set(name, {
+        ...visit,
+        seen: visit.seen.slice(),
+        warpsTaken: new Map(visit.warpsTaken),
+        edgesTaken: new Map(visit.edgesTaken),
+        signTexts: new Map(visit.signTexts),
+        people: structuredClone(visit.people),
+        obstacles: structuredClone(visit.obstacles),
+      });
+    }
+    for (const [key, grid] of this.#grids) copy.#grids.set(key, grid);
+    for (const [key, block] of this.#blocks) copy.#blocks.set(key, block);
+    copy.#place = this.#place;
+    copy.#lastAction = this.#lastAction;
+    copy.#lastTalk = this.#lastTalk;
+    return copy;
+  }
+
   onFrame(): void {
     const { game } = this;
     if (game.mode() !== "overworld") return;

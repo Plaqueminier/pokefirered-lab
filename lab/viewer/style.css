@@ -145,6 +145,7 @@
 
   --animate-changed: changed 1s var(--ease-out);
   --animate-pop: pop 0.16s var(--ease-out);
+  --animate-fade: fade 0.2s var(--ease-out);
   --animate-toast: toast 0.28s var(--ease-spring);
   --animate-shine: shine 1.2s var(--ease-out) 3;
 
@@ -152,6 +153,11 @@
     from {
       opacity: 0;
       scale: 0.97;
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
     }
   }
   @keyframes changed {
@@ -240,5 +246,69 @@
       height: 100dvh;
       overflow: hidden;
     }
+  }
+}
+
+@layer components {
+  .slider {
+    appearance: none;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+    cursor: pointer;
+    --track: linear-gradient(
+      to right,
+      var(--color-accent) 0 var(--value),
+      var(--color-trail) var(--value) var(--reached),
+      var(--color-track) var(--reached) 100%
+    );
+  }
+  .slider:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+  .slider:focus-visible {
+    outline: none;
+  }
+  .slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--track);
+  }
+  .slider::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--track);
+  }
+  .slider::-webkit-slider-thumb {
+    appearance: none;
+    margin-top: -4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid var(--color-accent);
+    background: var(--color-fg);
+    transition: scale 0.15s var(--ease-out);
+  }
+  .slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: 2px solid var(--color-accent);
+    background: var(--color-fg);
+    transition: scale 0.15s var(--ease-out);
+  }
+  /* A browser drops a whole selector list when one pseudo-element is unknown to it. */
+  .slider:enabled:is(:hover, :active)::-webkit-slider-thumb {
+    scale: 1.2;
+  }
+  .slider:enabled:is(:hover, :active)::-moz-range-thumb {
+    scale: 1.2;
+  }
+  .slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+  .slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
 }

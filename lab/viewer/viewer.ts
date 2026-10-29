@@ -7,10 +7,9 @@ import { SharedCursor } from "./cursor";
 import { showTooltip } from "./dom";
 import { LabTab } from "./lab";
 import { describe, draw, howLabel } from "./mapdraw";
-import { ReplayPanel } from "./replay";
 import { StatsPanel } from "./stats-panel";
 import { ViewerTabs } from "./tabs";
-import { BinaryKind, Keys, type ClientMessage, type ServerMessage, type Speed } from "../src/protocol";
+import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage, type Speed } from "../src/protocol";
 
 const SCALE = 3;
 
@@ -47,17 +46,6 @@ let sight: Sight = {};
 let soundOn = false;
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
-const replayPanel = new ReplayPanel(
-  {
-    end: $<HTMLButtonElement>("replay-end"),
-    status: $("replay-status"),
-    action: $("action"),
-    detail: $("action-detail"),
-    model: $("model"),
-    events: $("events"),
-  },
-  send,
-);
 
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
@@ -116,14 +104,14 @@ function onMessage(message: ServerMessage): void {
       for (const b of document.querySelectorAll<HTMLButtonElement>("[data-viewer-run]")) b.disabled = run !== null;
       if (!message.hasQuickState) $<HTMLButtonElement>("quick-load").disabled = true;
       $("sound").classList.toggle("on", soundOn);
+      const frame = replayOf(message.shown)?.seeking?.to ?? message.frame;
       const statusLine =
-        `${message.rom} · frame ${message.frame} · ` +
+        `${message.rom} · frame ${frame} · ` +
         (run ? `Run ${run.id} of the Bot ${run.bot}, no sound` : `${message.fps} frames/s · ${soundText(message.audio)}`) +
         (message.hasStartSave ? "" : " · no Starting save yet");
       const runChanged = shared.onStatus(message.shown);
       lab.onStatus(message, statusLine, runChanged);
-      replayPanel.onStatus(message.frame, message.shown);
-      statsPanel.onStatus(message.frame, message.shown, runChanged);
+      statsPanel.onStatus(frame, message.shown, runChanged);
       break;
     }
     case "state":
@@ -170,11 +158,12 @@ function onMessage(message: ServerMessage): void {
       lab.onBots(message.bots.map((bot) => bot.name));
       tabs.setBots(message.bots);
       break;
-    case "events":
-      lab.onEvents(message.events, shared.onEvents(message.events));
-      replayPanel.onEvents(message.events);
+    case "events": {
+      const added = shared.onEvents(message.events);
+      lab.onEvents(message.events, message.quiet ? null : added);
       statsPanel.onEvents(message.events);
       break;
+    }
   }
 }
 

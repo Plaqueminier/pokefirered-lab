@@ -228,8 +228,12 @@ export function TypeChip({ type }: { type: string }) {
   );
 }
 
+export function fraction(value: number, max: number): number {
+  return max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+}
+
 export function Bar({ value, max, tone = "accent", type }: { value: number; max: number; tone?: Tone; type?: string }) {
-  const width = `${max > 0 ? Math.max(0, Math.min(1, value / max)) * 100 : 0}%`;
+  const width = `${fraction(value, max) * 100}%`;
   return (
     <div class="relative h-1.5 overflow-hidden rounded-full bg-track">
       <span class="absolute inset-y-0 left-0 rounded-full bg-trail transition-[width] delay-300 duration-500 ease-out" style={{ width }} />
@@ -237,6 +241,78 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
         class={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${type ? "" : TONES[tone].fill}`}
         style={{ width, background: type ? `var(--color-${typeToken(type)})` : undefined }}
       />
+    </div>
+  );
+}
+
+export function Slider({
+  value,
+  max,
+  reached = max,
+  step = 1,
+  label,
+  format = String,
+  disabled,
+  onSeek,
+}: {
+  value: number;
+  max: number;
+  reached?: number;
+  step?: number;
+  label: string;
+  format?: (value: number) => string;
+  disabled?: boolean;
+  onSeek: (value: number) => void;
+}) {
+  const [drag, setDrag] = useState<number | null>(null);
+  // Keep the released value until the value from the server is near it. If not, the thumb goes back to the old frame for a short time.
+  const [sent, setSent] = useState<number | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  useEffect(() => {
+    if (sent === null) return;
+    if (Math.abs(value - sent) <= step) return void setSent(null);
+    const timer = setTimeout(() => setSent(null), 2000);
+    return () => clearTimeout(timer);
+  }, [value, sent, step]);
+  const shown = drag ?? sent ?? value;
+  // A native range stops at the last multiple of step: the track goes one step further, so the end is reachable.
+  const inputMax = Math.ceil(max / step) * step;
+  // The center of the 14 px thumb goes from 7 px to the width minus 7 px.
+  const part = (n: number) => `calc(7px + (100% - 14px) * ${fraction(n, inputMax)})`;
+  const tip = drag ?? hover;
+  return (
+    <div class="relative flex items-center">
+      <input
+        type="range"
+        class="slider"
+        aria-label={label}
+        min={0}
+        max={inputMax}
+        step={step}
+        value={shown}
+        disabled={disabled}
+        style={{ "--value": part(shown), "--reached": reached >= max ? "100%" : part(Math.max(shown, reached)) }}
+        onInput={(event) => setDrag(Number(event.currentTarget.value))}
+        onChange={(event) => {
+          const next = Math.min(Number(event.currentTarget.value), max);
+          setDrag(null);
+          setSent(next);
+          onSeek(next);
+        }}
+        onPointerMove={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          setHover(Math.min(Math.round((fraction(event.clientX - box.left, box.width) * inputMax) / step) * step, max));
+        }}
+        onPointerLeave={() => setHover(null)}
+      />
+      {tip !== null && !disabled && (
+        <span
+          class={`pointer-events-none absolute bottom-full mb-1.5 -translate-x-1/2 whitespace-nowrap tabular-nums ${TIP}`}
+          style={{ left: part(tip) }}
+        >
+          {format(tip)}
+        </span>
+      )}
     </div>
   );
 }
@@ -310,6 +386,57 @@ export function Card({ interactive, size = "md", onClick, children }: { interact
   );
 }
 
+const COVER_DELAY_MS = 250;
+
+export function Cover({
+  busy,
+  icon,
+  title,
+  value,
+  max,
+  detail,
+  children,
+}: {
+  busy: boolean;
+  icon?: ComponentChildren;
+  title: string;
+  value: number;
+  max: number;
+  detail?: string;
+  children: ComponentChildren;
+}) {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    setLate(false);
+    if (!busy) return;
+    const timer = setTimeout(() => setLate(true), COVER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [busy]);
+  const part = fraction(value, max);
+  return (
+    <div class="relative" aria-busy={busy}>
+      {children}
+      {busy && late && (
+        <div role="status" class="absolute inset-0 grid animate-fade place-items-center bg-bg/70 backdrop-blur-[2px]">
+          <Card>
+            <div class="flex w-[260px] max-w-full flex-col gap-2.5">
+              <div class="flex items-center gap-2 text-sm">
+                {icon && <span class="flex text-accent">{icon}</span>}
+                <span class="min-w-0 truncate font-semibold">{title}</span>
+                <span class="ml-auto text-muted tabular-nums">{Math.round(part * 100)} %</span>
+              </div>
+              <Bar value={value} max={max} />
+              {detail && <span class="text-xs text-muted tabular-nums">{detail}</span>}
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TIP = "animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg";
+
 // In the top layer: the overflow of a panel cuts an absolute tip.
 export function Tooltip({ text, wide, children }: { text: string; wide?: boolean; children: ComponentChildren }) {
   const anchor = `--tooltip-${useAnchorId()}`;
@@ -321,7 +448,7 @@ export function Tooltip({ text, wide, children }: { text: string; wide?: boolean
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only shows the tip of its child.
     <span
-      class={`relative ${wide ? "flex" : "inline-flex"}`}
+      class={`relative max-w-full ${wide ? "flex" : "inline-flex"}`}
       style={`anchor-name: ${anchor}`}
       onMouseEnter={show}
       onMouseLeave={hide}
@@ -335,7 +462,7 @@ export function Tooltip({ text, wide, children }: { text: string; wide?: boolean
         role="tooltip"
         popover="manual"
         style={anchoredStyle(anchor, "margin-bottom: 8px", "top", "flip-block")}
-        class={`pointer-events-none m-0 animate-pop rounded-sm border border-line-strong bg-bg px-2 py-1 text-xs font-medium text-fg ${wide ? "w-max max-w-[300px] leading-snug" : "whitespace-nowrap"}`}
+        class={`pointer-events-none m-0 ${TIP} ${wide ? "w-max max-w-[300px] leading-snug" : "whitespace-nowrap"}`}
       >
         {text}
       </span>
@@ -363,7 +490,7 @@ export function Metric({
 }) {
   return (
     <Tooltip text={tip}>
-      <span class="flex items-center gap-1.5 text-sm whitespace-nowrap tabular-nums">
+      <span class="flex min-w-0 items-center gap-1.5 text-sm whitespace-nowrap tabular-nums">
         {icon && <span class="flex text-faint">{icon}</span>}
         {value !== undefined && (
           <span class="max-w-[200px] truncate" style={chars ? { minWidth: `${chars}ch` } : undefined}>
