@@ -404,12 +404,24 @@ export function Num({ value, format = (n) => Math.round(n).toLocaleString("en-US
   );
 }
 
-export function Card({ interactive, size = "md", onClick, children }: { interactive?: boolean; size?: "md" | "sm"; onClick?: () => void; children: ComponentChildren }) {
+export function Card({
+  interactive,
+  size = "md",
+  fill,
+  onClick,
+  children,
+}: {
+  interactive?: boolean;
+  size?: "md" | "sm";
+  fill?: boolean;
+  onClick?: () => void;
+  children: ComponentChildren;
+}) {
   const hover = interactive || onClick ? "cursor-pointer hover:bg-accent/7" : "";
-  const look = `rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${hover}`;
+  const look = `rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${fill ? "flex min-h-0 flex-1 flex-col" : ""} ${hover}`;
   if (!onClick) return <div class={look}>{children}</div>;
   return (
-    <button type="button" onClick={onClick} class={`${look} block w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35`}>
+    <button type="button" onClick={onClick} class={`${look} ${fill ? "" : "block"} w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35`}>
       {children}
     </button>
   );
@@ -570,6 +582,49 @@ export function Metric({
 
 export const LABEL = "text-xs font-semibold tracking-[0.08em] text-muted uppercase";
 
+export type LegendItem = { label: string; style?: string; glyph?: string };
+
+export function Legend({ title, items, columns = 1, note }: { title: string; items: readonly LegendItem[]; columns?: 1 | 2; note?: string }) {
+  return (
+    <div class="flex flex-col gap-2">
+      <span class={LABEL}>{title}</span>
+      <ul class={`m-0 grid list-none gap-y-1.5 p-0 text-sm ${columns === 2 ? "grid-cols-2 gap-x-4" : ""}`}>
+        {items.map(({ label, style, glyph }) => (
+          <li key={label} class="flex items-center gap-2">
+            {glyph ? <span class="w-2.5 shrink-0 text-center text-xs leading-none">{glyph}</span> : <span class="size-2.5 shrink-0" style={style} />}
+            {label}
+          </li>
+        ))}
+      </ul>
+      {note && <p class="text-xs text-muted">{note}</p>}
+    </div>
+  );
+}
+
+export type KeyRow = readonly [keys: readonly string[], action: string];
+
+export function KeyList({ title, rows }: { title: string; rows: readonly KeyRow[] }) {
+  return (
+    <div class="flex flex-col gap-2">
+      <span class={LABEL}>{title}</span>
+      <dl class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
+        {rows.map(([keys, action]) => (
+          <div key={action} class="contents">
+            <dt class="flex gap-1">
+              {keys.map((key) => (
+                <kbd key={key} class="inline-grid h-5 min-w-5 place-items-center rounded-sm border border-line-strong bg-raised px-1 font-mono text-xs text-fg">
+                  {key}
+                </kbd>
+              ))}
+            </dt>
+            <dd class="text-muted">{action}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 type StatTileProps = {
   label: string;
   value: ComponentChildren;
@@ -687,6 +742,11 @@ export function Badges({ got }: { got: readonly boolean[] | null }) {
       </span>
     </Tooltip>
   );
+}
+
+// A part that never keeps the focus, so Enter goes to the game.
+export function blurClickedButton(event: MouseEvent): void {
+  (event.target as Element).closest("button")?.blur();
 }
 
 export function toggled<T>(set: ReadonlySet<T>, item: T): Set<T> {

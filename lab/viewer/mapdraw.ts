@@ -1,6 +1,6 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
-import type { ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
+import type { Camera, ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
 import { obstacleRemedy } from "../src/protocol";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
@@ -8,13 +8,33 @@ export type View = { x: number; y: number; cell: number };
 
 export type Style = "overlay" | "map";
 
+const OVERLAY_FILL = { "#": "rgba(224, 70, 70, 0.45)", "~": "rgba(60, 130, 230, 0.45)", '"': "rgba(80, 200, 110, 0.3)" };
 const KIND_FILL: Record<Style, Record<string, string | null>> = {
-  overlay: { "#": "rgba(224, 70, 70, 0.45)", "~": "rgba(60, 130, 230, 0.45)", '"': "rgba(80, 200, 110, 0.3)" },
+  overlay: OVERLAY_FILL,
   map: { "#": "#1c1f25", "~": "#2d6cc0", '"': "#3d8a52", ".": "#4a515c", "^": "#4a515c", v: "#4a515c", "<": "#4a515c", ">": "#4a515c" },
 };
 const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
-const NEVER_SEEN = "rgba(150, 155, 165, 0.8)";
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
+
+const COLOR = {
+  neverSeen: "rgba(150, 155, 165, 0.8)",
+  screen: "rgba(255, 255, 255, 0.8)",
+  sight: "rgba(255, 60, 60, 0.35)",
+  wander: "rgba(240, 200, 40, 0.6)",
+  trigger: "rgba(255, 110, 30, 0.95)",
+  inactiveTrigger: "rgba(200, 200, 200, 0.5)",
+  sign: "rgba(255, 170, 60, 0.85)",
+  hiddenItem: "rgba(80, 230, 230, 0.9)",
+  foundItem: "rgba(150, 150, 150, 0.6)",
+  warp: "rgba(170, 90, 230, 0.75)",
+  person: "rgba(240, 200, 40, 0.95)",
+  personFill: "rgba(240, 200, 40, 0.75)",
+  trainer: "rgba(255, 60, 60, 0.95)",
+  beaten: "rgba(150, 150, 150, 0.9)",
+  obstacle: "rgba(60, 170, 80, 0.85)",
+  player: "rgba(255, 255, 255, 0.95)",
+  playerRing: "rgba(232, 100, 60, 1)",
+};
 
 export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string): void {
   const { width, height } = ctx.canvas;
@@ -51,7 +71,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
       }
       const inMap = x >= 0 && y >= 0 && x < grid.mapWidth && y < grid.mapHeight;
       if (style === "map" && inMap && seen?.[y * grid.mapWidth + x] !== "1") {
-        ctx.fillStyle = NEVER_SEEN;
+        ctx.fillStyle = COLOR.neverSeen;
         ctx.fillRect(px(x), py(y), c, c);
       }
     }
@@ -71,12 +91,12 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   // Trainer sight and wander areas, under the people
   for (const p of actors?.people ?? []) {
     for (const [sx, sy] of p.trainer?.sight ?? []) {
-      ctx.fillStyle = "rgba(255, 60, 60, 0.35)";
+      ctx.fillStyle = COLOR.sight;
       ctx.fillRect(px(sx), py(sy), c, c);
     }
     if (p.wander && style === "map") {
       ctx.setLineDash([Math.max(2, c * 0.2), Math.max(2, c * 0.2)]);
-      ctx.strokeStyle = "rgba(240, 200, 40, 0.6)";
+      ctx.strokeStyle = COLOR.wander;
       ctx.lineWidth = 1;
       ctx.strokeRect(px(p.wander.x) + 0.5, py(p.wander.y) + 0.5, p.wander.w * c - 1, p.wander.h * c - 1);
       ctx.setLineDash([]);
@@ -88,12 +108,12 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
     if (t.weather) return;
     const active = actors?.triggers[i];
     ctx.lineWidth = line * 1.5;
-    ctx.strokeStyle = active ? "rgba(255, 110, 30, 0.95)" : "rgba(200, 200, 200, 0.5)";
+    ctx.strokeStyle = active ? COLOR.trigger : COLOR.inactiveTrigger;
     if (!active) ctx.setLineDash([Math.max(2, c * 0.15), Math.max(2, c * 0.15)]);
     ctx.strokeRect(px(t.x) + inset, py(t.y) + inset, c - 2 * inset, c - 2 * inset);
     ctx.setLineDash([]);
     if (active && c >= 10) {
-      ctx.fillStyle = "rgba(255, 110, 30, 0.95)";
+      ctx.fillStyle = COLOR.trigger;
       ctx.font = `bold ${Math.round(c * 0.6)}px ui-sans-serif, system-ui`;
       ctx.fillText("!", px(t.x) + c / 2, py(t.y) + c / 2);
     }
@@ -102,7 +122,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   // Signs and hidden items
   grid.signs.forEach((s, i) => {
     const found = actors?.signs[i]?.found;
-    ctx.strokeStyle = s.kind === "hidden-item" ? (found ? "rgba(150, 150, 150, 0.6)" : "rgba(80, 230, 230, 0.9)") : "rgba(255, 170, 60, 0.85)";
+    ctx.strokeStyle = s.kind === "hidden-item" ? (found ? COLOR.foundItem : COLOR.hiddenItem) : COLOR.sign;
     ctx.lineWidth = line;
     ctx.beginPath();
     ctx.arc(px(s.x) + c / 2, py(s.y) + c / 2, c * 0.22, 0, Math.PI * 2);
@@ -111,8 +131,8 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
 
   // Warps: filled when they work, outlined when the cell does not warp
   for (const w of grid.warps) {
-    ctx.fillStyle = "rgba(170, 90, 230, 0.75)";
-    ctx.strokeStyle = "rgba(170, 90, 230, 0.75)";
+    ctx.fillStyle = COLOR.warp;
+    ctx.strokeStyle = COLOR.warp;
     ctx.lineWidth = line;
     if (w.how === "none") ctx.strokeRect(px(w.x) + inset, py(w.y) + inset, c - 2 * inset, c - 2 * inset);
     else ctx.fillRect(px(w.x) + inset, py(w.y) + inset, c - 2 * inset, c - 2 * inset);
@@ -140,12 +160,12 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
     }
   };
   for (const p of actors?.people ?? []) {
-    const ring = p.trainer ? (p.trainer.defeated ? "rgba(150, 150, 150, 0.9)" : "rgba(255, 60, 60, 0.95)") : "rgba(240, 200, 40, 0.95)";
-    person(p.x, p.y, p.facing, p.loaded ? "rgba(240, 200, 40, 0.75)" : null, ring);
+    const ring = p.trainer ? (p.trainer.defeated ? COLOR.beaten : COLOR.trainer) : COLOR.person;
+    person(p.x, p.y, p.facing, p.loaded ? COLOR.personFill : null, ring);
   }
-  ctx.fillStyle = "rgba(60, 170, 80, 0.85)";
+  ctx.fillStyle = COLOR.obstacle;
   for (const o of actors?.obstacles ?? []) ctx.fillRect(px(o.x) + inset, py(o.y) + inset, c - 2 * inset, c - 2 * inset);
-  if (actors?.player) person(actors.player.x, actors.player.y, actors.player.facing, "rgba(255, 255, 255, 0.95)", "rgba(232, 100, 60, 1)");
+  if (actors?.player) person(actors.player.x, actors.player.y, actors.player.facing, COLOR.player, COLOR.playerRing);
 
   // Connections, as labels on the edges
   if (style === "map" && c >= 4) {
@@ -166,6 +186,67 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   ctx.restore();
 }
 
+export function drawScreenFrame(ctx: CanvasRenderingContext2D, view: View, camera: Camera): void {
+  ctx.strokeStyle = COLOR.screen;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(view.x - (camera.x / 16) * view.cell, view.y - (camera.y / 16) * view.cell, 15 * view.cell, 10 * view.cell);
+}
+
+// A faint canvas color is not visible on a 10 px swatch, so some swatches have more alpha.
+function swatch(color: string, alpha: number): string {
+  return color.replace(/[\d.]+\)$/, `${alpha})`);
+}
+
+const SWATCH = {
+  person: `border-radius: 50%; background: ${swatch(COLOR.personFill, 0.8)}`,
+  trainer: `border-radius: 50%; border: 2px solid ${COLOR.trainer}`,
+  sight: `background: ${COLOR.sight}`,
+  warp: `background: ${COLOR.warp}`,
+  trigger: `border: 2px solid ${COLOR.trigger}`,
+  inactiveTrigger: `border: 2px dashed ${swatch(COLOR.inactiveTrigger, 0.6)}`,
+  sign: `border-radius: 50%; border: 2px solid ${COLOR.sign}`,
+  hiddenItem: `border-radius: 50%; border: 2px solid ${COLOR.hiddenItem}`,
+  obstacle: `background: ${COLOR.obstacle}`,
+  neverSeen: `background: ${COLOR.neverSeen}`,
+};
+
+export const OVERLAY_SWATCHES = [
+  { label: "blocked", style: `background: ${swatch(OVERLAY_FILL["#"], 0.55)}` },
+  { label: "water", style: `background: ${swatch(OVERLAY_FILL["~"], 0.55)}` },
+  { label: "tall grass", style: `background: ${swatch(OVERLAY_FILL['"'], 0.35)}` },
+  { label: "warp (outline: inactive)", style: SWATCH.warp },
+  { label: "person (hollow: off the screen)", style: SWATCH.person },
+  { label: "fixed obstacle (cut tree, rock, boulder)", style: SWATCH.obstacle },
+  { label: "trainer", style: SWATCH.trainer },
+  { label: "trainer sight", style: SWATCH.sight },
+  { label: "active trigger (!)", style: SWATCH.trigger },
+  { label: "inactive trigger", style: SWATCH.inactiveTrigger },
+  { label: "sign", style: SWATCH.sign },
+  { label: "hidden item", style: SWATCH.hiddenItem },
+  { label: "never seen (whole map)", style: SWATCH.neverSeen },
+  { label: "ledge", glyph: "➜" },
+];
+
+export const MAP_SWATCHES = [
+  { label: "open", style: `background: ${KIND_FILL.map["."]}` },
+  { label: "blocked", style: `background: ${KIND_FILL.map["#"]}; outline: 1px solid var(--color-line-strong)` },
+  { label: "water (Surf)", style: `background: ${KIND_FILL.map["~"]}` },
+  { label: "tall grass", style: `background: ${KIND_FILL.map['"']}` },
+  { label: "never seen by the player", style: SWATCH.neverSeen },
+  { label: "game screen now", style: `border: 2px solid ${COLOR.screen}` },
+  { label: "player", style: `border-radius: 50%; background: ${COLOR.player}; border: 2px solid ${COLOR.playerRing}` },
+  { label: "person (hollow: off the screen)", style: SWATCH.person },
+  { label: "trainer (grey: beaten)", style: SWATCH.trainer },
+  { label: "trainer sight", style: SWATCH.sight },
+  { label: "warp (outline: inactive)", style: SWATCH.warp },
+  { label: "active trigger (!)", style: SWATCH.trigger },
+  { label: "inactive trigger", style: SWATCH.inactiveTrigger },
+  { label: "sign", style: SWATCH.sign },
+  { label: "hidden item", style: SWATCH.hiddenItem },
+  { label: "fixed obstacle", style: SWATCH.obstacle },
+  { label: "wander area", style: `border: 1px dashed ${COLOR.wander}` },
+];
+
 const SIDE_ARROW: Record<ConnectionSide, string> = { north: "↑", south: "↓", west: "←", east: "→", dive: "", emerge: "" };
 const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: "south", 2: "north", 3: "west", 4: "east" };
 const KIND_LABEL: Record<string, string> = { "#": "blocked", "~": "water (Surf)", '"': "tall grass", ".": "open", "^": "ledge (jump north)", v: "ledge (jump south)", "<": "ledge (jump west)", ">": "ledge (jump east)" };
@@ -181,46 +262,63 @@ export function howLabel(w: Warp): string {
   }
 }
 
-/** Text for the tooltip of one cell. */
-export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: number): string | null {
+export type StopState = "active" | "inactive" | "unknown" | "beaten" | "not-beaten";
+
+export const STOP_LABEL: Record<StopState, string> = { active: "active", inactive: "inactive", unknown: "state unknown", beaten: "beaten", "not-beaten": "not beaten" };
+
+export function triggerState(active: boolean | null | undefined): StopState {
+  return active === true ? "active" : active === false ? "inactive" : "unknown";
+}
+
+export type CellFacts = { title: string; kind?: string; facts: string[]; tech?: string };
+
+export type CellTip = { at: { x: number; y: number }; facts: CellFacts; link: string | null };
+
+export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: number): CellFacts | null {
   const gx = x - grid.x0;
   const gy = y - grid.y0;
-  if (gx < 0 || gy < 0 || gx >= grid.width || gy >= grid.height) return null;
+  if (gx < 0 || gy < 0 || gx >= grid.width || gy >= grid.height) return linkAt(grid, x, y) ? { title: "Edge of the map", facts: [] } : null;
   const i = gy * grid.width + gx;
   const block = grid.blocks[i];
   const outside = x < 0 || y < 0 || x >= grid.mapWidth || y >= grid.mapHeight;
-  const lines = [
-    `cell (${x}, ${y})${outside ? " · border (neighbour map)" : ""}`,
-    `${KIND_LABEL[grid.kinds[i]] ?? grid.kinds[i]}`,
-    `metatile ${block & 0x3ff} · collision ${(block >> 10) & 3} · elevation ${block >> 12}`,
-    grid.behaviorNames[grid.behaviors[i]] ?? "",
-  ];
+  const behavior = grid.behaviorNames[grid.behaviors[i]];
+  const facts: string[] = [];
   for (const w of grid.warps) {
     if (w.x !== x || w.y !== y) continue;
-    lines.push(`warp → ${w.to} (${howLabel(w)})`);
+    facts.push(`warp → ${w.to} (${howLabel(w)})`);
   }
   grid.triggers.forEach((t, k) => {
     if (t.x !== x || t.y !== y) return;
-    if (t.weather) return lines.push("weather trigger");
-    const state = actors?.triggers[k];
+    if (t.weather) return facts.push("weather trigger");
+    const state = triggerState(actors?.triggers[k]);
     const v = t.variable === 0 ? "always" : `if var 0x${t.variable.toString(16)} = ${t.value}`;
-    lines.push(`script trigger (${v}): ${state === null ? "state unknown" : state ? "ACTIVE" : "inactive"}`);
+    facts.push(`script trigger (${v}): ${state === "active" ? "ACTIVE" : STOP_LABEL[state]}`);
   });
   grid.signs.forEach((s, k) => {
     if (s.x !== x || s.y !== y) return;
-    lines.push(s.kind === "sign" ? "sign / thing to examine (A)" : `hidden item ${actors?.signs[k]?.found ? "(found)" : "(not found yet)"}`);
+    facts.push(s.kind === "sign" ? "sign / thing to examine (A)" : `hidden item ${actors?.signs[k]?.found ? "(found)" : "(not found yet)"}`);
   });
   for (const p of actors?.people ?? []) {
     if (p.x === x && p.y === y) {
-      let text = `person ${p.localId}, facing ${DIRECTION_LABEL[p.facing] ?? "?"}${p.loaded ? "" : " (off the screen: start position)"}`;
-      if (p.trainer) {
-        text += `\ntrainer ${p.trainer.id}, sight ${p.trainer.range} cells${p.trainer.allDirections ? ", all directions" : ""}, ${p.trainer.defeated ? "defeated" : "not defeated yet"}`;
-      }
-      lines.push(text);
+      facts.push(`person ${p.localId}, facing ${DIRECTION_LABEL[p.facing] ?? "?"}${p.loaded ? "" : " (off the screen: start position)"}`);
+      if (p.trainer) facts.push(`trainer ${p.trainer.id}, sight ${p.trainer.range} cells${p.trainer.allDirections ? ", all directions" : ""}, ${STOP_LABEL[p.trainer.defeated ? "beaten" : "not-beaten"]}`);
     }
-    if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) lines.push(`in the sight of trainer ${p.trainer.id}`);
+    if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) facts.push(`in the sight of trainer ${p.trainer.id}`);
   }
-  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) lines.push(`fixed obstacle: ${o.name}. ${obstacleRemedy(o.move)}`);
-  if (actors?.player && actors.player.x === x && actors.player.y === y) lines.push("player");
-  return lines.filter(Boolean).join("\n");
+  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) facts.push(`fixed obstacle: ${o.name}. ${obstacleRemedy(o.move)}`);
+  if (actors?.player && actors.player.x === x && actors.player.y === y) facts.push("player");
+  return {
+    title: `Cell (${x}, ${y})${outside ? " · border (neighbour map)" : ""}`,
+    kind: KIND_LABEL[grid.kinds[i]] ?? grid.kinds[i],
+    facts,
+    tech: `metatile ${block & 0x3ff} · collision ${(block >> 10) & 3} · elevation ${block >> 12}${behavior ? ` · ${behavior}` : ""}`,
+  };
+}
+
+export function linkAt(g: MapGrid, x: number, y: number): { group: number; num: number; name: string } | null {
+  const warp = g.warps.find((w) => w.x === x && w.y === y);
+  if (warp) return { group: warp.group, num: warp.num, name: warp.to };
+  const side = y < 0 ? "north" : y >= g.mapHeight ? "south" : x < 0 ? "west" : x >= g.mapWidth ? "east" : null;
+  const conn = side ? g.connections.find((c) => c.direction === side) : undefined;
+  return conn ? { group: conn.group, num: conn.num, name: conn.map } : null;
 }

@@ -2,8 +2,9 @@ import { CircleHelp, FolderOpen, Layers, Pause, Play, RotateCcw, Save, SaveAll, 
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { type ClientMessage, SPEEDS, type Speed } from "../src/protocol";
-import { Button, LABEL, Slider, Tabs, Tooltip, usePending } from "./components";
+import { Button, blurClickedButton, KeyList, type KeyRow, Legend, Slider, Tabs, Tooltip, usePending } from "./components";
 import { HoverCard } from "./components-layers";
+import { OVERLAY_SWATCHES } from "./mapdraw";
 
 export type ScreenSettings = { overlay: boolean; sound: boolean; soundStarted: boolean; volume: number };
 
@@ -63,7 +64,7 @@ export function ScreenControls({ run, settings, actions, send }: { run: ScreenRu
     // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the bar only takes the focus from a clicked button, so Enter goes to the game.
     <div
       class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-surface p-1.5"
-      onClick={(event) => (event.target as Element).closest("button")?.blur()}
+      onClick={blurClickedButton}
     >
       <div class="flex items-center gap-1.5">
         <IconButton
@@ -91,7 +92,7 @@ export function ScreenControls({ run, settings, actions, send }: { run: ScreenRu
         />
       </div>
       <div class="flex items-center gap-1.5">
-        <HoverCard control card={<Legend />}>
+        <HoverCard control card={<OverlayLegend />}>
           <Button size="icon" variant="ghost" aria-label="Overlay (G)" pressed={settings.overlay} onClick={() => actions.setOverlay(!settings.overlay)}>
             <Layers size={16} />
           </Button>
@@ -132,45 +133,15 @@ export function ScreenControls({ run, settings, actions, send }: { run: ScreenRu
   );
 }
 
-// Some colors have more alpha than on the overlay: a faint color is not visible on a 10 px swatch.
-const SWATCHES: { label: string; style: string }[] = [
-  { label: "blocked", style: "background: rgba(224, 70, 70, 0.55)" },
-  { label: "water", style: "background: rgba(60, 130, 230, 0.55)" },
-  { label: "tall grass", style: "background: rgba(80, 200, 110, 0.35)" },
-  { label: "warp (outline: inactive)", style: "background: rgba(170, 90, 230, 0.75)" },
-  { label: "person (hollow: off the screen)", style: "border-radius: 50%; background: rgba(240, 200, 40, 0.8)" },
-  { label: "fixed obstacle (cut tree, rock, boulder)", style: "background: rgba(60, 170, 80, 0.85)" },
-  { label: "trainer", style: "border-radius: 50%; border: 2px solid rgba(255, 60, 60, 0.95)" },
-  { label: "trainer sight", style: "background: rgba(255, 60, 60, 0.35)" },
-  { label: "active trigger (!)", style: "border: 2px solid rgba(255, 110, 30, 0.95)" },
-  { label: "inactive trigger", style: "border: 2px dashed rgba(200, 200, 200, 0.6)" },
-  { label: "sign", style: "border-radius: 50%; border: 2px solid rgba(255, 170, 60, 0.85)" },
-  { label: "hidden item", style: "border-radius: 50%; border: 2px solid rgba(80, 230, 230, 0.9)" },
-  { label: "never seen (whole map)", style: "background: rgba(150, 155, 165, 0.8)" },
-];
-
-function Legend() {
+function OverlayLegend() {
   return (
-    <div class="flex w-[300px] flex-col gap-2">
-      <span class={LABEL}>Overlay (G)</span>
-      <ul class="m-0 grid list-none gap-1.5 p-0 text-sm">
-        {SWATCHES.map(({ label, style }) => (
-          <li key={label} class="flex items-center gap-2">
-            <span class="size-2.5 shrink-0" style={style} />
-            {label}
-          </li>
-        ))}
-        <li class="flex items-center gap-2">
-          <span class="w-2.5 shrink-0 text-center text-xs leading-none">➜</span>
-          ledge
-        </li>
-      </ul>
-      <p class="text-xs text-muted">With the overlay, point at a cell to see its data.</p>
+    <div class="w-[300px]">
+      <Legend title="Overlay (G)" items={OVERLAY_SWATCHES} note="With the overlay, point at a cell to see its data." />
     </div>
   );
 }
 
-const KEYS: [keys: string[], action: string][] = [
+const KEYS: KeyRow[] = [
   [["←", "↑", "→", "↓"], "move"],
   [["X"], "A"],
   [["W", "Z"], "B"],
@@ -187,22 +158,8 @@ const KEYS: [keys: string[], action: string][] = [
 
 function KeysHelp() {
   return (
-    <div class="flex w-[260px] flex-col gap-2">
-      <span class={LABEL}>Keys</span>
-      <dl class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
-        {KEYS.map(([keys, action]) => (
-          <div key={action} class="contents">
-            <dt class="flex gap-1">
-              {keys.map((key) => (
-                <kbd key={key} class="inline-grid h-5 min-w-5 place-items-center rounded-sm border border-line-strong bg-raised px-1 font-mono text-xs text-fg">
-                  {key}
-                </kbd>
-              ))}
-            </dt>
-            <dd class="text-muted">{action}</dd>
-          </div>
-        ))}
-      </dl>
+    <div class="w-[260px]">
+      <KeyList title="Keys" rows={KEYS} />
     </div>
   );
 }

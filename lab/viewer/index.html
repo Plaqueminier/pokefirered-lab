@@ -55,73 +55,6 @@
         height: 100%;
         image-rendering: pixelated;
       }
-      #tooltip {
-        position: fixed;
-        z-index: 10;
-        max-width: 420px;
-        pointer-events: none;
-        background: rgba(10, 12, 15, 0.92);
-        border: 1px solid var(--line);
-        padding: 6px 8px;
-        font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
-        white-space: pre;
-        display: none;
-      }
-      button {
-        background: var(--panel);
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: inherit;
-        cursor: pointer;
-      }
-      button:hover { border-color: var(--muted); }
-      button.on { border-color: var(--accent); color: var(--accent); }
-      button:disabled { opacity: 0.4; cursor: default; }
-      .map-column {
-        height: 100%;
-        min-height: 520px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .map-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .map-head h2 { margin: 0; flex: 1; }
-      /* Height from the content gives a ResizeObserver loop. */
-      #map {
-        width: 100%;
-        height: 0;
-        flex: 1 1 0;
-        min-height: 240px;
-        background: #101216;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        cursor: grab;
-        touch-action: none;
-      }
-      #map:active { cursor: grabbing; }
-      .lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-      #map-search {
-        background: var(--panel);
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: inherit;
-        width: 220px;
-      }
-      #exits { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-      button.link {
-        background: none;
-        border: 0;
-        padding: 0;
-        color: var(--text);
-        text-align: left;
-        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-      }
-      button.link:hover { color: var(--accent); text-decoration: underline; }
-      .list, pre.list { margin: 0; white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
       section {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -137,25 +70,6 @@
       }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: var(--muted); }
-      .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-      .panel-head h2 { margin: 0; flex: 1; }
-      .panel-head input {
-        background: var(--panel);
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: inherit;
-      }
-      .panel-head select {
-        background: var(--panel);
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 6px 10px;
-        font: inherit;
-        max-width: 320px;
-      }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
       .doc-head h1 { margin: 0; font-size: 20px; }
@@ -193,27 +107,6 @@
         <canvas id="game" width="240" height="160"></canvas>
         <canvas id="overlay" width="720" height="480"></canvas>
       </div>
-      <section class="map-column" id="map-panel">
-        <div class="map-head">
-          <h2 id="map-title">Whole map</h2>
-          <input id="map-search" list="map-names" placeholder="Go to a map…" autocomplete="off" />
-          <datalist id="map-names"></datalist>
-          <button id="map-back" hidden>← Back</button>
-          <button id="follow" class="on">Follow the player</button>
-        </div>
-        <canvas id="map"></canvas>
-        <div class="muted">Wheel: zoom. Drag: move. Click on a warp or past an edge: see the other map (the player does not move). Double-click: back to the player. The white frame is the game screen. Grey: cells that the player never saw.</div>
-        <div class="lists">
-          <section>
-            <h2>Exits</h2>
-            <div class="list" id="exits">–</div>
-          </section>
-          <section>
-            <h2>What can stop you</h2>
-            <pre class="list" id="stops">–</pre>
-          </section>
-        </div>
-      </section>
     </div>
     <article id="doc" hidden>
       <!-- Layout: a card grid, chosen from three prototypes (issue #10) over a loop diagram with columns and a cheat sheet in text columns. -->
@@ -233,8 +126,8 @@
             <dt>Knowledge level</dt><dd><code>player</code>: what a careful player knows · <code>full</code>: also the exact HP and stats of the enemy, and all the maps in the Atlas</dd>
             <dt>Atlas</dt><dd>what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the <code>full</code> level: all the maps, but only the fixed obstacles seen</dd>
             <dt>Viewer Run</dt><dd>no Bot: the keyboard or a replay plays it, in real time</dd>
-            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the screen controls (pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover), the decision line (a hover shows the answer of the call) and the party. In a replay, a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events. A rail of icons: Whole map, Model, Stats, Memory tree. At the bottom, the Timeline: the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, and as options the levels, wild battles, purchases and items got), with a chip for each kind; a hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range. One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now. A toast at each notice and each new Milestone</dd>
-            <dt>Components</dt><dd>the third tab: the design system of the Viewer (ADR 0004), each component in all its states, also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row and the prompt text with colors; the tooltip is in the top layer. A new part of the Viewer uses these components</dd>
+            <dt>Lab</dt><dd>the first tab. A top bar on one line: the Run (choose another Run, or a Run record to replay, in its list), a button "Bots" (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time. A left column: the screen, the screen controls (pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover), the decision line (a hover shows the answer of the call) and the party. In a replay, a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events. A rail of icons: Whole map, Model, Stats, Memory tree. The Whole map: the canvas, with the Exits and "What can stop you" at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer. At the bottom, the Timeline: the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, and as options the levels, wild battles, purchases and items got), with a chip for each kind; a hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range. One cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now. A toast at each notice and each new Milestone</dd>
+            <dt>Components</dt><dd>the third tab: the design system of the Viewer (ADR 0004), each component in all its states, also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components</dd>
           </dl>
         </section>
         <section class="w8">
@@ -372,7 +265,6 @@
     </article>
     <div id="components" hidden></div>
     <div id="toasts" class="ds bg-none"></div>
-    <div id="tooltip"></div>
     <script type="module" src="./viewer.ts"></script>
   </body>
 </html>

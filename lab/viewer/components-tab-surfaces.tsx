@@ -1,8 +1,10 @@
 import { BookOpen, Bot, CircleCheck, CircleHelp, Copy, Eye, Info, OctagonAlert, Rewind, Trophy } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Button, Card, Collapsible, Cover, LABEL, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
+import { Button, Card, Collapsible, Cover, LABEL, ListRow, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
 import { HoverCard, Popover, PopoverBody, Toast, Toaster } from "./components-layers";
+import { CellPointerCard } from "./map-panel";
+import type { CellFacts, CellTip } from "./mapdraw";
 import { PromptText } from "./prompt-text";
 import { clock } from "./stats-format";
 
@@ -109,6 +111,50 @@ export function CardDemo() {
           <p class="text-sm text-muted">Pressed {clicks} times.</p>
         </Card>
       </div>
+      <p class="text-xs text-faint">Card with fill: it takes the height of its flex column (here 180 px), its title stays, and its list scrolls inside.</p>
+      <div class="flex h-[180px] w-[280px] flex-col">
+        <Card size="sm" fill>
+          <span class={`${LABEL} shrink-0 pb-2`}>Exits · {FILL_ROWS.length}</span>
+          <div class="-mr-2 min-h-0 overflow-y-auto pr-1">
+            {FILL_ROWS.map((to, i) => (
+              <ListRow key={to} cells={[{ text: `${i * 3}, 9`, chars: 8 }]} text={`→ ${to}`} onClick={() => {}} />
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+const FILL_ROWS = ["Route4", "CeruleanCity_House1", "CeruleanCity_Gym", "CeruleanCity_Mart", "CeruleanCity_PokemonCenter_1F", "CeruleanCity_BikeShop", "CeruleanCity_House2", "CeruleanCave_1F"];
+
+const FEW_FACTS: CellFacts = { title: "Cell (12, 8)", kind: "open", facts: [], tech: "metatile 1 · collision 0 · elevation 3 · MB_NORMAL" };
+
+const MANY_FACTS: CellFacts = {
+  title: "Cell (29, 62)",
+  kind: "tall grass",
+  facts: ["warp → ViridianForest (walk onto it)", "person 3, facing south", "trainer 102, sight 5 cells, not beaten", "in the sight of trainer 104", "player"],
+  tech: "metatile 13 · collision 0 · elevation 3 · MB_TALL_GRASS",
+};
+
+export function PointerCardDemo() {
+  const [tip, setTip] = useState<CellTip | null>(null);
+  const area = (label: string, card: (event: PointerEvent) => CellTip) => (
+    <div
+      class="grid h-24 w-[240px] max-w-full cursor-crosshair place-items-center rounded-sm bg-track px-3 text-center text-xs text-faint"
+      onPointerMove={(event) => setTip(card(event))}
+      onPointerLeave={() => setTip(null)}
+    >
+      {label}
+    </div>
+  );
+  const at = (event: PointerEvent) => ({ x: event.clientX, y: event.clientY });
+  return (
+    <div class="flex flex-wrap gap-4">
+      {area("A cell with few facts: move the pointer here", (event) => ({ at: at(event), facts: FEW_FACTS, link: null }))}
+      {area("A cell with many facts and “Click: see …”", (event) => ({ at: at(event), facts: MANY_FACTS, link: "ViridianForest" }))}
+      {area("Near the edges: the card at the bottom right corner of the window", () => ({ at: { x: window.innerWidth - 4, y: window.innerHeight - 4 }, facts: MANY_FACTS, link: "ViridianForest" }))}
+      <CellPointerCard tip={tip} />
     </div>
   );
 }

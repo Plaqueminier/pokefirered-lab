@@ -1,13 +1,13 @@
 // The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Camera, MapActors, MapGrid } from "../src/game";
-import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
-import { SharedCursor } from "./cursor";
+import { SharedCursor, Store } from "./cursor";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
-import { describe, draw, howLabel } from "./mapdraw";
+import { type CellTip, describe, draw } from "./mapdraw";
 import { ViewerTabs } from "./tabs";
+import { WholeMap } from "./whole-map";
 import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
 
 const SCALE = 3;
@@ -19,7 +19,6 @@ const gameCanvas = $<HTMLCanvasElement>("game");
 const gameCtx = gameCanvas.getContext("2d")!;
 const overlayCanvas = $<HTMLCanvasElement>("overlay");
 const overlayCtx = overlayCanvas.getContext("2d")!;
-const tooltip = $("tooltip");
 const image = gameCtx.createImageData(240, 160);
 
 const KEY_MAP: Record<string, number> = {
@@ -42,12 +41,10 @@ let settings: ScreenSettings = { overlay: false, sound: false, soundStarted: fal
 let grid: MapGrid | null = null;
 let actors: MapActors | null = null;
 let camera: Camera | null = null;
-let sight: Sight = {};
 let audioLevel = 0;
 const audio = new AudioOut((ms) => (audioLevel = ms));
 audio.setVolume(settings.volume);
 
-let shownRunId: number | null = null;
 const shared = new SharedCursor();
 const tabs = new ViewerTabs(
   {
@@ -58,7 +55,9 @@ const tabs = new ViewerTabs(
   releaseKeys,
 );
 mountComponentsTab($("components"));
-const lab = new LabTab($("lab"), $("toasts"), { shared, send, settings, settingsActions: { setOverlay, setSound, setVolume } });
+const cellTip = new Store<CellTip | null>(null);
+const map = new WholeMap(send, cellTip);
+const lab = new LabTab($("lab"), $("toasts"), { shared, send, map, cellTip, settings, settingsActions: { setOverlay, setSound, setVolume } });
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -94,9 +93,7 @@ function onMessage(message: ServerMessage): void {
   switch (message.type) {
     case "status": {
       const run = message.shown.kind === "bot" ? message.shown.run : null;
-      // A preview shows the actors of one Run only.
-      if ((run?.id ?? null) !== shownRunId && preview) backToPlayer();
-      shownRunId = run?.id ?? null;
+      map.onRun(run?.id ?? null);
       const frame = replayOf(message.shown)?.seeking?.to ?? message.frame;
       const statusLine =
         `${message.rom} · frame ${frame} · ` +
@@ -110,29 +107,25 @@ function onMessage(message: ServerMessage): void {
       lab.onState(message.state);
       break;
     case "map":
-      if (message.grid && message.grid.key !== grid?.key && !preview) fitMap(message.grid);
       grid = message.grid;
-      renderMapLists();
-      if (grid && follow) centerOnPlayer();
-      redraw();
+      map.onMap(grid);
+      drawOverlay();
       break;
     case "actors":
       actors = message.actors;
-      renderMapLists();
-      if (follow) centerOnPlayer();
-      redraw();
+      map.onActors(actors);
+      drawOverlay();
       break;
     case "sight":
-      sight = message.maps;
-      drawMap();
+      map.onSight(message.maps);
       break;
     case "camera":
       camera = message.camera;
       drawOverlay();
-      drawMap();
+      map.onCamera(camera);
       break;
     case "maps":
-      setMapNames(message.names);
+      map.onNames(message.names);
       break;
     case "areas":
       lab.onAreas(message.areas);
@@ -141,7 +134,7 @@ function onMessage(message: ServerMessage): void {
       lab.onReplayEvents(message.name, message.events);
       break;
     case "preview":
-      showPreview(message.grid, message.actors);
+      map.onPreview(message.grid, message.actors);
       break;
     case "notice":
       lab.notice(message.text);
@@ -176,250 +169,14 @@ function drawOverlay(): void {
 }
 
 $("screen").addEventListener("mousemove", (event) => {
-  if (!settings.overlay || !grid || !camera) return showTooltip(tooltip, null, 0, 0);
+  if (!settings.overlay || !grid || !camera) return cellTip.set(null);
   const rect = overlayCanvas.getBoundingClientRect();
   const sx = ((event.clientX - rect.left) / rect.width) * 240;
   const sy = ((event.clientY - rect.top) / rect.height) * 160;
-  showTooltip(tooltip, describe(grid, actors, Math.floor((sx - camera.x) / 16), Math.floor((sy - camera.y) / 16)), event.clientX, event.clientY);
+  const facts = describe(grid, actors, Math.floor((sx - camera.x) / 16), Math.floor((sy - camera.y) / 16));
+  cellTip.set(facts && { at: { x: event.clientX, y: event.clientY }, facts, link: null });
 });
-$("screen").addEventListener("mouseleave", () => showTooltip(tooltip, null, 0, 0));
-
-// ---- Whole-map view: wheel to zoom, drag to move, double-click to follow the player.
-// A click on a warp or on a neighbor map opens that map (read from ROM); the player does not move.
-
-const mapCanvas = $<HTMLCanvasElement>("map");
-const mapCtx = mapCanvas.getContext("2d")!;
-let mapView = { x: 0, y: 0, cell: 12 };
-let follow = true;
-let drag: { x: number; y: number; viewX: number; viewY: number; moved: boolean } | null = null;
-let mapNames: string[][] = [];
-/** Another map shown instead of the player's map. */
-let preview: { grid: MapGrid; actors: MapActors | null } | null = null;
-let previewHistory: { group: number; num: number }[] = [];
-
-/** The map that the whole-map view shows now. */
-function shown(): { grid: MapGrid | null; actors: MapActors | null } {
-  return preview ?? { grid, actors };
-}
-
-function resizeMap(): void {
-  const rect = mapCanvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  const width = Math.round(rect.width * ratio);
-  const height = Math.round(rect.height * ratio);
-  // The Doc tab hides the canvas (size 0). When the Lab tab shows again, the size is the same, and fitMap resets the zoom.
-  if (width === 0 || (width === mapCanvas.width && height === mapCanvas.height)) return;
-  mapCanvas.width = width;
-  mapCanvas.height = height;
-  const current = shown().grid;
-  if (current) fitMap(current);
-  if (follow) centerOnPlayer();
-  drawMap();
-}
-
-/** Zoom so that the whole map (without its border) fits in the view. */
-function fitMap(next: MapGrid): void {
-  const cell = Math.max(4, Math.min(64, Math.min(mapCanvas.width / (next.mapWidth + 4), mapCanvas.height / (next.mapHeight + 4))));
-  mapView = { cell, x: (mapCanvas.width - next.mapWidth * cell) / 2, y: (mapCanvas.height - next.mapHeight * cell) / 2 };
-}
-
-function centerOnPlayer(): void {
-  const p = actors?.player;
-  if (!p || preview) return;
-  mapView.x = mapCanvas.width / 2 - (p.x + 0.5) * mapView.cell;
-  mapView.y = mapCanvas.height / 2 - (p.y + 0.5) * mapView.cell;
-}
-
-function drawMap(): void {
-  mapCtx.fillStyle = "#101216";
-  mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
-  const { grid: g, actors: a } = shown();
-  if (!g) {
-    mapCtx.fillStyle = "#8b929c";
-    mapCtx.font = `${14 * (window.devicePixelRatio || 1)}px ui-sans-serif, system-ui`;
-    mapCtx.fillText("No map (menu, battle or transition).", 16, 28);
-    return;
-  }
-  draw(mapCtx, g, a, mapView, "map", sight[g.name]);
-  // The part of the map that the game screen shows now.
-  if (camera && !preview) {
-    mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-    mapCtx.lineWidth = 2;
-    mapCtx.strokeRect(mapView.x - (camera.x / 16) * mapView.cell, mapView.y - (camera.y / 16) * mapView.cell, 15 * mapView.cell, 10 * mapView.cell);
-  }
-}
-
-function redraw(): void {
-  drawOverlay();
-  drawMap();
-}
-
-function mapCellAt(event: MouseEvent): [number, number] {
-  const rect = mapCanvas.getBoundingClientRect();
-  const ratio = mapCanvas.width / rect.width;
-  const cx = (event.clientX - rect.left) * ratio;
-  const cy = (event.clientY - rect.top) * ratio;
-  return [Math.floor((cx - mapView.x) / mapView.cell), Math.floor((cy - mapView.y) / mapView.cell)];
-}
-
-function setFollow(on: boolean): void {
-  follow = on;
-  $("follow").classList.toggle("on", on);
-  if (on) {
-    centerOnPlayer();
-    drawMap();
-  }
-}
-
-function viewMap(group: number, num: number): void {
-  const current = shown().grid;
-  if (current) previewHistory.push({ group: current.group, num: current.num });
-  send({ type: "view-map", group, num });
-}
-
-function backToPlayer(): void {
-  preview = null;
-  previewHistory = [];
-  if (grid) fitMap(grid);
-  setFollow(true);
-  renderMapLists();
-  drawMap();
-}
-
-/** The map that a click on this cell opens: a warp destination, or the neighbor map past an edge. */
-function linkAt(g: MapGrid, x: number, y: number): { group: number; num: number; name: string } | null {
-  const warp = g.warps.find((w) => w.x === x && w.y === y);
-  if (warp) return { group: warp.group, num: warp.num, name: warp.to };
-  const side = y < 0 ? "north" : y >= g.mapHeight ? "south" : x < 0 ? "west" : x >= g.mapWidth ? "east" : null;
-  const conn = side ? g.connections.find((c) => c.direction === side) : undefined;
-  return conn ? { group: conn.group, num: conn.num, name: conn.map } : null;
-}
-
-mapCanvas.addEventListener("wheel", (event) => {
-  event.preventDefault();
-  const rect = mapCanvas.getBoundingClientRect();
-  const ratio = mapCanvas.width / rect.width;
-  const cx = (event.clientX - rect.left) * ratio;
-  const cy = (event.clientY - rect.top) * ratio;
-  const next = Math.min(64, Math.max(2, mapView.cell * Math.exp(-event.deltaY * 0.002)));
-  // Keep the point under the cursor in place.
-  mapView = { x: cx - ((cx - mapView.x) * next) / mapView.cell, y: cy - ((cy - mapView.y) * next) / mapView.cell, cell: next };
-  if (follow) centerOnPlayer();
-  drawMap();
-}, { passive: false });
-
-mapCanvas.addEventListener("pointerdown", (event) => {
-  drag = { x: event.clientX, y: event.clientY, viewX: mapView.x, viewY: mapView.y, moved: false };
-  mapCanvas.setPointerCapture(event.pointerId);
-});
-mapCanvas.addEventListener("pointermove", (event) => {
-  if (drag) {
-    const ratio = mapCanvas.width / mapCanvas.getBoundingClientRect().width;
-    const dx = (event.clientX - drag.x) * ratio;
-    const dy = (event.clientY - drag.y) * ratio;
-    if (Math.hypot(dx, dy) > 4) drag.moved = true;
-    if (follow && drag.moved) setFollow(false);
-    if (!follow) {
-      mapView.x = drag.viewX + dx;
-      mapView.y = drag.viewY + dy;
-      drawMap();
-    }
-    return showTooltip(tooltip, null, 0, 0);
-  }
-  const { grid: g, actors: a } = shown();
-  if (!g) return;
-  const [x, y] = mapCellAt(event);
-  const link = linkAt(g, x, y);
-  mapCanvas.style.cursor = link ? "pointer" : "";
-  const text = describe(g, a, x, y) ?? (link ? `edge of the map` : null);
-  showTooltip(tooltip, text && link ? `${text}\nclick: see ${link.name}` : text, event.clientX, event.clientY);
-});
-mapCanvas.addEventListener("pointerup", (event) => {
-  const clicked = drag && !drag.moved;
-  drag = null;
-  const g = shown().grid;
-  if (!clicked || !g) return;
-  const [x, y] = mapCellAt(event);
-  const link = linkAt(g, x, y);
-  if (link) viewMap(link.group, link.num);
-});
-mapCanvas.addEventListener("pointerleave", () => showTooltip(tooltip, null, 0, 0));
-mapCanvas.addEventListener("dblclick", () => (preview ? backToPlayer() : setFollow(true)));
-$("follow").addEventListener("click", () => (preview ? backToPlayer() : setFollow(!follow)));
-$("map-back").addEventListener("click", () => {
-  const previous = previewHistory.pop();
-  if (!previous) return;
-  if (grid && previous.group === grid.group && previous.num === grid.num && previewHistory.length === 0) return backToPlayer();
-  send({ type: "view-map", group: previous.group, num: previous.num });
-});
-$("map-search").addEventListener("change", (event) => {
-  const input = event.target as HTMLInputElement;
-  const name = input.value.trim();
-  for (let group = 0; group < mapNames.length; group++) {
-    const num = mapNames[group].indexOf(name);
-    if (num >= 0) {
-      viewMap(group, num);
-      input.value = "";
-      input.blur();
-      return;
-    }
-  }
-});
-new ResizeObserver(resizeMap).observe(mapCanvas);
-
-function setMapNames(names: string[][]): void {
-  mapNames = names;
-  $("map-names").innerHTML = names.flat().map((n) => `<option value="${n}"></option>`).join("");
-}
-
-function showPreview(next: MapGrid | null, nextActors: MapActors | null): void {
-  if (!next) return;
-  if (grid && next.key === grid.key) return backToPlayer();
-  preview = { grid: next, actors: nextActors };
-  setFollow(false);
-  fitMap(next);
-  renderMapLists();
-  drawMap();
-}
-
-function linkButton(label: string, group: number, num: number): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.className = "link";
-  b.textContent = label;
-  b.addEventListener("click", () => viewMap(group, num));
-  return b;
-}
-
-function renderMapLists(): void {
-  const exits = $("exits");
-  const stops = $("stops");
-  const { grid: g, actors: a } = shown();
-  $("follow").textContent = preview ? "Back to the player" : "Follow the player";
-  $("follow").classList.toggle("on", follow && !preview);
-  $<HTMLButtonElement>("map-back").hidden = !preview;
-  if (!g) {
-    exits.textContent = "–";
-    stops.textContent = "–";
-    $("map-title").textContent = "Whole map";
-    return;
-  }
-  $("map-title").textContent = `${preview ? "Preview" : "Map of the player"} · ${g.name} (${g.mapWidth}×${g.mapHeight})`;
-  exits.replaceChildren(
-    ...g.connections.map((c) => linkButton(`${c.direction} edge → ${c.map}`, c.group, c.num)),
-    ...g.warps.map((w) => linkButton(`warp (${w.x}, ${w.y}) → ${w.to} · ${howLabel(w)}`, w.group, w.num)),
-  );
-  if (!exits.childElementCount) exits.textContent = "none";
-  const stopLines: string[] = [];
-  g.triggers.forEach((t, i) => {
-    if (t.weather) return;
-    const state = a?.triggers[i];
-    stopLines.push(`trigger (${t.x}, ${t.y}) · ${state === null ? "state unknown" : state ? "ACTIVE" : "inactive"}`);
-  });
-  for (const p of a?.people ?? []) {
-    if (p.trainer) stopLines.push(`trainer ${p.trainer.id} at (${p.x}, ${p.y}) · sight ${p.trainer.range} · ${p.trainer.defeated ? "defeated" : "not defeated"}`);
-  }
-  stops.textContent = stopLines.length ? stopLines.join("\n") : "none";
-}
+$("screen").addEventListener("mouseleave", () => cellTip.set(null));
 
 function changeSettings(next: Partial<ScreenSettings>): void {
   settings = { ...settings, ...next };
@@ -430,7 +187,7 @@ function setOverlay(on: boolean): void {
   changeSettings({ overlay: on });
   send({ type: "overlay", enabled: on });
   drawOverlay();
-  if (!on) showTooltip(tooltip, null, 0, 0);
+  if (!on) cellTip.set(null);
 }
 
 /** Browsers allow sound only after a click or a key press. */
@@ -523,13 +280,3 @@ window.addEventListener("blur", releaseKeys);
 for (const b of document.querySelectorAll("button")) b.addEventListener("click", () => b.blur());
 
 connect();
-
-export function showTooltip(tooltip: HTMLElement, text: string | null, clientX: number, clientY: number): void {
-  tooltip.style.display = text ? "block" : "none";
-  if (!text) return;
-  tooltip.textContent = text;
-  const width = tooltip.offsetWidth;
-  const left = clientX + 14 + width > window.innerWidth - 8 ? clientX - 14 - width : clientX + 14;
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${Math.min(clientY + 14, window.innerHeight - tooltip.offsetHeight - 8)}px`;
-}

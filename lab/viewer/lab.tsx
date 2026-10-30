@@ -7,6 +7,7 @@ import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from 
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
 import { callAt, type SharedCursor, Store, useStore } from "./cursor";
+import { CellPointerCard, MapPanel } from "./map-panel";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
 import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
@@ -19,6 +20,8 @@ import { clock, stuckTone } from "./stats-format";
 import { StatsPanel } from "./stats-panel";
 import { availableKinds, Timeline, useStoredKinds } from "./timeline";
 import { timelineEvents } from "./timeline-events";
+import type { CellTip } from "./mapdraw";
+import type { WholeMap } from "./whole-map";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
@@ -37,7 +40,7 @@ type LabData = {
 };
 
 // What viewer.ts gives to the Lab tab.
-type LabOptions = { shared: SharedCursor; send: (message: ClientMessage) => void; settings: ScreenSettings; settingsActions: ScreenSettingsActions };
+type LabOptions = { shared: SharedCursor; send: (message: ClientMessage) => void; map: WholeMap; cellTip: Store<CellTip | null>; settings: ScreenSettings; settingsActions: ScreenSettingsActions };
 
 type Lab = Omit<LabOptions, "settings"> & { data: Store<LabData> };
 
@@ -72,7 +75,7 @@ const ZONES = {
 const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
 
 const RAIL: Entry[] = [
-  { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy id="map-panel" /> },
+  { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <MapPanelHost /> },
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <StatsPanelHost /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
@@ -110,6 +113,7 @@ function LabLayout() {
       <section aria-label="Timeline" class="shrink-0 border-t border-line px-4 py-2">
         <TimelineHost />
       </section>
+      <CellPointerCard tip={useStore(useLab().cellTip)} />
     </>
   );
 }
@@ -161,6 +165,10 @@ function TimelineHost() {
       onNow={() => shared.clear()}
     />
   );
+}
+
+function MapPanelHost() {
+  return <MapPanel map={useLab().map} />;
 }
 
 function StatsPanelHost() {

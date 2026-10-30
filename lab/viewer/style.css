@@ -1,4 +1,4 @@
-/* "legacy" holds the CSS of the old panels (index.html). It comes first, so the design system wins over it. */
+/* "legacy" holds the CSS of the screen and of the Doc (index.html). It comes first, so the design system wins over it. */
 @layer legacy, theme, base, components, utilities;
 
 @import "tailwindcss/theme.css" layer(theme);
@@ -186,8 +186,8 @@
   }
 }
 
-/* The reset is scoped to .ds: the legacy CSS styles the global elements (button, section, h2) of the old panels.
-   A .ds part inside an old panel (a Select in place of a select) gets the reset again. */
+/* The reset is scoped to .ds: the legacy CSS styles the global elements (section, h2) of the Doc.
+   A .ds part inside a .legacy host gets the reset again. */
 @layer base {
   .ds {
     font-family: var(--font-sans);

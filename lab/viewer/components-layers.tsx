@@ -1,12 +1,14 @@
-import { Check, ChevronDown, X } from "lucide-preact";
+import { Check, ChevronDown, Search, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { anchoredStyle, Button, FIELD, LABEL, type Tone, toneText, useAnchorId } from "./components";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { anchoredStyle, Button, FIELD, Input, LABEL, type Tone, toneText, useAnchorId } from "./components";
+
+const LAYER_CARD = "w-max rounded-card border border-line-strong bg-bg text-fg shadow-xl";
 
 // The body of a floating layer: the card of a HoverCard, the content of a Popover and the list of a Select.
 export function PopoverBody({ list, children }: { list?: boolean; children: ComponentChildren }) {
   const size = list ? "max-h-[min(320px,calc(100dvh-96px))] min-w-full max-w-[min(480px,calc(100vw-16px))] p-1" : "max-h-[calc(100dvh-96px)] max-w-[calc(100vw-16px)] p-4";
-  return <div class={`w-max animate-pop overflow-auto rounded-card border border-line-strong bg-bg text-fg shadow-xl ${size}`}>{children}</div>;
+  return <div class={`${LAYER_CARD} animate-pop overflow-auto ${size}`}>{children}</div>;
 }
 
 const LAYER = "m-0 overflow-visible border-0 bg-transparent p-0";
@@ -56,6 +58,34 @@ export function HoverCard({ card, control, children }: { card: ComponentChildren
   );
 }
 
+const POINTER_GAP = 16;
+const EDGE = 8;
+
+// In the top layer, so the overflow of a panel does not cut the card.
+export function PointerCard({ at, children }: { at: { x: number; y: number } | null; children: ComponentChildren }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const shown = element.matches(":popover-open");
+    if (!at) {
+      if (shown) element.hidePopover();
+      return;
+    }
+    if (!shown) element.showPopover();
+    const { offsetWidth: width, offsetHeight: height } = element;
+    const left = at.x + POINTER_GAP + width > window.innerWidth - EDGE ? at.x - POINTER_GAP - width : at.x + POINTER_GAP;
+    const top = at.y + POINTER_GAP + height > window.innerHeight - EDGE ? at.y - POINTER_GAP - height : at.y + POINTER_GAP;
+    element.style.left = `${Math.max(EDGE, left)}px`;
+    element.style.top = `${Math.max(EDGE, top)}px`;
+  });
+  return (
+    <div ref={ref} popover="manual" class={`${LAYER} pointer-events-none inset-auto`}>
+      {at && <div class={`${LAYER_CARD} flex max-w-[340px] flex-col gap-1.5 px-3 py-2.5 text-xs`}>{children}</div>}
+    </div>
+  );
+}
+
 export function Popover({ label, icon, title, disabled, children }: { label: ComponentChildren; icon?: ComponentChildren; title?: string; disabled?: boolean; children: ComponentChildren }) {
   const id = `popover-${useAnchorId()}`;
   const [open, setOpen] = useState(false);
@@ -82,7 +112,14 @@ export function Popover({ label, icon, title, disabled, children }: { label: Com
 // Options with the same group follow each other: the list shows the name of the group above them.
 type SelectOption<T extends string> = { value: T; label: string; group?: string };
 
+type SelectSearch = { placeholder: string; empty: (query: string) => string };
+
 const TYPE_AHEAD_MS = 600;
+
+// Names such as ViridianCity_Mart join words with "_": a search with spaces must find them.
+function searchKey(text: string): string {
+  return text.toLowerCase().replace(/[_\s]/g, "");
+}
 
 // The list takes the keyboard while it is open: no key goes to the game. A closed Select takes the keys only after a keyboard focus.
 export function Select<T extends string>({
@@ -92,6 +129,7 @@ export function Select<T extends string>({
   disabled,
   title,
   placeholder = "–",
+  searchable,
 }: {
   options: readonly SelectOption<T>[];
   value: T;
@@ -99,33 +137,45 @@ export function Select<T extends string>({
   disabled?: boolean;
   title?: string;
   placeholder?: string;
+  searchable?: SelectSearch;
 }) {
   const id = `select-${useAnchorId()}`;
   const trigger = useRef<HTMLButtonElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLDivElement>(null);
   const typed = useRef({ text: "", at: 0 });
+  const byKeyboard = useRef(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const selected = options.findIndex((option) => option.value === value);
-  const current = options[selected];
+  const [query, setQuery] = useState("");
+  const shown = useMemo(() => {
+    const key = searchKey(query);
+    return key ? options.filter((option) => searchKey(option.label).includes(key)) : options;
+  }, [options, query]);
+  const selected = shown.findIndex((option) => option.value === value);
+  const current = options.find((option) => option.value === value);
   useLayoutEffect(() => {
     const item = document.getElementById(`${id}-${active}`);
     const scroller = layer.current?.firstElementChild;
     if (!open || !item || !scroller) return;
     const box = item.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
-    if (box.top < view.top) scroller.scrollTop -= view.top - box.top + 4;
+    const top = view.top + (search.current?.offsetHeight ?? 0);
+    if (box.top < top) scroller.scrollTop -= top - box.top + 4;
     else if (box.bottom > view.bottom) scroller.scrollTop += box.bottom - view.bottom + 4;
   }, [open, active, id]);
   const close = () => {
     if (layer.current?.matches(":popover-open")) layer.current.hidePopover();
-    trigger.current?.focus();
+    // After a search typed in the field, a focus from a script is visible, so the field takes the arrows of the game.
+    if (byKeyboard.current) trigger.current?.focus();
+    else trigger.current?.blur();
   };
   const choose = (index: number) => {
-    const option = options[index];
+    const option = shown[index];
+    if (!option) return;
     close();
-    if (option && option.value !== value) onChange(option.value);
+    if (option.value !== value) onChange(option.value);
   };
   const typeAhead = (key: string) => {
     const now = performance.now();
@@ -133,38 +183,44 @@ export function Select<T extends string>({
     typed.current = { text, at: now };
     // The same letter again goes to the next option with that letter.
     const again = [...text].every((letter) => letter === text[0]);
-    const search = again ? text[0] : text;
+    const prefix = again ? text[0] : text;
     const from = again ? active + 1 : active;
-    for (let k = 0; k < options.length; k++) {
-      const index = (from + k) % options.length;
-      if (options[index].label.toLowerCase().startsWith(search)) return setActive(index);
+    for (let k = 0; k < shown.length; k++) {
+      const index = (from + k) % shown.length;
+      if (shown[index].label.toLowerCase().startsWith(prefix)) return setActive(index);
     }
   };
-  const onListKey = (event: KeyboardEvent) => {
-    event.stopPropagation();
-    const move = (index: number) => {
-      event.preventDefault();
-      setActive(Math.max(0, Math.min(options.length - 1, index)));
-    };
-    const typing = performance.now() - typed.current.at < TYPE_AHEAD_MS;
-    if (event.key === "ArrowDown") move(active + 1);
-    else if (event.key === "ArrowUp") move(active - 1);
-    else if (event.key === "Home") move(0);
-    else if (event.key === "End") move(options.length - 1);
-    else if (event.key === "Enter" || (event.key === " " && !typing)) {
+  const move = (event: KeyboardEvent, index: number) => {
+    event.preventDefault();
+    setActive(Math.max(0, Math.min(shown.length - 1, index)));
+  };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === "ArrowDown") move(event, active + 1);
+    else if (event.key === "ArrowUp") move(event, active - 1);
+    else if (event.key === "Enter") {
       event.preventDefault();
       choose(active);
     } else if (event.key === "Escape") {
       event.preventDefault();
       close();
     } else if (event.key === "Tab") close();
-    else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+  };
+  const onListKey = (event: KeyboardEvent) => {
+    event.stopPropagation();
+    const typing = performance.now() - typed.current.at < TYPE_AHEAD_MS;
+    if (event.key === "Home") move(event, 0);
+    else if (event.key === "End") move(event, shown.length - 1);
+    else if (event.key === " " && !typing) {
+      event.preventDefault();
+      choose(active);
+    } else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       typeAhead(event.key);
-    }
+    } else onKey(event);
   };
   const onTriggerKey = (event: KeyboardEvent) => {
     if (!(event.currentTarget as HTMLElement).matches(":focus-visible")) return;
+    byKeyboard.current = true;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       layer.current?.showPopover();
@@ -183,6 +239,9 @@ export function Select<T extends string>({
         disabled={disabled}
         title={title ?? current?.label}
         onKeyDown={onTriggerKey}
+        onPointerDown={() => {
+          byKeyboard.current = false;
+        }}
         class={`${FIELD} flex items-center gap-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-40 ${open ? "border-accent ring-3 ring-accent/20" : "border-line focus-visible:border-accent focus-visible:ring-accent/20"}`}
       >
         <span class={`min-w-0 flex-1 truncate ${current ? "" : "text-faint"}`}>{current?.label ?? placeholder}</span>
@@ -197,19 +256,48 @@ export function Select<T extends string>({
         popover="auto"
         onClick={(event) => event.preventDefault()}
         onToggle={(event) => {
-          const shown = event.newState === "open";
-          setOpen(shown);
-          if (!shown) return;
+          const opened = event.newState === "open";
+          setOpen(opened);
+          if (!opened) return setQuery("");
           setActive(Math.max(0, selected));
-          list.current?.focus();
+          if (searchable) search.current?.querySelector("input")?.focus();
+          else list.current?.focus();
         }}
         class={LAYER}
-        style={`${anchoredStyle(`--${id}`, "margin-top: 4px", "bottom span-right", "flip-block")}; min-width: anchor-size(width)`}
+        style={`${anchoredStyle(`--${id}`, "margin-top: 4px", "bottom span-right", "flip-block, flip-inline, flip-block flip-inline")}; min-width: anchor-size(width)`}
       >
         <PopoverBody list>
-          <div ref={list} id={`${id}-list`} role="listbox" tabIndex={-1} aria-activedescendant={open ? `${id}-${active}` : undefined} onKeyDown={onListKey} class="outline-none">
-            {options.map((option, index) => [
-              option.group && option.group !== options[index - 1]?.group && (
+          {searchable && (
+            <div ref={search} class="sticky top-0 z-10 w-[300px] max-w-full bg-bg p-1 pb-1.5">
+              <Input
+                icon={<Search size={14} />}
+                placeholder={searchable.placeholder}
+                value={query}
+                aria-controls={`${id}-list`}
+                aria-activedescendant={open && shown.length > 0 ? `${id}-${active}` : undefined}
+                onInput={(event) => {
+                  setQuery(event.currentTarget.value);
+                  setActive(0);
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  onKey(event);
+                }}
+              />
+            </div>
+          )}
+          <div
+            ref={list}
+            id={`${id}-list`}
+            role="listbox"
+            tabIndex={-1}
+            aria-activedescendant={open && !searchable ? `${id}-${active}` : undefined}
+            onKeyDown={onListKey}
+            class="outline-none"
+          >
+            {searchable && shown.length === 0 && <div class="px-2.5 py-2 text-sm text-faint">{searchable.empty(query)}</div>}
+            {shown.map((option, index) => [
+              option.group && option.group !== shown[index - 1]?.group && (
                 <div key={`group-${option.group}`} role="presentation" class={`${LABEL} px-2.5 pt-2.5 pb-1 first:pt-1`}>
                   {option.group}
                 </div>

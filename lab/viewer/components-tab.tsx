@@ -1,13 +1,14 @@
 import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, Heart, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Skull, Square, Swords } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Badges, Bar, Breadcrumb, Button, Checkbox, ExpBar, FilterChip, Field, Input, LABEL, ListRow, Metric, Num, Pill, Slider, StatBar, StatTile, Switch, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
+import { Badges, Bar, Breadcrumb, Button, Checkbox, ExpBar, FilterChip, Field, Input, KeyList, LABEL, Legend, ListRow, Metric, Num, Pill, Slider, StatBar, StatTile, Switch, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
 import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
 import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
-import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
+import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
+import { OVERLAY_SWATCHES } from "./mapdraw";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
 function colorTokens(): string[] {
@@ -162,6 +163,10 @@ const RECORD_OPTIONS = RUN_OPTIONS.filter((option) => option.value.startsWith("r
 
 const TYPE_OPTIONS = TYPES.map((type) => ({ value: type, label: type }));
 
+const MAP_OPTIONS = ["CeruleanCity", "PalletTown", "Route1", "Route8", "Route23", "SaffronCity", "SaffronCity_Gym", "ViridianCity", "ViridianCity_Mart", "ViridianCity_PokemonCenter_1F", "ViridianForest"].map(
+  (name) => ({ value: name, label: name }),
+);
+
 function SelectDemo() {
   const [run, setRun] = useState("run:3");
   const [type, setType] = useState("GRASS");
@@ -179,6 +184,15 @@ function SelectDemo() {
       </Field>
       <Field label="Starter" hint="Disabled.">
         <Select options={[{ value: "free", label: "starter free" }]} value="free" onChange={() => {}} disabled />
+      </Field>
+      <Field label="Map" hint="searchable: type “viridian city” (a part of a name; no case, “_” and spaces do not count), or “xyz” for no match. The value stays empty.">
+        <Select
+          options={MAP_OPTIONS}
+          value=""
+          placeholder="Go to a map…"
+          searchable={{ placeholder: `Search ${MAP_OPTIONS.length} maps…`, empty: (query) => `No map with “${query}”.` }}
+          onChange={() => {}}
+        />
       </Field>
     </div>
   );
@@ -553,6 +567,41 @@ const DEMO_ROWS = [
   { index: 22, time: "5:03", text: "interact 8 4 and a long action that does not fit in the row of the list" },
 ];
 
+const DEMO_SWATCHES = OVERLAY_SWATCHES.filter(({ label }) => ["water", "trainer", "inactive trigger", "ledge"].includes(label));
+
+function LegendDemo() {
+  return (
+    <div class="flex flex-wrap items-start gap-10">
+      <div class="w-[200px]">
+        <Legend title="One column" items={DEMO_SWATCHES} />
+      </div>
+      <div class="w-[340px]">
+        <Legend title="Two columns, a note" columns={2} items={DEMO_SWATCHES} note="Point at a cell to see its data." />
+      </div>
+    </div>
+  );
+}
+
+function KeyListDemo() {
+  return (
+    <div class="flex flex-wrap items-start gap-10">
+      <div class="w-[240px]">
+        <KeyList title="One key" rows={[[["Esc"], "back to now"]]} />
+      </div>
+      <div class="w-[240px]">
+        <KeyList
+          title="More keys on a row"
+          rows={[
+            [["←", "↑", "→", "↓"], "move"],
+            [["W", "Z"], "B"],
+            [["Double-click"], "back to the player"],
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ListRowDemo() {
   const [selected, setSelected] = useState(20);
   return (
@@ -619,7 +668,7 @@ const ENTRIES: Entry[] = [
   {
     category: "controls",
     title: "Select",
-    rule: "All the dropdowns of the Viewer. A click or Enter opens the list. Arrows, Home, End and a letter move in it, Enter or a click chooses, Esc closes. Options can have groups.",
+    rule: "All the dropdowns of the Viewer. A click or Enter opens the list. Arrows, Home, End and a letter move in it, Enter or a click chooses, Esc closes. Options can have groups. With searchable, a field at the top of the list takes the focus at each opening and filters the options on a part of their label, with no case, and “_” and spaces do not count; the arrows move, Enter chooses, Esc or a click outside closes.",
     demo: () => <SelectDemo />,
   },
   {
@@ -678,11 +727,18 @@ const ENTRIES: Entry[] = [
     rule: "A text of a prompt in mono on a small Card. With highlight, its parts take the colors of the theme, line by line, as in a code editor.",
     demo: () => <PromptTextDemo />,
   },
+  {
+    category: "data",
+    title: "Legend",
+    rule: "The colors of a drawing: a title, a 10 px swatch with the CSS of each mark and its label, on 1 or 2 columns, and an optional note. A glyph can replace the swatch.",
+    demo: () => <LegendDemo />,
+  },
+  { category: "data", title: "KeyList", rule: "The keys or the mouse actions of a part, and what each one does: one or more keys on a row.", demo: () => <KeyListDemo /> },
   { category: "data", title: "Badges", rule: "The 8 badges of the player as dots. A new badge shines.", demo: () => <BadgesDemo /> },
   {
     category: "surfaces",
     title: "Card",
-    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view.",
+    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view. With fill, the card takes the height that its flex column gives, and a long list scrolls inside it.",
     demo: () => <CardDemo />,
   },
   {
@@ -708,6 +764,12 @@ const ENTRIES: Entry[] = [
     title: "HoverCard",
     rule: "A card that opens after a short hover, or at the keyboard focus, next to its trigger. With control, its child (a Button) is the trigger: the wrapper adds no role and no tab stop.",
     demo: () => <HoverCardDemo />,
+  },
+  {
+    category: "surfaces",
+    title: "PointerCard",
+    rule: "A card at the pointer for the data of a point of a canvas (a cell of the map). It is in the top layer, 16 px at the right of and under the pointer; near the right or the bottom edge of the window, it goes to the left or above. The pointer goes through it.",
+    demo: () => <PointerCardDemo />,
   },
   { category: "surfaces", title: "Popover", rule: "A panel that a click on its button opens under it. A click outside or Esc closes it.", demo: () => <PopoverDemo /> },
   { category: "surfaces", title: "Toast", rule: "A message at the bottom right, with a border in the color of its tone. It closes after 6 s or with its button; 4 at most.", demo: () => <ToastDemo /> },
