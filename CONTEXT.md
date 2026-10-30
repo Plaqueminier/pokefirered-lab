@@ -135,6 +135,10 @@ _Avoid_: resumed run, restart, savestate
 What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them). The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
+**Inventory**:
+The Bag (its five pockets with their items and quantities) and the PC (its items, and the species of the Pokémon in its boxes) of a **Run** at one frame. The **Run record** does not keep it: the **Viewer** keeps a history of the changes of the **Inventory** of the shown **Run**, and its panel "Bag and PC" shows the **Inventory** at the cursor.
+_Avoid_: items (an item is one entry of a pocket), storage
+
 **Viewer**:
 The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has three tabs: Lab (the screen and the panels), Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
 _Avoid_: emulator, web player

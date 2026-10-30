@@ -749,6 +749,27 @@ export function blurClickedButton(event: MouseEvent): void {
   (event.target as Element).closest("button")?.blur();
 }
 
+// Not scrollIntoView: it also scrolls the page. A hidden panel has no layout, so the observer places the list when the panel shows.
+/** Keeps the selected row of a list that scrolls in view: "end" shows the end of the list, "center" centres the row when it is out of view, "third" puts it at one third of the height. */
+export function useKeepInView(list: { current: HTMLElement | null }, key: string, place: "end" | "center" | "third") {
+  useLayoutEffect(() => {
+    const box = list.current;
+    if (!box) return;
+    const keep = () => {
+      if (place === "end") return void (box.scrollTop = box.scrollHeight);
+      const row = box.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (!row) return;
+      const top = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      if (place === "third") box.scrollTop += top - box.clientHeight / 3;
+      else if (top < 0 || top + row.offsetHeight > box.clientHeight) box.scrollTop += top - (box.clientHeight - row.offsetHeight) / 2;
+    };
+    keep();
+    const observer = new ResizeObserver(keep);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [list, key, place]);
+}
+
 export function toggled<T>(set: ReadonlySet<T>, item: T): Set<T> {
   const next = new Set(set);
   if (!next.delete(item)) next.add(item);
@@ -841,6 +862,8 @@ export function ListRow({
   text,
   error,
   icons,
+  mark,
+  faded,
   selected,
   onClick,
 }: {
@@ -848,6 +871,8 @@ export function ListRow({
   text: ComponentChildren;
   error?: boolean;
   icons?: ComponentChildren;
+  mark?: boolean;
+  faded?: boolean;
   selected?: boolean;
   onClick: () => void;
 }) {
@@ -856,7 +881,7 @@ export function ListRow({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      class={`flex h-7 w-full min-w-0 shrink-0 items-center gap-2 rounded-ctl border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${selected ? "border-accent bg-raised" : "border-transparent hover:bg-raised"}`}
+      class={`flex h-7 w-full min-w-0 shrink-0 items-center gap-2 rounded-ctl border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${selected ? "border-accent bg-raised" : "border-transparent hover:bg-raised"} ${faded ? "opacity-45" : ""}`}
     >
       {cells.map((cell, i) => (
         <span key={i} class="shrink-0 text-faint tabular-nums" style={{ minWidth: `${cell.chars}ch` }}>
@@ -864,7 +889,12 @@ export function ListRow({
         </span>
       ))}
       <span class={`min-w-0 truncate font-mono ${error ? "text-bad" : "text-fg"}`}>{text}</span>
-      {icons && <span class="ml-auto flex shrink-0 items-center gap-1">{icons}</span>}
+      {(icons || mark) && (
+        <span class="ml-auto flex shrink-0 items-center gap-1">
+          {mark && <span class="size-1.5 rounded-full bg-accent" />}
+          {icons}
+        </span>
+      )}
     </button>
   );
 }

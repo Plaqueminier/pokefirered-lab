@@ -567,6 +567,12 @@ const DEMO_ROWS = [
   { index: 22, time: "5:03", text: "interact 8 4 and a long action that does not fit in the row of the list" },
 ];
 
+const DEMO_LOOKS = [
+  { label: "mark", mark: true, faded: false },
+  { label: "faded", mark: false, faded: true },
+  { label: "mark and faded", mark: true, faded: true },
+];
+
 const DEMO_SWATCHES = OVERLAY_SWATCHES.filter(({ label }) => ["water", "trainer", "inactive trigger", "ledge"].includes(label));
 
 function LegendDemo() {
@@ -620,6 +626,12 @@ function ListRowDemo() {
           onClick={() => setSelected(row.index)}
         />
       ))}
+      <p class="mt-3 mb-1 text-xs text-faint">Mark: a dot before the icons (a pocket with a change). Faded: a row after the cursor. Not selected, then selected.</p>
+      {[false, true].map((chosen) =>
+        DEMO_LOOKS.map(({ label, mark, faded }) => (
+          <ListRow key={`${label}${chosen}`} text={label} mark={mark} faded={faded} icons={<span class="text-faint tabular-nums">3</span>} selected={chosen} onClick={() => {}} />
+        )),
+      )}
     </div>
   );
 }
@@ -718,7 +730,7 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "ListRow",
-    rule: "A row of a list that a click selects: cells with a fixed width at the left, a main text in mono, optional icons at the right. Selected: the accent border all around. An error text is red.",
+    rule: "A row of a list that a click selects: cells with a fixed width at the left, a main text in mono, optional icons at the right. Selected: the accent border all around. An error text is red. A mark is an accent dot before the icons; a faded row is at 45 % opacity.",
     demo: () => <ListRowDemo />,
   },
   {

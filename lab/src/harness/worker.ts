@@ -1,3 +1,4 @@
+import { InventoryHistory } from "../inventory";
 import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
 import { Harness, loadBot } from "./harness";
@@ -14,10 +15,13 @@ class ViewPoster {
   #lastScreen = Number.NEGATIVE_INFINITY;
   #lastState = Number.NEGATIVE_INFINITY;
   #events = 0;
+  readonly #inventory = new InventoryHistory();
+  #inventorySent = 0;
 
   constructor(private readonly run: Run) {}
 
   onFrame(harness: Harness): void {
+    this.#inventory.onFrame(this.run.frame, () => this.run.game.inventory());
     const now = performance.now();
     if (now - this.#lastScreen >= SCREEN_INTERVAL_MS) this.postScreen(now);
     if (now - this.#lastState >= STATE_INTERVAL_MS) this.postState(now, harness);
@@ -49,6 +53,9 @@ class ViewPoster {
   private postState(now: number, harness: Harness): void {
     this.#lastState = now;
     post({ type: "state", ...this.run.readState(), sight: harness.sight() });
+    const { entries } = this.#inventory;
+    if (entries.length > this.#inventorySent) post({ type: "inventory", entries: entries.slice(this.#inventorySent) });
+    this.#inventorySent = entries.length;
   }
 }
 

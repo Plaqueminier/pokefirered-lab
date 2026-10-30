@@ -20,6 +20,7 @@ import {
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
+import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
 import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
 import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
@@ -459,6 +460,11 @@ export class Game {
 
   pcItems(): PcItem[] {
     return pcItems(this.mem, this.decode);
+  }
+
+  inventory(): Inventory {
+    const bag = this.bag().map(({ pocket, items }) => ({ pocket, items: items.map(({ name, quantity, description }) => ({ name, quantity, description })) }));
+    return { bag, pc: { items: this.pcItems(), pokemon: readPcSpecies(this.mem, this.decode) } };
   }
 
   itemStorageCursor(): number | null {

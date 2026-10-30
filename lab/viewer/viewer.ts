@@ -106,6 +106,9 @@ function onMessage(message: ServerMessage): void {
     case "state":
       lab.onState(message.state);
       break;
+    case "inventory":
+      lab.onInventory(message.from, message.entries);
+      break;
     case "map":
       grid = message.grid;
       map.onMap(grid);

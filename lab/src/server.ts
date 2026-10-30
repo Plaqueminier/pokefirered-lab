@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
+import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
@@ -77,6 +78,7 @@ class LivePlay {
   private fpsWindow = { start: performance.now(), frames: 0, value: 0 };
   private activeReplay: Replay | null = null;
   private atlas: AtlasWatch;
+  inventory = new InventoryHistory();
 
   constructor(private readonly run: Run) {
     this.atlas = new AtlasWatch(run.game);
@@ -89,8 +91,16 @@ class LivePlay {
   async reset(): Promise<void> {
     this.endReplay();
     await this.run.reset();
+    this.inventory = new InventoryHistory();
     this.atlas = new AtlasWatch(this.run.game);
     this.resyncClock();
+  }
+
+  loadQuickState(): boolean {
+    if (!this.quickState || !this.run.core.loadState(this.quickState)) return false;
+    this.inventory = new InventoryHistory();
+    this.resyncClock();
+    return true;
   }
 
   async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
@@ -107,6 +117,7 @@ class LivePlay {
   }
 
   endReplay(): void {
+    if (this.activeReplay) this.inventory = this.inventory.until(this.run.frame);
     this.activeReplay = null;
     this.syncAudio();
   }
@@ -191,6 +202,7 @@ class LivePlay {
       if (keys === null) break;
       this.run.runFrame(keys);
       this.atlas.onFrame();
+      this.inventory.onFrame(this.run.frame, () => this.run.game.inventory());
       ran++;
       if (replay) this.onReplayFrame(replay);
     }
@@ -234,6 +246,7 @@ type RunSource = {
   events(): readonly RunEvent[];
   sight(): Sight;
   summary(): ShownRun;
+  inventory(): readonly InventoryAt[];
 };
 
 const viewerRun: RunSource = {
@@ -244,6 +257,7 @@ const viewerRun: RunSource = {
   events: () => live.replay?.player.played() ?? [],
   sight: () => live.sight(),
   summary: () => ({ kind: "viewer", replay: live.replay && replayStatus(live.replay) }),
+  inventory: () => live.inventory.entries,
 };
 
 function botRun(poolRun: PoolRun): RunSource {
@@ -255,6 +269,7 @@ function botRun(poolRun: PoolRun): RunSource {
     events: () => poolRun.events,
     sight: () => poolRun.view.sight,
     summary: () => ({ kind: "bot", run: runSummary(poolRun) }),
+    inventory: () => poolRun.inventory,
   };
 }
 
@@ -398,6 +413,7 @@ function show(next: RunSource): void {
   sendEvents();
   sendMap(shown.state());
   sendSight();
+  sendInventory();
 }
 
 async function startBot(name: string, given: ModelOptions, parent?: string): Promise<string> {
@@ -492,8 +508,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "quick-load":
       if (live.replay) {
         send({ type: "notice", text: "No load of the savestate during a replay." }, ws);
-      } else if (live.quickState && run.core.loadState(live.quickState)) {
-        live.resyncClock();
+      } else if (live.loadQuickState()) {
         show(viewerRun);
         send({ type: "notice", text: "Savestate loaded." });
       }
@@ -563,6 +578,18 @@ function sendSight(to?: ServerWebSocket<unknown>): void {
   sendChanged({ type: "sight", maps: shown.sight() }, to);
 }
 
+let inventorySent: { entries: readonly InventoryAt[]; length: number } = { entries: [], length: 0 };
+
+function sendInventory(to?: ServerWebSocket<unknown>): void {
+  const entries = shown.inventory();
+  if (to) return send({ type: "inventory", from: 0, entries }, to);
+  const same = entries === inventorySent.entries;
+  if (same && entries.length === inventorySent.length) return;
+  const from = same ? inventorySent.length : 0;
+  inventorySent = { entries, length: entries.length };
+  send({ type: "inventory", from, entries: entries.slice(from) });
+}
+
 let lastScreen = 0;
 /** The frame of the last screen sent; null: send the next screen. */
 let screenFrame: number | null = null;
@@ -608,6 +635,7 @@ function loop(): void {
     if (runState.state) send({ type: "state", state: runState.state });
     sendMap(runState);
     sendSight();
+    sendInventory();
     // The whole-map view shows the screen area; the overlay gets the camera with each screen too.
     send({ type: "camera", camera: runState.camera });
     void sendStatus();
@@ -635,6 +663,7 @@ Bun.serve({
       sendEvents({ to: ws });
       sendMap(shown.state(), ws);
       sendSight(ws);
+      sendInventory(ws);
     },
     close(ws) {
       clients.delete(ws);

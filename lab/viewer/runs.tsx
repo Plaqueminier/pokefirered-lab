@@ -28,9 +28,13 @@ export function money(amount: number): string {
   return `${amount.toLocaleString("en-US")} ₽`;
 }
 
-/** A change of the money, with its sign: "+120 ₽", "−500 ₽". */
+/** A change with its sign: "+3", "−500 ₽". */
+export function signed(change: number, format: (value: number) => string = String): string {
+  return `${change < 0 ? "−" : "+"}${format(Math.abs(change))}`;
+}
+
 export function signedMoney(change: number): string {
-  return `${change < 0 ? "−" : "+"}${money(Math.abs(change))}`;
+  return signed(change, money);
 }
 
 export function tokens(count: number): string {

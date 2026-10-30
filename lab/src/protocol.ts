@@ -1,6 +1,7 @@
 // Messages between the harness (server.ts) and the Viewer (viewer/viewer.ts).
 import type { Areas, Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { Sight } from "./harness/atlas";
+import type { InventoryAt } from "./inventory";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { Continuation, GameEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
@@ -100,6 +101,7 @@ export type ShownRun = { kind: "viewer"; replay: ReplayStatus | null } | { kind:
 export type ServerMessage =
   | { type: "status"; rom: string; speed: Speed; paused: boolean; fps: number; frame: number; hasQuickState: boolean; hasStartSave: boolean; audio: boolean; runs: RunSummary[]; shown: ShownRun }
   | { type: "state"; state: GameState }
+  | { type: "inventory"; from: number; entries: readonly InventoryAt[] }
   /** Sent when the map grid changes (new map, or a cell changed). */
   | { type: "map"; grid: MapGrid | null }
   | { type: "actors"; actors: MapActors | null }

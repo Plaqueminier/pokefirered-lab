@@ -30,10 +30,10 @@ import {
   ZoomIn,
 } from "lucide-preact";
 import type { ComponentType } from "preact";
-import { useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import type { ActionEvent, ModelEvent } from "../src/harness/record";
 import { actionText } from "../src/protocol";
-import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText } from "./components";
+import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText, useKeepInView } from "./components";
 import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
 import { milliDollars, seconds, tokens } from "./runs";
@@ -278,25 +278,6 @@ function PromptBlocks({ call }: { call: ModelEvent }) {
   );
 }
 
-// Not scrollIntoView: it also scrolls the page. A hidden panel has no layout: the observer places the list when it shows.
-function useKeepInView(list: { current: HTMLElement | null }, following: boolean, key: string) {
-  useLayoutEffect(() => {
-    const box = list.current;
-    if (!box) return;
-    const place = () => {
-      if (following) return void (box.scrollTop = box.scrollHeight);
-      const row = box.querySelector<HTMLElement>('[aria-pressed="true"]');
-      if (!row) return;
-      const top = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
-      if (top < 0 || top + row.offsetHeight > box.clientHeight) box.scrollTop += top - (box.clientHeight - row.offsetHeight) / 2;
-    };
-    place();
-    const observer = new ResizeObserver(place);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [list, following, key]);
-}
-
 export type ModelPanelProps = {
   rows: readonly UnusualCall[];
   index: number | null;
@@ -310,7 +291,7 @@ export function ModelPanel({ rows, index, following, thinking, pick, now }: Mode
   const [on, setOn] = useState<ReadonlySet<Flag>>(new Set());
   const shown = useMemo(() => (on.size === 0 ? rows : rows.filter((row) => row.flags.some(({ flag }) => on.has(flag)))), [rows, on]);
   const list = useRef<HTMLDivElement>(null);
-  useKeepInView(list, following, `${index} ${[...on].join()} ${shown.length}`);
+  useKeepInView(list, `${index} ${[...on].join()} ${shown.length}`, following ? "end" : "center");
   const row = index === null ? null : rows[index];
   return (
     <div class="grid h-full min-h-0 grid-cols-[minmax(300px,2fr)_3fr] gap-4">

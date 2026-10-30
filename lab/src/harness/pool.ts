@@ -1,4 +1,5 @@
 // A Macro-action runs its frames in one synchronous block: each Run plays in a worker, so the Viewer loop never stops.
+import type { InventoryAt } from "../inventory";
 import type { RunState } from "../run";
 import type { Sight } from "./atlas";
 import type { HarnessOptions } from "./harness";
@@ -19,6 +20,7 @@ export type RunView = { frame: number; screen: Uint8Array | null; sight: Sight }
 export type WorkerMessage =
   | { type: "screen"; frame: number; screen: Uint8Array }
   | ({ type: "state"; sight: Sight } & RunState)
+  | { type: "inventory"; entries: InventoryAt[] }
   | { type: "events"; events: RunEvent[] }
   | { type: "model-call-start" }
   | ({ type: "end" } & RunEnd);
@@ -30,6 +32,7 @@ export class PoolRun {
   // A scripted Bot gives the event loop of its worker no turn until the end of its Run, so a message cannot stop it: the worker reads this shared flag.
   readonly #stop = new Int32Array(new SharedArrayBuffer(4));
   readonly #events: RunEvent[] = [];
+  readonly #inventory: InventoryAt[] = [];
   readonly done: Promise<RunEnd>;
 
   constructor(
@@ -49,6 +52,9 @@ export class PoolRun {
           this.#view = { ...this.#view, ...state };
           break;
         }
+        case "inventory":
+          this.#inventory.push(...data.entries);
+          break;
         case "events":
           this.#events.push(...data.events);
           break;
@@ -94,6 +100,10 @@ export class PoolRun {
   /** The events of the Run record up to the end of the last Macro-action, Raw input or Model call, and all of them at the end. */
   get events(): readonly RunEvent[] {
     return this.#events;
+  }
+
+  get inventory(): readonly InventoryAt[] {
+    return this.#inventory;
   }
 }
 

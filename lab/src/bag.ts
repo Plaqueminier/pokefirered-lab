@@ -2,7 +2,7 @@ import type { Memory, Ref } from "./memory";
 import { activeTask, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
-const POCKET_NAMES = ["ITEMS", "KEY ITEMS", "POKé BALLS", "TM CASE", "BERRY POUCH"] as const;
+export const POCKET_NAMES = ["ITEMS", "KEY ITEMS", "POKé BALLS", "TM CASE", "BERRY POUCH"] as const;
 const ITEM_NONE = 0;
 const MAX_STRING = 256;
 const BATTLE_USAGE: Record<number, ItemUse> = { 1: "pokemon", 2: "alone" };
@@ -15,7 +15,7 @@ export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
 export const ITEMS_POCKET = POCKET_NAMES.indexOf("ITEMS");
 
-type PocketName = (typeof POCKET_NAMES)[number];
+export type PocketName = (typeof POCKET_NAMES)[number];
 
 export type ItemUse = "pokemon" | "alone";
 

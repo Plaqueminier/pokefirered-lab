@@ -1,12 +1,14 @@
-import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
+import { Backpack, Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
+import type { InventoryAt } from "../src/inventory";
 import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
 import { callAt, type SharedCursor, Store, useStore } from "./cursor";
+import { InventoryPanel } from "./inventory-panel";
 import { CellPointerCard, MapPanel } from "./map-panel";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
@@ -37,6 +39,7 @@ type LabData = {
   records: readonly string[];
   areas: Areas;
   record: { name: string; events: readonly GameEvent[] } | null;
+  inventory: readonly InventoryAt[];
 };
 
 // What viewer.ts gives to the Lab tab.
@@ -79,6 +82,7 @@ const RAIL: Entry[] = [
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
   { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <StatsPanelHost /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
+  { id: "bag", title: "Bag and PC", icon: Backpack, size: PANEL, render: () => <InventoryPanelHost /> },
 ];
 
 function sizeVars({ narrow, medium, wide }: Sizes): Record<string, string> {
@@ -135,6 +139,14 @@ function jumpTo({ shared, send }: Lab, replay: boolean, frame: number): void {
   shared.clear();
 }
 
+// The frame that plays (during a jump, its target), and a jump to a frame.
+function usePlaying() {
+  const lab = useLab();
+  const { status } = useStore(lab.data);
+  const replay = replayOf(status?.shown ?? null);
+  return { playing: replay?.seeking?.to ?? status?.frame ?? 0, jump: (frame: number) => jumpTo(lab, !!replay, frame) };
+}
+
 function TimelineHost() {
   const lab = useLab();
   const { shared } = lab;
@@ -144,7 +156,8 @@ function TimelineHost() {
   const { replay, source, available } = useGameEvents();
   const live = status?.frame ?? 0;
   const shown = useMemo(() => timelineEvents(source, areas), [source, areas]);
-  const [replayAt, setReplayAt] = usePending(replay?.seeking?.to ?? live, (a, b) => Math.abs(a - b) < 120, 2000);
+  const { playing, jump } = usePlaying();
+  const [replayAt, setReplayAt] = usePending(playing, (a, b) => Math.abs(a - b) < 120, 2000);
   return (
     <Timeline
       events={shown}
@@ -159,7 +172,7 @@ function TimelineHost() {
       onKinds={setKinds}
       onPick={(frame) => {
         if (replay) setReplayAt(frame);
-        jumpTo(lab, !!replay, frame);
+        jump(frame);
       }}
       onRange={(span) => shared.selectRange(span)}
       onNow={() => shared.clear()}
@@ -176,7 +189,8 @@ function StatsPanelHost() {
   const { status, events, areas, rows } = useStore(lab.data);
   const moment = useStore(lab.shared);
   const [kinds] = useStoredKinds();
-  const { replay, gameEvents, available } = useGameEvents();
+  const { gameEvents, available } = useGameEvents();
+  const { playing, jump } = usePlaying();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
   const shownKinds = useMemo(() => new Set([...kinds].filter((kind) => available.has(kind))), [kinds, available]);
@@ -186,13 +200,13 @@ function StatsPanelHost() {
       gameEvents={gameEvents}
       areas={areas}
       rows={rows}
-      playing={replay?.seeking?.to ?? status?.frame ?? 0}
+      playing={playing}
       moment={moment}
       costLimit={model?.costLimit ?? null}
       continued={model?.continued ?? null}
       kinds={shownKinds}
       picks={lab.shared}
-      jump={(frame) => jumpTo(lab, !!replay, frame)}
+      jump={jump}
     />
   );
 }
@@ -386,6 +400,14 @@ function MemoryPanelHost() {
   return <MemoryTreePanel view={view} following={!cursor} pickCall={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
 }
 
+function InventoryPanelHost() {
+  const { data, shared } = useLab();
+  const { inventory } = useStore(data);
+  const { cursor } = useStore(shared);
+  const { playing, jump } = usePlaying();
+  return <InventoryPanel history={inventory} cursor={cursor?.frame ?? null} playing={playing} now={() => shared.clear()} pick={jump} />;
+}
+
 function Party() {
   const { state } = useStore(useLab().data);
   if (!state || state.party.length === 0) return <p class="text-sm text-muted">{state ? "no Pokémon" : "–"}</p>;
@@ -461,7 +483,7 @@ export class LabTab {
   #toastId = 0;
 
   constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
-    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [], areas: {}, record: null });
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [], areas: {}, record: null, inventory: [] });
     render(
       <LabContext.Provider value={{ ...lab, data: this.#data }}>
         <LabLayout />
@@ -501,6 +523,10 @@ export class LabTab {
 
   onState(state: GameState): void {
     this.#patch({ state });
+  }
+
+  onInventory(from: number, entries: readonly InventoryAt[]): void {
+    this.#patch({ inventory: [...this.#data.value.inventory.slice(0, from), ...entries] });
   }
 
   // The added events are null when the events restarted, or after a jump: no toast for the old events.
