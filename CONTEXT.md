@@ -92,6 +92,10 @@ _Avoid_: person, tree (a tree of the map is a blocked metatile)
 A town, a route or another place of the Town Map, with all its maps: the game gives each map one map section. For example, Viridian City has its streets, its Poké Mart and its Pokémon Center.
 _Avoid_: zone, map section, region (Kanto is the region)
 
+**Visit**:
+The time that the player stays in one **Area**, in the panel Stats of the **Viewer**. A visit of less than 10 s is a step over a border: it joins the visit before it. A visit ends at the frame before the next visit. The Timeline groups its levels and wild battles by stay in an **Area** with no 10 s rule.
+_Avoid_: stay (in the docs; the code says `stay`)
+
 **Raw input**:
 A button press that a **Bot** sends directly, when no **Macro-action** covers the case. The **Harness** counts each one, and then runs the game to the next **Decision point**.
 _Avoid_: key press
@@ -110,6 +114,10 @@ _Avoid_: game, instance, session
 **Milestone**:
 A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
 _Avoid_: flag (a flag is one bit of the save), achievement
+
+**Chapter**:
+The part of a **Run** up to a **Milestone**, with the name of that **Milestone**: "Pokédex" is the time from the **Milestone** before it to the Pokédex. The last chapter is open, up to now: "After Pokédex", or "Start" before the first **Milestone**. The panel Stats of the **Viewer** selects a chapter as a range of frames.
+_Avoid_: stage, level (a level is the level of a Pokémon)
 
 **Run record**:
 The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**. A **Run record** from before the format version has only the map, battle and **Milestone** events of the **Game events**.
@@ -133,7 +141,7 @@ _Avoid_: emulator, web player
 
 **Timeline**:
 The track at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.
-_Avoid_: slider, scrubber, Stats lanes (the panel Stats has its own lanes)
+_Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 
 ## Relationships
 

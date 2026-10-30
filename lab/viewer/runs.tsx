@@ -1,7 +1,8 @@
 import { Play, Square } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
-import { Button, Checkbox, Field, Input, Select } from "./components";
+import { Button, Checkbox, Field, Input } from "./components";
+import { Select } from "./components-layers";
 
 type Send = (message: ClientMessage) => void;
 
@@ -21,6 +22,15 @@ export function milliDollars(cost: number): string {
 
 export function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
+}
+
+export function money(amount: number): string {
+  return `${amount.toLocaleString("en-US")} ₽`;
+}
+
+/** A change of the money, with its sign: "+120 ₽", "−500 ₽". */
+export function signedMoney(change: number): string {
+  return `${change < 0 ? "−" : "+"}${money(Math.abs(change))}`;
 }
 
 export function tokens(count: number): string {

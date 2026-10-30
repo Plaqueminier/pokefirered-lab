@@ -1,14 +1,15 @@
 import type { Areas, Milestone } from "../src/game";
 import type { RunEvent } from "../src/harness/record";
-import { clock } from "./stats-lanes";
+import { clock } from "./stats-format";
 
 export type TimelineKind = "milestone" | "faint" | "catch" | "evolution" | "trainer" | "heal" | "place" | "level" | "wild" | "purchase" | "item";
 
-export type TimelineEvent = { frame: number; kind: TimelineKind; text: string };
+/** `end`: the end of a trainer battle. */
+export type TimelineEvent = { frame: number; kind: TimelineKind; text: string; end?: number };
 
 export const NO_GAME_EVENTS = "No Game events in this record";
 
-const MILESTONE_NAMES: Record<Milestone, string> = {
+export const MILESTONE_NAMES: Record<Milestone, string> = {
   "has-pokemon": "First Pokémon",
   "first-rival-battle": "Rival",
   pokedex: "Pokédex",
@@ -26,6 +27,11 @@ function titleCase(name: string): string {
   return name.toLowerCase().replace(/(^|[\s.-])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
 }
 
+/** The Area of a map; a map with no Area in the table is its own Area, outside. */
+export function areaOf(areas: Areas, map: string): { area: string; place: string | null } {
+  return areas[map] ?? { area: map, place: null };
+}
+
 // `stay`: the number of the stay in an Area. `trainer`: what the start of the battle tells; a record without the format 1 does not tell it.
 type Battle = { from: number; to: number | null; stay: number; area: string; trainer: boolean | undefined; name: string | null };
 
@@ -40,7 +46,7 @@ export function timelineEvents(events: readonly RunEvent[], areas: Areas): Timel
   for (const event of events) {
     switch (event.type) {
       case "map": {
-        const next = areas[event.map]?.area ?? event.map;
+        const next = areaOf(areas, event.map).area;
         if (next !== area) {
           area = next;
           stay++;
@@ -104,7 +110,8 @@ export function timelineEvents(events: readonly RunEvent[], areas: Areas): Timel
   for (const battle of battles) {
     const time = battle.to === null ? "" : ` (${clock(battle.to - battle.from)})`;
     if (battle.name || battle.trainer) {
-      shown.push({ frame: battle.from, kind: "trainer", text: `Trainer battle${battle.name ? `: ${titleCase(battle.name)}` : ""}${time}` });
+      const text = `Trainer battle${battle.name ? `: ${titleCase(battle.name)}` : ""}${time}`;
+      shown.push({ frame: battle.from, kind: "trainer", text, end: battle.to ?? undefined });
       continue;
     }
     const group = wild.get(battle.stay) ?? { event: { frame: battle.from, kind: "wild", text: "" }, count: 0 };

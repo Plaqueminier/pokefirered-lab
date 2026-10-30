@@ -2,7 +2,8 @@ import { CircleHelp, FolderOpen, Layers, Pause, Play, RotateCcw, Save, SaveAll, 
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { type ClientMessage, SPEEDS, type Speed } from "../src/protocol";
-import { Button, HoverCard, LABEL, Slider, Tabs, Tooltip, usePending } from "./components";
+import { Button, LABEL, Slider, Tabs, Tooltip, usePending } from "./components";
+import { HoverCard } from "./components-layers";
 
 export type ScreenSettings = { overlay: boolean; sound: boolean; soundStarted: boolean; volume: number };
 

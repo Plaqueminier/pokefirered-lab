@@ -2,7 +2,7 @@ import { Fragment } from "preact";
 import type { ReplayStatus } from "../src/protocol";
 import { LABEL, Pill } from "./components";
 import { dollars } from "./runs";
-import { clock } from "./stats-lanes";
+import { clock } from "./stats-format";
 import { NO_GAME_EVENTS } from "./timeline-events";
 
 function ReplayState({ replay }: { replay: ReplayStatus }) {

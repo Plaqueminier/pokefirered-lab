@@ -156,80 +156,6 @@
         font: inherit;
         max-width: 320px;
       }
-      .stats-lanes { user-select: none; cursor: crosshair; }
-      .stats-lanes svg { display: block; overflow: visible; }
-      .stats-lanes text { fill: var(--muted); font: 11px ui-sans-serif, system-ui, sans-serif; pointer-events: none; }
-      .stats-lanes text.lane { fill: var(--text); }
-      .stats-lanes .rule { stroke: var(--line); }
-      .stats-lanes .milestone { stroke: var(--text); stroke-dasharray: 3 3; opacity: 0.5; }
-      .stats-lanes .continued { stroke: var(--violet); stroke-width: 2; stroke-dasharray: 6 3; }
-      .stats-lanes text.continued-text { fill: var(--violet); }
-      .stats-lanes .future { fill: var(--muted); opacity: 0.08; pointer-events: none; }
-      .stats-lanes .selection { fill: #fff; fill-opacity: 0.08; stroke: #fff; stroke-opacity: 0.5; pointer-events: none; }
-      .stats-lanes .cross { stroke: #fff; opacity: 0.4; pointer-events: none; }
-      .stats-lanes .cursor { stroke: var(--accent); stroke-width: 2; pointer-events: none; }
-      .stats-lanes .chapter { opacity: 0.25; }
-      .stats-lanes .c0 { fill: var(--blue); }
-      .stats-lanes .c1 { fill: var(--accent); }
-      .stats-lanes .c2 { fill: var(--ok); }
-      .stats-lanes .c3 { fill: var(--violet); }
-      .stats-lanes .area { stroke: var(--bg); }
-      .stats-lanes .outside { opacity: 0.18; }
-      .stats-lanes text.area-name { fill: #101214; font-weight: 600; }
-      .stats-lanes text.place-name { fill: #101214; }
-      .stats-lanes .cost { fill: none; stroke: var(--accent); stroke-width: 1.5; }
-      .stats-lanes .cost-area { fill: var(--accent); opacity: 0.15; }
-      .stats-lanes text.cost-now { fill: var(--accent); }
-      .stats-lanes .limit { stroke: var(--bad); stroke-dasharray: 5 4; }
-      .stats-lanes text.limit-text { fill: var(--bad); }
-      .stats-lanes .stuck { opacity: 0.8; }
-      .stats-lanes .stuck.low, .stats-lanes text.low { fill: var(--ok); }
-      .stats-lanes .stuck.mid, .stats-lanes text.mid { fill: var(--warn); }
-      .stats-lanes .stuck.high, .stats-lanes text.high { fill: var(--bad); }
-      .stats-lanes text.stuck-now { font-size: 20px; font-weight: 700; }
-      .stats-lanes .reflection { stroke: var(--violet); stroke-dasharray: 5 4; }
-      .stats-lanes text.reflection-text { fill: var(--violet); }
-      .stats-lanes .reflection-mark { fill: var(--violet); }
-      .stats-lanes .prompt { fill: none; stroke: var(--blue); stroke-width: 1.5; }
-      .stats-lanes .prompt-dot { fill: var(--blue); }
-      .stats-lanes text.prompt-now { fill: var(--blue); }
-      .stats-lanes .call { stroke: var(--blue); }
-      .stats-lanes .call.unreadable { stroke: var(--bad); stroke-width: 2; }
-      .stats-lanes .played { stroke-width: 2; }
-      .stats-lanes .played.done { stroke: var(--ok); stroke-width: 1; opacity: 0.6; }
-      .stats-lanes .played.interrupted { stroke: var(--blue); }
-      .stats-lanes .played.blocked { stroke: var(--warn); }
-      .stats-lanes .played.impossible { stroke: var(--bad); }
-      .stats-lanes .summary { stroke: var(--violet); }
-      .stats-lanes .battle { fill: var(--warn); }
-      .stats-readout { min-height: 3.2em; margin-top: 6px; color: var(--muted); }
-      .stats-head { margin: 8px 0; font-size: 13px; }
-      .stats-head .bad, .stats-card .bad, .stats-card .impossible { color: var(--bad); }
-      .stats-card .blocked { color: var(--warn); }
-      .stats-card .interrupted { color: var(--blue); }
-      .stats-card .done { color: var(--ok); }
-      .stats-head .violet, .stats-card .violet { color: var(--violet); }
-      .stats-head .blue { color: var(--blue); }
-      .stats-head .stuck-text.low { color: var(--ok); }
-      .stats-head .stuck-text.mid { color: var(--warn); }
-      .stats-head .stuck-text.high { color: var(--bad); }
-      .pill { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 999px; color: #101214; font-weight: 700; font-size: 11px; text-align: center; }
-      .pill.low { background: var(--ok); }
-      .pill.mid { background: var(--warn); }
-      .pill.high { background: var(--bad); }
-      .stats-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr); gap: 12px; align-items: start; }
-      .bar-row { display: grid; grid-template-columns: 80px 1fr 32px; gap: 8px; align-items: center; padding: 1px 0; }
-      .bar-row .mono { text-align: right; }
-      .bar-row .track { height: 10px; background: #23272e; border-radius: 2px; overflow: hidden; }
-      .bar-row .track > div { height: 100%; background: var(--blue); }
-      .bar-row.never > span { color: var(--muted); font-style: italic; }
-      .bar-row.never .track { background: none; border: 1px dashed var(--line); }
-      .stats-card tr.played td { border-top: 0; font-size: 11px; color: var(--muted); }
-      .stats-card h3:not(:first-child) { margin-top: 8px; }
-      .stats-card { max-height: 320px; overflow: auto; font-size: 12px; }
-      .stats-card h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-      .stats-card table { border-collapse: collapse; width: 100%; }
-      .stats-card td { padding: 2px 8px 2px 0; border-top: 1px solid var(--line); vertical-align: top; }
       #doc { padding: 8px 16px 32px; }
       .doc-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
       .doc-head h1 { margin: 0; font-size: 20px; }
@@ -287,13 +213,6 @@
             <pre class="list" id="stops">–</pre>
           </section>
         </div>
-      </section>
-      <section class="stats-panel" id="stats-panel">
-        <div class="panel-head">
-          <h2>Stats</h2>
-          <span class="muted" id="stats-cost"></span>
-        </div>
-        <div id="stats"></div>
       </section>
     </div>
     <article id="doc" hidden>
@@ -431,7 +350,7 @@
             <dt><code>press</code></dt><dd>only at a walk, at the move menu of a battle and in the party menu, never at a battle action, a choice, the shop menu, the item PC, the naming screen or a move to forget. It has no Start: the model bot does not know the Start menu. The reason of a <code>press Start</code> answer tells to <code>use &lt;item&gt;</code>, with the items that work now, or that the Bag is empty.</dd>
             <dt>Forms of an action</dt><dd>a call is read too: <code>press(Up)</code> is <code>press Up</code>, <code>use(POTION, SQUIRTLE)</code> is <code>use POTION on SQUIRTLE</code>. A comma between the arguments is a space: <code>goTo 9, 42</code> is <code>goTo 9 42</code>. The commas of <code>choose</code> and <code>name</code> stay in the text.</dd>
             <dt>Impossible action</dt><dd>the same conversation goes on with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example.</dd>
-            <dt>Panels</dt><dd>in the rail of the Lab tab. "Model" lists the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag, and shows one call in full: the answer, what it played, the cost, then the blocks of its prompt, in colors, that fold; a click on a call moves the cursor of all the panels. "Stats" shows the Run as lanes on one axis of frames (Milestones, Areas, cost, Stuck counter, prompt tokens, Model calls, played actions, Summary calls, battles); a drag selects a part of the Run, and a click selects a Model call and moves the cursor, with the smallest and the largest prompt in tokens. "Memory tree" shows the tree at the cursor, one node at a time: the top nodes as the model sees them, then a click opens a node, its two halves and the Summary call that made it (its prompt and answer); a tab lists the Summary calls of the selection.</dd>
+            <dt>Panels</dt><dd>in the rail of the Lab tab. "Model" lists the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag, and shows one call in full: the answer, what it played, the cost, then the blocks of its prompt, in colors, that fold; a click on a call moves the cursor of all the panels. "Stats" shows the Run for a video, in large numbers: the time, the cost, the Stuck counter and the prompt tokens at the cursor, what happened since the last heal, the latest Game events, then the chapters (up to each Milestone), the Areas and the charts of the cost, the Stuck counter and the prompt tokens, and the counts of the selection (heals, purchases, money spent, catches, fainted Pokémon of the player, trainers beaten, whiteouts, Unusual calls). A click on a chapter or an Area selects it, and the stats and the charts follow it; a drag on a chart selects a range; "−2 h" shows the 2 hours before the cursor in the charts; "Whole Run" selects the whole Run again and returns the cursor to now. The Model calls of the selection and their actions fold under the stats. "Memory tree" shows the tree at the cursor, one node at a time: the top nodes as the model sees them, then a click opens a node, its two halves and the Summary call that made it (its prompt and answer); a tab lists the Summary calls of the selection.</dd>
           </dl>
         </section>
         <section>

@@ -1,36 +1,11 @@
-import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Square } from "lucide-preact";
+import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, Heart, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Skull, Square, Swords } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import {
-  Badges,
-  Bar,
-  Breadcrumb,
-  Button,
-  Checkbox,
-  ExpBar,
-  FilterChip,
-  Field,
-  Input,
-  LABEL,
-  ListRow,
-  Metric,
-  Num,
-  Pill,
-  Select,
-  Slider,
-  StatBar,
-  Switch,
-  Tabs,
-  toggled,
-  Tooltip,
-  TYPES,
-  TypeChip,
-  hpTone,
-  typeToken,
-} from "./components";
+import { Badges, Bar, Breadcrumb, Button, Checkbox, ExpBar, FilterChip, Field, Input, LABEL, ListRow, Metric, Num, Pill, Slider, StatBar, StatTile, Switch, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
+import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
-import { clock } from "./stats-lanes";
+import { clock } from "./stats-format";
 import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 
@@ -372,6 +347,35 @@ function MetricDemo() {
   );
 }
 
+function StatTileDemo() {
+  return (
+    <div class="flex flex-col gap-4">
+      <p class="text-xs text-faint">lg: a value at the cursor, with a detail line (always there, so the tiles of a row have the same height). A tone with no icon colors the value; with an icon, it colors the icon.</p>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatTile size="lg" label="Cost" value="0.24 $" detail="limit 1.00 $" />
+        <StatTile size="lg" label="Stuck counter" value={29} tone="bad" />
+        <StatTile size="lg" label="Heals" value={3} total={33} icon={Heart} tone="ok" />
+        <StatTile size="lg" label="Prompt tokens" value="4,866 and a long value that does not fit" />
+      </div>
+      <p class="text-xs text-faint">md: a count with its icon in its tone, and the total of the whole Run, or a detail.</p>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatTile size="md" label="Heals" value={3} total={33} icon={Heart} tone="ok" />
+        <StatTile size="md" label="Money spent" value="1,900 ₽" icon={Coins} tone="warn" detail="2 purchases" />
+        <StatTile size="md" label="Tone, no icon" value={10} tone="accent" />
+        <StatTile size="md" label="A long value" value="1,234,567,890 ₽ and more" icon={Swords} />
+      </div>
+      <p class="text-xs text-faint">sm: no card, for a row of facts in a card; the total and the detail follow the value.</p>
+      <div class="grid w-[520px] max-w-full grid-cols-5 gap-3">
+        <StatTile size="sm" label="Time" value="12:04" icon={Clock} />
+        <StatTile size="sm" label="Faints" value={2} total={5} icon={Skull} tone="bad" />
+        <StatTile size="sm" label="₽ now" value="3,434" icon={Coins} tone="warn" detail={<span class="text-ok">+180</span>} />
+        <StatTile size="sm" label="No icon" value="–" />
+        <StatTile size="sm" label="Long" value="1,234,567,890 ₽" />
+      </div>
+    </div>
+  );
+}
+
 function TypeChipDemo() {
   return (
     <div class="flex flex-col gap-4">
@@ -658,6 +662,12 @@ const ENTRIES: Entry[] = [
   { category: "data", title: "Metric", rule: "A short value of the top bar with an icon and a tooltip. Its number has a fixed width, so it never moves its neighbors.", demo: () => <MetricDemo /> },
   {
     category: "data",
+    title: "StatTile",
+    rule: "One large value of the stats with its label, in 3 sizes. lg: a value at the cursor in a Card, with a detail line. md: a count in a Card, with its icon and the total of the whole Run. sm: no Card, for a row of facts. The tone colors the icon, or the value when there is no icon. A long value ends with an ellipsis.",
+    demo: () => <StatTileDemo />,
+  },
+  {
+    category: "data",
     title: "ListRow",
     rule: "A row of a list that a click selects: cells with a fixed width at the left, a main text in mono, optional icons at the right. Selected: the accent border all around. An error text is red.",
     demo: () => <ListRowDemo />,
@@ -678,13 +688,13 @@ const ENTRIES: Entry[] = [
   {
     category: "surfaces",
     title: "Tooltip",
-    rule: "A short text on hover or keyboard focus, in the top layer: a panel that scrolls does not cut it. A wide tooltip can have more than one line. When a click changes its text, the tooltip shows again under the pointer.",
+    rule: "A short text on hover or keyboard focus, in the top layer: a panel that scrolls does not cut it. A wide tooltip can have more than one line. When a click changes its text, the tooltip shows again under the pointer. Tip has the same look and follows the pointer over a track or a chart; near an end, it stays inside the box.",
     demo: () => <TooltipDemo />,
   },
   {
     category: "surfaces",
     title: "Collapsible",
-    rule: "A title line that opens and closes its body: a chevron that turns, an optional icon and an optional detail at the right. The panel keeps its state.",
+    rule: "A title line that opens and closes its body: a chevron that turns, an optional icon and an optional detail at the right. A long detail ends with an ellipsis before the title does. The panel keeps its state.",
     demo: () => <CollapsibleDemo />,
   },
   {

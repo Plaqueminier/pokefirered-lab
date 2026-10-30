@@ -4,11 +4,9 @@ import type { Sight } from "../src/harness/atlas";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { SharedCursor } from "./cursor";
-import { showTooltip } from "./dom";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
 import { describe, draw, howLabel } from "./mapdraw";
-import { StatsPanel } from "./stats-panel";
 import { ViewerTabs } from "./tabs";
 import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
 
@@ -51,7 +49,6 @@ audio.setVolume(settings.volume);
 
 let shownRunId: number | null = null;
 const shared = new SharedCursor();
-const statsPanel = new StatsPanel({ cost: $("stats-cost"), body: $("stats"), tooltip }, shared);
 const tabs = new ViewerTabs(
   {
     nav: $("nav"),
@@ -107,7 +104,6 @@ function onMessage(message: ServerMessage): void {
         (message.hasStartSave ? "" : " · no Starting save yet");
       const runChanged = shared.onStatus(message.shown);
       lab.onStatus(message, statusLine, runChanged);
-      statsPanel.onStatus(frame, message.shown, runChanged);
       break;
     }
     case "state":
@@ -139,7 +135,6 @@ function onMessage(message: ServerMessage): void {
       setMapNames(message.names);
       break;
     case "areas":
-      statsPanel.onAreas(message.areas);
       lab.onAreas(message.areas);
       break;
     case "replay-events":
@@ -161,7 +156,6 @@ function onMessage(message: ServerMessage): void {
     case "events": {
       const added = shared.onEvents(message.events);
       lab.onEvents(message.events, message.quiet ? null : added);
-      statsPanel.onEvents(message.events);
       break;
     }
   }
@@ -529,3 +523,13 @@ window.addEventListener("blur", releaseKeys);
 for (const b of document.querySelectorAll("button")) b.addEventListener("click", () => b.blur());
 
 connect();
+
+export function showTooltip(tooltip: HTMLElement, text: string | null, clientX: number, clientY: number): void {
+  tooltip.style.display = text ? "block" : "none";
+  if (!text) return;
+  tooltip.textContent = text;
+  const width = tooltip.offsetWidth;
+  const left = clientX + 14 + width > window.innerWidth - 8 ? clientX - 14 - width : clientX + 14;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.min(clientY + 14, window.innerHeight - tooltip.offsetHeight - 8)}px`;
+}

@@ -44,7 +44,7 @@ test("the Timeline shows the Game events of a Run with names, and groups the lev
   expect(timelineEvents(events, AREAS)).toEqual([
     { frame: 10, kind: "place", text: "Pallet Town" },
     { frame: 30, kind: "milestone", text: "First Pokémon" },
-    { frame: 100, kind: "trainer", text: "Trainer battle: Rival Bob (1:12)" },
+    { frame: 100, kind: "trainer", text: "Trainer battle: Rival Bob (1:12)", end: 100 + 60 * 72 },
     { frame: 4500, kind: "level", text: "Squirtle Lv 5 → 6" },
     { frame: 5000, kind: "place", text: "Route 1" },
     { frame: 5100, kind: "wild", text: "2 wild battles in Route 1" },
@@ -57,6 +57,6 @@ test("the Timeline shows the Game events of a Run with names, and groups the lev
     { frame: 6200, kind: "place", text: "Viridian City" },
     { frame: 6300, kind: "heal", text: "Healed at the Pokémon Center" },
     { frame: 6400, kind: "heal", text: "Healed with POTION" },
-    { frame: 7100, kind: "trainer", text: "Trainer battle (1:00)" },
+    { frame: 7100, kind: "trainer", text: "Trainer battle (1:00)", end: 10700 },
   ]);
 });

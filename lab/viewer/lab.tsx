@@ -1,11 +1,12 @@
 import { Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
-import { Badges, Button, Card, Cover, HoverCard, Metric, Pill, Popover, Tabs, Toast, Toaster, type Tone, Tooltip, usePending } from "./components";
-import { callAt, type Readable, type SharedCursor, Store } from "./cursor";
+import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
+import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
+import { callAt, type SharedCursor, Store, useStore } from "./cursor";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
 import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
@@ -14,7 +15,8 @@ import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect } from "./runs";
 import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
-import { clock, stuckTone } from "./stats-lanes";
+import { clock, stuckTone } from "./stats-format";
+import { StatsPanel } from "./stats-panel";
 import { availableKinds, Timeline, useStoredKinds } from "./timeline";
 import { timelineEvents } from "./timeline-events";
 
@@ -47,12 +49,6 @@ function useLab(): Lab {
   return lab;
 }
 
-function useStore<T>(store: Readable<T>): T {
-  const [, setChanges] = useState(0);
-  useEffect(() => store.subscribe(() => setChanges((n) => n + 1)), [store]);
-  return store.value;
-}
-
 // A panel with its own DOM in the page: it moves into its place once, and stays in the document.
 function Legacy({ id }: { id: string }) {
   const host = useRef<HTMLDivElement>(null);
@@ -78,7 +74,7 @@ const PANEL: Sizes = { narrow: "75vh", medium: "100%", wide: "100%" };
 const RAIL: Entry[] = [
   { id: "map", title: "Whole map", icon: MapIcon, size: PANEL, render: () => <Legacy id="map-panel" /> },
   { id: "model", title: "Model", icon: Bot, size: PANEL, render: () => <ModelPanelHost /> },
-  { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <Legacy id="stats-panel" /> },
+  { id: "stats", title: "Stats", icon: ChartColumn, size: PANEL, render: () => <StatsPanelHost /> },
   { id: "memory", title: "Memory tree", icon: ListTree, size: PANEL, render: () => <MemoryPanelHost /> },
 ];
 
@@ -118,18 +114,32 @@ function LabLayout() {
   );
 }
 
+// The events with the Game events: in a replay, those of the whole record. A Run that plays has all the Game events; a replay has them only when its record has the format 1.
+function useGameEvents() {
+  const { status, events, record } = useStore(useLab().data);
+  const replay = replayOf(status?.shown ?? null);
+  const source = replay && record?.name === replay.name ? record.events : events;
+  const hasGameEvents = !replay || replay.gameEvents !== null;
+  const available = useMemo(() => availableKinds(hasGameEvents), [hasGameEvents]);
+  return { replay, source, gameEvents: hasGameEvents ? source : null, available };
+}
+
+// A click on an event: in a Run that plays, the cursor moves to it; a replay jumps to it, and the cursor returns to now.
+function jumpTo({ shared, send }: Lab, replay: boolean, frame: number): void {
+  if (!replay) return shared.pickFrame(frame);
+  send({ type: "seek", frame });
+  shared.clear();
+}
+
 function TimelineHost() {
-  const { data, shared, send } = useLab();
-  const { status, events, areas, record } = useStore(data);
+  const lab = useLab();
+  const { shared } = lab;
+  const { status, areas } = useStore(lab.data);
   const { cursor, range } = useStore(shared);
   const [kinds, setKinds] = useStoredKinds();
-  const replay = replayOf(status?.shown ?? null);
+  const { replay, source, available } = useGameEvents();
   const live = status?.frame ?? 0;
-  const source = replay && record?.name === replay.name ? record.events : events;
   const shown = useMemo(() => timelineEvents(source, areas), [source, areas]);
-  // A Run that plays has all the Game events. A replay has them only when its record has the format 1.
-  const gameEvents = !replay || replay.gameEvents !== null;
-  const available = useMemo(() => availableKinds(gameEvents), [gameEvents]);
   const [replayAt, setReplayAt] = usePending(replay?.seeking?.to ?? live, (a, b) => Math.abs(a - b) < 120, 2000);
   return (
     <Timeline
@@ -144,13 +154,37 @@ function TimelineHost() {
       kinds={kinds}
       onKinds={setKinds}
       onPick={(frame) => {
-        if (!replay) return shared.pickFrame(frame);
-        setReplayAt(frame);
-        send({ type: "seek", frame });
-        shared.clear();
+        if (replay) setReplayAt(frame);
+        jumpTo(lab, !!replay, frame);
       }}
       onRange={(span) => shared.selectRange(span)}
       onNow={() => shared.clear()}
+    />
+  );
+}
+
+function StatsPanelHost() {
+  const lab = useLab();
+  const { status, events, areas, rows } = useStore(lab.data);
+  const moment = useStore(lab.shared);
+  const [kinds] = useStoredKinds();
+  const { replay, gameEvents, available } = useGameEvents();
+  const shown = status?.shown ?? null;
+  const model = shown && modelOf(shown);
+  const shownKinds = useMemo(() => new Set([...kinds].filter((kind) => available.has(kind))), [kinds, available]);
+  return (
+    <StatsPanel
+      events={events}
+      gameEvents={gameEvents}
+      areas={areas}
+      rows={rows}
+      playing={replay?.seeking?.to ?? status?.frame ?? 0}
+      moment={moment}
+      costLimit={model?.costLimit ?? null}
+      continued={model?.continued ?? null}
+      kinds={shownKinds}
+      picks={lab.shared}
+      jump={(frame) => jumpTo(lab, !!replay, frame)}
     />
   );
 }

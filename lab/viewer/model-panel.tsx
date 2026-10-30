@@ -37,7 +37,7 @@ import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone,
 import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
 import { milliDollars, seconds, tokens } from "./runs";
-import { clock, stuckTone } from "./stats-lanes";
+import { clock, stuckTone } from "./stats-format";
 
 type Icon = ComponentType<{ size?: number }>;
 

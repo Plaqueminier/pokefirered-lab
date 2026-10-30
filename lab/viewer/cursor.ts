@@ -1,3 +1,4 @@
+import { useEffect, useState } from "preact/hooks";
 import type { RunEvent } from "../src/harness/record";
 import type { ShownRun } from "../src/protocol";
 import { runKey } from "./runs";
@@ -30,6 +31,13 @@ export class Store<T> implements Readable<T> {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
+}
+
+/** Draws the component again at each change of the store. */
+export function useStore<T>(store: Readable<T>): T {
+  const [, setChanges] = useState(0);
+  useEffect(() => store.subscribe(() => setChanges((n) => n + 1)), [store]);
+  return store.value;
 }
 
 function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boolean {

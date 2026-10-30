@@ -5,7 +5,7 @@ import { type Focus, focusOn, type MemoryPanelView, type SummaryCallRow, type Tr
 import { CostPills, NowButton } from "./model-panel";
 import { PromptText } from "./prompt-text";
 import { dollars, seconds } from "./runs";
-import { clock } from "./stats-lanes";
+import { clock } from "./stats-format";
 
 type PickCall = (call: number, frame: number) => void;
 

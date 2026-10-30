@@ -1,9 +1,9 @@
 import { ChevronsUp, CircleDot, Gift, Heart, MapPin, PawPrint, ShoppingBag, Skull, Sparkles, Swords, Trophy } from "lucide-preact";
-import type { ComponentChildren, ComponentType } from "preact";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Button, FilterChip, LABEL, Pill, TIP, type Tone, Tooltip, toggled, toneText } from "./components";
-import type { Span } from "./cursor";
-import { clock } from "./stats-lanes";
+import type { ComponentType } from "preact";
+import { useRef, useState } from "preact/hooks";
+import { Button, FilterChip, LABEL, Pill, Tip, type Tone, Tooltip, toggled, toneText, useWidth } from "./components";
+import { type Span, Store, useStore } from "./cursor";
+import { clock } from "./stats-format";
 import { NO_GAME_EVENTS, type TimelineEvent, type TimelineKind } from "./timeline-events";
 
 // `legacy`: a record without the format 1 has this kind.
@@ -37,13 +37,15 @@ function storedKinds(): ReadonlySet<TimelineKind> {
   return new Set(KINDS.filter((kind) => kind.on).map((kind) => kind.id));
 }
 
+// One store, so the chips of the Timeline also filter "Latest events" of the Stats panel.
+const kindsStore = new Store(storedKinds());
+
 /** The kinds that the user chose, kept in the browser. */
 export function useStoredKinds(): [ReadonlySet<TimelineKind>, (kinds: ReadonlySet<TimelineKind>) => void] {
-  const [kinds, setKinds] = useState(storedKinds);
   return [
-    kinds,
+    useStore(kindsStore),
     (next) => {
-      setKinds(next);
+      kindsStore.set(next);
       try {
         localStorage.setItem(KINDS_KEY, JSON.stringify([...next]));
       } catch {}
@@ -83,7 +85,7 @@ function nearGroup(groups: readonly Group[], x: number): Group | null {
   return best;
 }
 
-function KindIcon({ kind, size }: { kind: TimelineKind; size: number }) {
+export function KindIcon({ kind, size }: { kind: TimelineKind; size: number }) {
   const look = LOOKS.get(kind);
   if (!look) return null;
   const Icon = look.icon;
@@ -107,29 +109,6 @@ function EventLines({ events }: { events: readonly TimelineEvent[] }) {
       {events.length > MAX_LINES && <span class="text-faint">and {events.length - MAX_LINES} more</span>}
     </span>
   );
-}
-
-function Tip({ x, width, children }: { x: number; width: number; children: ComponentChildren }) {
-  const align = x < 160 ? "-translate-x-4" : x > width - 160 ? "-translate-x-[calc(100%-16px)]" : "-translate-x-1/2";
-  return (
-    <span class={`pointer-events-none absolute bottom-full z-10 mb-1.5 whitespace-nowrap ${align} ${TIP}`} style={{ left: `${x}px` }}>
-      {children}
-    </span>
-  );
-}
-
-function useWidth() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
-    observer.observe(element);
-    setWidth(element.clientWidth);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width] as const;
 }
 
 export type TimelineProps = {

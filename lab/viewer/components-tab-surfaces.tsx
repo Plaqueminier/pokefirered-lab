@@ -1,9 +1,10 @@
 import { BookOpen, Bot, CircleCheck, CircleHelp, Copy, Eye, Info, OctagonAlert, Rewind, Trophy } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Button, Card, Collapsible, Cover, HoverCard, LABEL, Num, Pill, Popover, PopoverBody, Tabs, Toast, Toaster, type Tone, Tooltip } from "./components";
+import { Button, Card, Collapsible, Cover, LABEL, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
+import { HoverCard, Popover, PopoverBody, Toast, Toaster } from "./components-layers";
 import { PromptText } from "./prompt-text";
-import { clock } from "./stats-lanes";
+import { clock } from "./stats-format";
 
 const COVER_FRAMES = 36000;
 
@@ -241,6 +242,30 @@ export function TooltipDemo() {
           <span class="text-muted">1/15</span>
         </div>
       </Tooltip>
+      <PointerTipDemo />
+    </div>
+  );
+}
+
+const DEMO_FRAMES = 4 * 60 * 60 * 60;
+
+// Tip: the tip of a track or a chart (the Timeline, the Stats panel), at the pointer; near an end, it stays inside the box.
+function PointerTipDemo() {
+  const [ref, width] = useWidth();
+  const [x, setX] = useState<number | null>(null);
+  return (
+    <div
+      ref={ref}
+      class="relative mt-6 h-8 w-[320px] max-w-full cursor-crosshair rounded-sm bg-track"
+      onPointerMove={(event) => setX(event.clientX - event.currentTarget.getBoundingClientRect().left)}
+      onPointerLeave={() => setX(null)}
+    >
+      <span class="absolute inset-0 grid place-items-center text-xs text-faint">Tip: move the pointer here</span>
+      {x !== null && (
+        <Tip x={x} width={width}>
+          {clock((x / Math.max(1, width)) * DEMO_FRAMES)}
+        </Tip>
+      )}
     </div>
   );
 }
@@ -258,6 +283,9 @@ export function CollapsibleDemo() {
       {block("Rules", <BookOpen size={13} />, "You play Pokémon FireRed.\nAnswer with JSON only.\n- action: one action of the list.")}
       <Collapsible title="No icon, no detail" open={!!open.plain} onToggle={() => setOpen({ ...open, plain: !open.plain })}>
         <p class="px-2 text-sm text-muted">Any content.</p>
+      </Collapsible>
+      <Collapsible title="A long detail" detail="425 calls · 631 played actions · 10 unreadable · 86 Summary calls · 91 notes · 8 Reflection turns" open={!!open.long} onToggle={() => setOpen({ ...open, long: !open.long })}>
+        <p class="px-2 text-sm text-muted">The detail ends with an ellipsis before the title does.</p>
       </Collapsible>
     </div>
   );
