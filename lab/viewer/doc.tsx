@@ -1,4 +1,4 @@
-// Issue #61. lab/README.md stays the full reference; the Doc is a summary.
+// Issue #61. The Doc tells what the lab can do; lab/README.md gives only the setup and the commands.
 import { Bot, Brain, CircleStop, Construction, FileClock, Flag, Gamepad2, Lightbulb, ListTree, MessageSquareText, Monitor, Workflow } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, render } from "preact";
 import { useRef, useState } from "preact/hooks";
@@ -71,7 +71,7 @@ function DocTab() {
       >
         <div class="hidden flex-col gap-1 px-2 min-[900px]:flex">
           <span class="text-lg font-bold">What the lab can do</span>
-          <span class="text-xs text-muted">Full reference: lab/README.md</span>
+          <span class="text-xs text-muted">Commands: lab/README.md</span>
         </div>
         {GROUPS.map((group) => (
           <div key={group.title} class="flex shrink-0 flex-col gap-1">

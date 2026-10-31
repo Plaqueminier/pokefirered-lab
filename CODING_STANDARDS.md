@@ -8,9 +8,10 @@ A change to one of these parts updates its docs in the same diff:
 
 | Change | Docs to update |
 | --- | --- |
-| `observe()`, a Macro-action, a Raw input | `lab/README.md` (section "Run a Bot"), the Doc tab (`lab/viewer/doc-harness.tsx`, the page "The loop" in `lab/viewer/doc-overview.tsx`, and the loop diagram in `lab/viewer/doc-diagrams.tsx`) |
-| The Atlas | `CONTEXT.md` (term **Atlas**), `lab/README.md` (section "The Atlas"), the Doc tab (pages "Principle", "Macro-actions", "Run record", "Prompt and actions" and "Stuck, reflection and review") |
-| A prompt of the model bot, its actions or its version | `lab/README.md` (section "The model bot"), the Doc tab (`lab/viewer/doc-model.tsx`, pages "Bots", "Prompt and actions", "Stuck, reflection and review" and "Memory tree"; the pages "The loop", "Milestones" and "End of a Run"; the two diagrams in `lab/viewer/doc-diagrams.tsx`), `lab/HISTORY.md` |
+| `observe()`, a Macro-action, a Raw input | the Doc tab (`lab/viewer/doc-harness.tsx`, the page "The loop" in `lab/viewer/doc-overview.tsx`, and the loop diagram in `lab/viewer/doc-diagrams.tsx`) |
+| The Atlas | `CONTEXT.md` (term **Atlas**), the Doc tab (pages "Principle", "Macro-actions", "Run record", "Prompt and actions" and "Stuck, reflection and review") |
+| A prompt of the model bot, its actions or its version | the Doc tab (`lab/viewer/doc-model.tsx`, pages "Bots", "Prompt and actions", "Stuck, reflection and review" and "Memory tree"; the pages "The loop", "Milestones" and "End of a Run"; the two diagrams in `lab/viewer/doc-diagrams.tsx`), `lab/HISTORY.md`, the version in `lab/README.md` |
+| A command, an option, a setup step or a folder of `lab/` | `lab/README.md` |
 | A term of the domain | `CONTEXT.md` |
 
 Each sentence of these docs must stay true after the diff. A sentence that describes the old behaviour is a finding.
