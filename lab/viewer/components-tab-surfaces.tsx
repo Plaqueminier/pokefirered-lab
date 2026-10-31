@@ -1,7 +1,7 @@
-import { BookOpen, Bot, CircleCheck, CircleHelp, Copy, Eye, Info, OctagonAlert, Rewind, Trophy } from "lucide-preact";
+import { BookOpen, Bot, CircleCheck, CircleHelp, Coins, Copy, Eye, Info, OctagonAlert, Rewind, Skull, Trophy } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Button, Card, Collapsible, Cover, LABEL, ListRow, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
+import { Button, Card, Code, Collapsible, Cover, InfoCard, LABEL, ListRow, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
 import { HoverCard, Popover, PopoverBody, Toast, Toaster } from "./components-layers";
 import { CellPointerCard } from "./map-panel";
 import type { CellFacts, CellTip } from "./mapdraw";
@@ -333,6 +333,19 @@ export function CollapsibleDemo() {
       <Collapsible title="A long detail" detail="425 calls · 631 played actions · 10 unreadable · 86 Summary calls · 91 notes · 8 Reflection turns" open={!!open.long} onToggle={() => setOpen({ ...open, long: !open.long })}>
         <p class="px-2 text-sm text-muted">The detail ends with an ellipsis before the title does.</p>
       </Collapsible>
+    </div>
+  );
+}
+
+export function InfoCardDemo() {
+  return (
+    <div class="grid gap-3 sm:grid-cols-3">
+      <InfoCard title="🚶 Walk" lines={["the map as a grid: ? not seen, a letter is a target", "the targets, with distance and direction"]} chips={["go", "goTo", "use", "zoom"]} />
+      <InfoCard icon={Trophy} tone="ok" title="goal" lines={["the goal Milestone is reached", <>with no goal: <Code>badge-8</Code></>]} />
+      <InfoCard icon={Coins} tone="warn" title="cost limit" lines={["the Model calls cost more than the limit"]} />
+      <InfoCard icon={Skull} tone="bad" title="whiteout" lines={["all the Pokémon of the party faint"]} />
+      <InfoCard title="Title only" />
+      <InfoCard icon={Bot} title="Chips only" chips={["fight", "switch", "run", "use", "zoom"]} />
     </div>
   );
 }

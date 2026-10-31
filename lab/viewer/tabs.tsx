@@ -1,21 +1,8 @@
 import { BookOpen, LayoutGrid, Shapes } from "lucide-preact";
 import { render } from "preact";
 import { useState } from "preact/hooks";
-import type { BotInfo } from "../src/protocol";
 import { Tabs } from "./components";
-
-function botRow(bot: BotInfo): HTMLTableRowElement {
-  const row = document.createElement("tr");
-  row.insertCell().textContent = bot.name;
-  if ("kind" in bot) {
-    for (const text of [bot.kind, bot.version, bot.goal ?? "none"]) row.insertCell().textContent = text;
-  } else {
-    const cell = row.insertCell();
-    cell.colSpan = 3;
-    cell.textContent = `does not load: ${bot.error}`;
-  }
-  return row;
-}
+import { DOC_PARAM } from "./doc";
 
 const TABS = [
   { id: "lab", label: "Lab", icon: <LayoutGrid size={15} /> },
@@ -25,8 +12,15 @@ const TABS = [
 
 type Tab = (typeof TABS)[number]["id"];
 
-function NavBar({ onChange }: { onChange: (tab: Tab) => void }) {
-  const [tab, setTab] = useState<Tab>("lab");
+function setDocParam(page: string | null): void {
+  const url = new URL(location.href);
+  if (page === null) url.searchParams.delete(DOC_PARAM);
+  else url.searchParams.set(DOC_PARAM, page);
+  history.replaceState(null, "", url);
+}
+
+function NavBar({ initial, onChange }: { initial: Tab; onChange: (tab: Tab) => void }) {
+  const [tab, setTab] = useState(initial);
   const select = (next: Tab) => {
     setTab(next);
     onChange(next);
@@ -42,20 +36,27 @@ function NavBar({ onChange }: { onChange: (tab: Tab) => void }) {
 export type TabElements = {
   nav: HTMLElement;
   tabs: Record<Tab, HTMLElement>;
-  bots: HTMLTableSectionElement;
 };
 
 export class ViewerTabs {
   #shown: Tab = "lab";
+  #docPage: string | null = new URLSearchParams(location.search).get(DOC_PARAM);
 
   constructor(
     private readonly ui: TabElements,
     private readonly onLeaveLab: () => void,
   ) {
-    render(<NavBar onChange={(tab) => this.#show(tab)} />, ui.nav);
+    const initial: Tab = this.#docPage === null ? "lab" : "doc";
+    render(<NavBar initial={initial} onChange={(tab) => this.#show(tab)} />, ui.nav);
+    this.#show(initial);
   }
 
   #show(tab: Tab): void {
+    if (this.#shown === "doc" && tab !== "doc") {
+      this.#docPage = new URLSearchParams(location.search).get(DOC_PARAM);
+      setDocParam(null);
+    }
+    if (tab === "doc" && this.#docPage !== null) setDocParam(this.#docPage);
     this.#shown = tab;
     for (const { id } of TABS) this.ui.tabs[id].hidden = id !== tab;
     if (tab !== "lab") this.onLeaveLab();
@@ -63,9 +64,5 @@ export class ViewerTabs {
 
   get labShown(): boolean {
     return this.#shown === "lab";
-  }
-
-  setBots(bots: BotInfo[]): void {
-    this.ui.bots.replaceChildren(...bots.map(botRow));
   }
 }

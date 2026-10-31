@@ -2,13 +2,14 @@
 import type { Camera, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
+import { mountDocTab } from "./doc";
 import { SharedCursor, Store } from "./cursor";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
 import { type CellTip, describe, draw } from "./mapdraw";
 import { ViewerTabs } from "./tabs";
 import { WholeMap } from "./whole-map";
-import { BinaryKind, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
+import { BinaryKind, type BotInfo, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
 
 const SCALE = 3;
 const VOLUME_KEY = "lab.volume";
@@ -50,11 +51,12 @@ const tabs = new ViewerTabs(
   {
     nav: $("nav"),
     tabs: { lab: $("lab"), doc: $("doc"), components: $("components") },
-    bots: $<HTMLTableElement>("doc-bots").tBodies[0],
   },
   releaseKeys,
 );
 mountComponentsTab($("components"));
+const bots = new Store<BotInfo[] | null>(null);
+mountDocTab($("doc"), bots);
 const cellTip = new Store<CellTip | null>(null);
 const map = new WholeMap(send, cellTip);
 const lab = new LabTab($("lab"), $("toasts"), { shared, send, map, cellTip, settings, settingsActions: { setOverlay, setSound, setVolume } });
@@ -147,7 +149,7 @@ function onMessage(message: ServerMessage): void {
       break;
     case "bots":
       lab.onBots(message.bots.map((bot) => bot.name));
-      tabs.setBots(message.bots);
+      bots.set(message.bots);
       break;
     case "events": {
       const added = shared.onEvents(message.events);

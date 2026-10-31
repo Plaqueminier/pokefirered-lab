@@ -898,3 +898,69 @@ export function ListRow({
     </button>
   );
 }
+
+export function Code({ children }: { children: ComponentChildren }) {
+  return <code class="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-[0.85em] [overflow-wrap:anywhere] text-accent">{children}</code>;
+}
+
+export type Term = readonly [term: ComponentChildren, text: ComponentChildren];
+
+export function TermList({ rows, numbered }: { rows: readonly Term[]; numbered?: boolean }) {
+  return (
+    <ol class="m-0 flex list-none flex-col gap-1.5 p-0 text-sm leading-relaxed">
+      {rows.map(([term, text], i) => (
+        <li key={i} class="flex gap-2">
+          {numbered && <span class="w-5 shrink-0 pt-px text-right text-xs leading-relaxed text-faint tabular-nums">{i + 1}</span>}
+          <span class="min-w-0">
+            <span class="font-semibold text-fg">{term}</span> <span class="text-muted">{text}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export type InfoTone = Extract<Tone, "ok" | "warn" | "bad">;
+
+export function InfoCard({
+  title,
+  icon: Icon,
+  tone,
+  lines = [],
+  chips = [],
+}: {
+  title: ComponentChildren;
+  icon?: ComponentType<{ size?: number }>;
+  tone?: InfoTone;
+  lines?: readonly ComponentChildren[];
+  chips?: readonly string[];
+}) {
+  return (
+    <Card size="sm">
+      <div class="flex h-full flex-col gap-2">
+        <span class={`flex items-center gap-2 font-semibold ${tone ? toneText(tone) : "text-fg"}`}>
+          {Icon && <Icon size={16} />}
+          {title}
+        </span>
+        {lines.length > 0 && (
+          <ul class="m-0 flex list-disc flex-col gap-0.5 pl-4 text-sm text-muted marker:text-faint">
+            {lines.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        )}
+        {chips.length > 0 && (
+          <div class="mt-auto flex flex-wrap gap-1 pt-1">
+            {chips.map((chip) => (
+              <Code key={chip}>{chip}</Code>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+export function NumberBadge({ n }: { n: number }) {
+  return <span class="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-fg tabular-nums">{n}</span>;
+}

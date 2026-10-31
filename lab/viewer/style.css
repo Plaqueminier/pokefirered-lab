@@ -1,4 +1,4 @@
-/* "legacy" holds the CSS of the screen and of the Doc (index.html). It comes first, so the design system wins over it. */
+/* "legacy" (the CSS of the screen in index.html) comes first, so the design system wins over it. */
 @layer legacy, theme, base, components, utilities;
 
 @import "tailwindcss/theme.css" layer(theme);
@@ -186,8 +186,6 @@
   }
 }
 
-/* The reset is scoped to .ds: the legacy CSS styles the global elements (section, h2) of the Doc.
-   A .ds part inside a .legacy host gets the reset again. */
 @layer base {
   .ds {
     font-family: var(--font-sans);
@@ -240,7 +238,8 @@
 
 @layer base {
   @media (min-width: 900px) {
-    body:has(> #lab:not([hidden])) {
+    body:has(> #lab:not([hidden])),
+    body:has(> #doc:not([hidden])) {
       display: flex;
       flex-direction: column;
       height: 100dvh;

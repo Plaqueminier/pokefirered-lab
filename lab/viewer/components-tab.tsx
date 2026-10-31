@@ -1,13 +1,13 @@
 import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, Heart, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Skull, Square, Swords } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Badges, Bar, Breadcrumb, Button, Checkbox, ExpBar, FilterChip, Field, Input, KeyList, LABEL, Legend, ListRow, Metric, Num, Pill, Slider, StatBar, StatTile, Switch, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
+import { Badges, Bar, Breadcrumb, Button, Checkbox, Code, ExpBar, FilterChip, Field, Input, KeyList, LABEL, Legend, ListRow, Metric, Num, NumberBadge, Pill, Slider, StatBar, StatTile, Switch, TermList, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
 import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
 import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
-import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
+import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
 /** The color tokens of the theme, read from the style sheets, so that the tab shows each new token. */
@@ -654,6 +654,56 @@ function PromptTextDemo() {
   );
 }
 
+function CodeDemo() {
+  return (
+    <div class="flex max-w-[560px] flex-col gap-3 text-sm text-muted">
+      <p>
+        <Code>press(button)</Code> one press when no Macro-action fits.
+      </p>
+      <div class="flex flex-wrap gap-1">
+        {["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"].map((name) => (
+          <Code key={name}>{name}</Code>
+        ))}
+      </div>
+      <span class="flex w-44">
+        <Code>withdraw &lt;item&gt; [quantity] in a narrow box</Code>
+      </span>
+    </div>
+  );
+}
+
+function TermListDemo() {
+  const rows = [
+    ["Harness", "runs the emulator to the next Decision point; it decides nothing"],
+    ["Decision point", "the game waits for an input: walk, text, choice, battle…"],
+    ["Model call", <>the model bot asks its AI model for one action, for example <Code>goTo 20 45</Code></>],
+  ] as const;
+  return (
+    <div class="grid max-w-[880px] gap-6 sm:grid-cols-2">
+      <TermList rows={rows} />
+      <TermList numbered rows={rows} />
+    </div>
+  );
+}
+
+function NumberBadgeDemo() {
+  return (
+    <div class="flex flex-col gap-3">
+      <div class="flex gap-2">
+        {[1, 2, 3, 12].map((n) => (
+          <NumberBadge key={n} n={n} />
+        ))}
+      </div>
+      <div class="flex items-start gap-2.5 text-sm">
+        <NumberBadge n={4} />
+        <span class="pt-0.5">
+          <b class="font-semibold">Rail</b> <span class="text-muted">Whole map, Model, Stats, Memory tree, Bag and PC</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 type Category = "base" | "controls" | "data" | "surfaces" | "lab";
 
 const CATEGORIES: { id: Category; label: string }[] = [
@@ -747,11 +797,25 @@ const ENTRIES: Entry[] = [
   },
   { category: "data", title: "KeyList", rule: "The keys or the mouse actions of a part, and what each one does: one or more keys on a row.", demo: () => <KeyListDemo /> },
   { category: "data", title: "Badges", rule: "The 8 badges of the player as dots. A new badge shines.", demo: () => <BadgesDemo /> },
+  { category: "data", title: "Code", rule: "A token of code in a line of text: mono, in the accent, on a raised background. A long token breaks inside the box.", demo: () => <CodeDemo /> },
+  {
+    category: "data",
+    title: "TermList",
+    rule: "Short facts: a term in the text color, then its text in the muted color; a long text continues under the term. Numbered: a faint number before each term, for steps in order.",
+    demo: () => <TermListDemo />,
+  },
+  { category: "data", title: "NumberBadge", rule: "A round accent badge with a number: a spot on a screenshot, and the same number in its list.", demo: () => <NumberBadgeDemo /> },
   {
     category: "surfaces",
     title: "Card",
     rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view. With fill, the card takes the height that its flex column gives, and a long list scrolls inside it.",
     demo: () => <CardDemo />,
+  },
+  {
+    category: "surfaces",
+    title: "InfoCard",
+    rule: "A small Card for one subject: a title with an optional icon, bullets in the muted color, and Code chips at the bottom. A tone (ok, warn, bad) colors the title and its icon. In a grid, the cards of a row have the same height, and the chips stay at the bottom.",
+    demo: () => <InfoCardDemo />,
   },
   {
     category: "surfaces",
