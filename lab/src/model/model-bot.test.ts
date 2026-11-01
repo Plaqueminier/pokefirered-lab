@@ -214,6 +214,20 @@ describe.skipIf(!ready)("model bot", () => {
     expect(header.bot).toEqual({ name: "model", version: "14", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
+  test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
+    let stop = false;
+    const harness = await Harness.open({ stopAsked: () => stop });
+    const client: ModelClient = (_prompt, options) =>
+      new Promise((_resolve, reject) => {
+        stop = true;
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason));
+      });
+    expect(await harness.play(modelBot({ costLimit: 1 }, () => client))).toMatchObject({ endReason: "user stop" });
+    const calls = modelEvents(harness);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ answer: null, decision: null, error: "the request failed: a person stopped the Run", usage: { cost: 0 } });
+  });
+
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
     const harness = await Harness.open();
     const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));

@@ -74,7 +74,7 @@ class ModelPlay {
         this.#promptObservation = observation;
       }
       const conversation = this.#conversation;
-      const action = await this.harness.modelCall(() => this.answer(conversation, asked));
+      const action = await this.harness.modelCall((signal) => this.answer(conversation, asked, signal));
       this.stopAtUnreadable();
       await this.summarize();
       if (action && isPlayed(action)) {
@@ -96,12 +96,13 @@ class ModelPlay {
     if (unknownScreen(this.harness.events)) this.harness.end("unknown screen");
   }
 
-  private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
+  private async answer(conversation: Conversation, asked: Asked, signal: AbortSignal): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
     const prompt: Prompt = { system: conversation.system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
     const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
     const reply = await this.tryAsk(prompt, {
       format: TURN_FORMATS[conversation.turnKind],
       reasoning: conversation.turnKind === "normal" ? undefined : this.settings.thinking,
+      signal,
     });
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
@@ -141,14 +142,14 @@ class ModelPlay {
       const node = dueMerges(tree).find((due) => !tried.has(nodeName(due)));
       if (!node) return;
       tried.add(nodeName(node));
-      await this.harness.summaryCall(() => this.summary(tree, node));
+      await this.harness.summaryCall((signal) => this.summary(tree, node, signal));
     }
   }
 
-  private async summary(tree: MemoryTree, node: NodeRange): Promise<SummaryAnswer> {
+  private async summary(tree: MemoryTree, node: NodeRange, signal: AbortSignal): Promise<SummaryAnswer> {
     const prompt = summaryPrompt(tree, node);
     const request = { model: this.settings.id, prompt, ...node };
-    const reply = await this.tryAsk(prompt, { format: { name: "summary", schema: summarySchema(node) } });
+    const reply = await this.tryAsk(prompt, { format: { name: "summary", schema: summarySchema(node) }, signal });
     if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {

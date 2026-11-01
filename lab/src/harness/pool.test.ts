@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
 import { ROM_FILE, Run, START_SAVE, screenHash } from "../run";
@@ -60,6 +61,19 @@ describe.skipIf(!ready)("RunPool", () => {
     expect(error).toBeNull();
     expect(record?.result.endReason).toBe("user stop");
     expect(record?.events.filter((e) => e.type === "action")).toHaveLength(1);
+  });
+
+  test("stop reaches a Model call that waits in the worker: the Run ends at once with user stop and a Run record", async () => {
+    const bot = join(mkdtempSync(join(tmpdir(), "lab-bot-")), "waiting-model.ts");
+    await Bun.write(bot, `import { modelBot as real } from ${JSON.stringify(join(import.meta.dir, "../../bots/model.ts"))};
+export const modelBot = (options) => real(options, () => (_prompt, { signal }) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason))));`);
+    const run = new RunPool().start({ bot, model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "off", temperature: null, starter: "free", stopAtWhiteout: true } });
+    while (run.modelCallsStarted === 0) await Bun.sleep(5);
+    run.stop();
+    const { record, error } = await run.done;
+    expect(error).toBeNull();
+    expect(record?.result.endReason).toBe("user stop");
+    expect(record?.events.at(-1)).toMatchObject({ type: "model", error: "the request failed: a person stopped the Run" });
   });
 
   test("a Run in a worker gives the same Run record as the Run alone; while it plays, the pool has its screen, its state and its events; at the end, the last screen and all the events of the Run record", async () => {

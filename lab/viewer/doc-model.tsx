@@ -124,6 +124,7 @@ export function PromptPage() {
       details={[
         ["Model call", "at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC, at the naming screen and when a Pokémon must forget a move to learn a new one."],
         ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003)."],
+        ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
           "Each prompt",
           "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, and the part of the Decision point (at a walk, the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",

@@ -179,7 +179,7 @@ export function MilestonesPage() {
 const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: string[]; detail: string }> = {
   goal: { icon: Trophy, tone: "ok", lines: ["the goal Milestone is reached", "with no goal: `badge-8`"], detail: "the goal Milestone is reached (with no goal: `badge-8`)." },
   "bot stopped": { icon: OctagonX, lines: ["the Bot stops or throws an error"], detail: "the Bot stops or throws an error." },
-  "user stop": { icon: Hand, lines: ["“Stop the Run”, after the current action"], detail: "“Stop the Run”, after the current action." },
+  "user stop": { icon: Hand, lines: ["“Stop the Run”, after the current action", "at once in a Model call"], detail: "“Stop the Run”, after the current action, or at once in a Model call." },
   "cost limit": { icon: Coins, tone: "warn", lines: ["the Model calls cost more than the limit"], detail: "the Model calls cost more than the cost limit (model bot)." },
   "frame budget": {
     icon: Timer,

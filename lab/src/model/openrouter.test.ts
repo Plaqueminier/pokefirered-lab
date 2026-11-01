@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { DECISION_SCHEMA } from "./decision";
 import { DEFAULT_MODEL } from "../protocol";
 import { modelSettings, openRouter } from "./openrouter";
@@ -100,6 +100,27 @@ describe("openRouter", () => {
     expect(String(error)).toBe("Error: OpenRouter answered 401: No auth credentials found");
     const noCost = fakeFetch(200, { ...REPLY, usage: { prompt_tokens: 1 } });
     await expect(openRouter(modelSettings({}, {}), KEY, noCost.fetcher)(PROMPT)).rejects.toThrow("OpenRouter gave no cost");
+  });
+
+  // A real fetch: a fake one does not show that the signal ends the read of a body that never ends.
+  describe.each([
+    ["before the headers", () => new Promise<Response>(() => {})],
+    ["after the headers", () => new Response(new ReadableStream({ start: (body) => body.enqueue(new TextEncoder().encode(" ")) }))],
+  ])("a call with no answer %s", (_when, answer) => {
+    const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: answer });
+    const fetcher = ((_url: string, init: RequestInit) => fetch(server.url, init)) as unknown as typeof fetch;
+    afterAll(() => server.stop(true));
+
+    test("its signal ends it, with the reason of the signal", async () => {
+      const controller = new AbortController();
+      const asked = openRouter(modelSettings({}, {}), KEY, fetcher)(PROMPT, { signal: controller.signal });
+      setTimeout(() => controller.abort(new Error("a person stopped the Run")), 20);
+      await expect(asked).rejects.toThrow("a person stopped the Run");
+    });
+
+    test("the time limit ends it", async () => {
+      await expect(openRouter(modelSettings({}, {}), KEY, fetcher, 20)(PROMPT)).rejects.toThrow("timed out");
+    });
   });
 
   test("an answer with no text keeps its cost: the Bot cannot read it, but it counts it", async () => {

@@ -198,7 +198,7 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
         <Button
           variant="danger"
           disabled={!run?.playing || run.stopAsked}
-          title="Stops the shown Run after the action or the Model call that plays, and writes its Run record"
+          title="Stops the shown Run after the action that plays, or at once in a Model call, and writes its Run record"
           onClick={() => run && send({ type: "stop-run", runId: run.id })}
         >
           <Square size={14} />

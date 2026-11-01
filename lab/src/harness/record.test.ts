@@ -330,6 +330,27 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(await pressed.play(stopped)).toMatchObject({ endReason: "user stop", rawInputs: 1 });
   });
 
+  test("a stop request aborts the signal of the Model call that waits, and the Run ends with user stop", async () => {
+    let stop = false;
+    const harness = await Harness.open({ stopAsked: () => stop });
+    const reasons: unknown[] = [];
+    const waiting: Bot = {
+      name: "waiting",
+      version: "1",
+      async play(h) {
+        await h.modelCall(async (signal) => {
+          stop = true;
+          await new Promise((resolve) => signal.addEventListener("abort", resolve));
+          reasons.push(signal.reason);
+          return { answer: ANSWER, action: null };
+        });
+      },
+    };
+    expect(await harness.play(waiting)).toMatchObject({ endReason: "user stop" });
+    expect(String(reasons[0])).toBe("Error: a person stopped the Run");
+    expect(harness.record().events.at(-1)?.type).toBe("model");
+  });
+
   test("when the Bot throws an error, play throws it again and the Run record keeps the Run, with the end reason bot stopped", async () => {
     const harness = await Harness.open();
     const failing: Bot = {

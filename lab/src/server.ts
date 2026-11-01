@@ -542,7 +542,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       const poolRun = pool.runs.find((r) => r.id === message.runId);
       if (!poolRun || poolRun.end) break;
       poolRun.stop();
-      send({ type: "notice", text: `Run ${poolRun.id}: stop asked. The Run stops after the action or the Model call that plays.` });
+      send({ type: "notice", text: `Run ${poolRun.id}: stop asked. The Run stops after the action that plays, or at once in a Model call.` });
       break;
     }
     case "show": {

@@ -184,7 +184,7 @@ export type HarnessOptions = {
   onSummaryCall?: SummaryCallListener;
   frameBudget?: number;
   noProgressLimit?: number;
-  /** When it gives true, the Run ends with "user stop" after the Macro-action, the Raw input or the Model call that plays. */
+  /** When it gives true, the Run ends with "user stop" after the Macro-action or the Raw input that plays, and at once in a Model call: see `untilStop`. */
   stopAsked?: () => boolean;
   /** The Run continues this Run record: the Harness replays its buttons and keeps its events. `name` is its file in lab/runs/. */
   parent?: ParentRecord;
@@ -200,6 +200,8 @@ export type Bot = {
   frameBudget?: number;
   play(harness: Harness): Promise<void>;
 };
+
+const STOP_CHECK_MS = 100;
 
 class RunEnd extends Error {
   constructor(readonly reason: EndReason) {
@@ -376,19 +378,32 @@ export class Harness {
     throw new RunEnd(reason);
   }
 
-  /** A model bot asks its AI model in `ask`, which must not throw an error. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
-  async modelCall<T>(ask: () => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
+  /** A model bot asks its AI model in `ask`, which must not throw an error and must end when its signal aborts. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
+  async modelCall<T>(ask: (signal: AbortSignal) => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
     this.#onModelCallStart?.(this);
     const start = performance.now();
-    const { answer, action } = await ask();
+    const { answer, action } = await this.untilStop(ask);
     this.callEnded({ type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onModelCall);
     return action;
   }
 
-  async summaryCall(ask: () => Promise<SummaryAnswer>): Promise<SummaryEvent> {
+  async summaryCall(ask: (signal: AbortSignal) => Promise<SummaryAnswer>): Promise<SummaryEvent> {
     const start = performance.now();
-    const answer = await ask();
+    const answer = await this.untilStop(ask);
     return this.callEnded({ type: "summary", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onSummaryCall);
+  }
+
+  /** A call waits for the network, so the event loop has turns to read the stop flag: the call does not hold a stop until its answer. */
+  private async untilStop<T>(ask: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const check = setInterval(() => {
+      if (this.#stopAsked()) controller.abort(new Error("a person stopped the Run"));
+    }, STOP_CHECK_MS);
+    try {
+      return await ask(controller.signal);
+    } finally {
+      clearInterval(check);
+    }
   }
 
   record(): RunRecord {

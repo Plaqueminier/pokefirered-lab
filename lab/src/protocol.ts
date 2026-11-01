@@ -110,7 +110,7 @@ export type RunSummary = {
   id: number;
   bot: string;
   playing: boolean;
-  /** A person asked to stop the Run, and it plays to the next decision of its Bot. */
+  /** A person asked to stop the Run, and it plays to the end of its action. */
   stopAsked: boolean;
   endReason: EndReason | null;
   error: string | null;
