@@ -224,24 +224,26 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track of each Run on one game time, with its battles, its trainers, its Milestones and its Run result. A Race file of an older version must be made again."],
-        ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record with an empty track stays out, and a record of another Bot is refused."],
+        ["Race file", "the track and the State track of each Run on one game time, with its battles, its trainers, its Milestones, its faints, its money, its cost and its Run result. A Race file of an older version does not open: make it again."],
+        ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
-        ["Leader", "the Ghost with the most Milestones at this frame. On a tie, the first to reach them."],
+        ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
+        ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces."],
         ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
-        ["Hover on Ghosts", "the Run, its map and its state (plays, wild battle, trainer battle and the name of the trainer, or its result), or the numbers of the Runs for a group."],
+        ["Hover on Ghosts", "the Run id, its state, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
+        ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],
         ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],
         ["Keyboard", "it does not play in this tab. The Race draws only while its tab shows."],
       ]}
     >
-      <img src={viewerRace} alt="The Race tab: Ghosts on Route 2, Viridian Forest and Viridian City, and a drawer of the interiors" class={SHOT} />
+      <img src={viewerRace} alt="The Race tab: Ghosts with their own faces on the map of Kanto, and a Leaderboard with their teams and their badges" class={SHOT} />
       <div class={BLOCKS2}>
         <Block label="🏁 Make a Race">
           <Terms
             numbered
             rows={[
-              ["`bun run migrate`", "once: it adds the track to the old Run records"],
+              ["`bun run migrate`", "once: it adds the track and the State track to the old Run records"],
               ["`bun run race <name> [records…]`", "it writes `races/<name>.json.gz`"],
               ["Race tab", "choose the Race in the list of the bar"],
             ]}
@@ -250,11 +252,11 @@ export function RacePage() {
         <Block label="👻 A Ghost">
           <Terms
             rows={[
-              ["Sprite", "the player, with the number of its Run"],
+              ["Sprite", "its own face, from its Run id, with the number of its Run"],
               ["Crown", "on the leader of the Race"],
               ["Battle", "an icon next to its number while it fights"],
               ["End", "see-through, with an icon of its result next to its number"],
-              ["Click", "selects it: a ring around it, and its name"],
+              ["Click", "selects it: a ring around it, and its name. In a follow, the camera moves to it"],
             ]}
           />
         </Block>
@@ -262,9 +264,10 @@ export function RacePage() {
       <Block label="🗺️ On the map">
         <div class={GRID3}>
           <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
-          <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "the button “Frame the Ghosts” gives it back"]} />
+          <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "a click on a row follows one Ghost, and a second click ends it", "the button “Frame the Ghosts” gives it back"]} />
           <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
-          <DocCard icon={PanelRightOpen} title="Drawer" lines={["“Interiors in play”: only those where a Run still plays", "the interiors with the most Ghosts come first"]} />
+          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, cost, team and badges of each Run"]} />
+          <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>
       </Block>
