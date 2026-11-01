@@ -232,7 +232,7 @@ export function RunSelectDemo() {
 }
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "13", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "14", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 

@@ -8,7 +8,7 @@ const BLOCK_TITLES = [
   [/^The game waits|^The game asks|^The naming screen asks/, "Situation"],
   [/^Your last decisions/, "History"],
   [/^Something important happened/, "Events"],
-  [/^Party/, "Party"],
+  [/^Bag|^Party/, "Party"],
   [/^Known world/, "Known world"],
   [/^Map /, "Local view"],
   [/^What the people/, "People"],

@@ -17,7 +17,6 @@ describe("readDecision", () => {
       note: "n",
     });
     expect(readDecision(answer({ mission: "x".repeat(MAX_SENTENCE + 10) })).mission).toHaveLength(MAX_SENTENCE);
-    expect(readDecision(answer({ note: "x".repeat(MAX_SENTENCE + 10) })).note).toHaveLength(MAX_SENTENCE);
     expect(readDecision(answer({ objective: "x".repeat(MAX_SENTENCE + 10) })).objective).toHaveLength(MAX_SENTENCE);
   });
 

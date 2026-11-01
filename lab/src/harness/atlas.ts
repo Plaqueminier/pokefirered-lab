@@ -285,12 +285,24 @@ function seenOn(visit: Visit): (cell: Cell) => boolean {
   return ({ x, y }) => visit.seen[y * visit.grid.mapWidth + x] === 1;
 }
 
-function seenWarps(visit: Visit): AtlasWarp[] {
-  const isSeen = seenOn(visit);
-  return visit.grid.warps.flatMap((w) => {
-    const to = visit.warpsTaken.get(cellKey(w)) ?? null;
-    return w.how !== "none" && (to || isSeen(w)) ? [{ x: w.x, y: w.y, behavior: w.behavior, to }] : [];
+function exitCells(warps: Warp[]): Warp[][] {
+  let exits: Warp[][] = [];
+  for (const warp of warps) {
+    const touches = (cells: Warp[]) => cells.some((w) => w.to === warp.to && Math.abs(w.x - warp.x) + Math.abs(w.y - warp.y) === 1);
+    exits = [...exits.filter((cells) => !touches(cells)), [...exits.filter(touches).flat(), warp]];
+  }
+  return exits;
+}
+
+export function atlasWarps(warps: Warp[], taken: ReadonlyMap<string, string>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
+  return exitCells(warps.filter((w) => w.how !== "none")).flatMap((cells) => {
+    const shown = cells.find((w) => taken.has(cellKey(w))) ?? cells.find(isSeen);
+    return shown ? [{ x: shown.x, y: shown.y, behavior: shown.behavior, to: taken.get(cellKey(shown)) ?? null }] : [];
   });
+}
+
+function seenWarps(visit: Visit): AtlasWarp[] {
+  return atlasWarps(visit.grid.warps, visit.warpsTaken, seenOn(visit));
 }
 
 function seenEdges(visit: Visit): Edge[] {

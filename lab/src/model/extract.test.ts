@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { MapGrid } from "../game";
-import type { AtlasMap } from "../harness/atlas";
+import { type AtlasMap, atlasWarps } from "../harness/atlas";
 import type { Person } from "../harness/harness";
 import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, knownWorld, OTHER_MAPS_BUDGET } from "./extract";
 import type { Overworld } from "./targets";
@@ -62,6 +62,18 @@ function chain(routes: number): AtlasMap[] {
     entry: { x: 5, y: 5 },
   }));
 }
+
+describe("the exits of the Atlas", () => {
+  const cell = (x: number, to = "Gate") => ({ x, y: 9, to, warpId: 0, group: 0, num: 0, behavior: "MB_CAVE_DOOR", how: "step" as const });
+  const seen = () => true;
+
+  test("the neighbour cells of a wide exit are one exit, and a walk through one cell takes the whole exit; other maps and far cells stay other exits", () => {
+    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map(), seen)).toEqual([{ x: 4, y: 9, behavior: "MB_CAVE_DOOR", to: null }]);
+    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map([["5,9", "Gate"]]), seen)).toEqual([{ x: 5, y: 9, behavior: "MB_CAVE_DOOR", to: "Gate" }]);
+    expect(atlasWarps([cell(4, "Gate"), cell(5, "House")], new Map(), seen)).toHaveLength(2);
+    expect(atlasWarps([cell(4), cell(8)], new Map(), seen)).toHaveLength(2);
+  });
+});
 
 describe("the extract of the Atlas", () => {
   test("the map block of a house: every row with ? for the cells not seen, the targets as letters in groups with their distance and direction, a person with its last text, no edge that leads out, and no exit to the outside yet", () => {

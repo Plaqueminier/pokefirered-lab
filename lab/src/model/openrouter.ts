@@ -10,7 +10,7 @@ const MAX_TOKENS = 32000;
 
 export type ModelReply = { content: string; usage: Usage; reasoning?: string };
 
-type AnswerFormat = { name: "decision" | "character" | "summary"; schema: object };
+type AnswerFormat = { name: "decision" | "character" | "review" | "summary"; schema: object };
 
 const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 

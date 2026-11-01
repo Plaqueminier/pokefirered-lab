@@ -1,7 +1,7 @@
 import { nicknamedSpecies } from "../menus";
 import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
-import type { Decision, NodeRange } from "../harness/record";
+import type { Decision, NodeRange, NodeSentence } from "../harness/record";
 import { type PartyMon, type PartyMove, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { Keys } from "../protocol";
@@ -14,6 +14,8 @@ export const MAX_SENTENCE = 200;
 /** The model bot gets a Reflection turn at each REFLECTION_EVERY more Decision points on the Stuck counter. */
 export const REFLECTION_EVERY = 20;
 export const REVIEW_EVERY = 20;
+const MAX_REMOVED = 5;
+export const REMOVE_RULE = `the numbers of the sentences of your Memory tree that are false now or useless, ${MAX_REMOVED} at most, or an empty list`;
 const MAX_QUOTED_ACTION = 80;
 
 const FIELDS = ["reason", "action", "mission", "objective", "note"] as const satisfies readonly (keyof Decision)[];
@@ -25,11 +27,20 @@ export const DECISION_SCHEMA = {
     action: { type: "string", description: "Exactly one of the actions of the message, for example \"go B\"." },
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
-    note: { type: "string", description: `A fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:", in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never HP values. Nobody changes it later.` },
+    note: { type: "string", description: `A fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:", in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never HP or PP values.` },
   },
   required: FIELDS,
   additionalProperties: false,
 } as const;
+
+export const REVIEW_SCHEMA = {
+  ...DECISION_SCHEMA,
+  properties: {
+    ...DECISION_SCHEMA.properties,
+    remove: { type: "array", items: { type: "integer" }, description: `Only at a review turn: ${REMOVE_RULE}.` },
+  },
+  required: [...DECISION_SCHEMA.required, "remove"],
+};
 
 /** The Macro-actions and the Raw input that the model can choose, and the actions that the code of the model bot plays: go, viewAtlas and zoom. */
 export type ModelAction =
@@ -153,7 +164,13 @@ export function readDecision(content: string): Decision {
     if (typeof text !== "string") throw new Error(`the answer has no string "${field}"`);
     decision[field] = text.trim();
   }
-  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), note: decision.note.slice(0, MAX_SENTENCE) };
+  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE) };
+}
+
+export function readRemoved(content: string, shown: readonly NodeSentence[]): NodeSentence[] {
+  const { remove } = readFields(content);
+  const numbers = new Set(Array.isArray(remove) ? remove.slice(0, MAX_REMOVED) : []);
+  return shown.filter((_, index) => numbers.has(index + 1));
 }
 
 type QuantityName = "buy" | "sell" | "withdraw" | "deposit";

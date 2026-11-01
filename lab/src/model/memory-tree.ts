@@ -1,5 +1,5 @@
 // Follows OptMem: https://github.com/rafmyr/OptMem
-import type { NodeRange, Prompt, RunEvent } from "../harness/record";
+import type { NodeRange, Prompt, NodeSentence, RunEvent } from "../harness/record";
 import { MAX_SENTENCE, readJson } from "./decision";
 
 export type MemoryTree = { notes: string[]; summaries: Map<string, string> };
@@ -15,12 +15,24 @@ export function summarySchema(node: NodeRange): object {
   };
 }
 
+const SENTENCE_END = /(?<!\b(?:Mt|Prof|Lt|St|Dr|Mr|Mrs|S\.S)\.)(?<=[.!?])\s+/i;
+const STATE_VALUES = /\b\d+%?\s*(?:HP|PP)\b|\b(?:HP|PP)\s+(?:(?:is|at|of|to)\s+)?\(?\d|\b\d+\s*\/\s*\d{2,}\b/i;
+const HEDGE = /\b(might|may|maybe|likely|probably|perhaps|possibly|could be)\b/i;
+const MARKED = /^(guess|a person said):/i;
+const NO_NOTE = /^(empty( string)?|none|n\/a)\.?$/i;
+const SAME_WORDS = 0.75;
+const KEY_WORD = /\d|n['’]t$|^(not|no|never|cannot|guess)$/;
+const RECENT_NOTES = 32;
+
 const SUMMARY_SYSTEM = `You keep the memory of a player of Pokémon FireRed. The memory is the list of the notes that the player wrote, oldest first. Two neighbour parts of the memory get one summary, and the player then sees the summary in place of the two parts.`;
 
 export function memoryTree(events: readonly RunEvent[]): MemoryTree {
   const tree: MemoryTree = { notes: newNotes(events).map(({ note }) => note), summaries: new Map() };
   for (const event of events) {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
+    if (event.type === "model") {
+      for (const { sentence, ...node } of event.removed ?? []) removeSentence(tree, node, sentence);
+    }
   }
   return tree;
 }
@@ -38,9 +50,42 @@ export function newNotes(events: readonly RunEvent[]): NewNote[] {
   return notes;
 }
 
-// The answer after viewAtlas or zoom can give the same note again.
+// An old Run record can have the same note again after viewAtlas or zoom.
 export function isNewNote(note: string, last: string | undefined): boolean {
   return note !== "" && note !== last;
+}
+
+// The Run record keeps the result: the summaries of an old record name its notes by number, so a later filter must not change them.
+export function keptNote(written: string, earlier: readonly string[]): string {
+  const note = cut(sentences(written).filter((sentence) => !STATE_VALUES.test(sentence)).map(marked).join(" "), MAX_SENTENCE);
+  return NO_NOTE.test(note) || earlier.slice(-RECENT_NOTES).some((other) => sameFacts(note, other)) ? "" : note;
+}
+
+function marked(sentence: string): string {
+  return !MARKED.test(sentence) && HEDGE.test(sentence) ? `Guess: ${sentence}` : sentence;
+}
+
+// A number, a negation or the mark of a guess in only one of the two notes makes them two facts.
+function sameFacts(a: string, b: string): boolean {
+  const [first, second] = [a, b].map(words);
+  const others = [...first.symmetricDifference(second)];
+  return !others.some((word) => KEY_WORD.test(word)) && first.intersection(second).size / first.union(second).size >= SAME_WORDS;
+}
+
+function words(note: string): Set<string> {
+  return new Set(note.toLowerCase().split(/[^\p{L}\p{N}'’]+/u).filter(Boolean));
+}
+
+function sentences(text: string): string[] {
+  return text.split(SENTENCE_END).filter(Boolean);
+}
+
+function removeSentence(tree: MemoryTree, node: NodeRange, removed: string): void {
+  const kept = text(tree, node);
+  if (kept === null) return;
+  const rest = sentences(kept).filter((sentence) => sentence !== removed).join(" ");
+  if (node.from === node.to) tree.notes[node.from - 1] = rest;
+  else tree.summaries.set(key(node), rest);
 }
 
 export function nodeName({ from, to }: NodeRange): string {
@@ -68,7 +113,19 @@ export function zoomNodes(tree: MemoryTree, node: NodeRange): MemoryNode[] | nul
 }
 
 export function memoryLines(tree: MemoryTree): string[] {
-  return topNodes(tree).map(nodeLine);
+  return withText(topNodes(tree)).map(nodeLine);
+}
+
+export function reviewMemory(tree: MemoryTree): { lines: string[]; sentences: NodeSentence[] } {
+  const numberedSentences: NodeSentence[] = [];
+  const lines = withText(topNodes(tree)).map((node) => {
+    const numbered = sentences(node.text).map((sentence) => {
+      numberedSentences.push({ from: node.from, to: node.to, sentence });
+      return `[${numberedSentences.length}] ${sentence}`;
+    });
+    return `${nodeName(node)}: ${numbered.join(" ")}`;
+  });
+  return { lines, sentences: numberedSentences };
 }
 
 export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
@@ -76,11 +133,11 @@ export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
 }
 
 export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
-  const parts = halves(node).flatMap((half) => shown(tree, half)).map(nodeLine);
+  const parts = withText(halves(node).flatMap((half) => shown(tree, half))).map(nodeLine);
   return {
     system: SUMMARY_SYSTEM,
     user: [
-      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When a later note makes a fact false or ends it, drop this fact and keep the later one.`,
+      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When a later note makes a fact false or ends it, drop this fact and keep the later one. Keep "Guess:" before each guess.`,
       "",
       ...parts,
       "",
@@ -98,8 +155,8 @@ export function readSummary(content: string, node: NodeRange): string {
 
 function cut(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  const sentences = text.slice(0, limit + 1).match(/^.*[.!?](?=\s)/s);
-  if (sentences) return sentences[0];
+  const whole = text.slice(0, limit + 1).match(/^.*[.!?](?=\s)/s);
+  if (whole) return whole[0];
   const space = text.lastIndexOf(" ", limit);
   return text.slice(0, space > 0 ? space : limit).trimEnd();
 }
@@ -117,12 +174,24 @@ function key({ from, to }: NodeRange): string {
   return `${from}-${to}`;
 }
 
+export function nodeText(node: MemoryNode): string {
+  return node.text || "(removed)";
+}
+
 export function nodeLine(node: MemoryNode): string {
-  return `${nodeName(node)}: ${node.text}`;
+  return `${nodeName(node)}: ${nodeText(node)}`;
 }
 
 function text(tree: MemoryTree, node: NodeRange): string | null {
-  return node.from === node.to ? (tree.notes[node.from - 1] ?? null) : (tree.summaries.get(key(node)) ?? null);
+  if (node.from === node.to) return tree.notes[node.from - 1] ?? null;
+  const summary = tree.summaries.get(key(node));
+  if (summary !== undefined) return summary;
+  // Two halves with no sentence left need no Summary call.
+  return halves(node).every((half) => text(tree, half) === "") ? "" : null;
+}
+
+function withText(nodes: MemoryNode[]): MemoryNode[] {
+  return nodes.filter((node) => node.text !== "");
 }
 
 function shown(tree: MemoryTree, node: NodeRange): MemoryNode[] {

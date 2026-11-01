@@ -56,9 +56,9 @@ describe.skipIf(!ready)("the panel Model", () => {
     expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", note: "" });
     expect(view.call?.fields).toEqual({ Mission: "Get my first Pokémon", Objective: "Leave the house", Note: "–" });
     expect(view.call?.usage).toMatch(/^1000 tokens in \(600 cached\) · 30 out \(0 reasoning\) · 0\.001 \$ · \d+\.\d s$/);
-    expect(view.call?.blocks.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Situation", "History", "Events", "Party", "Local view", "Atlas", "Targets", "Actions", "Rules"]);
+    expect(view.call?.blocks.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Party", "Local view", "Atlas", "Targets", "Situation", "History", "Events", "Actions", "Rules"]);
     const afterAtlas = modelPanelView(record.events, 3, 2).call?.blocks ?? [];
-    expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Situation", "History", "Events", "Party", "Local view", "Atlas", "Targets", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
+    expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Party", "Local view", "Atlas", "Targets", "Situation", "History", "Events", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
     expect(afterAtlas[1].text).toBe("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1: Mom is downstairs.");
     expect(afterAtlas[10].text).toBe(reply("viewAtlas").content);
     expect(modelPanelView(record.events, 3, null)).toMatchObject({ calling: false, selected: 2 });

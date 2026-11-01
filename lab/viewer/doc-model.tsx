@@ -62,16 +62,17 @@ export function BotsPage() {
 const PROMPT_PARTS = [
   ["Rules", "the goal, the rules, a short generic Guide"],
   ["Milestones", "the ones reached, and the next one: a name and a place"],
-  ["Mission", "the story step, kept until it is reached"],
   ["Memory tree", "the top nodes; `zoom` opens a node"],
+  ["Bag, money, party", "as the Summary screen and the Bag show them"],
+  ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
+  ["Mission", "the story step, kept until it is reached"],
   ["Objective", "what the model does now"],
   ["Stuck counter", "the Decision points since the last progress"],
   ["Tries", "the tries since the last progress, with their results"],
   ["Last decisions", "with the texts of the game"],
   ["Events", "the important events, which ask for a note"],
-  ["Party, money, Bag", "as the Summary screen and the Bag show them"],
-  ["The screen", "the part of the Decision point, and its actions"],
+  ["Actions", "the actions of the screen"],
 ] as const;
 
 const ANSWER = [
@@ -82,6 +83,7 @@ const ANSWER = [
   ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached"],
   ["objective", '"Explore the unseen area…"', "what the model does now"],
   ["note", '""', "a new note of the Memory tree, or empty"],
+  ["remove", "[3, 7]", "only at a Review turn: the numbers of sentences to remove from the top nodes"],
 ] as const;
 
 // A copy of the actions of the model bot at each screen: change it with them.
@@ -94,7 +96,7 @@ const SCREENS = [
   { title: "🛒 Poké Mart", adds: ["the items for sale with their prices", "the items of the Bag that the Mart buys, the money"], actions: ["buy", "sell", "leave", "zoom"] },
   { title: "💾 Item PC", adds: ["the items in the PC and in the ITEMS pocket, with quantities", "1 with no quantity; `leave` returns to the menu of the PC"], actions: ["withdraw", "deposit", "leave", "zoom"] },
   { title: "✏️ Naming screen", adds: ["what the screen names, and the maximum length", "for a nickname, the text must be new; for another name, `name` alone keeps the name"], actions: ["name", "zoom"] },
-  { title: "📖 Learn a move", adds: ["the new move and the 4 moves: type, power, accuracy, PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
+  { title: "📖 Learn a move", adds: ["the new move and the 4 moves: type, power, accuracy, PP", "an important choice: count the damage moves and compare their PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
 ];
 
 function AnswerCard() {
@@ -124,7 +126,7 @@ export function PromptPage() {
         ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003)."],
         [
           "Each prompt",
-          "the Milestones and the next one (a name and a place only), the Mission, the top nodes of the Memory tree, what the game waits for, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the party, the money and the Bag. Then the part of the Decision point: at a walk, the Known world and the extract of the Atlas.",
+          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, and the part of the Decision point (at a walk, the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
         ],
         [
           "Known world",
@@ -133,7 +135,7 @@ export function PromptPage() {
         ["Walk", "an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: `?` is a cell not seen, a letter is a target (`go B`)."],
         [
           "Targets",
-          "in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction, and the marks talked (with the last text of the person), read or taken. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
+          "in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction (a wide exit, with neighbour cells that lead to the same map, is one target), and the marks talked (with the last text of the person), read or taken. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
         ],
         [
           "Guide",
@@ -171,7 +173,7 @@ export function PromptPage() {
         ["Naming screen", "what the screen names and the maximum length. The action is `name <text>`. For a nickname, the text must be new and different from the species. For another name, `name` alone keeps the name."],
         [
           "Learn a move",
-          "“SQUIRTLE wants to learn BUBBLE (WATER, power 20, accuracy 100, PP 30/30).” with the description of the move, then “It already knows 4 moves. To learn BUBBLE, it must forget one of them:” and the 4 moves. The actions are `forget <move>` (a name, or the place 1 to 4) and `keep`. An HM move says that it cannot be forgotten. The code does all the menus.",
+          "“SQUIRTLE wants to learn BUBBLE (WATER, power 20, accuracy 100, PP 30/30).” with the description of the move, then “It already knows 4 moves. To learn BUBBLE, it must forget one of them:” and the 4 moves, then “This is an important choice. Before you choose, count your damage moves and compare their PP.” The actions are `forget <move>` (a name, or the place 1 to 4) and `keep`. An HM move says that it cannot be forgotten. The code does all the menus.",
         ],
         [
           "`press`",
@@ -201,7 +203,7 @@ export function PromptPage() {
           <AnswerCard />
         </div>
       </div>
-      <Block label="🎮 Each screen" sub="The prompt ends with the part of the screen and the actions that work there.">
+      <Block label="🎮 Each screen" sub="Each prompt has the part of the screen, and it ends with the actions that work there.">
         <div class={GRID3}>
           {SCREENS.map((screen) => (
             <DocCard key={screen.title} title={screen.title} lines={screen.adds} chips={screen.actions} />
@@ -236,21 +238,21 @@ export function ProgressPage() {
       lead="The model bot counts the Decision points with no progress, and stops to think at fixed times."
       details={[
         ["Stuck counter", "the Decision points since the last progress (`harness.noProgress.stuck`). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The prompt shows it at each call; `noProgressLimit` ends a Run on it."],
-        ["Progress", "a new map, a new Milestone, a new exit in the Atlas (a warp or an edge seen for the first time), a level up, a new text of a person, a trainer beaten, an item found (an item ball or a hidden item), or a new species caught (owned in the Pokédex). A text heard before from the same person and a new cell are not progress."],
+        ["Progress", "a new map, a new Milestone, a new exit in the Atlas (a wide exit or a warp or an edge seen for the first time), a level up, a new text of a person, a trainer beaten, an item found (an item ball or a hidden item), or a new species caught (owned in the Pokédex). A text heard before from the same person and a new cell are not progress."],
         ["Reflection turn", "the first walk or battle action at 20 on the stuck counter, then at 40, 60… A normal Model call, with an instruction: read the Memory tree (and at a walk the full Atlas, after the extract), zoom freely, write a lesson in `note` (what failed, why, what next) and set a new `objective`. No `viewAtlas` there."],
         [
           "Review turn",
-          "the first walk after 20 decisions (Model calls that played an action) since the last Review or Reflection turn, also with progress. A normal Model call, with the full Atlas after the extract and a short check: the way to the next Milestone, the facts against the Mission, the guesses from the signs and the people, the exits left to explore, the team (levels, HP, status, PP). The model writes the result in `mission`, `objective` and `note`. When a Reflection turn and a Review turn are both due at the same decision, only the Reflection turn shows. No `viewAtlas` there.",
+          "the first walk after 20 decisions (Model calls that played an action) since the last Review or Reflection turn, also with progress. A normal Model call, with the full Atlas after the extract and a short check: the way to the next Milestone, the facts against the Mission, the guesses from the signs and the people, the exits left to explore, the team (levels, HP, status, PP). The top nodes of the Memory tree show a number before each sentence, and the first answer that the Bot can read can name 5 of them at most in `remove`, or none. The model writes the result in `mission`, `objective` and `note`. When a Reflection turn and a Review turn are both due at the same decision, only the Reflection turn shows. No `viewAtlas` there.",
         ],
         [
           "Events that ask for a note",
           "since the last Model call: a new map, a lost battle, a heal (all HP full again with no battle and no item use; the line names the map and the last person talked to), a new item, a battle that ended with a problem in the party (less than half of the HP, a status, a quarter of the PP or less; one line with each problem), 2 impossible actions or more in a row. One line “Something important happened: …” each, then “Write a note if it can help you later.” The model decides.",
         ],
         ["Loop warning", "when the last 3 decisions that played an action played the same actions with the same results, the prompt adds one line “Warning: …” after the tries since the last progress. A `zoom` or a `viewAtlas` does not count."],
-        ["Notes", "a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with “Guess:”, or the advice of a person that helps later (“A person said: you can never have too many Poké Balls”). When a note becomes false or ends (a guess disproved, a person that moved, a trainer beaten), the model writes a new note that says so. Never HP values."],
+        ["Notes", "a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with “Guess:”, or the advice of a person that helps later (“A person said: you can never have too many Poké Balls”). When a note becomes false or ends (a guess disproved, a person that moved, a trainer beaten), the model writes a new note that says so. Never HP or PP values. The program removes a sentence with an HP or PP number and a note with nearly the same words as one of the last 32 notes (a number, a negation or “Guess:” in only one of them makes two facts), and it writes “Guess:” before a sentence with a word like “might” or “likely”."],
         ["Character turn", "the first Model call of a Run with no Pokémon. The program selects an idea at random (a shy baker), and the model writes the first Pokémon in `starter`, and the style of the nicknames and the trainer in `character`. Each later prompt has “Your character: …”. At a Poké Ball, the program answers with no Model call: YES to this Pokémon, NO to another."],
         ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run, the other Model calls its reasoning level. The panel “Model” shows the text of the reasoning in a block."],
-        ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review` and `reasoning` (the text of the reasoning). The panel “Model” shows `reflection` and `review` as flags, and `stuck` as a chip of the shown call."],
+        ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review`, `reasoning` (the text of the reasoning) and `removed` (the sentences that a Review turn removed, with their nodes). The panel “Model” shows `reflection` and `review` as flags, `stuck` as a chip of the shown call, and `removed` in a “Removed” line under the note."],
       ]}
     >
       <div class={BLOCKS2}>
@@ -276,7 +278,7 @@ export function ProgressPage() {
       </div>
       <div class={GRID2}>
         <DocCard icon={Repeat} tone="warn" title="Reflection turn" lines={["when: the stuck counter at 20, 40, 60…, at a walk or a battle action", "reads the Memory tree (and the full Atlas at a walk)", "writes a lesson in `note` and a new `objective`"]} />
-        <DocCard icon={Eye} title="Review turn" lines={["when: the first walk after 20 decisions since the last Review or Reflection", "the full Atlas and a short check: the way, the facts, the guesses, the exits, the team", "writes `mission`, `objective`, `note`"]} />
+        <DocCard icon={Eye} title="Review turn" lines={["when: the first walk after 20 decisions since the last Review or Reflection", "the full Atlas and a short check: the way, the facts, the guesses, the exits, the team", "writes `mission`, `objective`, `note`, and `remove` for false sentences of the top nodes"]} />
       </div>
       <div class={BLOCKS2}>
         <Block label="📝 Events that ask for a note" sub="One line “Something important happened: …”. The model decides.">
@@ -293,7 +295,7 @@ export function ProgressPage() {
               ["Lesson", "what works, what fails, and why"],
               ["Guess", "starts with “Guess:”"],
               ["Advice", "of a person, when it helps later"],
-              ["Never", "HP values"],
+              ["Never", "HP or PP values"],
             ]}
           />
         </Block>
@@ -310,8 +312,9 @@ export function MemoryPage() {
     <Page
       lead="The memory that the model writes itself: one short note at a time, merged in summaries."
       details={[
-        ["Note", "the model adds a note after an important event or a lesson."],
-        ["Summary call", "merges two nodes of the same size. It drops a fact that a later note makes false or ends, and keeps the later fact. A summary that is too long ends at its last full sentence."],
+        ["Note", "the model adds a note after an important event or a lesson. The program cleans it before the Run record keeps it (page “Stuck, reflection and review”, Notes)."],
+        ["Removal", "at a Review turn, the top nodes show a number before each sentence, and the model can remove 5 sentences at most. It cannot rewrite them. A node with no sentence left is not in the prompt. The next summaries do not read a removed sentence, but `zoom` still shows it in the lower nodes."],
+        ["Summary call", "merges two nodes of the same size. It drops a fact that a later note makes false or ends, and keeps the later fact. It keeps “Guess:” before each guess. A summary that is too long ends at its last full sentence."],
         ["Size", "a node of 2^k notes has 200 × (k + 1) characters at most, with the newest facts first."],
         ["`zoom <a-b>`", "opens a node: its two halves, down to the notes."],
         ["Cost", "a Summary call counts in the cost of the Run."],

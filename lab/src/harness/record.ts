@@ -49,14 +49,16 @@ export type Usage = { promptTokens: number; cachedTokens?: number; completionTok
 
 export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; character?: string; starter?: StarterSpecies };
 
-export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; reasoning?: string; stuck?: number; character?: boolean; reflection?: boolean; review?: boolean } & (
+export type NodeRange = { from: number; to: number };
+
+export type NodeSentence = NodeRange & { sentence: string };
+
+export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; reasoning?: string; stuck?: number; character?: boolean; reflection?: boolean; review?: boolean; removed?: NodeSentence[] } & (
   | { decision: Decision; error: null }
   | { decision: null; error: string }
 );
 
 export type ModelEvent = { type: "model"; frame: number; latencyMs: number } & ModelAnswer;
-
-export type NodeRange = { from: number; to: number };
 
 export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | null; usage: Usage; reasoning?: string } & NodeRange & ({ summary: string; error: null } | { summary: null; error: string });
 

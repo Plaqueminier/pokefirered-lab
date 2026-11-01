@@ -1,5 +1,5 @@
 import type { Prompt, RunEvent, SummaryEvent } from "../src/harness/record";
-import { type MemoryNode, memoryTree, type NewNote, newNotes, nodeLine, nodeName, topNodes, zoomNodes } from "../src/model/memory-tree";
+import { type MemoryNode, memoryTree, type NewNote, newNotes, nodeLine, nodeName, nodeText, topNodes, zoomNodes } from "../src/model/memory-tree";
 import type { Cursor, Span } from "./cursor";
 
 export type SummaryCallRow = {
@@ -58,9 +58,9 @@ export function memoryPanelView(all: readonly RunEvent[], cursor: Cursor | null 
     return {
       name,
       line: nodeLine(memory),
-      text: memory.text,
+      text: nodeText(memory),
       size: memory.to - memory.from + 1,
-      top,
+      top: top && memory.text !== "",
       inSelection: call !== null && selected.has(call.id),
       note: memory.from === memory.to ? (notes[memory.from - 1] ?? null) : null,
       call,

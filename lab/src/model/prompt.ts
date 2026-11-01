@@ -10,9 +10,9 @@ import { nicknamedSpecies } from "../menus";
 import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText } from "../protocol";
 import { characterTurn, runCharacter } from "./character";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
-import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
+import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, targetLines } from "./targets";
 
 export const B_PRESSES = 3;
@@ -71,14 +71,15 @@ function characterLine(events: readonly RunEvent[]): string[] {
   return decision ? [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}. Play as this trainer.`] : [];
 }
 
-export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">): string {
-  const rules = [starterRule(starter), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES].join("\n");
+export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">, hasPokemon: boolean): string {
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES].join("\n");
+  const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Mission, your Memory tree, what the game waits for, your objective, the number of Decision points since your last progress, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at a walk or a battle action: the request to write a lesson and a new objective, and at a walk the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at a walk or a battle action: the request to write a lesson and a new objective, and at a walk the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -91,14 +92,15 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP values. Nobody changes a note later, and you cannot remove it. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. It writes "Guess:" before a sentence with a word like "might" or "likely". Nobody changes a note later, and only a review turn can remove a sentence from your top nodes. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "remove": only at a review turn: ${REMOVE_RULE}.
 
 Rules of the program:
 - The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
 - When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
-- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer. At the question of a nickname, it answers YES.
+${offers}- At the question of a nickname, the program answers YES for you.
 
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
@@ -123,7 +125,7 @@ Advice of a good player:
 function reflection(atWalk: boolean): string[] {
   return [
     "Reflection turn: stop and think before you act.",
-    `- Read your Memory tree above${atWalk ? " and the full Atlas below" : ""}. Use zoom freely to see the details of a node: zoom does not end this turn.`,
+    `- Read your Memory tree${atWalk ? " and the full Atlas" : ""} above. Use zoom freely to see the details of a node: zoom does not end this turn.`,
     '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
     '- Set a new "objective" that follows this lesson.',
   ];
@@ -132,17 +134,18 @@ function reflection(atWalk: boolean): string[] {
 const REVIEW = [
   "Review turn: check your plan against the facts before you act.",
   "- Where are you on the way to the next Milestone?",
-  "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+  "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
   "- What do the signs and the people tell you? Which of your guesses do they confirm?",
   "- Which exits, edges and unseen cells are left to explore?",
   "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
+  `- Write in "remove" ${REMOVE_RULE}. The number of a sentence is the [n] before it. You cannot change a sentence.`,
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
 /** A character turn happens while a Run has no Pokémon and no character, and it comes first. A reflection turn happens at a walk or a battle action, a review turn at a walk only. At a walk, both add the full Atlas. A reflection turn has the priority over a review turn. */
 export type TurnKind = "normal" | "character" | "reflection" | "review";
 
-export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[] };
+export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[] };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
 export function turnRequest(turn: TurnKind, atWalk: boolean, starter: ModelSettings["starter"]): string[] {
@@ -174,23 +177,31 @@ function reviewDue(events: readonly RunEvent[]): boolean {
   return turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length >= REVIEW_EVERY;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request }: PromptState): string {
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const answers = answeredTurns(events);
   const calls = pastCalls(answers);
   const tried = tries(events, noProgress.since, answers);
   const known = asked.kind === "walk" ? knownWorld(asked.overworld.atlas) : [];
   const world = known.length === 0 ? [] : [...known, ""];
-  // The facts that change little come first, so that the providers cache more of the prompt.
+  // A provider caches only the start that two prompts share, so the parts that change little come first.
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
-    missionLine(events),
     ...characterLine(events),
     "",
-    memoryText(memoryTree(events)),
+    memoryText(memory),
+    "",
+    ...world,
+    bagText(observation.bag),
+    `Money: ${observation.money}`,
+    partyText(observation.party),
+    "",
+    ...context(asked),
+    ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     waitLine(asked, events),
+    missionLine(events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): ${noProgress.stuck}.`,
     ...request,
@@ -200,14 +211,6 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
     ...(happened.length === 0 ? [] : [...happened.map((fact) => `Something important happened: ${fact}.`), "Write a note if it can help you later.", ""]),
-    partyText(observation.party),
-    `Money: ${observation.money}`,
-    bagText(observation.bag),
-    "",
-    ...world,
-    ...context(asked),
-    ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
-    "",
     "Actions:",
     ...actionLines(asked),
     ZOOM,
@@ -253,8 +256,7 @@ function chooseAgain(asked: Asked): string {
   return `Answer with JSON again, with one of the actions of the first message: ${alternatives(actionsOf(asked))}.`;
 }
 
-function memoryText(tree: MemoryTree): string {
-  const lines = memoryLines(tree);
+function memoryText(lines: string[]): string {
   return lines.length === 0 ? "Memory tree: none yet." : ["Memory tree, the top nodes (zoom <a-b> opens a node):", ...lines].join("\n");
 }
 
@@ -427,6 +429,7 @@ function context(asked: Asked): string[] {
         `${nickname} wants to learn ${move.name} (${moveText(move)}). ${move.description}`,
         `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
         ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveText(known)}. ${known.description}${isHmMove(known.name) ? " It is an HM move: it cannot be forgotten." : ""}`),
+        "This is an important choice. Before you choose, count your damage moves and compare their PP.",
       ];
     }
     default:

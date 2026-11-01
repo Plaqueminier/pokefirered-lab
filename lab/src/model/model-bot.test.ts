@@ -211,7 +211,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "13", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "14", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
@@ -334,6 +334,27 @@ describe.skipIf(!ready)("model bot", () => {
     expect(afterTalks.match(/^- interact\(9, 4\).*$/gm)).toEqual([expect.stringMatching(/^- interact\(9, 4\) ×2: ".+"$/)]);
     expect(afterTalks).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 2.");
     expect(modelEvents(harness).find((e) => e.prompt.user === afterTalks)).toMatchObject({ stuck: 2, reflection: false });
+  });
+
+  test("a Review turn numbers the sentences of the top nodes, its answer removes the sentences that it names, and the next prompt does not show them", async () => {
+    const harness = await Harness.open();
+    const prompts: Prompt[] = [];
+    let calls = 0;
+    let reviewed = 0;
+    const client: ModelClient = async (prompt, options) => {
+      if (options?.format?.name === "summary") return { content: JSON.stringify({ summary: "Use Tackle. The Gym is locked." }), usage: { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: COST } };
+      prompts.push(prompt);
+      calls++;
+      const action = calls === 3 ? target(prompt, "stairs") : "goTo 8 6";
+      if (options?.format?.name !== "review") return reply(action, "Leave the house", calls === 1 || calls === 2 ? `fact ${calls}` : "");
+      reviewed = calls;
+      return { ...reply(action), content: JSON.stringify({ ...JSON.parse(reply(action).content), remove: [1, 99] }) };
+    };
+    await harness.play(modelBot({ costLimit: 24.5 * COST }, () => client)).catch(() => {});
+    expect(reviewed).toBeGreaterThan(0);
+    expect(prompts[reviewed - 1].user).toContain("#1-2: [1] Use Tackle. [2] The Gym is locked.");
+    expect(modelEvents(harness)[reviewed - 1].removed).toEqual([{ from: 1, to: 2, sentence: "Use Tackle." }]);
+    expect(prompts[reviewed].user).toContain("#1-2: The Gym is locked.");
   });
 
   test("each merge of the Memory tree makes one Summary call at the same Decision point, a summary event whose cost counts against the cost limit; the prompt shows the top nodes", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunEvent } from "../harness/record";
-import { dueMerges, memoryLines, memoryTree, readSummary, summaryPrompt, zoomLines } from "./memory-tree";
+import { dueMerges, keptNote, memoryLines, memoryTree, readSummary, reviewMemory, summaryPrompt, zoomLines } from "./memory-tree";
 
 function call(note: string): RunEvent {
   return {
@@ -70,5 +70,59 @@ describe("the Memory tree", () => {
   test("a too long summary is cut at the end of its last full sentence that fits", () => {
     const fits = `Got the Pokédex from Oak. ${"Viridian City is north of Pallet Town. ".repeat(9)}`.trim();
     expect(readSummary(JSON.stringify({ summary: `${fits} The old man in Viridian City blocks the north road.` }), { from: 1, to: 2 })).toBe(fits);
+  });
+});
+
+describe("the filter of the notes", () => {
+  test.each([
+    ["Coda at 12/23 HP after the battles.", [], ""],
+    ["Vine Whip PP is 0.", [], ""],
+    ["Vine Whip PP is low (1/10). Lesson: run from wild battles.", [], "Lesson: run from wild battles."],
+    ["Struggle costs 1/4 of the damage.", [], "Struggle costs 1/4 of the damage."],
+    ["Mt. Moon has stairs at (3,3).", [], "Mt. Moon has stairs at (3,3)."],
+    ["Cave C at (4,9) leads to the gate.", ["cave c at (4, 9) leads to the gate"], ""],
+    ["My sister is on 1F, not 2F. Go downstairs to talk to her.", ["My sister is in the living room on 1F, not on 2F. Go downstairs to talk to her."], ""],
+    ["The Gym is not locked.", ["The Gym is locked."], "The Gym is not locked."],
+    ["The Gym isn't locked.", ["The Gym is locked."], "The Gym isn't locked."],
+    ["Cave C at (4,10) leads to the gate.", ["Cave C at (4,9) leads to the gate."], "Cave C at (4,10) leads to the gate."],
+    ["The Gym is in the north.", ["Guess: the Gym is in the north."], "The Gym is in the north."],
+    ["The Gym is locked. The exit is likely north.", [], "The Gym is locked. Guess: The exit is likely north."],
+    ["Guess: the exit may be north.", [], "Guess: the exit may be north."],
+    ["The Gym is locked. A person said: you may need a bike.", [], "The Gym is locked. A person said: you may need a bike."],
+    ["PROF. OAK may help.", [], "Guess: PROF. OAK may help."],
+    ["Empty string", [], ""],
+  ] as [string, string[], string][])("%s", (written, earlier, kept) => {
+    expect(keptNote(written, earlier)).toBe(kept);
+  });
+});
+
+describe("the removal of sentences at a Review turn", () => {
+  const removal = (from: number, to: number, ...sentences: string[]): RunEvent => ({ ...(call("") as RunEvent & { type: "model" }), removed: sentences.map((sentence) => ({ from, to, sentence })) });
+
+  test("the top nodes show numbered sentences, in one count for all the nodes", () => {
+    const events = [call("note 1"), call("note 2"), summary(1, 2, "Mt. Moon is east. The Gym is locked."), call("note 3")];
+    expect(reviewMemory(memoryTree(events))).toEqual({
+      lines: ["#1-2: [1] Mt. Moon is east. [2] The Gym is locked.", "#3: [3] note 3"],
+      sentences: [
+        { from: 1, to: 2, sentence: "Mt. Moon is east." },
+        { from: 1, to: 2, sentence: "The Gym is locked." },
+        { from: 3, to: 3, sentence: "note 3" },
+      ],
+    });
+  });
+
+  test("a removed sentence leaves its node and the next merge; a node with no sentence left has no line and no number", () => {
+    const events = [call("note 1"), call("note 2"), summary(1, 2, "Use Tackle. The Gym is locked."), call("note 3"), call("note 4"), summary(3, 4, "Mom heals."), removal(1, 2, "Use Tackle.")];
+    const tree = memoryTree(events);
+    expect(memoryLines(tree)).toEqual(["#1-2: The Gym is locked.", "#3-4: Mom heals."]);
+    expect(summaryPrompt(tree, { from: 1, to: 4 }).user).not.toContain("Use Tackle.");
+
+    const empty = memoryTree([...events, removal(1, 2, "The Gym is locked.")]);
+    expect(memoryLines(empty)).toEqual(["#3-4: Mom heals."]);
+    expect(reviewMemory(empty).lines).toEqual(["#3-4: [1] Mom heals."]);
+    expect(summaryPrompt(empty, { from: 1, to: 4 }).user).not.toContain("#1-2");
+
+    const noSummary = memoryTree([call("note 1"), call("note 2"), summary(1, 2, null), removal(1, 1, "note 1"), removal(2, 2, "note 2")]);
+    expect(dueMerges(noSummary)).toEqual([]);
   });
 });

@@ -1,10 +1,10 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type RunEvent, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, type RunEvent, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
-import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
-import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt, summarySchema } from "../src/model/memory-tree";
+import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
+import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import { type AskOptions, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
@@ -16,12 +16,16 @@ const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
 const MAX_UNCOVERED = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
+const TURN_FORMATS: Partial<Record<TurnKind, AskOptions["format"]>> = {
+  character: { name: "character", schema: CHARACTER_SCHEMA },
+  review: { name: "review", schema: REVIEW_SCHEMA },
+};
 
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "13",
+    version: "14",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -32,10 +36,9 @@ export function unknownScreen(events: readonly RunEvent[]): boolean {
   return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
-type Conversation = { user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind };
+type Conversation = { system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; sentences: NodeSentence[] };
 
 class ModelPlay {
-  readonly #system: string;
   #conversation: Conversation | null = null;
   #promptObservation: Observation | null = null;
   // A continued Run keeps the Model calls of its parent: the answers that the Bot cannot read count from this call.
@@ -45,9 +48,7 @@ class ModelPlay {
     private readonly harness: Harness,
     private readonly settings: ModelSettings,
     private readonly ask: ModelClient,
-  ) {
-    this.#system = systemPrompt(settings);
-  }
+  ) {}
 
   async play(): Promise<void> {
     this.#firstCall = modelEvents(this.harness.events).length;
@@ -96,23 +97,28 @@ class ModelPlay {
   }
 
   private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
-    const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
+    const prompt: Prompt = { system: conversation.system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
     const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
     const reply = await this.tryAsk(prompt, {
-      format: request.character ? { name: "character", schema: CHARACTER_SCHEMA } : undefined,
+      format: TURN_FORMATS[conversation.turnKind],
       reasoning: conversation.turnKind === "normal" ? undefined : this.settings.thinking,
     });
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
-      const decision = request.character ? readCharacterDecision(reply.content, this.settings.starter) : readDecision(reply.content);
-      const action = readAction(decision.action, asked);
+      const tree = memoryTree(this.harness.events);
+      const written = request.character ? readCharacterDecision(reply.content, this.settings.starter) : readDecision(reply.content);
+      const action = readAction(written.action, asked);
       if (action.name === "viewAtlas" && asked.kind === "walk") {
         conversation.atlasShown = true;
         conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
       }
-      if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(memoryTree(this.harness.events), action, asked) });
-      return { answer: { ...replied, decision, error: null }, action };
+      if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(tree, action, asked) });
+      const decision = { ...written, note: keptNote(written.note, tree.notes) };
+      const removed = readRemoved(reply.content, conversation.sentences);
+      // The note of this answer can start a merge, and the numbers then name old nodes. This also holds the limit for the whole Review turn.
+      conversation.sentences = [];
+      return { answer: { ...replied, decision, error: null, ...(removed.length > 0 ? { removed } : {}) }, action };
     } catch (error) {
       conversation.turns.push({ assistant: reply.content, user: errorMessage(errorText(error), asked) });
       return { answer: { ...replied, decision: null, error: errorText(error) }, action: null };
@@ -122,8 +128,10 @@ class ModelPlay {
   private newConversation(observation: Observation, asked: Asked, turn: TurnKind): Conversation {
     const { events, noProgress } = this.harness;
     const happened = importantEvents(this.#promptObservation, observation, events);
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter) });
-    return { user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn };
+    const tree = memoryTree(events);
+    const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter), memory: memory.lines });
+    return { system: systemPrompt(this.settings, observation.party.length > 0), user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, sentences: memory.sentences };
   }
 
   private async summarize(): Promise<void> {

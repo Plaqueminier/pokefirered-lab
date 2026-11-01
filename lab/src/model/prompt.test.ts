@@ -26,7 +26,7 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [] };
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [], memory: [] };
 const SYSTEM = { starter: "free", stopAtWhiteout: false } as const;
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
@@ -168,11 +168,11 @@ describe("the Bag", () => {
     const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain(
       [
-        "Money: 3080",
         "Bag:",
         "- ITEMS: POTION ×5 (It restores the HP of one POKéMON by 20 points.)",
         "- KEY ITEMS: TOWN MAP ×1 (A very convenient map.)",
         "- POKé BALLS: POKé BALL ×20 (A BALL thrown to catch a wild POKéMON.)",
+        "Money: 3080",
       ].join("\n"),
     );
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
@@ -404,11 +404,11 @@ describe("the rules and the character turn", () => {
   const settings = { starter: "free", stopAtWhiteout: true } as const;
 
   test("a free starter is the choice of the character; a given starter stays; a stop at a whiteout warns with no fear; with no stop, the rules tell what a whiteout costs", () => {
-    expect(systemPrompt(settings)).toContain("Take the first Pokémon that your character chose.");
-    expect(systemPrompt({ ...settings, starter: "SQUIRTLE" })).toContain("Choose SQUIRTLE as your first Pokémon.");
-    expect(systemPrompt(settings)).toContain("If all your Pokémon faint, the Run ends.");
-    expect(systemPrompt({ ...settings, stopAtWhiteout: false })).toContain("If all your Pokémon faint, the Run continues: you lose some money");
-    expect(systemPrompt(settings)).toContain("Give a nickname to each Pokémon that you get");
+    expect(systemPrompt(settings, false)).toContain("Take the first Pokémon that your character chose.");
+    expect(systemPrompt({ ...settings, starter: "SQUIRTLE" }, false)).toContain("Choose SQUIRTLE as your first Pokémon.");
+    expect(systemPrompt(settings, false)).toContain("If all your Pokémon faint, the Run ends.");
+    expect(systemPrompt({ ...settings, stopAtWhiteout: false }, false)).toContain("If all your Pokémon faint, the Run continues: you lose some money");
+    expect(systemPrompt(settings, false)).toContain("Give a nickname to each Pokémon that you get");
   });
 
   test("the first Decision point of a Run with no Pokémon is a character turn; then each prompt has the character; a Run that already has a Pokémon and no character has no character turn", () => {
@@ -449,15 +449,15 @@ describe("the stuck counter and the reflection turn", () => {
     const reflected = { ...call("go A"), stuck: 21, reflection: true };
     expect([at(19), at(20), at(21), at(39, [reflected]), at(40, [reflected])]).toEqual(["normal", "reflection", "reflection", "normal", "reflection"]);
     expect([turnKind("battleAction", [], { stuck: 20, since: 0 }, 1), turnKind("battleMove", [], { stuck: 20, since: 0 }, 1)]).toEqual(["reflection", "normal"]);
-    expect(systemPrompt(SYSTEM)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn at a walk or a battle action");
+    expect(systemPrompt(SYSTEM, true)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn at a walk or a battle action");
 
     const noted = [call("go A", "", "fact 1")];
-    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", true, "free") });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", true, "free"), memory: ["#1: fact 1"] });
     expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 20.");
     expect(prompt).toContain(
       [
         "Reflection turn: stop and think before you act.",
-        "- Read your Memory tree above and the full Atlas below. Use zoom freely to see the details of a node: zoom does not end this turn.",
+        "- Read your Memory tree and the full Atlas above. Use zoom freely to see the details of a node: zoom does not end this turn.",
         '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
         '- Set a new "objective" that follows this lesson.',
       ].join("\n"),
@@ -483,17 +483,18 @@ describe("the review turn", () => {
     const at = (events: RunEvent[], kind: "walk" | "battleAction" = "walk") => turnKind(kind, events, { stuck: 0, since: 0 }, 1);
     expect([at(decided(19)), at([...decided(19), call("zoom 1-2")]), at(decided(20))]).toEqual(["normal", "normal", "review"]);
     expect([at(decided(20), "battleAction"), at([...decided(5), ...reviewed, ...decided(19)])]).toEqual(["normal", "normal"]);
-    expect(systemPrompt(SYSTEM)).toContain("Every 20 decisions, you get a review turn");
+    expect(systemPrompt(SYSTEM, true)).toContain("Every 20 decisions, you get a review turn");
 
     const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review", request: turnRequest("review", true, "free") });
     expect(prompt).toContain(
       [
         "Review turn: check your plan against the facts before you act.",
         "- Where are you on the way to the next Milestone?",
-        "- Do the facts of your Memory tree and of the full Atlas below still agree with your Mission?",
+        "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
         "- What do the signs and the people tell you? Which of your guesses do they confirm?",
         "- Which exits, edges and unseen cells are left to explore?",
         "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
+        '- Write in "remove" the numbers of the sentences of your Memory tree that are false now or useless, 5 at most, or an empty list. The number of a sentence is the [n] before it. You cannot change a sentence.',
         '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
       ].join("\n"),
     );

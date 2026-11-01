@@ -191,13 +191,14 @@ export function NowButton({ following, now }: { following: boolean; now: () => v
 }
 
 function Goals({ row }: { row: UnusualCall }) {
-  const { decision } = row.call;
+  const { decision, removed } = row.call;
   if (!decision) return null;
   const goals = [
     ...(decision.character ? [{ term: "Character", text: decision.character, changed: false }] : []),
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
+    ...(removed ? [{ term: "Removed", text: removed.map(({ sentence }) => sentence).join(" "), changed: false }] : []),
   ].filter((goal) => goal.term !== "Note" || goal.text);
   return (
     <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
