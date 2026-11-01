@@ -1,8 +1,10 @@
-import { Backpack, Bot, ChartColumn, Cpu, Eye, Flag, Grid2x2, Hand, ListTree, Map as MapIcon, Play, Shapes } from "lucide-preact";
+import { Backpack, Bot, Camera, ChartColumn, Cpu, DoorOpen, Eye, Gauge, Hand, ListTree, Map as MapIcon, MonitorPlay, PanelRightOpen, Play, Shapes, SlidersHorizontal, Trophy } from "lucide-preact";
 import { Card, NumberBadge } from "./components";
 import { LoopDiagram } from "./doc-diagrams";
 import { RAW_INPUT_FORM } from "./doc-harness";
-import { Block, BLOCKS2, DocCard, GRID2, GRID3, Page, Terms } from "./doc-parts";
+import { Block, BLOCKS2, DocCard, GRID3, Page, Terms } from "./doc-parts";
+import viewerGrid from "./doc/grid.png";
+import viewerRace from "./doc/race.png";
 import viewerLab from "./doc/viewer-lab.png";
 
 export function LoopPage() {
@@ -93,17 +95,9 @@ const LAB_SPOTS = [
 export function ViewerPage() {
   return (
     <Page
-      lead="Five tabs: Lab, Grid, Race, Doc and Components; a change of tab stops no Run."
+      lead="Five tabs: Lab, Grid, Race, Doc and Components; a change of tab stops no Run. This page tells the Lab tab; the Grid and the Race have their own pages."
       details={[
         ["Keyboard", "in the Grid, Race, Doc and Components tabs, the keyboard does not play. In the Grid, Doc and Components tabs, the arrow keys scroll the page."],
-        [
-          "Grid",
-          "the second tab: 2, 4 or 9 cells, each with the screen of a Run, its name, Bot, model, game time, last Milestone, cost and state (plays, waits for the model, in battle, ended). The live Runs fill the cells; a Run record can go in any cell, and a live Run that ended can replay its record in its cell. The replays share one cursor (play, pause, ×1, ×4, ×20, a slider) from frame 0. A click on a cell shows its Run in the Lab tab, with a bar “← Grid” to go back. No sound. A Grid of 9 gets 30 screens a second.",
-        ],
-        [
-          "Race",
-          "the third tab: it plays a file of `lab/races/` (`bun run race <name>`) on a map of Kanto in the tiles of the ROM, with no emulator. Each Run is a Ghost: the sprite of the player, with the number of its Run. A Run that another Run of the Race continues has no Ghost. The Ghosts start at frame 0: play, pause, ×1 to ×200, a slider of game time. A count at a door tells how many Ghosts are inside: a hover shows the interiors, a click opens the building on the map, and a drawer lists the interiors where a Run still plays. The gyms show their badge. The leader has a crown. A Run that ended stays see-through, with an icon of its result next to its number. The camera frames the Ghosts that still play until a wheel or a drag; the button “Frame the Ghosts” gives it back.",
-        ],
         ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
@@ -126,7 +120,7 @@ export function ViewerPage() {
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
-        ["Doc", "the fourth tab: 12 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
+        ["Doc", "the fourth tab: 14 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
         [
           "Components",
           "the fifth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
@@ -155,12 +149,6 @@ export function ViewerPage() {
           </ol>
         </Block>
       </div>
-      <Block label="🏁 Many Runs at the same time">
-        <div class={GRID2}>
-          <DocCard icon={Grid2x2} title="Grid tab" lines={["2, 4 or 9 cells: live Runs and replays of Run records", "the replays race from frame 0 on one cursor", "a click shows the Run in the Lab tab"]} />
-          <DocCard icon={Flag} title="Race tab" lines={["the Run records as Ghosts on a map of Kanto, with no emulator", "`bun run race <name>` makes the file of a Race", "the doors count the Ghosts inside"]} />
-        </div>
-      </Block>
       <Block label="🧭 The panels" sub="One cursor (a frame) and one selection (a range of frames) for all the panels. Esc returns them to now.">
         <div class={GRID3}>
           <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer"]} />
@@ -169,6 +157,115 @@ export function ViewerPage() {
           <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them", "a click opens a node and its Summary call"]} />
           <DocCard icon={Backpack} title="Bag and PC" lines={["the five pockets, the PC and its boxes at the cursor", "the changes, with their times"]} />
           <DocCard icon={Shapes} title="Components tab" lines={["the design system (ADR 0004)", "each component in all its states"]} />
+        </div>
+      </Block>
+    </Page>
+  );
+}
+
+const SHOT = "block h-auto w-full rounded-card border border-line";
+
+export function GridPage() {
+  return (
+    <Page
+      lead="2, 4 or 9 Runs at the same time, each in its own cell: a live Run, or a replay of a Run record."
+      details={[
+        ["Game time", "the frames of the game as h:mm:ss, with the battles in it and the waits for the model out of it."],
+        ["End of a replay", "a replay at its last frame stays on it and shows its Run result, and the others go on. The cursor stops at the end of the longest replay."],
+        ["Click on a cell", "a live Run becomes the shown Run. A replay plays in the Lab tab, at the frame of the Grid cursor."],
+        ["Places", "the 9 places are for the Runs of the Bots and the replays of the Grid together, and the bar gives the free places. A start past the free places gets a notice."],
+        ["Cost", "the form “Bots” shows the maximum total cost of its N Runs. Each Run keeps its own cost limit."],
+        ["Smaller Grid", "a replay in a cell that goes away leaves the Grid."],
+        ["Reload", "the Grid does not keep its replays when the last page closes. The live Runs fill it again."],
+        ["Errors", "a worker that fails, or a Run record of another origin, shows its error in its cell."],
+        ["Lab tab only", "the panels, the Timeline, the keyboard, the speed and the savestate are for the shown Run. The Grid has no sound, and the arrow keys scroll the page."],
+        ["Screens", "the page asks only for the Runs of its cells, and only while the tab shows. A screen goes out only when its frame changed. A Grid of 9 gets 30 screens a second, the others 60."],
+      ]}
+    >
+      <img src={viewerGrid} alt="The Grid tab with 4 replays of Run records" class={SHOT} />
+      <div class={BLOCKS2}>
+        <Block label="🧩 One cell">
+          <Terms
+            rows={[
+              ["Screen", "the game of the Run; dim when it waits for the model or when the Run ended"],
+              ["Kind", "live or replay"],
+              ["State", "plays, waits for the model, in battle, or ended with its Run result"],
+              ["Facts", "the name, the Bot, the model, the game time, the last Milestone, the cost"],
+              ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
+            ]}
+          />
+        </Block>
+        <Block label="📥 Fill the Grid">
+          <Terms
+            numbered
+            rows={[
+              ["Size", "choose 2, 4 or 9 cells"],
+              ["Bots", "the form “Bots” starts N Runs of a Bot with one action"],
+              ["Live Runs", "they fill the free cells: first those that play, then those that ended"],
+              ["Run records", "an empty cell lists them, and the button “Record” replaces what a cell holds"],
+              ["Replay", "a live Run that ended can replay its record in its cell"],
+            ]}
+          />
+        </Block>
+      </div>
+      <Block label="⏱️ One cursor for the replays" sub="All the replays start at frame 0 together, so they race on their game time.">
+        <div class={GRID3}>
+          <DocCard icon={SlidersHorizontal} title="Controls" lines={["play and pause for all the replays", "×1, ×4 or ×20, and one slider"]} />
+          <DocCard icon={MonitorPlay} title="A later replay" lines={["it goes to the frame of the cursor", "it replays in a worker, with no sound"]} />
+          <DocCard icon={Play} title="A live Run" lines={["it has no shared cursor: its cell shows its own last frame", "it stops while its game waits for a Model call"]} />
+        </div>
+      </Block>
+    </Page>
+  );
+}
+
+export function RacePage() {
+  return (
+    <Page
+      lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
+      details={[
+        ["Race file", "the track of each Run on one game time, with its battles, its trainers, its Milestones and its Run result. A Race file of an older version must be made again."],
+        ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record with an empty track stays out, and a record of another Bot is refused."],
+        ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
+        ["Leader", "the Ghost with the most Milestones at this frame. On a tie, the first to reach them."],
+        ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in."],
+        ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
+        ["Hover on Ghosts", "the Run, its map and its state (plays, wild battle, trainer battle and the name of the trainer, or its result), or the numbers of the Runs for a group."],
+        ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],
+        ["Keyboard", "it does not play in this tab. The Race draws only while its tab shows."],
+      ]}
+    >
+      <img src={viewerRace} alt="The Race tab: Ghosts on Route 2, Viridian Forest and Viridian City, and a drawer of the interiors" class={SHOT} />
+      <div class={BLOCKS2}>
+        <Block label="🏁 Make a Race">
+          <Terms
+            numbered
+            rows={[
+              ["`bun run migrate`", "once: it adds the track to the old Run records"],
+              ["`bun run race <name> [records…]`", "it writes `races/<name>.json.gz`"],
+              ["Race tab", "choose the Race in the list of the bar"],
+            ]}
+          />
+        </Block>
+        <Block label="👻 A Ghost">
+          <Terms
+            rows={[
+              ["Sprite", "the player, with the number of its Run"],
+              ["Crown", "on the leader of the Race"],
+              ["Battle", "an icon next to its number while it fights"],
+              ["End", "see-through, with an icon of its result next to its number"],
+              ["Click", "selects it: a ring around it, and its name"],
+            ]}
+          />
+        </Block>
+      </div>
+      <Block label="🗺️ On the map">
+        <div class={GRID3}>
+          <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
+          <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "the button “Frame the Ghosts” gives it back"]} />
+          <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
+          <DocCard icon={PanelRightOpen} title="Drawer" lines={["“Interiors in play”: only those where a Run still plays", "the interiors with the most Ghosts come first"]} />
+          <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>
       </Block>
     </Page>

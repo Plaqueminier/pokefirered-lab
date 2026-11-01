@@ -1,5 +1,5 @@
 // Issue #61. The Doc tells what the lab can do; lab/README.md gives only the setup and the commands.
-import { Bot, Brain, CircleStop, Construction, FileClock, Flag, Gamepad2, Lightbulb, ListTree, MessageSquareText, Monitor, Workflow } from "lucide-preact";
+import { Bot, Brain, CircleStop, Construction, FileClock, Flag, Gamepad2, Ghost, Grid2x2, Lightbulb, ListTree, MessageSquareText, Monitor, Workflow } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, render } from "preact";
 import { useRef, useState } from "preact/hooks";
 import type { BotInfo } from "../src/protocol";
@@ -7,7 +7,7 @@ import { Button, LABEL } from "./components";
 import type { Readable } from "./cursor";
 import { EndPage, MacroPage, MilestonesPage, NotYetPage, RecordPage } from "./doc-harness";
 import { BotsContext, BotsPage, MemoryPage, ProgressPage, PromptPage } from "./doc-model";
-import { LoopPage, PrinciplePage, ViewerPage } from "./doc-overview";
+import { GridPage, LoopPage, PrinciplePage, RacePage, ViewerPage } from "./doc-overview";
 
 /** `title` is in the side list; `heading`, when the title of the page is longer. */
 type DocPage = { id: string; title: string; heading?: string; icon: ComponentType<{ size?: number; class?: string }>; render: () => ComponentChildren };
@@ -19,6 +19,8 @@ const GROUPS: { title: string; pages: DocPage[] }[] = [
       { id: "loop", title: "The loop", icon: Workflow, render: () => <LoopPage /> },
       { id: "principle", title: "Principle", icon: Lightbulb, render: () => <PrinciplePage /> },
       { id: "viewer", title: "The Viewer", icon: Monitor, render: () => <ViewerPage /> },
+      { id: "grid", title: "The Grid", icon: Grid2x2, render: () => <GridPage /> },
+      { id: "race", title: "The Race", icon: Ghost, render: () => <RacePage /> },
     ],
   },
   {
