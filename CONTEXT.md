@@ -128,7 +128,7 @@ The part of a **Run** up to a **Milestone**, with the name of that **Milestone**
 _Avoid_: stage, level (a level is the level of a Pokémon)
 
 **Run record**:
-The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events and the **Run result**. Its buttons alone replay the **Run**. A **Run record** from before the format version has only the map, battle and **Milestone** events of the **Game events**.
+The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events, the track and the **Run result**. Its buttons alone replay the **Run**. The track is the place of the player at each change of cell, of map or of facing, apart from the events. A **Run record** from before format 1 has only the map, battle and **Milestone** events of the **Game events**, and a **Run record** from before format 2 has no track: a command adds the track from its buttons, and, on a **Run record** from before format 1, the **Game events** of the state.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
@@ -148,15 +148,23 @@ The Bag (its five pockets with their items and quantities) and the PC (its items
 _Avoid_: items (an item is one entry of a pocket), storage
 
 **Viewer**:
-The web page that shows the **Runs**. Its **Grid** shows the screens of several **Runs**, and one **Run** at a time is the shown **Run**: the Viewer shows its screen and its state in detail. To focus a **Run** of the **Grid** is to make it the shown **Run**. The shown **Run** is the own **Run** of the Viewer, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has four tabs: Lab (the screen and the panels of the shown **Run**), Grid, Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
+The web page that shows the **Runs**. Its **Grid** shows the screens of several **Runs**, and one **Run** at a time is the shown **Run**: the Viewer shows its screen and its state in detail. To focus a **Run** of the **Grid** is to make it the shown **Run**. The shown **Run** is the own **Run** of the Viewer, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has five tabs: Lab (the screen and the panels of the shown **Run**), Grid, Race, Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
 _Avoid_: emulator, web player
 
 **Grid**:
 The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
 _Avoid_: wall, multiview, dashboard
 
+**Race**:
+A file that a command makes from a set of **Run records**: the track of each **Run** on one game time from frame 0, with its battles, its **Milestones** and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
+_Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
+
+**Ghost**:
+One **Run** in a **Race**, drawn as the sprite of the player with the number of its **Run**. The number is the rank of the **Run** by date among the **Run records** of the model bots.
+_Avoid_: player, avatar
+
 **Timeline**:
-The track at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.
+The band at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.
 _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 
 ## Relationships
@@ -169,6 +177,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows several **Runs** in its **Grid**, and one **Run** in detail: the shown **Run**. The **Harness** owns all **Runs**.
+- A **Race** holds many **Run records**. Each of its **Ghosts** is one **Run**. A **Run** that another **Run** of the **Race** continues has no **Ghost**: the **Continued Run** already holds its play. The **Viewer** plays a **Race** in the browser: no **Run** plays in the **Harness** for it.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
 
 ## Flagged ambiguities

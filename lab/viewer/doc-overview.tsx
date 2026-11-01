@@ -93,12 +93,16 @@ const LAB_SPOTS = [
 export function ViewerPage() {
   return (
     <Page
-      lead="Four tabs: Lab, Grid, Doc and Components; a change of tab stops no Run."
+      lead="Five tabs: Lab, Grid, Race, Doc and Components; a change of tab stops no Run."
       details={[
-        ["Keyboard", "in the Grid, Doc and Components tabs, the keyboard does not play: the arrow keys scroll the page."],
+        ["Keyboard", "in the Grid, Race, Doc and Components tabs, the keyboard does not play. In the Grid, Doc and Components tabs, the arrow keys scroll the page."],
         [
           "Grid",
           "the second tab: 2, 4 or 9 cells, each with the screen of a Run, its name, Bot, model, game time, last Milestone, cost and state (plays, waits for the model, in battle, ended). The live Runs fill the cells; a Run record can go in any cell. The replays share one cursor (play, pause, ×1, ×4, ×20, a slider) from frame 0. A click on a cell shows its Run in the Lab tab, with a bar “← Grid” to go back. No sound.",
+        ],
+        [
+          "Race",
+          "the third tab: it plays a file of `lab/races/` (`bun run race <name>`) on a map of Kanto in the tiles of the ROM, with no emulator. Each Run is a Ghost: the sprite of the player, with the number of its Run. The Ghosts start at frame 0: play, pause, ×1 to ×200, a slider of game time. A count at a door tells how many Ghosts are inside: a hover shows the interiors, a click opens the building on the map, and a drawer lists the interiors where a Run still plays. The gyms show their badge. The leader has a crown. A Run that ended stays see-through, with an icon of its result next to its number. The camera frames the Ghosts that still play until a wheel or a drag; the button “Frame the Ghosts” gives it back.",
         ],
         ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
@@ -122,10 +126,10 @@ export function ViewerPage() {
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
-        ["Doc", "the third tab: 12 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
+        ["Doc", "the fourth tab: 12 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
         [
           "Components",
-          "the fourth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
+          "the fifth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
         ],
       ]}
     >

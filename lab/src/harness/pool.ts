@@ -3,7 +3,7 @@ import type { InventoryAt } from "../inventory";
 import type { RunState } from "../run";
 import type { Sight } from "./atlas";
 import type { HarnessOptions } from "./harness";
-import type { Continuation, ModelSettings, RunEvent, RunRecord } from "./record";
+import type { Continuation, ModelSettings, Replay, RunEvent, RunRecord } from "./record";
 
 // A choice: the machine plays about 12 Runs at full speed. 10 is the Viewer Run and a Grid of 9 (#72).
 export const MAX_RUNS = 10;
@@ -107,11 +107,11 @@ export class PoolRun {
   }
 }
 
-export type ReplayWorkerMessage = { type: "start"; record: RunRecord } | { type: "target"; frame: number };
+export type ReplayWorkerMessage = { type: "start"; record: RunRecord } | { type: "target"; frame: number } | { type: "toEnd"; record: RunRecord };
 
 export type ReplayView = { frame: number; screen: Uint8Array | null };
 
-export type ReplayWorkerReply = ({ type: "screen" } & ReplayView) | { type: "error"; error: string };
+export type ReplayWorkerReply = ({ type: "screen" } & ReplayView) | { type: "end"; replay: Replay } | { type: "error"; error: string };
 
 export class PoolReplay {
   #view: ReplayView = { frame: 0, screen: null };
@@ -126,7 +126,7 @@ export class PoolReplay {
   ) {
     this.#worker.onmessage = ({ data }: MessageEvent<ReplayWorkerReply>) => {
       if (data.type === "error") this.#error = data.error;
-      else this.#view = { frame: data.frame, screen: data.screen };
+      else if (data.type === "screen") this.#view = { frame: data.frame, screen: data.screen };
     };
     this.#worker.onerror = (event) => {
       this.#error = event.message;
@@ -161,12 +161,13 @@ export class PoolReplay {
 export class RunPool {
   readonly runs: PoolRun[] = [];
   readonly #replays = new Set<PoolReplay>();
+  #toEnd = 0;
   #lastId = 0;
 
   constructor(readonly limit = MAX_RUNS) {}
 
   get free(): number {
-    return this.limit - this.runs.filter((run) => run.end === null).length - this.#replays.size;
+    return this.limit - this.runs.filter((run) => run.end === null).length - this.#replays.size - this.#toEnd;
   }
 
   #checkFree(count: number): void {
@@ -188,6 +189,25 @@ export class RunPool {
 
   view(id: number): ReplayView | undefined {
     return this.runs.find((run) => run.id === id)?.view ?? [...this.#replays].find((replay) => replay.id === id)?.view;
+  }
+
+  async replayToEnd(record: RunRecord): Promise<Replay> {
+    this.#checkFree(1);
+    this.#toEnd++;
+    const worker = new Worker(new URL("./replay-worker.ts", import.meta.url).href);
+    try {
+      return await new Promise<Replay>((resolve, reject) => {
+        worker.onmessage = ({ data }: MessageEvent<ReplayWorkerReply>) => {
+          if (data.type === "end") resolve(data.replay);
+          if (data.type === "error") reject(new Error(data.error));
+        };
+        worker.onerror = (event) => reject(new Error(event.message));
+        worker.postMessage({ type: "toEnd", record } satisfies ReplayWorkerMessage);
+      });
+    } finally {
+      worker.terminate();
+      this.#toEnd--;
+    }
   }
 
   replay(record: RunRecord): PoolReplay {

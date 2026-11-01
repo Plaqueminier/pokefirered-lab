@@ -4,8 +4,11 @@ import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
+import { TRACK_POINT } from "../protocol";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
+import { withoutFormat } from "./game-events";
+import { migrate } from "./migrate";
 import { isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, RECORD_FORMAT, RecordPlayer, replay, type RunRecord, writeRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -132,6 +135,39 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());
     await expect(replay({ ...record, header: { ...record.header, seed: 1 } })).rejects.toThrow("the Run record does not replay here: different seed");
+  });
+
+  test("the Run record has the track of the player: a point at each change of cell, map or facing; the migration of the record with no track writes the same track, and the Game events of format 1", async () => {
+    const { harness } = await playStarter();
+    const record = harness.record();
+    const { track = [] } = record;
+    expect(track.length % TRACK_POINT).toBe(0);
+    const points = Array.from({ length: track.length / TRACK_POINT }, (_, i) => track.slice(i * TRACK_POINT, (i + 1) * TRACK_POINT));
+    expect(points.length).toBeGreaterThan(50);
+    const maps = points.map(([, group, num]) => `${group}.${num}`).filter((map, i, all) => map !== all[i - 1]);
+    expect(maps).toHaveLength(record.events.filter((e) => e.type === "map").length);
+    points.forEach(([frame, , , , , facing], i) => {
+      expect(frame).toBeGreaterThan(points[i - 1]?.[0] ?? -1);
+      expect([0, 1, 2, 3]).toContain(facing);
+      if (i > 0) expect(points[i].slice(1)).not.toEqual(points[i - 1].slice(1));
+    });
+
+    const dir = await mkdtemp(join(tmpdir(), "runs-"));
+    const old: RunRecord = { header: record.header, buttons: record.buttons, events: withoutFormat(record.events), result: record.result };
+    await Bun.write(join(dir, "00001-starter-4-old.json"), JSON.stringify(old));
+    await Bun.write(join(dir, "00002-starter-4-wrong.json"), JSON.stringify({ ...old, events: old.events.filter((e) => e.type !== "battle") }));
+    await Bun.write(join(dir, "00003-starter-4-new.json"), JSON.stringify(record));
+    const report = await migrate(dir);
+    expect(report).toEqual([
+      { name: "00001-starter-4-old.json", error: null },
+      { name: "00002-starter-4-wrong.json", error: "the replay does not give the maps and the battles of the record" },
+    ]);
+    const migrated = await Bun.file(join(dir, "00001-starter-4-old.json")).json();
+    expect(migrated).toEqual(record);
+    const continued = await Harness.open({ parent: { name: "00001-starter-4-old.json", record: migrated } });
+    continued.close();
+    expect((await Bun.file(join(dir, "00002-starter-4-wrong.json")).json()).track).toBeUndefined();
+    expect(await readdir(dir)).toHaveLength(3);
   });
 
   test("a Bot that walks in a loop ends with no progress after N Decision points with no progress: a new cell is not progress", async () => {

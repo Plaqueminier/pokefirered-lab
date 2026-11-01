@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Search, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { anchoredStyle, Button, FIELD, Input, LABEL, type Tone, toneText, useAnchorId } from "./components";
+import { anchoredStyle, Button, Card, FIELD, Input, LABEL, type Tone, toneText, useAnchorId } from "./components";
 
 const LAYER_CARD = "w-max rounded-card border border-line-strong bg-bg text-fg shadow-xl";
 
@@ -62,7 +62,7 @@ const POINTER_GAP = 16;
 const EDGE = 8;
 
 // In the top layer, so the overflow of a panel does not cut the card.
-export function PointerCard({ at, children }: { at: { x: number; y: number } | null; children: ComponentChildren }) {
+export function PointerCard({ at, glass, children }: { at: { x: number; y: number } | null; glass?: boolean; children: ComponentChildren }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
@@ -81,7 +81,7 @@ export function PointerCard({ at, children }: { at: { x: number; y: number } | n
   });
   return (
     <div ref={ref} popover="manual" class={`${LAYER} pointer-events-none inset-auto`}>
-      {at && <div class={`${LAYER_CARD} flex max-w-[340px] flex-col gap-1.5 px-3 py-2.5 text-xs`}>{children}</div>}
+      {at && (glass ? <div class="text-fg"><Card size="sm" glass>{children}</Card></div> : <div class={`${LAYER_CARD} flex max-w-[340px] flex-col gap-1.5 px-3 py-2.5 text-xs`}>{children}</div>)}
     </div>
   );
 }

@@ -2,12 +2,15 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import type { ReasoningLevel, StarterSpecies, STARTERS } from "../protocol";
+import { type ReasoningLevel, type StarterSpecies, type STARTERS, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import { isStateEvent, type StateEvent, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
-export const RECORD_FORMAT = 1;
+/** Format 1 adds the Game events of the state (see `StateEvent`), and format 2 adds the `track`. */
+export const RECORD_FORMAT = 2;
+
+const STATE_EVENTS_FORMAT = 1;
 
 export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
@@ -27,7 +30,7 @@ export function isGameEvent(event: RunEvent): event is GameEvent {
 }
 
 export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
-  return (record.format ?? 0) >= RECORD_FORMAT;
+  return (record.format ?? 0) >= STATE_EVENTS_FORMAT;
 }
 
 type Starter = (typeof STARTERS)[number];
@@ -63,14 +66,21 @@ export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
 
 export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
-// A Run that continues a record without the format 1 writes a record with the format 1: the Game events of the whole Run must be in it.
+function withTrainer(event: RunEvent, trainers: ReadonlyMap<number, boolean>): RunEvent {
+  if (event.type !== "battle" || event.state !== "start") return event;
+  const trainer = trainers.get(event.frame);
+  return trainer === undefined ? event : { ...event, trainer };
+}
+
+// A record from before format 1 gets the Game events of the whole Run: a Continued Run and the migration use this.
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
+  const trainers = new Map(replayed.flatMap((event) => (event.type === "battle" && event.state === "start" && event.trainer !== undefined ? [[event.frame, event.trainer]] : [])));
   const merged: RunEvent[] = [];
   let next = 0;
   for (const event of events) {
     while (next < added.length && (added[next].frame < event.frame || (added[next].frame === event.frame && !isGameEvent(event)))) merged.push(added[next++]);
-    merged.push(event);
+    merged.push(withTrainer(event, trainers));
   }
   return [...merged, ...added.slice(next)];
 }
@@ -118,7 +128,7 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
 /** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
 export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
 
-export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; result: RunResult };
+export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; result: RunResult };
 
 export class ButtonTrack {
   readonly holds: ButtonHold[] = [];
@@ -137,7 +147,9 @@ export class GameWatch {
   #maps = new Set<string>();
   #levels = 0;
   #flags = 0;
+  #facing = 0;
   readonly #state: StateWatch;
+  readonly track: Track = [];
 
   constructor(private readonly game: Game) {
     this.#state = new StateWatch(game);
@@ -167,8 +179,20 @@ export class GameWatch {
       }
     }
     // Before the first map, the game has not loaded the save yet.
-    if (this.#map !== null) events.push(...this.#state.onFrame(mode).map((event) => ({ frame, ...event })));
+    if (this.#map === null) return events;
+    events.push(...this.#state.onFrame(mode).map((event) => ({ frame, ...event })));
+    // The game moves the save block in memory at each map load: out of the overworld, the place can read as zeros.
+    if (mode === "overworld") this.#onPlace(frame);
     return events;
+  }
+
+  #onPlace(frame: number): void {
+    const { group, num, x, y, facing } = this.game.place();
+    if (facing !== null) this.#facing = facing;
+    const point = [group, num, x, y, this.#facing];
+    const last = this.track.length - TRACK_POINT + TRACK_FIELD.group;
+    if (point.every((value, i) => this.track[last + i] === value)) return;
+    this.track.push(frame, ...point);
   }
 }
 
@@ -267,7 +291,8 @@ export class Keyframes<K extends { frame: number }> {
   }
 }
 
-export type Replay = { events: GameEvent[]; frame: number; screen: string };
+export type Replay = { events: GameEvent[]; frame: number; screen: string; track: Track };
+
 
 export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin)[] {
   return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
@@ -316,7 +341,7 @@ export async function replay(record: RunRecord): Promise<Replay> {
       run.runFrame(player.next());
       events.push(...watch.onFrame(run.frame));
     }
-    return { events, frame: run.frame, screen: run.screenHash() };
+    return { events, frame: run.frame, screen: run.screenHash(), track: watch.track };
   } finally {
     run.core.close();
   }

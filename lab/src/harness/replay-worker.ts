@@ -1,7 +1,7 @@
 import { SCREEN_INTERVAL_MS } from "../protocol";
 import { Run } from "../run";
 import type { ReplayWorkerMessage, ReplayWorkerReply } from "./pool";
-import { Keyframes, originDifferences, RecordPlayer } from "./record";
+import { Keyframes, originDifferences, RecordPlayer, replay as replayToEnd } from "./record";
 
 declare const self: Worker;
 
@@ -54,6 +54,13 @@ self.onmessage = async ({ data }: MessageEvent<ReplayWorkerMessage>) => {
   if (data.type === "target") {
     target = data.frame;
     return schedule();
+  }
+  if (data.type === "toEnd") {
+    try {
+      return reply({ type: "end", replay: await replayToEnd(data.record) });
+    } catch (error) {
+      return reply({ type: "error", error: String(error) });
+    }
   }
   const run = await Run.open();
   const differences = originDifferences(run, data.record);

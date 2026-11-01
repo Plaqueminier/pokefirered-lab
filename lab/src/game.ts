@@ -249,10 +249,15 @@ function placeName(map: string, area: string): string {
   for (let from = 0; from < parts.length && after === 0; from++) {
     for (let to = from + 1; to <= parts.length; to++) if (key(parts.slice(from, to).join("")) === key(area)) after = to;
   }
-  return parts
-    .slice(after)
-    .map((part) => PLACE_WORDS[part] ?? part.replace(/([a-z])([A-Z0-9])/g, "$1 $2").replace(/\bPokemon\b/g, "Pokémon"))
-    .join(" ");
+  return parts.slice(after).map(placeWords).join(" ");
+}
+
+function placeWords(part: string): string {
+  return PLACE_WORDS[part] ?? part.replace(/([a-z])([A-Z0-9])/g, "$1 $2").replace(/\bPokemon\b/g, "Pokémon");
+}
+
+export function mapTitle(map: string): string {
+  return map.split("_").map(placeWords).join(" · ");
 }
 
 function normalCase(name: string): string {
@@ -272,7 +277,7 @@ export class Game {
   private reads: EventReads | null = null;
 
   private constructor(
-    private readonly mem: Memory,
+    readonly mem: Memory,
     tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; outsideTypes: Set<number>; mapNames: string[][]; itemBallFlags: number[] },
   ) {
     this.decode = tables.decode;
@@ -320,6 +325,15 @@ export class Game {
     if (!obj) return null;
     const coords = obj.field("currentCoords");
     return { x: coords.field("x").int() - MAP_OFFSET, y: coords.field("y").int() - MAP_OFFSET, facing: DIRECTION_OF_DIR[obj.field("facingDirection").int()] };
+  }
+
+  /** `facing`: 0 south, 1 north, 2 west, 3 east, null when the player object is not there. */
+  place(): { group: number; num: number; x: number; y: number; facing: number | null } {
+    const block = this.saveBlock1;
+    const pos = block.field("pos");
+    const { group, num } = this.location();
+    const direction = this.playerObject()?.field("facingDirection").int() ?? 0;
+    return { group, num, x: pos.field("x").int(), y: pos.field("y").int(), facing: direction >= 1 && direction <= 4 ? direction - 1 : null };
   }
 
   waitingFor(): WaitingFor {
@@ -696,7 +710,7 @@ export class Game {
   }
 
   /** Map header in ROM. The current map also has a copy in RAM (gMapHeader). */
-  private mapHeader(group: number, num: number): Ref {
+  mapHeader(group: number, num: number): Ref {
     return this.mem.global("gMapGroups").at(group).at(num).deref();
   }
 

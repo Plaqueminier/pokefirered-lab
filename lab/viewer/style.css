@@ -240,6 +240,7 @@
   @media (min-width: 900px) {
     body:has(> #lab:not([hidden])),
     body:has(> #grid:not([hidden])),
+    body:has(> #race:not([hidden])),
     body:has(> #doc:not([hidden])) {
       display: flex;
       flex-direction: column;

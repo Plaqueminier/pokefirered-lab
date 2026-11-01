@@ -408,17 +408,20 @@ export function Card({
   interactive,
   size = "md",
   fill,
+  glass,
   onClick,
   children,
 }: {
   interactive?: boolean;
   size?: "md" | "sm";
   fill?: boolean;
+  glass?: boolean;
   onClick?: () => void;
   children: ComponentChildren;
 }) {
   const hover = interactive || onClick ? "cursor-pointer hover:bg-accent/7" : "";
-  const look = `rounded-card border border-line bg-surface backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${fill ? "flex min-h-0 flex-1 flex-col" : ""} ${hover}`;
+  const surface = glass ? "border-line-strong bg-bg/75 shadow-[0_8px_28px_rgba(0,0,0,0.45)]" : "border-line bg-surface";
+  const look = `rounded-card border ${surface} backdrop-blur-md transition-[border-color,background-color] duration-200 hover:border-accent/45 ${size === "sm" ? "p-3" : "p-4.5"} ${fill ? "flex min-h-0 flex-1 flex-col" : ""} ${hover}`;
   if (!onClick) return <div class={look}>{children}</div>;
   return (
     <button type="button" onClick={onClick} class={`${look} ${fill ? "" : "block"} w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35`}>

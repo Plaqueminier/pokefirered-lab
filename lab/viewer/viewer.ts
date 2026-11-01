@@ -7,6 +7,7 @@ import { GridTab } from "./grid";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
 import { type CellTip, describe, draw } from "./mapdraw";
+import { RaceTab } from "./race";
 import { ViewerTabs } from "./tabs";
 import { WholeMap } from "./whole-map";
 import { BinaryKind, type BotInfo, Keys, type ClientMessage, replayOf, SCREEN_HEADER, type ServerMessage, VIEWER_RUN_ID } from "../src/protocol";
@@ -53,15 +54,17 @@ let stopDrawing = screens.subscribe(shownRunId, drawGame);
 let gridShown = false;
 const fromGrid = new Store<string | null>(null);
 const gridTab = new GridTab($("grid"), { send, screens, fromGrid, openLab: () => tabs.show("lab") });
+const raceTab = new RaceTab($("race"));
 const tabs = new ViewerTabs(
   {
     nav: $("nav"),
-    tabs: { lab: $("lab"), grid: $("grid"), doc: $("doc"), components: $("components") },
+    tabs: { lab: $("lab"), grid: $("grid"), race: $("race"), doc: $("doc"), components: $("components") },
   },
   (tab) => {
     if (tab !== "lab") releaseKeys();
     gridShown = tab === "grid";
     gridTab.onTab(gridShown);
+    raceTab.onTab(tab === "race");
     syncAudio();
   },
 );

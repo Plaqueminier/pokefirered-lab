@@ -9,6 +9,8 @@ import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
 import { GridPlay } from "./grid";
 import { ScreenFanout } from "./screens";
+import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
+import { buildWorld } from "./race/world";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
 import { type Continuation, continuationOf, factsAt, Keyframes, type ModelOptions, modelEvents, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
@@ -654,12 +656,26 @@ function loop(): void {
   setTimeout(loop, live.speed === "max" && !live.paused ? 0 : 2);
 }
 
+const raceWorld = safely(() => JSON.stringify(buildWorld(run.game)));
+if (raceWorld === null) console.error("The world of the Race did not load: the Race tab will not open");
+
+async function raceFile(name: string): Promise<Response> {
+  const file = Bun.file(join(RACES_DIR, `${basename(name)}${RACE_SUFFIX}`));
+  if (!(await file.exists())) return new Response("Not found", { status: 404 });
+  return new Response(file, { headers: { "content-type": "application/gzip" } });
+}
+
 let handling = Promise.resolve();
 
 Bun.serve({
   port: PORT,
   development: true,
-  routes: { "/": viewerPage },
+  routes: {
+    "/": viewerPage,
+    "/race/world.json": () => (raceWorld === null ? new Response("The world of the Race did not load: see the log of the server", { status: 500 }) : new Response(raceWorld, { headers: { "content-type": "application/json" } })),
+    "/race/list.json": async () => Response.json(await raceNames()),
+    "/race/file/:name": (req) => raceFile(req.params.name),
+  },
   fetch(req, server) {
     if (new URL(req.url).pathname === "/ws" && server.upgrade(req)) return;
     return new Response("Not found", { status: 404 });

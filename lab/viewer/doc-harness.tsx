@@ -235,12 +235,13 @@ export function RecordPage() {
     <Page
       lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save), Bot, keys at each frame, events and result."],
+        ["Fields", "format version, origin (ROM, seed, save), Bot, keys at each frame, events, track and result."],
+        ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         [
           "Game events",
           "from the game state, with typed fields: map, battle, Milestone, heal (Pokémon Center, item or other, with the HP of the party before and after), purchase, item (found or received), catch, faint (of the player or of the enemy), level (with the new moves and the evolution), money (before, after and cause), trainer beaten and whiteout.",
         ],
-        ["Old record", "a record from before the format version has only the map, battle and Milestone events, and the facts of the record say “No Game events in this record”."],
+        ["Old record", "a record from before format 1 has only the map, battle and Milestone events, and the facts of the record say “No Game events in this record”. A record from before format 2 has no track. `bun run migrate` replays the keys of each one, and adds the track, and the Game events of the state when the record has none; it does not change the keys."],
         ["Replay", "choose the record in the list of the Run, in the top bar."],
         [
           "Continue",
@@ -255,11 +256,12 @@ export function RecordPage() {
           <Terms
             numbered
             rows={[
-              ["Format version", "a record before it has only map, battle and Milestone events"],
+              ["Format version", "a record before format 1 has only map, battle and Milestone events; a record before format 2 has no track"],
               ["Origin", "ROM, seed, save"],
               ["Bot", "its name and version"],
               ["Keys", "the buttons at each frame"],
               ["Events", "the Game events, the Model calls"],
+              ["Track", "the place of the player at each change of cell, map or facing"],
               ["Result", "the reason of the end"],
             ]}
           />

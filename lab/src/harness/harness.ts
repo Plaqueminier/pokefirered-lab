@@ -395,7 +395,7 @@ export class Harness {
     if (this.#phase.kind !== "ended") throw new Error("no Run record: play a Bot first");
     const { bot, result } = this.#phase;
     const header = { ...this.#run.origin, knowledge: this.#knowledge, bot, ...(this.#parent ? { parent: this.#parent } : {}) };
-    return { format: RECORD_FORMAT, header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], result };
+    return { format: RECORD_FORMAT, header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], track: [...this.#watch.track], result };
   }
 
   waitingFor(): WaitingFor {

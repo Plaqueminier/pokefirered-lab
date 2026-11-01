@@ -36,6 +36,13 @@ bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>]
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, and replay a **Run record** (the Select of the top bar).
 
+## Make a Race
+
+A **Race** plays many **Run records** on a map of Kanto, in the Race tab of the Viewer. It needs the track of each record, and a record from before format 2 has no track.
+
+1. Once, in `lab/`: `bun run migrate`. It replays each record of `runs/` with no track, and writes its track in the file. A record whose replay does not end on the last frame of its buttons, or does not give its maps and battles, keeps its file.
+2. In `lab/`: `bun run race <name> [records…]`. It writes `races/<name>.json.gz`. With no record named, it takes all the records of the model bots. A record is a file name, or the start of one file name (`00012`). A record with an empty track stays out, and a record that another record of the Race continues stays out: the command names them. A record of another Bot is refused.
+
 ## Checks
 
 In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
@@ -46,7 +53,8 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/game.ts` and the files next to it: the reads of the game state (battle, menus, Bag, PC, shop, party).
 - `src/harness/`: the API of the **Bot**, the **Atlas**, the **Run record** and the pool of **Runs**.
 - `src/model/`: the parts of the model bot (request, prompt, answer).
+- `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM.
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.
 
-`saves/`, `runs/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.
+`saves/`, `runs/`, `races/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.

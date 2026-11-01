@@ -808,7 +808,7 @@ const ENTRIES: Entry[] = [
   {
     category: "surfaces",
     title: "Card",
-    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view. With fill, the card takes the height that its flex column gives, and a long list scrolls inside it.",
+    rule: "The base of each panel. On hover, its border takes the accent. An interactive card (it opens something) also takes the accent on its background. With onClick, the card is a button. Size sm for a compact view. With fill, the card takes the height that its flex column gives, and a long list scrolls inside it. With glass, it is a dark glass over a picture, such as the map of a Race.",
     demo: () => <CardDemo />,
   },
   {
@@ -844,7 +844,7 @@ const ENTRIES: Entry[] = [
   {
     category: "surfaces",
     title: "PointerCard",
-    rule: "A card at the pointer for the data of a point of a canvas (a cell of the map). It is in the top layer, 16 px at the right of and under the pointer; near the right or the bottom edge of the window, it goes to the left or above. The pointer goes through it.",
+    rule: "A card at the pointer for the data of a point of a canvas (a cell of the map). It is in the top layer, 16 px at the right of and under the pointer; near the right or the bottom edge of the window, it goes to the left or above. The pointer goes through it. With glass, it is the glass Card, over a picture such as the map of a Race.",
     demo: () => <PointerCardDemo />,
   },
   { category: "surfaces", title: "Popover", rule: "A panel that a click on its button opens under it. A click outside or Esc closes it.", demo: () => <PopoverDemo /> },

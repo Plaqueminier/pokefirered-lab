@@ -5,6 +5,8 @@
   "scripts": {
     "viewer": "bun run src/server.ts",
     "bot": "bun run src/harness/play.ts",
+    "migrate": "bun run src/harness/migrate.ts",
+    "race": "bun run src/race/make.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings",
     "knip": "knip",

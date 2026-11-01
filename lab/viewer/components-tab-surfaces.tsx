@@ -2,7 +2,7 @@ import { BookOpen, Bot, CircleCheck, CircleHelp, Coins, Copy, Eye, Info, Octagon
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button, Card, Code, Collapsible, Cover, InfoCard, LABEL, ListRow, Num, Pill, Tabs, Tip, type Tone, Tooltip, useWidth } from "./components";
-import { HoverCard, Popover, PopoverBody, Toast, Toaster } from "./components-layers";
+import { HoverCard, PointerCard, Popover, PopoverBody, Toast, Toaster } from "./components-layers";
 import { CellPointerCard } from "./map-panel";
 import type { CellFacts, CellTip } from "./mapdraw";
 import { PromptText } from "./prompt-text";
@@ -111,6 +111,16 @@ export function CardDemo() {
           <p class="text-sm text-muted">Pressed {clicks} times.</p>
         </Card>
       </div>
+      <p class="text-xs text-faint">Glass card: over a picture, such as the map of a Race. Its dark glass keeps the text readable on grass, sand or water.</p>
+      <div class="grid gap-4 rounded-card p-4 sm:grid-cols-2" style={{ background: "repeating-linear-gradient(45deg, #78c850 0 14px, #e0c068 14px 28px, #6890f0 28px 42px)" }}>
+        <Card size="sm" glass>
+          <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold">Run 48</span>
+            <span class="text-xs text-fg/80">Route 1</span>
+            <Pill tone="info">in battle</Pill>
+          </div>
+        </Card>
+      </div>
       <p class="text-xs text-faint">Card with fill: it takes the height of its flex column (here 180 px), its title stays, and its list scrolls inside.</p>
       <div class="flex h-[180px] w-[280px] flex-col">
         <Card size="sm" fill>
@@ -139,6 +149,7 @@ const MANY_FACTS: CellFacts = {
 
 export function PointerCardDemo() {
   const [tip, setTip] = useState<CellTip | null>(null);
+  const [glassAt, setGlassAt] = useState<{ x: number; y: number } | null>(null);
   const area = (label: string, card: (event: PointerEvent) => CellTip) => (
     <div
       class="grid h-24 w-[240px] max-w-full cursor-crosshair place-items-center rounded-sm bg-track px-3 text-center text-xs text-faint"
@@ -154,6 +165,20 @@ export function PointerCardDemo() {
       {area("A cell with few facts: move the pointer here", (event) => ({ at: at(event), facts: FEW_FACTS, link: null }))}
       {area("A cell with many facts and “Click: see …”", (event) => ({ at: at(event), facts: MANY_FACTS, link: "ViridianForest" }))}
       {area("Near the edges: the card at the bottom right corner of the window", () => ({ at: { x: window.innerWidth - 4, y: window.innerHeight - 4 }, facts: MANY_FACTS, link: "ViridianForest" }))}
+      <div
+        class="grid h-24 w-[240px] max-w-full cursor-crosshair place-items-center rounded-sm bg-track px-3 text-center text-xs text-faint"
+        onPointerMove={(event) => setGlassAt({ x: event.clientX, y: event.clientY })}
+        onPointerLeave={() => setGlassAt(null)}
+      >
+        Glass, over a picture: a Ghost of a Race
+      </div>
+      <PointerCard at={glassAt} glass>
+        <div class="flex flex-col gap-1">
+          <span class="text-sm font-semibold">Run 48</span>
+          <span class="text-xs text-muted">Route 1</span>
+          <Pill tone="info">in battle</Pill>
+        </div>
+      </PointerCard>
       <CellPointerCard tip={tip} />
     </div>
   );

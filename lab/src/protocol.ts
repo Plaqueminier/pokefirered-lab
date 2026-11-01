@@ -195,3 +195,10 @@ export type ClientMessage =
   | { type: "grid-add"; name: string; cell: number }
   | { type: "grid-remove"; cell: number }
   | ({ type: "grid-cursor" } & GridCursorControl);
+
+/** The track of a Run record: `TRACK_POINT` numbers at each change of cell, map or facing: the frame, the map group and number, the cell and the facing (0 south, 1 north, 2 west, 3 east). */
+export type Track = number[];
+
+export const TRACK_POINT = 6;
+
+export const TRACK_FIELD = { frame: 0, group: 1, num: 2, x: 3, y: 4, facing: 5 } as const;
