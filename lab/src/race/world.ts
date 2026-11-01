@@ -7,9 +7,12 @@ const START_MAP = "PalletTown";
 const SAFFRON = "SaffronCity";
 const SAFFRON_STAND_IN = "SaffronCity_Connection";
 
-// In world cells: the outdoor maps that only warps reach. `scale` fits an island in the empty space.
+// In world cells: the outdoor maps that only warps reach, and the floors of a large cave. `scale` fits an island in the empty space.
 const ISLANDS: Record<string, { x: number; y: number; scale: number }> = {
   ViridianForest: { x: 86, y: 102, scale: 0.82 },
+  MtMoon_1F: { x: 110, y: 8, scale: 1 },
+  MtMoon_B1F: { x: 160, y: 8, scale: 1 },
+  MtMoon_B2F: { x: 211, y: 8, scale: 1 },
   SafariZone_North: { x: 192, y: 214, scale: 0.6 },
   SafariZone_West: { x: 160, y: 244, scale: 0.6 },
   SafariZone_Center: { x: 192, y: 244, scale: 0.6 },
@@ -265,9 +268,10 @@ function islandLinks(grids: Map<string, MapGrid>, onGrid: readonly WorldPlace[],
   const placed = new Set([...onGrid, ...islands].map((place) => place.map));
   const links: IslandLink[] = [];
   for (const island of islands) {
-    const gates = new Set([...grids.values()].filter((grid) => !placed.has(grid.key) && grid.warps.some((warp) => `${warp.group}.${warp.num}` === island.map)).map((grid) => grid.key));
+    const gates = [...grids.values()].filter((grid) => !placed.has(grid.key) && grid.warps.some((warp) => `${warp.group}.${warp.num}` === island.map)).map((grid) => grid.key);
+    const entries = new Set([island.map, ...gates]);
     for (const { map } of onGrid)
-      for (const warp of found(grids, map).warps) if (gates.has(`${warp.group}.${warp.num}`)) links.push({ island: island.map, map, x: warp.x, y: warp.y });
+      for (const warp of found(grids, map).warps) if (entries.has(`${warp.group}.${warp.num}`)) links.push({ island: island.map, map, x: warp.x, y: warp.y });
   }
   return links;
 }

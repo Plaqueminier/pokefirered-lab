@@ -229,7 +229,7 @@ export function RacePage() {
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
         ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces."],
-        ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in."],
+        ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in. Viridian Forest, the Safari Zone and the three floors of Mt Moon are islands on the map: the Ghosts walk on them, with no count at a door."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
         ["Hover on Ghosts", "the Run id, its state, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
         ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],

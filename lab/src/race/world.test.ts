@@ -50,8 +50,13 @@ describe.skipIf(!existsSync(ROM_FILE))("the world of a Race", () => {
     expect(nameOf(places[0].map)).toBe("SaffronCity");
 
     expect(placeOf("ViridianForest")).toMatchObject({ island: true, scale: 0.82 });
-    expect(new Set(links.map((link) => nameOf(link.island)))).toEqual(new Set(["ViridianForest", "SafariZone_Center"]));
+    expect(new Set(links.map((link) => nameOf(link.island)))).toEqual(new Set(["ViridianForest", "SafariZone_Center", "MtMoon_1F", "MtMoon_B1F"]));
     expect(links.filter((link) => nameOf(link.island) === "ViridianForest").map((link) => nameOf(link.map))).toEqual(["Route2", "Route2", "Route2", "Route2"]);
+    expect(links.filter((link) => nameOf(link.island)?.startsWith("MtMoon")).map((link) => [nameOf(link.island), nameOf(link.map), link.x, link.y])).toEqual([
+      ["MtMoon_1F", "Route4", 19, 5],
+      ["MtMoon_B1F", "Route4", 32, 5],
+    ]);
+    expect(mapOf("MtMoon_B2F")?.door).toBeNull();
 
     const lab = mapOf("PalletTown_ProfessorOaksLab");
     expect(lab?.door).toEqual({ map: pallet?.map as string, x: 16, y: 13 });
