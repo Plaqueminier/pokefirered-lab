@@ -31,7 +31,7 @@ export function obstacleRemedy(move: string): string {
 }
 
 /** The model of a model bot when the Run gives none. */
-export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
+export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 
 export const REASONING = ["off", "low", "medium", "high"] as const;
 
