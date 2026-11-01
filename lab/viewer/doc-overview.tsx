@@ -1,8 +1,8 @@
-import { Backpack, Bot, ChartColumn, Cpu, Eye, Hand, ListTree, Map as MapIcon, Play, Shapes } from "lucide-preact";
+import { Backpack, Bot, ChartColumn, Cpu, Eye, Flag, Grid2x2, Hand, ListTree, Map as MapIcon, Play, Shapes } from "lucide-preact";
 import { Card, NumberBadge } from "./components";
 import { LoopDiagram } from "./doc-diagrams";
 import { RAW_INPUT_FORM } from "./doc-harness";
-import { Block, BLOCKS2, DocCard, GRID3, Page, Terms } from "./doc-parts";
+import { Block, BLOCKS2, DocCard, GRID2, GRID3, Page, Terms } from "./doc-parts";
 import viewerLab from "./doc/viewer-lab.png";
 
 export function LoopPage() {
@@ -98,13 +98,13 @@ export function ViewerPage() {
         ["Keyboard", "in the Grid, Race, Doc and Components tabs, the keyboard does not play. In the Grid, Doc and Components tabs, the arrow keys scroll the page."],
         [
           "Grid",
-          "the second tab: 2, 4 or 9 cells, each with the screen of a Run, its name, Bot, model, game time, last Milestone, cost and state (plays, waits for the model, in battle, ended). The live Runs fill the cells; a Run record can go in any cell. The replays share one cursor (play, pause, ×1, ×4, ×20, a slider) from frame 0. A click on a cell shows its Run in the Lab tab, with a bar “← Grid” to go back. No sound.",
+          "the second tab: 2, 4 or 9 cells, each with the screen of a Run, its name, Bot, model, game time, last Milestone, cost and state (plays, waits for the model, in battle, ended). The live Runs fill the cells; a Run record can go in any cell, and a live Run that ended can replay its record in its cell. The replays share one cursor (play, pause, ×1, ×4, ×20, a slider) from frame 0. A click on a cell shows its Run in the Lab tab, with a bar “← Grid” to go back. No sound. A Grid of 9 gets 30 screens a second.",
         ],
         [
           "Race",
-          "the third tab: it plays a file of `lab/races/` (`bun run race <name>`) on a map of Kanto in the tiles of the ROM, with no emulator. Each Run is a Ghost: the sprite of the player, with the number of its Run. The Ghosts start at frame 0: play, pause, ×1 to ×200, a slider of game time. A count at a door tells how many Ghosts are inside: a hover shows the interiors, a click opens the building on the map, and a drawer lists the interiors where a Run still plays. The gyms show their badge. The leader has a crown. A Run that ended stays see-through, with an icon of its result next to its number. The camera frames the Ghosts that still play until a wheel or a drag; the button “Frame the Ghosts” gives it back.",
+          "the third tab: it plays a file of `lab/races/` (`bun run race <name>`) on a map of Kanto in the tiles of the ROM, with no emulator. Each Run is a Ghost: the sprite of the player, with the number of its Run. A Run that another Run of the Race continues has no Ghost. The Ghosts start at frame 0: play, pause, ×1 to ×200, a slider of game time. A count at a door tells how many Ghosts are inside: a hover shows the interiors, a click opens the building on the map, and a drawer lists the interiors where a Run still plays. The gyms show their badge. The leader has a crown. A Run that ended stays see-through, with an icon of its result next to its number. The camera frames the Ghosts that still play until a wheel or a drag; the button “Frame the Ghosts” gives it back.",
         ],
-        ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
+        ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
         ["Decision line", "the last action of the Bot; a hover shows the answer of the call."],
@@ -155,6 +155,12 @@ export function ViewerPage() {
           </ol>
         </Block>
       </div>
+      <Block label="🏁 Many Runs at the same time">
+        <div class={GRID2}>
+          <DocCard icon={Grid2x2} title="Grid tab" lines={["2, 4 or 9 cells: live Runs and replays of Run records", "the replays race from frame 0 on one cursor", "a click shows the Run in the Lab tab"]} />
+          <DocCard icon={Flag} title="Race tab" lines={["the Run records as Ghosts on a map of Kanto, with no emulator", "`bun run race <name>` makes the file of a Race", "the doors count the Ghosts inside"]} />
+        </div>
+      </Block>
       <Block label="🧭 The panels" sub="One cursor (a frame) and one selection (a range of frames) for all the panels. Esc returns them to now.">
         <div class={GRID3}>
           <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer"]} />
