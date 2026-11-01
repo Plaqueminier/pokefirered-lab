@@ -92,6 +92,7 @@ export function GhostCard({ view, ghost, children }: { view: RaceView; ghost: Gh
           <GhostState ghost={ghost} />
         </span>
       </div>
+      <span class="text-xs">{ghost.character}</span>
       <span class="truncate text-xs text-muted">{view.titleOf(ghost.map)}</span>
       <BattleLines view={view} ghost={ghost} />
       {ghost.team.length === 0 ? <span class="text-xs text-muted">No Pokémon yet</span> : ghost.team.map((mon, i) => <MonLine key={i} view={view} mon={mon} />)}

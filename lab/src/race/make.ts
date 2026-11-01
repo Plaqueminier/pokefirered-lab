@@ -1,7 +1,8 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { type CurrentRecord, isCurrentRecord, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
-import { parseRunId } from "../protocol";
+import { NORMAL_TRAINER, shownCharacter } from "../model/character";
+import { modelEvents, parseRunId } from "../protocol";
 import { encodeTrack, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
@@ -56,6 +57,7 @@ function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
     record: name,
     bot: `${header.bot.name} ${header.bot.version}`,
     model: header.bot.model?.id ?? "",
+    character: shownCharacter(modelEvents(events)) ?? NORMAL_TRAINER,
     track: encodeTrack(record.track),
     battles: battlesOf(events, lastFrame),
     trainers: events.flatMap((e) => (e.type === "trainer" ? [[e.frame, e.trainer] as [number, string]] : [])),

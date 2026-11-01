@@ -4,7 +4,7 @@ import type { Sight } from "./harness/atlas";
 import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
-import type { Continuation, GameEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
+import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -223,3 +223,7 @@ export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
 
 /** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
 export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });
+
+export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
+  return events.filter((e): e is ModelEvent => e.type === "model");
+}

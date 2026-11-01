@@ -26,12 +26,14 @@ import {
   Target,
   TriangleAlert,
   Trophy,
+  UserRound,
   Users,
   ZoomIn,
 } from "lucide-preact";
 import type { ComponentType } from "preact";
 import { useMemo, useRef, useState } from "preact/hooks";
 import type { ActionEvent, ModelEvent } from "../src/harness/record";
+import { shownCharacter } from "../src/model/character";
 import { actionText } from "../src/protocol";
 import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText, useKeepInView } from "./components";
 import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
@@ -54,9 +56,10 @@ export const FLAG_LOOKS: Record<Flag, { label: string; icon: Icon; tone: Tone }>
 
 const STATUS_TONES: Record<ActionEvent["result"]["status"], Tone> = { done: "ok", impossible: "bad", blocked: "warn", interrupted: "info" };
 
-const OPEN_BLOCKS: ReadonlySet<BlockTitle> = new Set<BlockTitle>(["Situation", "Battle", "Actions", "Events", "Error", "Your answer", "Question"]);
+const OPEN_BLOCKS: ReadonlySet<BlockTitle> = new Set<BlockTitle>(["Character", "Situation", "Battle", "Actions", "Events", "Error", "Your answer", "Question"]);
 
 const BLOCK_ICONS: Record<BlockTitle, Icon> = {
+  Character: UserRound,
   Reasoning: Brain,
   Progress: Trophy,
   "Memory tree": ListTree,
@@ -194,7 +197,6 @@ function Goals({ row }: { row: UnusualCall }) {
   const { decision, removed } = row.call;
   if (!decision) return null;
   const goals = [
-    ...(decision.character ? [{ term: "Character", text: decision.character, changed: false }] : []),
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
@@ -256,11 +258,12 @@ export function CallSummary({ row, count, calling }: { row: UnusualCall; count: 
   );
 }
 
-function PromptBlocks({ call }: { call: ModelEvent }) {
+function PromptBlocks({ call, character }: { call: ModelEvent; character: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const blocks = [...(character ? [{ id: "Character", title: "Character" as const, text: character }] : []), ...promptBlocks(call)];
   return (
     <div class="flex flex-col gap-1">
-      {promptBlocks(call).map((block) => {
+      {blocks.map((block) => {
         const Icon = BLOCK_ICONS[block.title];
         const shown = open[block.id] ?? OPEN_BLOCKS.has(block.title);
         const lines = block.text.split("\n").length;
@@ -296,6 +299,7 @@ export function ModelPanel({ rows, index, following, calling, pick, now }: Model
   const list = useRef<HTMLDivElement>(null);
   useKeepInView(list, `${index} ${[...on].join()} ${shown.length}`, following ? "end" : "center");
   const row = index === null ? null : rows[index];
+  const character = useMemo(() => shownCharacter(rows.map((r) => r.call)), [rows]);
   return (
     <div class="grid h-full min-h-0 grid-cols-[minmax(300px,2fr)_3fr] gap-4">
       <div class="flex min-h-0 flex-col gap-2">
@@ -332,7 +336,7 @@ export function ModelPanel({ rows, index, following, calling, pick, now }: Model
             <Card size="sm">
               <CallSummary row={row} count={rows.length} calling={calling} />
             </Card>
-            <PromptBlocks call={row.call} />
+            <PromptBlocks call={row.call} character={character} />
           </>
         ) : (
           <p class="text-sm text-muted">no Model call yet</p>

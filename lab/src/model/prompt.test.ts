@@ -4,7 +4,7 @@ import { battleTurn, fightFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
-import { characterTurn, forcedAnswer, readCharacterDecision } from "./character";
+import { characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
 import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
 import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
@@ -402,6 +402,16 @@ describe("the naming screen", () => {
 
 describe("the rules and the character turn", () => {
   const settings = { starter: "free", stopAtWhiteout: true } as const;
+
+  test("a Run shows its character, nothing while it has none yet, and Normal trainer when it has no Character turn", () => {
+    const played = call("go A");
+    const unreadable: ModelEvent = { ...played, character: true, decision: null, error: "no JSON" };
+    const turn: ModelEvent = { ...played, character: true, decision: { ...played.decision!, character: "Pastry names. A shy baker." }, error: null };
+    expect(shownCharacter([unreadable, turn, played])).toBe("Pastry names. A shy baker.");
+    expect(shownCharacter([])).toBeNull();
+    expect(shownCharacter([unreadable])).toBeNull();
+    expect(shownCharacter([played])).toBe("Normal trainer");
+  });
 
   test("a free starter is the choice of the character; a given starter stays; a stop at a whiteout warns with no fear; with no stop, the rules tell what a whiteout costs", () => {
     expect(systemPrompt(settings, false)).toContain("Take the first Pokémon that your character chose.");

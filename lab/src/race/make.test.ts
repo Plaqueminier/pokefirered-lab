@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunRecord } from "../harness/record";
+import type { ModelEvent, RunRecord } from "../harness/record";
 import type { StateEntry } from "../protocol";
 import { decodeTrack } from "./file";
 import { makeRace, writeRace } from "./make";
@@ -21,6 +21,10 @@ function record(fields: Partial<RunRecord>): RunRecord {
     result: { endReason: "user stop", frames: 90, milestones: [], rawInputs: 0 },
     ...fields,
   };
+}
+
+function call(frame: number, cost: number): ModelEvent {
+  return { type: "model", frame, latencyMs: 1, model: "a/b", situation: "", prompt: { system: "", user: "" }, answer: null, decision: null, error: "x", usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cost } };
 }
 
 async function runsDir(files: Record<string, RunRecord>): Promise<string> {
@@ -59,7 +63,7 @@ test("a Race holds the Runs of the model bots with the Run id of their file, the
   });
 
   const race = await makeRace(dir);
-  expect(race.version).toBe(2);
+  expect(race.version).toBe(3);
   expect(race.runs.map((run) => [run.number, run.record])).toEqual([[1, OLDEST], [3, MIDDLE], [4, LAST]]);
 
   const last = race.runs[2];
@@ -95,7 +99,6 @@ test("a record with no Run id at the start of its name stays out of the Race", a
 });
 
 test("a Race adds up the cost and the Model calls of a Run, with a point only at a change of a cent or more and at the end", async () => {
-  const call = (frame: number, cost: number): RunRecord["events"][number] => ({ type: "model", frame, latencyMs: 1, model: "a/b", situation: "", prompt: { system: "", user: "" }, answer: null, decision: null, error: "x", usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cost } });
   const summary: RunRecord["events"][number] = { type: "summary", frame: 45, latencyMs: 1, model: "a/b", prompt: { system: "", user: "" }, answer: null, summary: null, error: "x", from: 0, to: 1, usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cost: 0.02 } };
   const dir = await runsDir({ [OLDEST]: record({ events: [call(10, 0.004), call(20, 0.004), call(30, 0.004), summary, call(50, 0.001)] }), [MIDDLE]: record({}) });
   const [first, second] = (await makeRace(dir)).runs;
@@ -117,6 +120,13 @@ test("a Race has the faints of the player side and the money at each change, fro
   const [run] = (await makeRace(dir)).runs;
   expect(run.faints).toEqual([30]);
   expect(run.money).toEqual([[0, 3000], [40, 3080], [50, 2880]]);
+});
+
+test("a Race has the character of each Run, and Normal trainer for a Run that has none", async () => {
+  const decision = { reason: "", action: "go A", mission: "", objective: "", note: "", character: "Pastry names. A shy baker." };
+  const turn: ModelEvent = { ...call(10, 0), character: true, decision, error: null };
+  const dir = await runsDir({ [OLDEST]: record({ events: [turn] }), [MIDDLE]: record({}) });
+  expect((await makeRace(dir)).runs.map((run) => run.character)).toEqual(["Pastry names. A shy baker.", "Normal trainer"]);
 });
 
 test("a Run with an empty track stays out of the Race, and the next Run keeps its number", async () => {

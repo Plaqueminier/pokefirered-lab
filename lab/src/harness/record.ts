@@ -89,10 +89,6 @@ export function withStateEvents(events: readonly RunEvent[], replayed: readonly 
 
 export type ModelTotals = { calls: number } & Usage;
 
-export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
-  return events.filter((e): e is ModelEvent => e.type === "model");
-}
-
 export type CallTurn = { call: ModelEvent | null; events: Exclude<RunEvent, ModelEvent>[] };
 
 /** The events after each Model call, up to the next one. The first turn has no call when the events do not start with one. */

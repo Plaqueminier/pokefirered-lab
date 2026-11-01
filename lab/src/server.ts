@@ -12,13 +12,14 @@ import { ScreenFanout } from "./screens";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
-import { type Continuation, continuationOf, factsAt, Keyframes, type ModelOptions, modelEvents, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { type Continuation, continuationOf, factsAt, Keyframes, type ModelOptions, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
   BinaryKind,
   type ClientMessage,
   DEFAULT_STARTER,
   GBA_FPS,
   type Jump,
+  modelEvents,
   type ReplayModel,
   type ReplayStatus,
   type RunSummary,

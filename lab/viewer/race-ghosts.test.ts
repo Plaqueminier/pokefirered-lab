@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { BattleSide, StateEntry } from "../src/protocol";
-import type { RaceFile, RaceRun } from "../src/race/file";
+import { RACE_VERSION, type RaceFile, type RaceRun } from "../src/race/file";
 import { framedBox, type GhostWorld, RaceGhosts } from "./race-ghosts";
 
 const PALLET = "3.0";
@@ -39,11 +39,11 @@ function deltas(points: number[][]): number[] {
 
 function run(fields: Partial<RaceRun> & { points: number[][] }): RaceRun {
   const { points, ...rest } = fields;
-  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, state: [], cost: [], faints: [], money: [], ...rest };
+  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", character: "Normal trainer", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, state: [], cost: [], faints: [], money: [], ...rest };
 }
 
 function ghostsOf(...runs: RaceRun[]): RaceGhosts {
-  const race: RaceFile = { version: 2, runs };
+  const race: RaceFile = { version: RACE_VERSION, runs };
   return new RaceGhosts(race, world);
 }
 

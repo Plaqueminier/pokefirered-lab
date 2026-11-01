@@ -1,8 +1,9 @@
-import { type Decision, type ModelSettings, modelEvents, type RunEvent } from "../harness/record";
-import { STARTER_SPECIES, type StarterSpecies } from "../protocol";
+import type { Decision, ModelEvent, ModelSettings, RunEvent } from "../harness/record";
+import { modelEvents, STARTER_SPECIES, type StarterSpecies } from "../protocol";
 import { alternatives, type Asked, DECISION_SCHEMA, readDecision, readFields } from "./decision";
 
 const MAX_CHARACTER = 300;
+export const NORMAL_TRAINER = "Normal trainer";
 // With no idea to start from, 10 of 12 test answers of the model were a bold fan of CHARMANDER. These words suggest no type.
 const TRAINER_JOBS = ["baker", "librarian", "taxi driver", "nurse", "chess player", "street musician", "watchmaker", "stage magician", "teacher", "journalist", "tailor", "postal worker", "painter", "mechanic", "detective", "dancer", "accountant", "actor"];
 const TRAINER_TRAITS = ["shy", "proud", "curious", "lazy", "cheerful", "grumpy", "superstitious", "stubborn", "dreamy", "polite", "jealous", "generous"];
@@ -49,6 +50,12 @@ export function readCharacterDecision(content: string, starter: ModelSettings["s
 
 export function runCharacter(events: readonly RunEvent[]): Decision | undefined {
   return modelEvents(events).findLast((e) => e.decision?.character)?.decision ?? undefined;
+}
+
+export function shownCharacter(calls: readonly ModelEvent[]): string | null {
+  const character = runCharacter(calls)?.character;
+  if (character) return character;
+  return calls.length > 0 && !calls.some((call) => call.character) ? NORMAL_TRAINER : null;
 }
 
 function wantedStarter(events: readonly RunEvent[], starter: ModelSettings["starter"]): StarterSpecies | null {

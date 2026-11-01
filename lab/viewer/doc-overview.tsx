@@ -101,11 +101,11 @@ export function ViewerPage() {
         ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
-        ["Decision line", "the last action of the Bot; a hover shows the answer of the call."],
+        ["Decision line", "the last action of the Bot; a hover shows the answer of the call, with no character."],
         ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer."],
         [
           "Model",
-          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost, then the blocks of its prompt, in colors, that fold.",
+          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost, then the character of the Run and the blocks of its prompt, in colors, that fold.",
         ],
         [
           "Stats",
@@ -224,14 +224,14 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track and the State track of each Run on one game time, with its battles, its trainers, its Milestones, its faints, its money, its cost and its Run result. A Race file of an older version does not open: make it again."],
+        ["Race file", "the track and the State track of each Run on one game time, with its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost and its Run result. A Race file of an older version does not open: make it again."],
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
         ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces."],
         ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in. Viridian Forest, the Safari Zone and the three floors of Mt Moon are islands on the map: the Ghosts walk on them, with no count at a door."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
-        ["Hover on Ghosts", "the Run id, its state, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
+        ["Hover on Ghosts", "the Run id, its state, its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
         ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],
         ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],
         ["Keyboard", "it does not play in this tab. The Race draws only while its tab shows."],

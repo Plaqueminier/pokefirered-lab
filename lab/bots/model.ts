@@ -1,7 +1,7 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
-import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, type RunEvent, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import type { ModelAnswer, ModelOptions, ModelSettings, NodeRange, Prompt, NodeSentence, RunEvent, SummaryAnswer, Turn, Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
@@ -9,6 +9,7 @@ import { type AskOptions, type ModelClient, type ModelReply, modelSettings, open
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
+import { modelEvents } from "../src/protocol";
 
 const MAX_UNREADABLE = 3;
 // After this number of impossible actions in a row, a new conversation starts from a new prompt.

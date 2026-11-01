@@ -64,6 +64,10 @@ _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker. The AI model invents the trainer that it plays, with the first Pokémon and the style of the nicknames. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
 _Avoid_: persona call, personality turn
 
+**Normal trainer**:
+The character that the Viewer shows for a **Run** with no **Character turn**, for example a **Run** of an older version of the model bot. All these **Runs** have the same text. A **Race** also gives it to a **Run** with no readable character, so each **Ghost** has a text. The AI model never reads it, and no **Run record** holds it.
+_Avoid_: default persona, neutral character
+
 **Thinking**:
 The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**.
 _Avoid_: thinking mode, deep reasoning

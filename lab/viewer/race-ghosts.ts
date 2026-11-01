@@ -23,6 +23,7 @@ export type GhostPlace = { kind: "world"; x: number; y: number; scale: number } 
 export type GhostNow = {
   run: number;
   number: number;
+  character: string;
   map: string;
   x: number;
   y: number;
@@ -273,7 +274,7 @@ export class RaceGhosts {
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
     const battle = battleAt(ghost, frame);
-    const now: GhostNow = { run: index, number: run.number, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], stats: statsAt(ghost, frame) };
+    const now: GhostNow = { run: index, number: run.number, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

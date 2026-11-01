@@ -14,6 +14,7 @@ export type RaceRun = {
   record: string;
   bot: string;
   model: string;
+  character: string;
   /** Frames and cells as the difference with the point before. */
   track: number[];
   battles: RaceBattle[];
@@ -27,7 +28,7 @@ export type RaceRun = {
   money: [frame: number, money: number][];
 };
 
-export const RACE_VERSION = 2;
+export const RACE_VERSION = 3;
 
 export type RaceFile = { version: typeof RACE_VERSION; runs: RaceRun[] };
 

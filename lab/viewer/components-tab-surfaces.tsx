@@ -175,6 +175,7 @@ export function PointerCardDemo() {
       <PointerCard at={glassAt} glass>
         <div class="flex flex-col gap-1">
           <span class="text-sm font-semibold">Run 48</span>
+          <span class="text-xs">Pastry names. A shy baker who fears the dark.</span>
           <span class="text-xs text-muted">Route 1</span>
           <Pill tone="info">in battle</Pill>
         </div>

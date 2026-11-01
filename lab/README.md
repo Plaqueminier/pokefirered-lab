@@ -41,7 +41,7 @@ The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`
 A **Race** plays many **Run records** on a map of Kanto, in the Race tab of the Viewer. It needs the track and the State track of each record, and a record below format 3 does not have them.
 
 1. Once, in `lab/`: `bun run migrate`. It replays each record of `runs/` below format 3, and writes its track and its State track in the file. A record whose replay does not end on the last frame of its buttons, or does not give its maps and battles, keeps its file.
-2. In `lab/`: `bun run race <name> [records…]`. It writes `races/<name>.json.gz`. With no record named, it takes all the records of the model bots. A record is a file name, or the start of one file name (`00012`). A record with an empty track stays out, a record with no Run id at the start of its name stays out, and a record that another record of the Race continues stays out: the command names them. A record of another Bot is refused, and a record below format 3 is refused with the name of the migration. A Race file from before this format does not open: make it again.
+2. In `lab/`: `bun run race <name> [records…]`. It writes `races/<name>.json.gz`. With no record named, it takes all the records of the model bots. A record is a file name, or the start of one file name (`00012`). A record with an empty track stays out, a record with no Run id at the start of its name stays out, and a record that another record of the Race continues stays out: the command names them. A record of another Bot is refused, and a record below format 3 is refused with the name of the migration. A Race file of an older version does not open: make it again.
 
 ## Checks
 

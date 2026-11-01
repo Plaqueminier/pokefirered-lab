@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
 import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import type { ShownRun } from "../src/protocol";
+import { modelEvents, type ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -26,7 +26,7 @@ const BLOCK_TITLES = [
   [/^Your action ".*" is impossible/, "Impossible"],
 ] as const;
 
-export type BlockTitle = (typeof BLOCK_TITLES)[number][1] | "Reasoning" | "Your answer" | "Rules" | "Other";
+export type BlockTitle = (typeof BLOCK_TITLES)[number][1] | "Character" | "Reasoning" | "Your answer" | "Rules" | "Other";
 
 type Answer = Decision | { error: string; raw: string | null };
 
@@ -39,7 +39,7 @@ type CallRow = { frame: number; situation: string; action: string | null; stuck?
 export type ModelPanelView = { rows: CallRow[]; selected: number | null; calling: boolean; call: CallView | null };
 
 export function modelCalls(events: readonly RunEvent[]): { calls: ModelEvent[]; calling: (callsStarted: number) => boolean } {
-  const calls = events.filter((e): e is ModelEvent => e.type === "model");
+  const calls = modelEvents(events);
   return { calls, calling: (callsStarted) => callsStarted > calls.length };
 }
 
