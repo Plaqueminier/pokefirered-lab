@@ -3,12 +3,14 @@ import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
 import type { BotInfo, ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
-import { Button, Tabs } from "./components";
+import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
+import { LeaderboardRow, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
 import { type GridActions, GridCellView } from "./grid";
 import type { GridCell } from "./grid-cells";
 import { PokemonCard, PokemonSummary } from "./pokemon";
+import { GhostState } from "./race-cards";
 import { RecordCard } from "./record-card";
 import { BotsPanel, RunSelect } from "./runs";
 import { ScreenControls, type ScreenRun, type ScreenSettings } from "./screen-controls";
@@ -481,6 +483,39 @@ export function RecordCardDemo() {
       <PopoverBody>
         <RecordCard replay={RECORD_STATES[state].replay} />
       </PopoverBody>
+    </div>
+  );
+}
+
+const DEMO_ICON = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect x="2" y="2" width="4" height="4" fill="#6aa"/></svg>')}`;
+
+export function MonIconDemo() {
+  return (
+    <div class="flex items-center gap-4 text-xs text-faint">
+      <MonIcon src={DEMO_ICON} species="SQUIRTLE" /> with no level
+      <MonIcon src={DEMO_ICON} species="SQUIRTLE" level={5} /> with a level
+      <MonIcon src={DEMO_ICON} species="MEWTWO" level={100} /> 3 digits
+      <MonIcon src={null} species="?" level={7} /> no icon
+    </div>
+  );
+}
+
+export function LeaderboardRowDemo() {
+  const [selected, setSelected] = useState(0);
+  const team = (size: number) => Array.from({ length: size }, (_, i) => <MonIcon key={i} src={DEMO_ICON} species="SQUIRTLE" level={5 + i * 19} />);
+  const badges = (got: number) => <Badges got={Array.from({ length: 8 }, (_, i) => i < got)} />;
+  const inBattle = { frame: 0, kind: "battle", trainer: null, player: null, foe: null } as const;
+  const rows = [
+    { rank: 1, id: "00017", ghost: { result: null, battle: null }, cost: "1.24 $", size: 6, got: 8, faded: false },
+    { rank: 2, id: "00003", ghost: { result: null, battle: inBattle }, cost: "12.08 $", size: 3, got: 2, faded: false },
+    { rank: 3, id: "00041", ghost: { result: null, battle: null }, cost: "0.00 $", size: 0, got: 0, faded: false },
+    { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, cost: "0.31 $", size: 3, got: 1, faded: true },
+  ] as const;
+  return (
+    <div class="flex w-[380px] max-w-full flex-col">
+      {rows.map(({ rank, id, ghost, cost, size, got, faded }, i) => (
+        <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
+      ))}
     </div>
   );
 }

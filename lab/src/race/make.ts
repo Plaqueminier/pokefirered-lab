@@ -1,6 +1,7 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
+import { type CurrentRecord, isCurrentRecord, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
+import { parseRunId } from "../protocol";
 import { encodeTrack, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
@@ -8,23 +9,46 @@ export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
 export const RACE_SUFFIX = ".json.gz";
 
 const MODEL_BOT = "model";
+const COST_STEP = 0.01;
 
 function battlesOf(events: readonly RunEvent[], lastFrame: number): RaceBattle[] {
   const battles: RaceBattle[] = [];
-  let open: { start: number; trainer: boolean | null } | null = null;
+  let open: number | null = null;
   for (const event of events) {
     if (event.type !== "battle") continue;
-    if (event.state === "start") open = { start: event.frame, trainer: event.trainer ?? null };
-    else if (open) {
-      battles.push([open.start, event.frame, open.trainer]);
+    if (event.state === "start") open = event.frame;
+    else if (open !== null) {
+      battles.push([open, event.frame]);
       open = null;
     }
   }
-  return open ? [...battles, [open.start, lastFrame, open.trainer]] : battles;
+  return open === null ? battles : [...battles, [open, lastFrame]];
 }
 
-function raceRun(number: number, name: string, record: RunRecord): RaceRun {
-  if (record.track === undefined) throw new Error(`${name} has no track: run "bun run migrate" first`);
+function costOf(events: readonly RunEvent[]): RaceRun["cost"] {
+  const points: RaceRun["cost"] = [];
+  let cost = 0;
+  let calls = 0;
+  let kept = 0;
+  let last: RaceRun["cost"][number] | null = null;
+  for (const event of events) {
+    if (event.type !== "model" && event.type !== "summary") continue;
+    if (event.type === "model") calls++;
+    cost += event.usage.cost;
+    last = [event.frame, cost, calls];
+    if (cost - kept < COST_STEP) continue;
+    points.push(last);
+    kept = cost;
+  }
+  return last && points.at(-1) !== last ? [...points, last] : points;
+}
+
+function moneyOf(events: readonly RunEvent[]): RaceRun["money"] {
+  const changes = events.flatMap((event) => (event.type === "money" ? [event] : []));
+  return changes.length === 0 ? [] : [[0, changes[0].before], ...changes.map(({ frame, after }): [number, number] => [frame, after])];
+}
+
+function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
   const { events, header } = record;
   const lastFrame = new RecordPlayer(record).frames;
   return {
@@ -37,11 +61,11 @@ function raceRun(number: number, name: string, record: RunRecord): RaceRun {
     trainers: events.flatMap((e) => (e.type === "trainer" ? [[e.frame, e.trainer] as [number, string]] : [])),
     milestones: events.flatMap((e) => (e.type === "milestone" ? [[e.frame, e.milestone] as [number, string]] : [])),
     end: { frame: lastFrame, result: record.result.endReason },
+    state: record.state,
+    cost: costOf(events),
+    faints: events.flatMap((e) => (e.type === "faint" && e.side === "player" ? [e.frame] : [])),
+    money: moneyOf(events),
   };
-}
-
-function dateOf(name: string): string {
-  return /\d{4}-\d{2}-\d{2}T[\d.-]+Z\.json$/.exec(name)?.[0] ?? name;
 }
 
 function findRecord(names: readonly string[], wanted: string): string {
@@ -73,22 +97,22 @@ export async function makeRace(dir = RUNS_DIR, wanted?: readonly string[]): Prom
     if (record) records.set(name, record);
   }
   const names = [...records.keys()];
-  const series = names.filter((name) => records.get(name)?.header.bot.name === MODEL_BOT).sort((a, b) => dateOf(a).localeCompare(dateOf(b)));
-  const chosen = wanted?.map((name) => findRecord(names, name)) ?? series;
-  for (const name of chosen) if (!series.includes(name)) throw new Error(`${name} is not a Run of a model bot`);
+  const modelRuns = names.filter((name) => records.get(name)?.header.bot.name === MODEL_BOT);
+  const chosen = wanted?.map((name) => findRecord(names, name)) ?? modelRuns;
+  for (const name of chosen) if (!modelRuns.includes(name)) throw new Error(`${name} is not a Run of a model bot`);
   const continued = continuedBy(chosen, records);
   const runs: RaceRun[] = [];
-  for (const name of [...new Set(chosen)].sort((a, b) => series.indexOf(a) - series.indexOf(b))) {
-    if (continued.has(name)) {
-      console.warn(`${name} stays out of the Race: a Run of the Race continues it`);
-      continue;
-    }
-    const record = records.get(name) as RunRecord;
-    // A Run that stops before its first step on the overworld has no place to show, but it keeps its rank in the series.
-    if (record.track?.length === 0) console.warn(`${name} has no point in its track: it stays out of the Race`);
-    else runs.push(raceRun(series.indexOf(name) + 1, name, record));
+  for (const name of new Set(chosen)) {
+    const record = records.get(name);
+    if (!record) continue;
+    if (!isCurrentRecord(record)) throw new Error(`${name} is below format ${RECORD_FORMAT}: run "bun run migrate" first`);
+    const number = parseRunId(name);
+    if (number === null) console.warn(`${name} has no Run id at the start of its name: it stays out of the Race`);
+    else if (continued.has(name)) console.warn(`${name} stays out of the Race: a Run of the Race continues it`);
+    else if (record.track.length === 0) console.warn(`${name} has no point in its track: it stays out of the Race`);
+    else runs.push(raceRun(number, name, record));
   }
-  return { version: RACE_VERSION, runs };
+  return { version: RACE_VERSION, runs: runs.sort((a, b) => a.number - b.number) };
 }
 
 export async function writeRace(name: string, race: RaceFile, dir = RACES_DIR): Promise<string> {

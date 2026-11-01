@@ -6,7 +6,7 @@ import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
-import { BotsDemo, GridCellDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
+import { BotsDemo, GridCellDemo, LeaderboardRowDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -783,6 +783,13 @@ const ENTRIES: Entry[] = [
     rule: "A row of a list that a click selects: cells with a fixed width at the left, a main text in mono, optional icons at the right. Selected: the accent border all around. An error text is red. A mark is an accent dot before the icons; a faded row is at 45 % opacity.",
     demo: () => <ListRowDemo />,
   },
+  {
+    category: "data",
+    title: "LeaderboardRow",
+    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state and cost, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
+    demo: () => <LeaderboardRowDemo />,
+  },
+  { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
   {
     category: "data",
     title: "PromptText",

@@ -1,6 +1,7 @@
 import type { EventKeys, EventReads } from "../event-reads";
 import type { Game } from "../game";
 import type { WatchedMon } from "../party";
+import type { StateEntry } from "../protocol";
 import type { RunEvent } from "./record";
 
 type HealedMon = { species: string; before: number; after: number; maxHp: number };
@@ -130,6 +131,87 @@ function moneyCause(change: number, purchase: boolean, sold: boolean, { inBattle
   if (change > 0 && sold) return "sale";
   if (inBattle) return "battle";
   return whitingOut ? "whiteout" : "other";
+}
+
+export class StateTrackWatch {
+  readonly entries: StateEntry[] = [];
+  readonly #reads: EventReads;
+  readonly #team = new TeamWatch();
+  #fight: FightWatch | null = null;
+
+  constructor(game: Game) {
+    this.#reads = game.eventReads();
+  }
+
+  onBattleChange(frame: number, underway: boolean): void {
+    this.#fight = underway ? new FightWatch(this.#reads.battleOpponent()) : null;
+    if (this.#fight) this.entries.push({ frame, ...this.#fight.first() });
+  }
+
+  onFrame(frame: number): void {
+    this.entries.push(...this.#team.onFrame(this.#reads).map((entry) => ({ frame, ...entry })));
+  }
+
+  onBattleFrame(frame: number): void {
+    const fight = this.#fight?.onFrame(this.#reads);
+    if (fight) this.entries.push({ frame, ...fight });
+  }
+}
+
+type NewEntry<K extends StateEntry["kind"]> = Omit<Extract<StateEntry, { kind: K }>, "frame">;
+
+class Latest {
+  #text: string;
+
+  constructor(start: unknown) {
+    this.#text = JSON.stringify(start);
+  }
+
+  changed(value: unknown): boolean {
+    const text = JSON.stringify(value);
+    if (text === this.#text) return false;
+    this.#text = text;
+    return true;
+  }
+}
+
+class TeamWatch {
+  #bytes: Uint8Array | null = null;
+  readonly #team = new Latest([]);
+  readonly #health = new Latest([]);
+
+  onFrame(reads: EventReads): (NewEntry<"team"> | NewEntry<"health">)[] {
+    const bytes = reads.partyStateBytes();
+    if (this.#bytes && same(bytes, this.#bytes)) return [];
+    const party = reads.playerParty();
+    if (!party) return [];
+    this.#bytes = bytes;
+    const team = party.map(({ species, nickname, level, maxHp, moves }) => ({ species, nickname, level, maxHp, moves }));
+    const health = party.map(({ hp, status }) => ({ hp, status }));
+    const teamChanged = this.#team.changed(team);
+    const healthChanged = this.#health.changed(health);
+    return [...(teamChanged ? [{ kind: "team" as const, team }] : []), ...(healthChanged ? [{ kind: "health" as const, health }] : [])];
+  }
+}
+
+class FightWatch {
+  #bytes: Uint8Array | null = null;
+  readonly #sides = new Latest(null);
+
+  constructor(private readonly trainer: string | null) {}
+
+  first(): NewEntry<"battle"> {
+    return { kind: "battle", trainer: this.trainer, player: null, foe: null };
+  }
+
+  onFrame(reads: EventReads): NewEntry<"battle"> | null {
+    const bytes = reads.battleStateBytes();
+    if (this.#bytes && same(bytes, this.#bytes)) return null;
+    this.#bytes = bytes;
+    const player = reads.battleSide("player");
+    const foe = reads.battleSide("foe");
+    return player && foe && this.#sides.changed([player, foe]) ? { kind: "battle", trainer: this.trainer, player, foe } : null;
+  }
 }
 
 // The faint of an enemy, and the catch.

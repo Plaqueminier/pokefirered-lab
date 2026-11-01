@@ -2,6 +2,18 @@ import { CircleDollarSign, CircleQuestionMark, Crown, Flag, House, type LucideIc
 import { h, render } from "preact";
 import type { EndReason } from "../src/harness/harness";
 import { TILE } from "../src/race/file";
+import type { Tone } from "./components";
+
+export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | undefined }> = {
+  goal: { icon: Flag, tone: "ok" },
+  "user stop": { icon: Square, tone: undefined },
+  "bot stopped": { icon: Square, tone: undefined },
+  "cost limit": { icon: CircleDollarSign, tone: "warn" },
+  "frame budget": { icon: CircleDollarSign, tone: "warn" },
+  whiteout: { icon: Skull, tone: "bad" },
+  "no progress": { icon: CircleQuestionMark, tone: "info" },
+  "unknown screen": { icon: CircleQuestionMark, tone: "info" },
+};
 
 export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; font: string; textSm: string; radius: number };
 
@@ -78,10 +90,7 @@ export class RaceMarks {
     this.#swords = iconImage(Swords, theme.warn);
     this.#house = iconImage(House, theme.fg);
     this.#crown = iconImage(Crown, theme.warn);
-    const stop = iconImage(Square, theme.muted);
-    const coin = iconImage(CircleDollarSign, theme.warn);
-    const lost = iconImage(CircleQuestionMark, theme.info);
-    this.#results = { goal: iconImage(Flag, theme.ok), "user stop": stop, "bot stopped": stop, "cost limit": coin, "frame budget": coin, whiteout: iconImage(Skull, theme.bad), "no progress": lost, "unknown screen": lost };
+    this.#results = Object.fromEntries((Object.keys(RESULT_LOOK) as EndReason[]).map((result) => [result, iconImage(RESULT_LOOK[result].icon, theme[RESULT_LOOK[result].tone ?? "muted"])])) as Record<EndReason, HTMLImageElement>;
     this.#labelFont = `700 10px ${theme.font}`;
     this.#smallFont = `700 9px ${theme.font}`;
     this.#nameFont = `600 11px ${theme.font}`;

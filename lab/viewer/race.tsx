@@ -4,22 +4,23 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { GBA_FPS } from "../src/protocol";
 import { RACE_VERSION, type RaceFile } from "../src/race/file";
 import type { World } from "../src/race/world";
-import { Button, Card, Code, Cover, LABEL, Pill, Slider, Tabs, type Tone, Tooltip } from "./components";
+import { Button, Card, Code, Cover, Pill, Slider, Tabs, Tooltip } from "./components";
 import { PointerCard, Select } from "./components-layers";
 import { Store, useStore } from "./cursor";
 import { fitCanvas } from "./race-art";
+import { Leaderboard } from "./race-board";
+import { GhostsCard } from "./race-cards";
 import type { GhostNow, RaceDoor } from "./race-ghosts";
-import { type RaceHit, RaceView } from "./race-view";
+import { type GhostHit, nearestGhost, type RaceHit, RaceView } from "./race-view";
 
 const SPEEDS = [1, 4, 20, 60, 200].map((speed) => ({ id: String(speed), label: `×${speed}` }));
 const BAR_REFRESH_MS = 100;
-const DRAWER_REFRESH_MS = 500;
+const PANEL_REFRESH_MS = 500;
 const SEEK_STEP_FRAMES = 60;
 const DRAG_MIN_PIXELS = 4;
 const DOOR_CARD_INTERIORS = 3;
-const GROUP_CARD_RUNS = 24;
-const DRAWER_CARD_WIDTH = 290;
-const DRAWER_CARD_HEIGHT = 200;
+const PANEL_CARD_WIDTH = 354;
+const PANEL_CARD_HEIGHT = 200;
 const DOOR_CARD_WIDTH = 270;
 const DOOR_CARD_HEIGHT = 170;
 
@@ -28,6 +29,8 @@ function raceTime(frames: number): string {
   const minutes = Math.floor(total / 60);
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
+
+type Pointer = { x: number; y: number; client: { x: number; y: number } };
 
 function useRefresh(ms: number): void {
   const [, setTicks] = useState(0);
@@ -41,7 +44,7 @@ function Count({ n }: { n: number }) {
   return <span class="inline-block w-[3ch] text-right tabular-nums">{n}</span>;
 }
 
-function LiveInterior({ view, map, height }: { view: RaceView; map: string; height: number }) {
+function LiveInterior({ view, map, height, hits }: { view: RaceView; map: string; height: number; hits?: { current: GhostHit[] } }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const draw = () => {
@@ -49,14 +52,34 @@ function LiveInterior({ view, map, height }: { view: RaceView; map: string; heig
       if (!fitted) return;
       const { ctx, width: w, height: h } = fitted;
       ctx.clearRect(0, 0, w, h);
-      view.drawInterior(ctx, map, { x: 0, y: 0, w, h });
+      const drawn = view.drawInterior(ctx, map, { x: 0, y: 0, w, h });
+      if (hits) hits.current = drawn;
     };
     view.live.add(draw);
     return () => {
       view.live.delete(draw);
     };
-  }, [view, map]);
+  }, [view, map, hits]);
   return <canvas ref={ref} class="block w-full rounded-ctl bg-bg" style={{ height: `${height}px` }} />;
+}
+
+function pointerIn(element: Element, event: MouseEvent): Pointer {
+  const box = element.getBoundingClientRect();
+  return { x: event.clientX - box.left, y: event.clientY - box.top, client: { x: event.clientX, y: event.clientY } };
+}
+
+function HoverInterior({ view, map, height }: { view: RaceView; map: string; height: number }) {
+  const hits = useRef<GhostHit[]>([]);
+  const [pointer, setPointer] = useState<Pointer | null>(null);
+  const hit = pointer && nearestGhost(hits.current, pointer.x, pointer.y);
+  return (
+    <div onPointerMove={(event) => setPointer(pointerIn(event.currentTarget, event))} onPointerLeave={() => setPointer(null)}>
+      <LiveInterior view={view} map={map} height={height} hits={hits} />
+      <PointerCard at={hit && pointer ? pointer.client : null} glass>
+        {hit && <GhostsCard view={view} ghosts={hit.group} />}
+      </PointerCard>
+    </div>
+  );
 }
 
 function interiorHeight(view: RaceView, key: string, width: number, max: number): number {
@@ -64,39 +87,43 @@ function interiorHeight(view: RaceView, key: string, width: number, max: number)
   return map ? Math.min(max, Math.round((width * map.height) / map.width)) : max;
 }
 
-function Drawer({ view }: { view: RaceView }) {
-  useRefresh(DRAWER_REFRESH_MS);
-  const interiors = [...view.moment.inside.entries()]
-    .map(([map, ghosts]) => ({ map, playing: ghosts.filter((ghost) => !ghost.result) }))
-    .filter(({ playing }) => playing.length > 0)
-    .sort((a, b) => b.playing.length - a.playing.length);
+function Interiors({ view, interiors }: { view: RaceView; interiors: { map: string; playing: GhostNow[] }[] }) {
   return (
-    <aside class="flex w-[320px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line p-3">
-      <div class={LABEL}>Interiors in play · {interiors.length}</div>
+    <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       {interiors.map(({ map, playing }) => (
         <Card key={map} size="sm">
           <div class="mb-2 flex items-center justify-between gap-2">
             <span class="truncate text-sm font-semibold">{view.titleOf(map)}</span>
             <Pill tone={playing.some((ghost) => ghost.battle) ? "info" : undefined}>×{playing.length} in play</Pill>
           </div>
-          <LiveInterior view={view} map={map} height={interiorHeight(view, map, DRAWER_CARD_WIDTH, DRAWER_CARD_HEIGHT)} />
+          <HoverInterior view={view} map={map} height={interiorHeight(view, map, PANEL_CARD_WIDTH, PANEL_CARD_HEIGHT)} />
         </Card>
       ))}
-    </aside>
+    </div>
   );
 }
 
-function ghostState(ghost: GhostNow): string {
-  if (ghost.result) return ghost.result;
-  if (!ghost.battle) return "plays";
-  if (ghost.battle.trainer === null) return "in battle";
-  if (!ghost.battle.trainer) return "wild battle";
-  return ghost.battle.name ? `trainer battle · ${ghost.battle.name}` : "trainer battle";
-}
+type PanelTab = "leaderboard" | "interiors";
 
-function ghostTone(ghost: GhostNow): Tone {
-  if (ghost.result) return ghost.result === "goal" ? "ok" : "bad";
-  return ghost.battle ? "info" : "ok";
+function RacePanel({ view, tab, onTab }: { view: RaceView; tab: PanelTab; onTab: (tab: PanelTab) => void }) {
+  useRefresh(PANEL_REFRESH_MS);
+  const interiors = [...view.moment.inside.entries()]
+    .map(([map, ghosts]) => ({ map, playing: ghosts.filter((ghost) => !ghost.result) }))
+    .filter(({ playing }) => playing.length > 0)
+    .sort((a, b) => b.playing.length - a.playing.length);
+  return (
+    <aside class="flex w-[404px] shrink-0 flex-col gap-3 border-l border-line p-3">
+      <Tabs
+        items={[
+          { id: "leaderboard", label: "Leaderboard" },
+          { id: "interiors", label: `Interiors in play · ${interiors.length}` },
+        ]}
+        value={tab}
+        onChange={onTab}
+      />
+      {tab === "leaderboard" ? <Leaderboard view={view} /> : <Interiors view={view} interiors={interiors} />}
+    </aside>
+  );
 }
 
 function DoorCard({ view, door }: { view: RaceView; door: RaceDoor }) {
@@ -112,28 +139,6 @@ function DoorCard({ view, door }: { view: RaceView; door: RaceDoor }) {
           <LiveInterior view={view} map={map} height={interiorHeight(view, map, DOOR_CARD_WIDTH, DOOR_CARD_HEIGHT)} />
         </div>
       ))}
-    </div>
-  );
-}
-
-function GhostsCard({ view, ghosts }: { view: RaceView; ghosts: readonly GhostNow[] }) {
-  const [first] = ghosts;
-  if (ghosts.length === 1)
-    return (
-      <div class="flex w-[210px] flex-col gap-1">
-        <span class="text-sm font-semibold">Run {first.number}</span>
-        <span class="text-xs text-muted">{view.titleOf(first.map)}</span>
-        <Pill tone={ghostTone(first)}>{ghostState(first)}</Pill>
-      </div>
-    );
-  const numbers = ghosts.map((ghost) => ghost.number).sort((a, b) => a - b);
-  return (
-    <div class="flex w-[210px] flex-col gap-1">
-      <span class="text-sm font-semibold">{ghosts.length} Ghosts</span>
-      <span class="text-xs text-muted">
-        Runs {numbers.slice(0, GROUP_CARD_RUNS).join(", ")}
-        {numbers.length > GROUP_CARD_RUNS ? "…" : ""}
-      </span>
     </div>
   );
 }
@@ -165,9 +170,9 @@ function IconTip({ tip, pressed, onClick, children }: { tip: string; pressed?: b
 
 const BAR = "flex h-14 shrink-0 flex-nowrap items-center gap-3 border-b border-line px-4 [&>*]:shrink-0";
 
-type BarProps = RaceChoiceProps & { view: RaceView; drawer: boolean; onDrawer: () => void };
+type BarProps = RaceChoiceProps & { view: RaceView; panel: boolean; onPanel: () => void };
 
-function Bar({ view, names, name, onName, drawer, onDrawer }: BarProps) {
+function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
   useRefresh(BAR_REFRESH_MS);
   const { ghosts } = view.moment;
   return (
@@ -196,21 +201,19 @@ function Bar({ view, names, name, onName, drawer, onDrawer }: BarProps) {
         </Pill>
       </div>
       <Tooltip text="Frame the Ghosts">
-        <Button pressed={view.camera.auto} aria-label="Frame the Ghosts" onClick={() => view.camera.frameAgain()}>
+        <Button pressed={view.camera.aim === "all"} aria-label="Frame the Ghosts" onClick={() => view.camera.frameAgain()}>
           <Scan size={15} />
           <span class="hidden min-[1100px]:inline">Frame the Ghosts</span>
         </Button>
       </Tooltip>
-      <IconTip tip={drawer ? "Close the interiors" : "Open the interiors"} pressed={drawer} onClick={onDrawer}>
-        {drawer ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+      <IconTip tip={panel ? "Close the panel" : "Open the panel"} pressed={panel} onClick={onPanel}>
+        {panel ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
       </IconTip>
     </div>
   );
 }
 
-type Pointer = { x: number; y: number; clientX: number; clientY: number };
-
-function RaceMap({ view, drawer }: { view: RaceView; drawer: boolean }) {
+function RaceMap({ view, panel }: { view: RaceView; panel: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [pointer, setPointer] = useState<Pointer | null>(null);
@@ -221,12 +224,9 @@ function RaceMap({ view, drawer }: { view: RaceView; drawer: boolean }) {
     setPointer(null);
     return () => view.attach(null);
   }, [view]);
-  useEffect(() => view.camera.snap(), [view, drawer]);
+  useEffect(() => view.camera.snap(), [view, panel]);
 
-  const point = (event: MouseEvent): Pointer => {
-    const box = (canvas.current as HTMLCanvasElement).getBoundingClientRect();
-    return { x: event.clientX - box.left, y: event.clientY - box.top, clientX: event.clientX, clientY: event.clientY };
-  };
+  const point = (event: MouseEvent) => pointerIn(canvas.current as HTMLCanvasElement, event);
   const onMove = (event: PointerEvent) => {
     const at = point(event);
     const pressed = drag.current;
@@ -249,7 +249,7 @@ function RaceMap({ view, drawer }: { view: RaceView; drawer: boolean }) {
     else if (hit?.kind === "door") {
       if (view.isOpen(hit.door.key)) view.closeBuilding(hit.door.key);
       else view.openBuilding(hit.door);
-    } else view.selected = hit ? hit.nearest.run : null;
+    } else view.select(hit ? hit.nearest.run : null);
   };
   const hit = pointer && view.hit(pointer.x, pointer.y);
   return (
@@ -271,7 +271,7 @@ function RaceMap({ view, drawer }: { view: RaceView; drawer: boolean }) {
         onPointerUp={onUp}
         onPointerLeave={() => setPointer(null)}
       />
-      <PointerCard at={hit && pointer ? { x: pointer.clientX, y: pointer.clientY } : null} glass>
+      <PointerCard at={hit && pointer ? pointer.client : null} glass>
         {hit && <HitCard view={view} hit={hit} />}
       </PointerCard>
     </div>
@@ -303,7 +303,8 @@ function RaceRoot({ shown }: { shown: Store<boolean> }) {
   const [listError, setListError] = useState<string | null>(null);
   const [raceError, setRaceError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(0);
-  const [drawer, setDrawer] = useState(true);
+  const [panel, setPanel] = useState(true);
+  const [panelTab, setPanelTab] = useState<PanelTab>("leaderboard");
   const world = useRef<Promise<World> | null>(null);
 
   useEffect(() => {
@@ -374,10 +375,10 @@ function RaceRoot({ shown }: { shown: Store<boolean> }) {
     );
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <Bar view={view} names={names} name={name} onName={setName} drawer={drawer} onDrawer={() => setDrawer((open) => !open)} />
+      <Bar view={view} names={names} name={name} onName={setName} panel={panel} onPanel={() => setPanel((open) => !open)} />
       <div class="flex min-h-0 flex-1">
-        <RaceMap view={view} drawer={drawer} />
-        {drawer && <Drawer view={view} />}
+        <RaceMap view={view} panel={panel} />
+        {panel && <RacePanel view={view} tab={panelTab} onTab={setPanelTab} />}
       </div>
     </div>
   );

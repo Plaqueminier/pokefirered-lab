@@ -493,17 +493,25 @@ export function Tip({ x, width, children }: { x: number; width: number; children
 
 /** The width of an element, again at each resize. */
 export function useWidth() {
+  return useMeasure((element) => element.clientWidth);
+}
+
+export function useHeight() {
+  return useMeasure((element) => element.clientHeight);
+}
+
+function useMeasure(read: (element: HTMLDivElement) => number) {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState(0);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    const observer = new ResizeObserver(() => setSize(read(element)));
     observer.observe(element);
-    setWidth(element.clientWidth);
+    setSize(read(element));
     return () => observer.disconnect();
   }, []);
-  return [ref, width] as const;
+  return [ref, size] as const;
 }
 
 // In the top layer: the overflow of a panel cuts an absolute tip.
@@ -860,6 +868,10 @@ export function Collapsible({
   );
 }
 
+export function rowButton(selected?: boolean, faded?: boolean): string {
+  return `flex min-w-0 items-center gap-2 rounded-ctl border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${selected ? "border-accent bg-raised" : "border-transparent hover:bg-raised"} ${faded ? "opacity-45" : ""}`;
+}
+
 export function ListRow({
   cells = [],
   text,
@@ -884,7 +896,7 @@ export function ListRow({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      class={`flex h-7 w-full min-w-0 shrink-0 items-center gap-2 rounded-ctl border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35 ${selected ? "border-accent bg-raised" : "border-transparent hover:bg-raised"} ${faded ? "opacity-45" : ""}`}
+      class={`h-7 w-full shrink-0 ${rowButton(selected, faded)}`}
     >
       {cells.map((cell, i) => (
         <span key={i} class="shrink-0 text-faint tabular-nums" style={{ minWidth: `${cell.chars}ch` }}>

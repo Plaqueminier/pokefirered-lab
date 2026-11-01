@@ -12,12 +12,12 @@ const STATS = [
   ["speed", "Speed"],
 ] as const;
 
-function StatusPill({ mon }: { mon: PartyMon }) {
+export function StatusPill({ mon }: { mon: Pick<PartyMon, "hp" | "status"> }) {
   if (mon.hp === 0) return <Pill tone="bad">FNT</Pill>;
   return mon.status === "none" ? null : <Pill tone="warn">{STATUS[mon.status]}</Pill>;
 }
 
-function Name({ mon }: { mon: PartyMon }) {
+export function Name({ mon }: { mon: Pick<PartyMon, "nickname" | "species"> }) {
   return (
     <span class="min-w-0 truncate">
       <span class="font-semibold">{mon.nickname}</span>
@@ -34,7 +34,7 @@ function Hp({ mon }: { mon: PartyMon }) {
   );
 }
 
-function HpBar({ mon }: { mon: PartyMon }) {
+export function HpBar({ mon }: { mon: Pick<PartyMon, "hp" | "maxHp"> }) {
   return <Bar value={mon.hp} max={mon.maxHp} tone={hpTone(mon.maxHp > 0 ? mon.hp / mon.maxHp : 0)} />;
 }
 

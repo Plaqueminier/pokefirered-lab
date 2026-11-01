@@ -2,6 +2,7 @@
 import type { Areas, Camera, GameState, MapActors, MapGrid, Milestone } from "./game";
 import type { Sight } from "./harness/atlas";
 import type { InventoryAt } from "./inventory";
+import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { Continuation, GameEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
 
@@ -202,3 +203,23 @@ export type Track = number[];
 export const TRACK_POINT = 6;
 
 export const TRACK_FIELD = { frame: 0, group: 1, num: 2, x: 3, y: 4, facing: 5 } as const;
+
+const RUN_ID_DIGITS = 5;
+
+export function runIdText(number: number): string {
+  return String(number).padStart(RUN_ID_DIGITS, "0");
+}
+
+export function parseRunId(fileName: string): number | null {
+  const id = /^(\d+)-/.exec(fileName)?.[1];
+  return id === undefined ? null : Number(id);
+}
+
+export type TeamMon = { species: string; nickname: string; level: number; maxHp: number; moves: string[] };
+
+export type MonHealth = { hp: number; status: Status };
+
+export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
+
+/** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
+export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });

@@ -672,7 +672,11 @@ export class Game {
     return countSet(flags, TRAINER_FLAGS_START, TRAINER_FLAGS_COUNT) + itemBalls + countSet(flags, FLAG_HIDDEN_ITEMS_START, FLAG_HIDDEN_ITEMS_COUNT) + countSet(owned, 0, owned.length * 8);
   }
 
-  /** The reads that only the Game events use. */
+  speciesName(species: number): string {
+    return nameAt(this.mem, "gSpeciesNames", species, this.decode);
+  }
+
+  /** The reads for the Game events and the State track. */
   eventReads(): EventReads {
     return (this.reads ??= new EventReads(this, this.mem, this.decode, this.itemBallFlags));
   }

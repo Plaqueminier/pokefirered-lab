@@ -128,7 +128,7 @@ The part of a **Run** up to a **Milestone**, with the name of that **Milestone**
 _Avoid_: stage, level (a level is the level of a Pokémon)
 
 **Run record**:
-The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events, the track and the **Run result**. Its buttons alone replay the **Run**. The track is the place of the player at each change of cell, of map or of facing, apart from the events. A **Run record** from before format 1 has only the map, battle and **Milestone** events of the **Game events**, and a **Run record** from before format 2 has no track: a command adds the track from its buttons, and, on a **Run record** from before format 1, the **Game events** of the state.
+The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events, the track, the **State track** and the **Run result**. Its buttons alone replay the **Run**. The track is the place of the player at each change of cell, of map or of facing, apart from the events. A **Run record** from before format 1 has only the map, battle and **Milestone** events of the **Game events**, a **Run record** from before format 2 has no track, and a **Run record** from before format 3 has no **State track**: a command adds them from its buttons, and, on a **Run record** from before format 1, the **Game events** of the state.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
@@ -156,12 +156,20 @@ The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each 
 _Avoid_: wall, multiview, dashboard
 
 **Race**:
-A file that a command makes from a set of **Run records**: the track of each **Run** on one game time from frame 0, with its battles, its **Milestones** and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
+A file that a command makes from a set of **Run records**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
-One **Run** in a **Race**, drawn as the sprite of the player with the number of its **Run**. The number is the rank of the **Run** by date among the **Run records** of the model bots.
+One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**.
 _Avoid_: player, avatar
+
+**State track**:
+The team and the battle of a **Run** at each change, in its **Run record**: the species, nickname, level, max HP and moves of the team; the HP and status of the team; and the two Pokémon of a battle, with the name of the trainer. A replay gives the same list.
+_Avoid_: state stream, party log
+
+**Leaderboard**:
+The list of the **Runs** of a **Race** by rank at the cursor: most **Milestones**, then the first to reach them, then the highest sum of levels, then the lowest Run id. It is the first tab of the panel at the right of the Race tab.
+_Avoid_: ranking table, scoreboard
 
 **Timeline**:
 The band at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.

@@ -27,6 +27,9 @@ const GYMS: [Milestone, string][] = [
   ["badge-8", "ViridianCity_Gym"],
 ];
 
+/** The order and the length decide the face of each Run id: a change moves the faces. */
+export const GHOST_PEOPLE = "balding_man beauty bill black_belt blue boy bug_catcher cameraman camper captain celio channeler chef clerk cooltrainer_f cooltrainer_m crush_girl daisy fat_man fisher gentleman giovanni green_normal gym_guy hiker lass lorelei man mr_fuji old_man_1 old_man_2 old_woman picnicker poke_maniac policeman prof_oak red_normal rich_boy rocker rocket_f rocket_m rs_brendan rs_may sailor scientist swimmer_f_land swimmer_m_land teachy_tv_host unused_woman woman_1 woman_2 woman_3 worker_f worker_m youngster".split(" ");
+
 const MAP_TYPE_TOWN = 1;
 const MAP_TYPE_CITY = 2;
 const MAP_TYPE_ROUTE = 3;
@@ -37,11 +40,15 @@ const METATILE_BYTES = 16;
 const PALETTES = 16;
 const COLORS = 16;
 const LZ77_HEADER = 4;
-const PLAYER_FRAMES = 9;
-const PLAYER_TILES_WIDE = 2;
-const PLAYER_TILES_HIGH = 4;
+const PERSON_FRAMES = 9;
+const PERSON_TILES_WIDE = 2;
+const PERSON_TILES_HIGH = 4;
 const BADGE_SHEET_TILES_WIDE = 16;
 const BADGE_SHEET_TILES_HIGH = 2;
+const ICON_TILES = 4;
+const NUM_SPECIES = 412;
+const PLAYER_LAYOUT = new Set(["red_normal", "green_normal"]);
+const PIC_SYMBOLS: Record<string, string> = { rs_brendan: "RSBrendan", rs_may: "RSMay", teachy_tv_host: "TeachyTVHost" };
 
 type MapKind = "town" | "route" | "cave" | "building";
 
@@ -82,7 +89,11 @@ export type WorldSprite = { width: number; height: number; pixels: string; palet
 
 export type WorldGym = { milestone: Milestone; door: Door };
 
-export type World = { regions: WorldRegion[]; maps: WorldMap[]; tilesets: WorldTileset[]; player: WorldSprite; badges: WorldSprite; gyms: WorldGym[] };
+export type WorldPerson = WorldSprite & { name: string; layout: "people" | "player" };
+
+export type WorldIcon = WorldSprite & { species: string };
+
+export type World = { regions: WorldRegion[]; maps: WorldMap[]; tilesets: WorldTileset[]; people: WorldPerson[]; icons: WorldIcon[]; badges: WorldSprite; gyms: WorldGym[] };
 
 function base64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
@@ -155,11 +166,32 @@ function sheet(tiles: Uint8Array, wide: number, high: number, tileAt: (column: n
   return { width, height, pixels: base64(pixels), palette };
 }
 
-function playerSprite(game: Game): WorldSprite {
+function picSymbol(name: string): string {
+  const spelled = PIC_SYMBOLS[name] ?? name.split("_").map((word) => word[0].toUpperCase() + word.slice(1)).join("");
+  return `gObjectEventPic_${spelled}`;
+}
+
+// All the palettes of the people have the same skin, black and white, and a Ghost changes the rest: one palette serves.
+function personSprite(game: Game, name: string): WorldPerson {
   const { mem } = game;
-  const tiles = mem.bus.read(mem.global("gObjectEventPic_RedNormal").addr, PLAYER_FRAMES * PLAYER_TILES_WIDE * PLAYER_TILES_HIGH * TILE_BYTES);
-  const tileAt = (column: number, row: number) => Math.floor(column / PLAYER_TILES_WIDE) * PLAYER_TILES_WIDE * PLAYER_TILES_HIGH + row * PLAYER_TILES_WIDE + (column % PLAYER_TILES_WIDE);
-  return sheet(tiles, PLAYER_FRAMES * PLAYER_TILES_WIDE, PLAYER_TILES_HIGH, tileAt, colors(game, mem.global("gObjectEventPal_Player").addr, COLORS));
+  const layout = PLAYER_LAYOUT.has(name) ? "player" : "people";
+  const tiles = mem.bus.read(mem.global(picSymbol(name)).addr, PERSON_FRAMES * PERSON_TILES_WIDE * PERSON_TILES_HIGH * TILE_BYTES);
+  const tileAt = (column: number, row: number) => Math.floor(column / PERSON_TILES_WIDE) * PERSON_TILES_WIDE * PERSON_TILES_HIGH + row * PERSON_TILES_WIDE + (column % PERSON_TILES_WIDE);
+  const palette = colors(game, mem.global(layout === "player" ? "gObjectEventPal_Player" : "gObjectEventPal_NpcBlue").addr, COLORS);
+  return { name, layout, ...sheet(tiles, PERSON_FRAMES * PERSON_TILES_WIDE, PERSON_TILES_HIGH, tileAt, palette) };
+}
+
+function iconSprites(game: Game): WorldIcon[] {
+  const { mem } = game;
+  const icons = new Map<string, WorldIcon>();
+  for (let species = 1; species < NUM_SPECIES; species++) {
+    const name = game.speciesName(species);
+    if (icons.has(name)) continue;
+    const tiles = mem.bus.read(mem.global("gMonIconTable").at(species).pointer(), ICON_TILES * ICON_TILES * TILE_BYTES);
+    const palette = mem.global("gMonIconPaletteTable").at(mem.global("gMonIconPaletteIndices").at(species).int()).field("data").pointer();
+    icons.set(name, { species: name, ...sheet(tiles, ICON_TILES, ICON_TILES, (column, row) => row * ICON_TILES + column, colors(game, palette, COLORS)) });
+  }
+  return [...icons.values()];
 }
 
 function badgeSprite(game: Game): WorldSprite {
@@ -304,5 +336,5 @@ export function buildWorld(game: Game): World {
     if (!door) throw new Error(`the gym ${name} has no door`);
     return { milestone, door };
   });
-  return { regions: [kanto], maps, tilesets, player: playerSprite(game), badges: badgeSprite(game), gyms };
+  return { regions: [kanto], maps, tilesets, people: GHOST_PEOPLE.map((name) => personSprite(game, name)), icons: iconSprites(game), badges: badgeSprite(game), gyms };
 }

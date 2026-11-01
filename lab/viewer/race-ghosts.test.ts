@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { BattleSide, StateEntry } from "../src/protocol";
 import type { RaceFile, RaceRun } from "../src/race/file";
 import { framedBox, type GhostWorld, RaceGhosts } from "./race-ghosts";
 
@@ -38,11 +39,11 @@ function deltas(points: number[][]): number[] {
 
 function run(fields: Partial<RaceRun> & { points: number[][] }): RaceRun {
   const { points, ...rest } = fields;
-  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, ...rest };
+  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, state: [], cost: [], faints: [], money: [], ...rest };
 }
 
 function ghostsOf(...runs: RaceRun[]): RaceGhosts {
-  const race: RaceFile = { version: 1, runs };
+  const race: RaceFile = { version: 2, runs };
   return new RaceGhosts(race, world);
 }
 
@@ -101,15 +102,103 @@ test("an island scales its cells on the world", () => {
   expect(ghosts.at(10).ghosts[0]).toMatchObject({ map: FOREST, x: 4, y: 6, place: { kind: "world", x: 102, y: 53, scale: 0.5 } });
 });
 
-test("a battle: the Ghost stays at its cell, with the trainer when the record tells it", () => {
-  const ghosts = ghostsOf(run({ points: [[0, 3, 0, 5, 5, 0]], battles: [[100, 200, true], [300, 400, false], [500, 600, null]], trainers: [[201, "RIVAL BOB"]] }));
+test("a battle: the Ghost stays at its cell, with the name of the trainer from the start, or none in a wild battle", () => {
+  const start = (frame: number, trainer: string | null) => ({ frame, kind: "battle" as const, trainer, player: null, foe: null });
+  const ghosts = ghostsOf(run({ points: [[0, 3, 0, 5, 5, 0]], battles: [[100, 200], [300, 400]], state: [start(100, "RIVAL BOB"), start(300, null)] }));
   const at = (frame: number) => ghosts.at(frame).ghosts[0];
   expect(at(99).battle).toBeNull();
-  expect(at(100).battle).toEqual({ trainer: true, name: "RIVAL BOB" });
-  expect(at(199)).toMatchObject({ x: 5, y: 5, battle: { trainer: true, name: "RIVAL BOB" } });
+  expect(at(100).battle).toEqual(start(100, "RIVAL BOB"));
+  expect(at(199)).toMatchObject({ x: 5, y: 5, battle: { trainer: "RIVAL BOB" } });
   expect(at(200).battle).toBeNull();
-  expect(at(350).battle).toEqual({ trainer: false, name: null });
-  expect(at(550).battle).toEqual({ trainer: null, name: null });
+  expect(at(350).battle).toEqual(start(300, null));
+});
+
+const SQUIRTLE = { species: "SQUIRTLE", nickname: "BOB", level: 5, maxHp: 20, moves: ["TACKLE", "TAIL WHIP"] };
+const PIDGEY = { species: "PIDGEY", nickname: "PIDGEY", level: 3, maxHp: 14, moves: ["GUST"] };
+
+test("the team at a frame: its names and moves from the last team, its HP and status from the last health; before the first Pokémon, an empty team", () => {
+  const ghosts = ghostsOf(
+    run({
+      points: [[0, 3, 0, 5, 5, 0]],
+      state: [
+        { frame: 100, kind: "team", team: [SQUIRTLE] },
+        { frame: 100, kind: "health", health: [{ hp: 20, status: "none" }] },
+        { frame: 150, kind: "health", health: [{ hp: 7, status: "poison" }] },
+        { frame: 200, kind: "team", team: [{ ...SQUIRTLE, level: 6, maxHp: 22 }, PIDGEY] },
+        { frame: 200, kind: "health", health: [{ hp: 9, status: "none" }, { hp: 14, status: "none" }] },
+      ],
+    }),
+  );
+  const at = (frame: number) => ghosts.at(frame).ghosts[0].team;
+  expect(at(99)).toEqual([]);
+  expect(at(100)).toEqual([{ ...SQUIRTLE, hp: 20, status: "none" }]);
+  expect(at(170)).toEqual([{ ...SQUIRTLE, hp: 7, status: "poison" }]);
+  expect(at(250).map((mon) => [mon.species, mon.level, mon.hp])).toEqual([["SQUIRTLE", 6, 9], ["PIDGEY", 3, 14]]);
+});
+
+test("the battle at a frame: the two Pokémon of the last battle entry", () => {
+  const side = (species: string, hp: number): BattleSide => ({ species, nickname: species, level: 5, hp, maxHp: 20, status: "none" });
+  const ghosts = ghostsOf(
+    run({
+      points: [[0, 3, 0, 5, 5, 0]],
+      battles: [[100, 200]],
+      state: [
+        { frame: 100, kind: "battle", trainer: null, player: null, foe: null },
+        { frame: 120, kind: "battle", trainer: null, player: side("SQUIRTLE", 20), foe: side("RATTATA", 20) },
+        { frame: 150, kind: "battle", trainer: null, player: side("SQUIRTLE", 20), foe: side("RATTATA", 6) },
+      ],
+    }),
+  );
+  const at = (frame: number) => ghosts.at(frame).ghosts[0].battle;
+  expect(at(110)).toMatchObject({ player: null, foe: null });
+  expect(at(130)?.foe?.hp).toBe(20);
+  expect(at(170)?.foe?.hp).toBe(6);
+  expect(at(190)?.player?.species).toBe("SQUIRTLE");
+});
+
+test("the stats at a frame: Milestones, badges by their number, cost, Model calls, battles, trainers beaten, faints and money", () => {
+  const none = [false, false, false, false, false, false, false, false];
+  const third = [false, false, true, false, false, false, false, false];
+  const ghosts = ghostsOf(
+    run({
+      points: [[0, 3, 0, 5, 5, 0]],
+      milestones: [[50, "has-pokemon"], [300, "badge-3"]],
+      battles: [[100, 200], [400, 500]],
+      trainers: [[201, "RIVAL BOB"]],
+      cost: [[90, 0.01, 2], [350, 0.03, 8]],
+      faints: [150],
+      money: [[0, 3000], [210, 3080]],
+    }),
+    run({ number: 2, points: [[0, 3, 0, 1, 1, 0]] }),
+  );
+  const stats = (frame: number) => ghosts.at(frame).ghosts[0].stats;
+  expect(stats(10)).toEqual({ milestones: 0, lastMilestone: 0, badges: none, cost: 0, calls: 0, battles: 0, trainers: 0, faints: 0, money: 3000 });
+  expect(stats(205)).toEqual({ milestones: 1, lastMilestone: 50, badges: none, cost: 0.01, calls: 2, battles: 1, trainers: 1, faints: 1, money: 3000 });
+  expect(stats(450)).toEqual({ milestones: 2, lastMilestone: 300, badges: third, cost: 0.03, calls: 8, battles: 2, trainers: 1, faints: 1, money: 3080 });
+  expect(ghosts.at(450).ghosts[1].stats.money).toBeNull();
+});
+
+test("the ranking: most Milestones, then the first to reach them, then the highest sum of levels, then the lowest Run id", () => {
+  const team = (frame: number, level: number): StateEntry => ({ frame, kind: "team", team: [{ ...SQUIRTLE, level }] });
+  const points = [[0, 3, 0, 1, 1, 0]];
+  const ghosts = ghostsOf(
+    run({ number: 7, points }),
+    run({ number: 3, points }),
+    run({ number: 5, points, state: [team(10, 9)] }),
+    run({ number: 9, points, milestones: [[100, "has-pokemon"], [500, "pokedex"]] }),
+    run({ number: 2, points, milestones: [[200, "has-pokemon"], [400, "pokedex"]] }),
+    run({ number: 4, points, milestones: [[200, "has-pokemon"]], state: [team(10, 5), team(300, 12)] }),
+    run({ number: 8, points, milestones: [[200, "has-pokemon"]], state: [team(10, 6)] }),
+  );
+  const ranks = (frame: number) => ghosts.at(frame).ranking.map((ghost) => ghost.number);
+  expect(ranks(50)).toEqual([5, 8, 4, 2, 3, 7, 9]);
+  expect(ranks(150)).toEqual([9, 5, 8, 4, 2, 3, 7]);
+  expect(ranks(250)).toEqual([9, 8, 4, 2, 5, 3, 7]);
+  expect(ranks(350)).toEqual([9, 4, 8, 2, 5, 3, 7]);
+  expect(ranks(450)).toEqual([2, 9, 4, 8, 5, 3, 7]);
+  expect(ranks(600)).toEqual([2, 9, 4, 8, 5, 3, 7]);
+  expect(ghosts.at(50).leader).toBeNull();
+  expect(ghosts.at(50).ranking[0].number).toBe(5);
 });
 
 test("the end of a Run: the Ghost stays at its last place with its Run result, and the race lasts until the last end", () => {
@@ -126,6 +215,17 @@ test("the camera frames the Ghosts that still play, and all the Ghosts when no R
   expect(framedBox(ghosts.at(99).ghosts)).toEqual(both);
   expect(framedBox(ghosts.at(100).ghosts)).toEqual({ left: 15, top: 27, right: 16, bottom: 28 });
   expect(framedBox(ghosts.at(200).ghosts)).toEqual(both);
+});
+
+test("the camera can follow one Ghost: a Ghost inside counts at its door, and a Ghost that ended stays framed", () => {
+  const ghosts = ghostsOf(
+    run({ points: [[0, 3, 0, 2, 3, 0]], end: { frame: 100, result: "whiteout" } }),
+    run({ number: 2, points: [[0, 3, 0, 5, 7, 0]] }),
+    run({ number: 3, points: [[0, 3, 0, 16, 13, 1], [50, 4, 3, 6, 12, 1]] }),
+  );
+  const moment = ghosts.at(150);
+  expect(framedBox([moment.ghosts[0]])).toEqual({ left: 12, top: 23, right: 13, bottom: 24 });
+  expect(framedBox([moment.ghosts[2]])).toEqual({ left: 26, top: 33, right: 27, bottom: 34 });
 });
 
 test("the leader has the most Milestones at the frame; on a tie, the first to reach them; before any Milestone, there is none", () => {

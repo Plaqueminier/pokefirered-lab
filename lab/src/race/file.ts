@@ -1,13 +1,13 @@
 // The browser imports this file: no Node import here.
 import type { EndReason } from "../harness/harness";
-import { type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 
 export const CELL = 16;
 export const TILE = 8;
 export const TILE_BYTES = 32;
 export const NUM_PRIMARY = 640;
 
-export type RaceBattle = [start: number, end: number, trainer: boolean | null];
+export type RaceBattle = [start: number, end: number];
 
 export type RaceRun = {
   number: number;
@@ -16,14 +16,18 @@ export type RaceRun = {
   model: string;
   /** Frames and cells as the difference with the point before. */
   track: number[];
-  /** `trainer` is null for a record before format 1: it does not tell. */
   battles: RaceBattle[];
   trainers: [frame: number, name: string][];
   milestones: [frame: number, milestone: string][];
   end: { frame: number; result: EndReason };
+  state: StateEntry[];
+  /** Added up: a point at each change of a cent or more, and at the end. */
+  cost: [frame: number, cost: number, calls: number][];
+  faints: number[];
+  money: [frame: number, money: number][];
 };
 
-export const RACE_VERSION = 1;
+export const RACE_VERSION = 2;
 
 export type RaceFile = { version: typeof RACE_VERSION; runs: RaceRun[] };
 

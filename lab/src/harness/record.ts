@@ -2,13 +2,13 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import { type ReasoningLevel, type StarterSpecies, type STARTERS, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { parseRunId, type ReasoningLevel, runIdText, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
-import { isStateEvent, type StateEvent, StateWatch } from "./game-events";
+import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
-/** Format 1 adds the Game events of the state (see `StateEvent`), and format 2 adds the `track`. */
-export const RECORD_FORMAT = 2;
+/** Format 1: the Game events of the state. Format 2: the `track`. Format 3: the State track. */
+export const RECORD_FORMAT = 3;
 
 const STATE_EVENTS_FORMAT = 1;
 
@@ -130,7 +130,13 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
 /** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
 export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
 
-export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; result: RunResult };
+export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; state?: StateEntry[]; result: RunResult };
+
+export type CurrentRecord = RunRecord & { track: Track; state: StateEntry[] };
+
+export function isCurrentRecord(record: RunRecord): record is CurrentRecord {
+  return (record.format ?? 0) >= RECORD_FORMAT && record.track !== undefined && record.state !== undefined;
+}
 
 export class ButtonTrack {
   readonly holds: ButtonHold[] = [];
@@ -150,11 +156,17 @@ export class GameWatch {
   #levels = 0;
   #flags = 0;
   #facing = 0;
-  readonly #state: StateWatch;
+  readonly #stateEvents: StateWatch;
+  readonly #stateTrack: StateTrackWatch;
   readonly track: Track = [];
 
   constructor(private readonly game: Game) {
-    this.#state = new StateWatch(game);
+    this.#stateEvents = new StateWatch(game);
+    this.#stateTrack = new StateTrackWatch(game);
+  }
+
+  get stateTrack(): readonly StateEntry[] {
+    return this.#stateTrack.entries;
   }
 
   get gameProgress(): number {
@@ -166,7 +178,10 @@ export class GameWatch {
   onFrame(frame: number): GameEvent[] {
     const events: GameEvent[] = [];
     const battle = this.game.battleUnderway();
-    if (battle !== this.#battle) events.push(battle ? { frame, type: "battle", state: "start", trainer: this.game.eventReads().trainerBattle() } : { frame, type: "battle", state: "end" });
+    if (battle !== this.#battle) {
+      events.push(battle ? { frame, type: "battle", state: "start", trainer: this.game.eventReads().trainerBattle() } : { frame, type: "battle", state: "end" });
+      this.#stateTrack.onBattleChange(frame, battle);
+    }
     this.#battle = battle;
     const mode = this.game.mode();
     if (mode !== "other") {
@@ -182,7 +197,9 @@ export class GameWatch {
     }
     // Before the first map, the game has not loaded the save yet.
     if (this.#map === null) return events;
-    events.push(...this.#state.onFrame(mode).map((event) => ({ frame, ...event })));
+    events.push(...this.#stateEvents.onFrame(mode).map((event) => ({ frame, ...event })));
+    this.#stateTrack.onFrame(frame);
+    if (mode === "battle") this.#stateTrack.onBattleFrame(frame);
     // The game moves the save block in memory at each map load: out of the overworld, the place can read as zeros.
     if (mode === "overworld") this.#onPlace(frame);
     return events;
@@ -293,7 +310,7 @@ export class Keyframes<K extends { frame: number }> {
   }
 }
 
-export type Replay = { events: GameEvent[]; frame: number; screen: string; track: Track };
+export type Replay = { events: GameEvent[]; frame: number; screen: string; track: Track; state: StateEntry[] };
 
 
 export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin)[] {
@@ -343,7 +360,7 @@ export async function replay(record: RunRecord): Promise<Replay> {
       run.runFrame(player.next());
       events.push(...watch.onFrame(run.frame));
     }
-    return { events, frame: run.frame, screen: run.screenHash(), track: watch.track };
+    return { events, frame: run.frame, screen: run.screenHash(), track: watch.track, state: [...watch.stateTrack] };
   } finally {
     run.core.close();
   }
@@ -366,11 +383,9 @@ export function continuationOf(parent: RunRecord): Continuation {
   return { frame: new RecordPlayer(parent).frames, events: parent.events.length };
 }
 
-const RUN_ID_DIGITS = 5;
-
 async function nextRunId(dir: string): Promise<string> {
-  const ids = (await readdir(dir)).map((file) => Number(/^(\d+)-/.exec(file)?.[1] ?? 0));
-  return String(Math.max(0, ...ids) + 1).padStart(RUN_ID_DIGITS, "0");
+  const ids = (await readdir(dir)).map((file) => parseRunId(file) ?? 0);
+  return runIdText(Math.max(0, ...ids) + 1);
 }
 
 let writing: Promise<string> = Promise.resolve("");

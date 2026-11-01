@@ -137,7 +137,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     await expect(replay({ ...record, header: { ...record.header, seed: 1 } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 
-  test("the Run record has the track of the player: a point at each change of cell, map or facing; the migration of the record with no track writes the same track, and the Game events of format 1", async () => {
+  test("the Run record has the track of the player: a point at each change of cell, map or facing; the migration of a record below format 3 writes the same track and State track, and the Game events of format 1", async () => {
     const { harness } = await playStarter();
     const record = harness.record();
     const { track = [] } = record;
@@ -157,17 +157,54 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     await Bun.write(join(dir, "00001-starter-4-old.json"), JSON.stringify(old));
     await Bun.write(join(dir, "00002-starter-4-wrong.json"), JSON.stringify({ ...old, events: old.events.filter((e) => e.type !== "battle") }));
     await Bun.write(join(dir, "00003-starter-4-new.json"), JSON.stringify(record));
+    const { state: _, ...format2 } = record;
+    await Bun.write(join(dir, "00004-starter-4-format2.json"), JSON.stringify({ ...format2, format: 2 }));
     const report = await migrate(dir);
     expect(report).toEqual([
       { name: "00001-starter-4-old.json", error: null },
       { name: "00002-starter-4-wrong.json", error: "the replay does not give the maps and the battles of the record" },
+      { name: "00004-starter-4-format2.json", error: null },
     ]);
+    expect(await Bun.file(join(dir, "00004-starter-4-format2.json")).json()).toEqual(record);
     const migrated = await Bun.file(join(dir, "00001-starter-4-old.json")).json();
     expect(migrated).toEqual(record);
     const continued = await Harness.open({ parent: { name: "00001-starter-4-old.json", record: migrated } });
+    await continued.play({ name: "idle", version: "1", play: async () => {} });
+    expect(continued.record().state).toEqual(record.state);
     continued.close();
     expect((await Bun.file(join(dir, "00002-starter-4-wrong.json")).json()).track).toBeUndefined();
-    expect(await readdir(dir)).toHaveLength(3);
+    expect(await readdir(dir)).toHaveLength(4);
+  });
+
+  test("the Run record has the State track: the team and its health at each change, and the battle from its start; a replay gives the same list", async () => {
+    const { harness } = await playStarter();
+    const record = harness.record();
+    const state = record.state ?? [];
+    expect(state.length).toBeGreaterThan(5);
+    state.forEach(({ frame }, i) => expect(frame).toBeGreaterThanOrEqual(state[i - 1]?.frame ?? 0));
+
+    const teams = state.flatMap((entry) => (entry.kind === "team" ? [entry] : []));
+    expect(teams[0].team).toHaveLength(1);
+    expect(teams[0].team[0]).toMatchObject({ species: "SQUIRTLE", nickname: "SQUIRTLE", level: 5 });
+    expect(teams[0].team[0].moves).toEqual(["TACKLE", "TAIL WHIP"]);
+    expect(teams.at(-1)?.team[0].level).toBe(6);
+
+    const health = state.flatMap((entry) => (entry.kind === "health" ? [entry] : []));
+    expect(health[0].health[0].status).toBe("none");
+    expect(health.some((entry) => entry.health[0].hp === 0)).toBe(false);
+    expect(new Set(health.map((entry) => entry.health[0].hp)).size).toBeGreaterThan(2);
+
+    const battles = state.flatMap((entry) => (entry.kind === "battle" ? [entry] : []));
+    const start = record.events.find((event) => event.type === "battle" && event.state === "start")?.frame;
+    expect(battles[0].frame).toBe(start as number);
+    expect(battles[0].trainer).toContain("RIVAL");
+    expect(battles[0].player).toBeNull();
+    const fight = battles.filter((entry) => entry.player !== null);
+    expect(fight[0].player).toMatchObject({ species: "SQUIRTLE", level: 5, status: "none" });
+    expect(fight[0].foe).toMatchObject({ species: "BULBASAUR", level: 5 });
+    expect(fight.at(-1)?.foe?.hp).toBe(0);
+
+    expect((await replay(record)).state).toEqual(state);
   });
 
   test("a Bot that walks in a loop ends with no progress after N Decision points with no progress: a new cell is not progress", async () => {

@@ -1,6 +1,7 @@
 import type { Game } from "./game";
 import { bitAt, type Memory } from "./memory";
-import { nameAt, PARTY_SIZE, readWatchedParty, SPECIES_NONE, type WatchedMon } from "./party";
+import { nameAt, PARTY_SIZE, readWatchedParty, SPECIES_NONE, statusOf, type WatchedMon } from "./party";
+import type { BattleSide } from "./protocol";
 import type { Decode } from "./prompts";
 
 export const TRAINER_FLAGS_START = 0x500;
@@ -11,13 +12,24 @@ export const FLAG_HIDDEN_ITEMS_COUNT = 200;
 const RIVAL_CLASSES = new Set([81, 89, 90]);
 const B_OUTCOME_CAUGHT = 7;
 const BATTLE_TYPE_TRAINER = 1 << 3;
+const SIDES = { player: { battler: 0, party: "gPlayerParty" }, foe: { battler: 1, party: "gEnemyParty" } } as const;
 // BATTLE_TYPE_OLD_MAN_TUTORIAL and BATTLE_TYPE_POKEDUDE.
 const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
 
 // A map load moves the save blocks, and a frame can end in the middle of the copy.
 export type EventKeys = { blocks: string; money: number; party: Uint8Array; items: Uint8Array; flags: Uint8Array };
 
-/** The reads of the game that only the Game events use. */
+function joined(...parts: Uint8Array[]): Uint8Array {
+  const bytes = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    bytes.set(part, at);
+    at += part.length;
+  }
+  return bytes;
+}
+
+/** The reads of the game for the Game events and the State track. */
 export class EventReads {
   constructor(
     private readonly game: Game,
@@ -51,6 +63,37 @@ export class EventReads {
 
   enemyPartyBytes(): Uint8Array {
     return this.mem.global("gEnemyParty").bytes();
+  }
+
+  // The game writes a new Pokémon before it counts it.
+  partyStateBytes(): Uint8Array {
+    return joined(Uint8Array.of(this.mem.global("gPlayerPartyCount").int()), this.mem.global("gPlayerParty").bytes());
+  }
+
+  battleStateBytes(): Uint8Array {
+    const mons = this.mem.global("gBattleMons");
+    return joined(mons.at(SIDES.player.battler).bytes(), mons.at(SIDES.foe.battler).bytes(), this.mem.global("gBattlerPartyIndexes").bytes());
+  }
+
+  battleOpponent(): string | null {
+    return this.trainerBattle() ? this.trainerName(this.mem.global("gTrainerBattleOpponent_A").int()) : null;
+  }
+
+  battleSide(side: keyof typeof SIDES): BattleSide | null {
+    const { battler, party } = SIDES[side];
+    const mon = this.mem.global("gBattleMons").at(battler);
+    const slot = this.mem.global("gBattlerPartyIndexes").at(battler).int();
+    // gBattleMons keeps the old Pokémon until the game loads the new one, also from the last battle.
+    const loaded = slot < PARTY_SIZE && mon.field("personality").int() === this.mem.global(party).at(slot).field("box").field("personality").int() && mon.field("maxHP").int() > 0;
+    if (!loaded) return null;
+    return {
+      species: this.game.speciesName(mon.field("species").int()),
+      nickname: this.decode(mon.field("nickname").bytes()),
+      level: mon.field("level").int(),
+      hp: mon.field("hp").int(),
+      maxHp: mon.field("maxHP").int(),
+      status: statusOf(mon.field("status1").int()),
+    };
   }
 
   flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean } {

@@ -103,7 +103,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
   });
 }
 
-export type WatchedMon = { personality: number; species: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
+export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
 // GetBoxMonData and SetBoxMonData decrypt a box in place, and a frame can end before they encrypt it again.
 export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerParty" | "gEnemyParty", count: number): WatchedMon[] | null {
@@ -121,6 +121,7 @@ export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerPa
     watched.push({
       personality,
       species: nameAt(mem, "gSpeciesNames", species, decode),
+      nickname: decode(box.field("nickname").bytes()),
       level: mon.field("level").int(),
       hp: mon.field("hp").int(),
       maxHp: mon.field("maxHP").int(),

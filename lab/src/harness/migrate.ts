@@ -2,7 +2,7 @@ import { readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { withoutFormat } from "./game-events";
 import { RunPool } from "./pool";
-import { hasStateEvents, isRunRecord, RECORD_FORMAT, RecordPlayer, type Replay, RUNS_DIR, type RunEvent, type RunRecord, withStateEvents } from "./record";
+import { hasStateEvents, isCurrentRecord, isRunRecord, RECORD_FORMAT, RecordPlayer, type Replay, RUNS_DIR, type RunEvent, type RunRecord, withStateEvents } from "./record";
 
 type Migrated = { name: string; error: string | null };
 
@@ -22,12 +22,11 @@ async function migrateRecord(path: string, record: RunRecord, pool: RunPool): Pr
   const refused = refusal(record, replayed);
   if (refused) return refused;
   const events = hasStateEvents(record) ? record.events : withStateEvents(record.events, replayed.events);
-  await Bun.write(`${path}.tmp`, JSON.stringify({ ...record, format: RECORD_FORMAT, events, track: replayed.track }));
+  await Bun.write(`${path}.tmp`, JSON.stringify({ ...record, format: RECORD_FORMAT, events, track: replayed.track, state: replayed.state }));
   await rename(`${path}.tmp`, path);
   return null;
 }
 
-/** Migrates each Run record of `dir` with no track, several at the same time. A record that fails keeps its file. */
 export async function migrate(dir = RUNS_DIR, onDone?: (done: Migrated) => void): Promise<Migrated[]> {
   const left = (await readdir(dir)).filter((name) => name.endsWith(".json")).sort();
   const pool = new RunPool();
@@ -36,7 +35,7 @@ export async function migrate(dir = RUNS_DIR, onDone?: (done: Migrated) => void)
     for (let name = left.shift(); name !== undefined; name = left.shift()) {
       const path = join(dir, name);
       const record: unknown = await Bun.file(path).json().catch(() => null);
-      if (!isRunRecord(record) || record.track !== undefined) continue;
+      if (!isRunRecord(record) || isCurrentRecord(record)) continue;
       const done = { name, error: await migrateRecord(path, record, pool).catch((failure) => String(failure)) };
       results.push(done);
       onDone?.(done);

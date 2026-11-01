@@ -1,16 +1,22 @@
 import type { EndReason } from "../src/harness/harness";
-import { TRACK_FIELD, TRACK_POINT } from "../src/protocol";
-import { decodeTrack, type RaceFile, type RaceRun } from "../src/race/file";
+import { type MonHealth, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
+import { decodeTrack, type RaceBattle, type RaceFile, type RaceRun } from "../src/race/file";
 import type { Door, WorldMap, WorldPlace } from "../src/race/world";
 import type { CellBox } from "./race-camera";
 
 const STEP_FRAMES = 16;
 /** The player can stand 1 cell before a door that it presses into, and a wide door has 2 cells. */
 const DOOR_REACH = 2;
+const BADGE_PREFIX = "badge-";
+const NO_BADGES: boolean[] = new Array(8).fill(false);
 
 export type GhostWorld = { places: readonly WorldPlace[]; maps: readonly Pick<WorldMap, "key" | "warps" | "door">[] };
 
-type GhostBattle = { trainer: boolean | null; name: string | null };
+type GhostBattle = Extract<StateEntry, { kind: "battle" }>;
+
+type GhostMon = TeamMon & MonHealth;
+
+type GhostStats = { milestones: number; lastMilestone: number; badges: readonly boolean[]; cost: number; calls: number; battles: number; trainers: number; faints: number; money: number | null };
 
 export type GhostPlace = { kind: "world"; x: number; y: number; scale: number } | { kind: "door"; door: Door; x: number; y: number; scale: number } | { kind: "nowhere" };
 
@@ -25,13 +31,89 @@ export type GhostNow = {
   battle: GhostBattle | null;
   result: EndReason | null;
   place: GhostPlace;
+  team: GhostMon[];
+  stats: GhostStats;
 };
 
 export type RaceDoor = { key: string; door: Door; ghosts: GhostNow[]; interiors: { map: string; ghosts: GhostNow[] }[] };
 
-export type RaceMoment = { ghosts: GhostNow[]; doors: RaceDoor[]; inside: Map<string, GhostNow[]>; leader: number | null };
+export type RaceMoment = { ghosts: GhostNow[]; doors: RaceDoor[]; inside: Map<string, GhostNow[]>; leader: number | null; ranking: GhostNow[] };
 
-type Ghost = { run: RaceRun; track: Int32Array; doors: (Door | null)[] };
+type TeamAt = { frame: number; mons: GhostMon[] };
+
+type BadgesAt = { frame: number; got: boolean[] };
+
+type Ghost = {
+  run: RaceRun;
+  track: Int32Array;
+  doors: (Door | null)[];
+  team: FrameList<TeamAt>;
+  fights: FrameList<GhostBattle>;
+  battles: FrameList<RaceBattle>;
+  milestones: FrameList<RaceRun["milestones"][number]>;
+  badges: FrameList<BadgesAt>;
+  trainers: FrameList<RaceRun["trainers"][number]>;
+  cost: FrameList<RaceRun["cost"][number]>;
+  money: FrameList<RaceRun["money"][number]>;
+  faints: FrameList<number>;
+};
+
+/** How many of `length` sorted frames are at or before `frame`. */
+function countUntil(length: number, frameAt: (index: number) => number, frame: number): number {
+  let low = 0;
+  let high = length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (frameAt(middle) <= frame) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+class FrameList<T> {
+  constructor(
+    private readonly items: readonly T[],
+    private readonly frameOf: (item: T) => number,
+  ) {}
+
+  count(frame: number): number {
+    return countUntil(this.items.length, (i) => this.frameOf(this.items[i]), frame);
+  }
+
+  last(frame: number): T | undefined {
+    return this.items[this.count(frame) - 1];
+  }
+}
+
+function byFirst<T extends readonly [number, ...unknown[]]>(items: readonly T[]): FrameList<T> {
+  return new FrameList(items, (item) => item[0]);
+}
+
+function byFrame<T extends { frame: number }>(items: readonly T[]): FrameList<T> {
+  return new FrameList(items, ({ frame }) => frame);
+}
+
+function badgeTimeline(milestones: RaceRun["milestones"]): BadgesAt[] {
+  let got = NO_BADGES;
+  return milestones.flatMap(([frame, milestone]) => {
+    if (!milestone.startsWith(BADGE_PREFIX)) return [];
+    got = got.map((old, i) => old || i === Number(milestone.slice(BADGE_PREFIX.length)) - 1);
+    return [{ frame, got }];
+  });
+}
+
+function teamTimeline(state: readonly StateEntry[]): TeamAt[] {
+  const timeline: TeamAt[] = [];
+  let team: readonly TeamMon[] = [];
+  let health: readonly MonHealth[] = [];
+  for (const entry of state) {
+    if (entry.kind === "team") team = entry.team;
+    else if (entry.kind === "health") health = entry.health;
+    else continue;
+    timeline.push({ frame: entry.frame, mons: team.map((mon, i) => ({ ...mon, ...(health[i] ?? { hp: mon.maxHp, status: "none" }) })) });
+  }
+  return timeline;
+}
 
 export function worldCell(place: WorldPlace, x: number, y: number): { x: number; y: number; scale: number } {
   return { x: place.x + x * place.scale, y: place.y + y * place.scale, scale: place.scale };
@@ -52,39 +134,32 @@ function keyOf(track: Int32Array, point: number): string {
 }
 
 function pointAt(track: Int32Array, frame: number): number {
-  let low = 0;
-  let high = track.length / TRACK_POINT - 1;
-  while (low < high) {
-    const middle = (low + high + 1) >> 1;
-    if (track[middle * TRACK_POINT + TRACK_FIELD.frame] <= frame) low = middle;
-    else high = middle - 1;
-  }
-  return low;
+  return Math.max(0, countUntil(track.length / TRACK_POINT, (point) => track[point * TRACK_POINT + TRACK_FIELD.frame], frame) - 1);
 }
 
-function battleAt(run: RaceRun, frame: number): GhostBattle | null {
-  const index = run.battles.findIndex(([start, end]) => frame >= start && frame < end);
-  if (index === -1) return null;
-  const [start, , trainer] = run.battles[index];
-  const next = run.battles[index + 1]?.[0] ?? Number.POSITIVE_INFINITY;
-  // The Game event of a trainer comes after the battle, and only when the player wins.
-  return { trainer, name: trainer ? (run.trainers.find(([at]) => at >= start && at < next)?.[1] ?? null) : null };
+function battleAt({ battles, fights }: Ghost, frame: number): GhostBattle | null {
+  const battle = battles.last(frame);
+  return battle && frame < battle[1] ? (fights.last(frame) ?? null) : null;
 }
 
-function leaderAt(ghosts: readonly Ghost[], frame: number): number | null {
-  let leader: number | null = null;
-  let most = 0;
-  let first = Number.POSITIVE_INFINITY;
-  ghosts.forEach(({ run }, index) => {
-    const reached = run.milestones.filter(([at]) => at <= frame);
-    const last = reached.at(-1)?.[0] ?? Number.POSITIVE_INFINITY;
-    if (reached.length > most || (reached.length === most && most > 0 && last < first)) {
-      leader = index;
-      most = reached.length;
-      first = last;
-    }
-  });
-  return leader;
+function statsAt(ghost: Ghost, frame: number): GhostStats {
+  const cost = ghost.cost.last(frame);
+  return {
+    milestones: ghost.milestones.count(frame),
+    lastMilestone: ghost.milestones.last(frame)?.[0] ?? 0,
+    badges: ghost.badges.last(frame)?.got ?? NO_BADGES,
+    cost: cost?.[1] ?? 0,
+    calls: cost?.[2] ?? 0,
+    battles: ghost.battles.count(frame),
+    trainers: ghost.trainers.count(frame),
+    faints: ghost.faints.count(frame),
+    money: ghost.money.last(frame)?.[1] ?? null,
+  };
+}
+
+function rankingOf(ghosts: readonly GhostNow[]): GhostNow[] {
+  const levels = (ghost: GhostNow) => ghost.team.reduce((sum, mon) => sum + mon.level, 0);
+  return [...ghosts].sort((a, b) => b.stats.milestones - a.stats.milestones || a.stats.lastMilestone - b.stats.lastMilestone || levels(b) - levels(a) || a.number - b.number);
 }
 
 function doorsOf(ghosts: readonly GhostNow[]): RaceDoor[] {
@@ -115,7 +190,20 @@ export class RaceGhosts {
     this.#maps = new Map(world.maps.map((map) => [map.key, map]));
     this.#ghosts = race.runs.map((run) => {
       const track = decodeTrack(run.track);
-      return { run, track, doors: this.#doorsOf(track) };
+      return {
+        run,
+        track,
+        doors: this.#doorsOf(track),
+        team: byFrame(teamTimeline(run.state)),
+        fights: byFrame(run.state.filter((entry): entry is GhostBattle => entry.kind === "battle")),
+        battles: byFirst(run.battles),
+        milestones: byFirst(run.milestones),
+        badges: byFrame(badgeTimeline(run.milestones)),
+        trainers: byFirst(run.trainers),
+        cost: byFirst(run.cost),
+        money: byFirst(run.money),
+        faints: new FrameList(run.faints, (frame) => frame),
+      };
     });
     this.lastFrame = Math.max(0, ...race.runs.map((run) => run.end.frame));
   }
@@ -124,7 +212,9 @@ export class RaceGhosts {
     const ghosts = this.#ghosts.map((ghost, index) => this.#ghostAt(ghost, index, frame));
     const inside = new Map<string, GhostNow[]>();
     for (const ghost of ghosts) if (ghost.place.kind !== "world") inside.set(ghost.map, [...(inside.get(ghost.map) ?? []), ghost]);
-    return { ghosts, doors: doorsOf(ghosts), inside, leader: leaderAt(this.#ghosts, frame) };
+    const ranking = rankingOf(ghosts);
+    const first = ranking[0];
+    return { ghosts, doors: doorsOf(ghosts), inside, ranking, leader: first && first.stats.milestones > 0 ? first.run : null };
   }
 
   winners(milestone: string, frame: number): number {
@@ -174,15 +264,16 @@ export class RaceGhosts {
     return door && doorCell ? { kind: "door", door, ...doorCell } : { kind: "nowhere" };
   }
 
-  #ghostAt({ run, track, doors }: Ghost, index: number, frame: number): GhostNow {
+  #ghostAt(ghost: Ghost, index: number, frame: number): GhostNow {
+    const { run, track, doors } = ghost;
     const point = pointAt(track, frame);
     const at = point * TRACK_POINT;
     const map = keyOf(track, point);
     const x = track[at + TRACK_FIELD.x];
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
-    const battle = battleAt(run, frame);
-    const now: GhostNow = { run: index, number: run.number, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]) };
+    const battle = battleAt(ghost, frame);
+    const now: GhostNow = { run: index, number: run.number, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

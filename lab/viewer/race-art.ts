@@ -1,10 +1,13 @@
+import { runIdText } from "../src/protocol";
 import { CELL, NUM_PRIMARY, TILE, TILE_BYTES } from "../src/race/file";
-import type { World, WorldMap, WorldSprite } from "../src/race/world";
+import type { World, WorldIcon, WorldMap, WorldSprite } from "../src/race/world";
+import { FRAME_WIDTH, type GhostPart, ghostSheet, SHEET_HEIGHT, SHEET_WIDTH } from "./race-sprite";
 
 const NUM_PRIMARY_PALETTES = 7;
 const METATILE_ENTRIES = 8;
 const LAYERS = 2;
 const LAYER_ENTRIES = 4;
+const FACE_TOP = 8;
 
 function decoded(base64: string): Uint8Array {
   return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
@@ -49,37 +52,75 @@ function spriteCanvas({ width, height, pixels, palette }: WorldSprite): HTMLCanv
   return canvas;
 }
 
+function cached<K, V>(known: Map<K, V>, key: K, make: () => V): V {
+  const value = known.get(key);
+  if (value !== undefined) return value;
+  const made = make();
+  known.set(key, made);
+  return made;
+}
+
 type Tileset = { tiles: Uint8Array; palettes: number[][]; metatiles: Uint16Array };
 
 export class RaceArt {
-  readonly player: HTMLCanvasElement;
   readonly badges: HTMLCanvasElement;
   readonly maps: ReadonlyMap<string, WorldMap>;
   readonly #tilesets: Tileset[];
   readonly #painted = new Map<string, HTMLCanvasElement>();
+  readonly #people: GhostPart[];
+  readonly #sheets = new Map<number, HTMLCanvasElement>();
+  readonly #faces = new Map<number, string>();
+  readonly #icons: Map<string, WorldIcon>;
+  readonly #iconUrls = new Map<string, string | null>();
 
   constructor(world: World) {
-    this.player = spriteCanvas(world.player);
+    this.#people = world.people.map(({ name, layout, pixels, palette }) => ({ name, layout, palette, indices: decoded(pixels) }));
+    this.#icons = new Map(world.icons.map((icon) => [icon.species, icon]));
     this.badges = spriteCanvas(world.badges);
     this.maps = new Map(world.maps.map((map) => [map.key, map]));
     this.#tilesets = world.tilesets.map(({ tiles, palettes, metatiles }) => ({ tiles: decoded(tiles), palettes, metatiles: new Uint16Array(decoded(metatiles).buffer) }));
   }
 
+  ghost(number: number): HTMLCanvasElement {
+    return cached(this.#sheets, number, () => {
+      const canvas = newCanvas(SHEET_WIDTH, SHEET_HEIGHT);
+      const ctx = context(canvas);
+      const image = ctx.createImageData(SHEET_WIDTH, SHEET_HEIGHT);
+      image.data.set(ghostSheet(runIdText(number), this.#people).rgba);
+      ctx.putImageData(image, 0, 0);
+      return canvas;
+    });
+  }
+
+  faceUrl(number: number): string {
+    return cached(this.#faces, number, () => {
+      const canvas = newCanvas(FRAME_WIDTH, SHEET_HEIGHT - FACE_TOP);
+      context(canvas).drawImage(this.ghost(number), 0, FACE_TOP, FRAME_WIDTH, canvas.height, 0, 0, FRAME_WIDTH, canvas.height);
+      return canvas.toDataURL();
+    });
+  }
+
+  iconUrl(species: string): string | null {
+    return cached(this.#iconUrls, species, () => {
+      const icon = this.#icons.get(species);
+      return icon ? spriteCanvas(icon).toDataURL() : null;
+    });
+  }
+
   paint(key: string): HTMLCanvasElement {
-    const painted = this.#painted.get(key);
-    if (painted) return painted;
-    const map = this.maps.get(key);
-    if (!map) throw new Error(`no map ${key} in the world`);
-    const canvas = newCanvas(map.width * CELL, map.height * CELL);
-    const ctx = context(canvas);
-    const image = ctx.createImageData(canvas.width, canvas.height);
-    const blocks = new Uint16Array(decoded(map.blocks).buffer);
-    const primary = this.#tilesets[map.primary];
-    const secondary = this.#tilesets[map.secondary];
-    blocks.forEach((block, cell) => this.#drawMetatile(image, block & 0x3ff, ((cell % map.width) * CELL), Math.floor(cell / map.width) * CELL, primary, secondary));
-    ctx.putImageData(image, 0, 0);
-    this.#painted.set(key, canvas);
-    return canvas;
+    return cached(this.#painted, key, () => {
+      const map = this.maps.get(key);
+      if (!map) throw new Error(`no map ${key} in the world`);
+      const canvas = newCanvas(map.width * CELL, map.height * CELL);
+      const ctx = context(canvas);
+      const image = ctx.createImageData(canvas.width, canvas.height);
+      const blocks = new Uint16Array(decoded(map.blocks).buffer);
+      const primary = this.#tilesets[map.primary];
+      const secondary = this.#tilesets[map.secondary];
+      blocks.forEach((block, cell) => this.#drawMetatile(image, block & 0x3ff, ((cell % map.width) * CELL), Math.floor(cell / map.width) * CELL, primary, secondary));
+      ctx.putImageData(image, 0, 0);
+      return canvas;
+    });
   }
 
   #drawMetatile(image: ImageData, metatile: number, left: number, top: number, primary: Tileset, secondary: Tileset): void {
