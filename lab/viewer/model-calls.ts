@@ -26,7 +26,7 @@ const BLOCK_TITLES = [
   [/^Your action ".*" is impossible/, "Impossible"],
 ] as const;
 
-export type BlockTitle = (typeof BLOCK_TITLES)[number][1] | "Your answer" | "Rules" | "Other";
+export type BlockTitle = (typeof BLOCK_TITLES)[number][1] | "Reasoning" | "Your answer" | "Rules" | "Other";
 
 type Answer = Decision | { error: string; raw: string | null };
 
@@ -36,21 +36,21 @@ type CallView = { title: string; answer: Answer; fields: Record<string, string>;
 
 type CallRow = { frame: number; situation: string; action: string | null; stuck?: number; turn?: string };
 
-export type ModelPanelView = { rows: CallRow[]; selected: number | null; thinking: boolean; call: CallView | null };
+export type ModelPanelView = { rows: CallRow[]; selected: number | null; calling: boolean; call: CallView | null };
 
-export function modelCalls(events: readonly RunEvent[]): { calls: ModelEvent[]; thinking: (callsStarted: number) => boolean } {
+export function modelCalls(events: readonly RunEvent[]): { calls: ModelEvent[]; calling: (callsStarted: number) => boolean } {
   const calls = events.filter((e): e is ModelEvent => e.type === "model");
-  return { calls, thinking: (callsStarted) => callsStarted > calls.length };
+  return { calls, calling: (callsStarted) => callsStarted > calls.length };
 }
 
 export function modelPanelView(events: readonly RunEvent[], callsStarted: number, selected: number | null): ModelPanelView {
-  const { calls, thinking } = modelCalls(events);
+  const { calls, calling } = modelCalls(events);
   const index = selected !== null && selected < calls.length ? selected : calls.length - 1;
   const call = calls[index];
   return {
     rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, turn: turnText(c) })),
     selected: call ? index : null,
-    thinking: thinking(callsStarted),
+    calling: calling(callsStarted),
     call: call ? callView(call, index) : null,
   };
 }
@@ -67,8 +67,8 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function turnKind({ reflection, review }: ModelEvent): "reflection" | "review" | undefined {
-  return reflection ? "reflection" : review ? "review" : undefined;
+function turnKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
+  return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
 }
 
 function turnText(call: ModelEvent): string | undefined {
@@ -93,9 +93,10 @@ function messageBlocks(message: string): { title: BlockTitle; text: string }[] {
   return message.split("\n\n").map((text): { title: BlockTitle; text: string } => ({ title: BLOCK_TITLES.find(([start]) => start.test(text))?.[1] ?? "Other", text }));
 }
 
-export function promptBlocks({ prompt }: ModelEvent): PromptBlock[] {
+export function promptBlocks({ prompt, reasoning }: ModelEvent): PromptBlock[] {
   const { system, user, turns = [] } = prompt;
   const blocks: { title: BlockTitle; text: string }[] = [
+    ...(reasoning ? [{ title: "Reasoning" as const, text: reasoning }] : []),
     ...messageBlocks(user),
     ...turns.flatMap((turn) => [{ title: "Your answer" as const, text: turn.assistant }, ...messageBlocks(turn.user)]),
     { title: "Rules", text: system },

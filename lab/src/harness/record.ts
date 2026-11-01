@@ -2,7 +2,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import type { REASONING, STARTERS } from "../protocol";
+import type { ReasoningLevel, StarterSpecies, STARTERS } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import { isStateEvent, type StateEvent, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
@@ -30,15 +30,13 @@ export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
   return (record.format ?? 0) >= RECORD_FORMAT;
 }
 
-type Reasoning = (typeof REASONING)[number];
-
 type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
-export type ModelSettings = { id: string; costLimit: number; reasoning: Reasoning; temperature: number | null; starter: Starter; stopAtWhiteout: boolean };
+export type ModelSettings = { id: string; costLimit: number; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean };
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
+export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
 
 export type Prompt = { system: string; user: string; turns?: Turn[] };
 
@@ -46,9 +44,9 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string };
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; character?: string; starter?: StarterSpecies };
 
-export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; stuck?: number; reflection?: boolean; review?: boolean } & (
+export type ModelAnswer = { model: string; situation: string; prompt: Prompt; answer: string | null; usage: Usage; reasoning?: string; stuck?: number; character?: boolean; reflection?: boolean; review?: boolean } & (
   | { decision: Decision; error: null }
   | { decision: null; error: string }
 );
@@ -57,7 +55,7 @@ export type ModelEvent = { type: "model"; frame: number; latencyMs: number } & M
 
 export type NodeRange = { from: number; to: number };
 
-export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | null; usage: Usage } & NodeRange & ({ summary: string; error: null } | { summary: null; error: string });
+export type SummaryAnswer = { model: string; prompt: Prompt; answer: string | null; usage: Usage; reasoning?: string } & NodeRange & ({ summary: string; error: null } | { summary: null; error: string });
 
 export type SummaryEvent = { type: "summary"; frame: number; latencyMs: number } & SummaryAnswer;
 

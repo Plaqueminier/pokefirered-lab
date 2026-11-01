@@ -2,11 +2,12 @@ import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
 import { type ModelAnswer, modelEvents, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type RunEvent, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision } from "../src/model/decision";
 import { dueMerges, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt, summarySchema } from "../src/model/memory-tree";
-import { type AnswerFormat, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
+import { type AskOptions, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { importantEvents } from "../src/model/important-events";
-import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, situation, systemPrompt, type TurnKind, turnKind, userPrompt, zoomMessage } from "../src/model/prompt";
+import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
 
 const MAX_UNREADABLE = 3;
@@ -20,7 +21,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "12",
+    version: "13",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -58,9 +59,15 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
-      const turn = this.#conversation?.turnKind ?? turnKind(kind, this.harness.events, this.harness.noProgress);
-      const asked = askedOf(observation, this.#conversation?.atlasShown ?? turn !== "normal");
+      const turn = this.#conversation?.turnKind ?? turnKind(kind, this.harness.events, this.harness.noProgress, observation.party.length);
+      const asked = askedOf(observation, this.#conversation?.atlasShown ?? showsAtlas(turn));
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
+      const forced = forcedAnswer(asked, this.harness.events, this.settings.starter);
+      if (forced) {
+        this.#conversation = null;
+        await this.harness.perform({ name: "choose", option: forced });
+        continue;
+      }
       if (!this.#conversation) {
         this.#conversation = this.newConversation(observation, asked, turn);
         this.#promptObservation = observation;
@@ -90,12 +97,15 @@ class ModelPlay {
 
   private async answer(conversation: Conversation, asked: Asked): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
     const prompt: Prompt = { system: this.#system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
-    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
-    const reply = await this.tryAsk(prompt);
+    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
+    const reply = await this.tryAsk(prompt, {
+      format: request.character ? { name: "character", schema: CHARACTER_SCHEMA } : undefined,
+      reasoning: conversation.turnKind === "normal" ? undefined : this.settings.thinking,
+    });
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
-    const replied = { ...request, answer: reply.content, usage: reply.usage };
+    const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
-      const decision = readDecision(reply.content);
+      const decision = request.character ? readCharacterDecision(reply.content, this.settings.starter) : readDecision(reply.content);
       const action = readAction(decision.action, asked);
       if (action.name === "viewAtlas" && asked.kind === "walk") {
         conversation.atlasShown = true;
@@ -112,8 +122,8 @@ class ModelPlay {
   private newConversation(observation: Observation, asked: Asked, turn: TurnKind): Conversation {
     const { events, noProgress } = this.harness;
     const happened = importantEvents(this.#promptObservation, observation, events);
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened });
-    return { user, turns: [], atlasShown: turn !== "normal", impossible: 0, stuck: noProgress.stuck, turnKind: turn };
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter) });
+    return { user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn };
   }
 
   private async summarize(): Promise<void> {
@@ -130,19 +140,20 @@ class ModelPlay {
   private async summary(tree: MemoryTree, node: NodeRange): Promise<SummaryAnswer> {
     const prompt = summaryPrompt(tree, node);
     const request = { model: this.settings.id, prompt, ...node };
-    const reply = await this.tryAsk(prompt, { name: "summary", schema: summarySchema(node) });
+    const reply = await this.tryAsk(prompt, { format: { name: "summary", schema: summarySchema(node) } });
     if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
+    const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
-      return { ...request, answer: reply.content, usage: reply.usage, summary: readSummary(reply.content, node), error: null };
+      return { ...replied, summary: readSummary(reply.content, node), error: null };
     } catch (error) {
-      return { ...request, answer: reply.content, usage: reply.usage, summary: null, error: errorText(error) };
+      return { ...replied, summary: null, error: errorText(error) };
     }
   }
 
   /** The reply of the model, or the text of the error when the request fails. */
-  private async tryAsk(prompt: Prompt, format?: AnswerFormat): Promise<ModelReply | string> {
+  private async tryAsk(prompt: Prompt, options?: AskOptions): Promise<ModelReply | string> {
     try {
-      return await this.ask(prompt, format);
+      return await this.ask(prompt, options);
     } catch (error) {
       return `the request failed: ${errorText(error)}`;
     }

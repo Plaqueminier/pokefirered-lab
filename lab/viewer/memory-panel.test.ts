@@ -14,13 +14,13 @@ const USAGE = { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cos
 
 const noteTaker = (): ModelClient => {
   let calls = 0;
-  return async (prompt, format) => {
-    if (format?.name === "summary") {
+  return async (prompt, options) => {
+    if (options?.format?.name === "summary") {
       const parts = [...prompt.user.matchAll(/^#([\d-]+): /gm)].map((m) => m[1]);
       return { content: JSON.stringify({ summary: `summary of ${parts.join(" and ")}` }), usage: USAGE };
     }
     calls++;
-    const content = { reason: "r", action: "goTo 8 6", mission: "Get my first Pokémon", objective: "Leave the house", note: `fact ${calls}` };
+    const content = { reason: "r", action: "goTo 8 6", mission: "Get my first Pokémon", objective: "Leave the house", note: `fact ${calls}`, character: "A shy baker.", starter: "SQUIRTLE" };
     return { content: JSON.stringify(content), usage: USAGE };
   };
 };

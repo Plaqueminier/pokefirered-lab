@@ -347,7 +347,9 @@ function replayModel(player: RecordPlayer): ReplayModel | null {
   const total = player.modelTotals;
   // A Run record from before the starter option has none: its model chose freely.
   const starter = settings.starter ?? DEFAULT_STARTER;
-  return { id: settings.id, costLimit: settings.costLimit, reasoning: settings.reasoning, starter, calls: played.calls, cost: played.cost, totalCalls: total.calls, totalCost: total.cost };
+  // A Run record from before the thinking option has one level for all its Model calls.
+  const thinking = settings.thinking ?? settings.reasoning;
+  return { id: settings.id, costLimit: settings.costLimit, reasoning: settings.reasoning, thinking, starter, calls: played.calls, cost: played.cost, totalCalls: total.calls, totalCost: total.cost };
 }
 
 async function openRecord(name: string): Promise<RunRecord | string> {
@@ -382,7 +384,7 @@ function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopA
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, starter: spec.model.starter, cost, callsStarted: modelCallsStarted } : null,
+    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, thinking: spec.model.thinking, starter: spec.model.starter, cost, callsStarted: modelCallsStarted } : null,
     frame: view.frame,
     milestone,
     battle,

@@ -60,6 +60,14 @@ _Avoid_: notes (the old text that the AI model wrote again at each call), memory
 The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is not progress.
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
+**Character turn**:
+The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker. The AI model invents the trainer that it plays, with the first Pokémon and the style of the nicknames. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
+_Avoid_: persona call, personality turn
+
+**Thinking**:
+The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**.
+_Avoid_: thinking mode, deep reasoning
+
 **Reflection turn**:
 A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk or battle action. Its prompt asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. At a walk, it also adds the full **Atlas**. It is not a separate request.
 _Avoid_: stuck message, reflection call

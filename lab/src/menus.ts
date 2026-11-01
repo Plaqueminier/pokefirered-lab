@@ -149,6 +149,13 @@ function keyboardRows(mem: Memory, decode: Decode, page: number): string[] {
   return Array.from({ length: rows.length }, (_, row) => decode(rows.at(row).bytes()).slice(0, columns));
 }
 
+const NICKNAME_SUBJECT = "a nickname for ";
+
+/** The species of the Pokémon that gets a nickname, or null when the naming screen asks for another name. */
+export function nicknamedSpecies(subject: string): string | null {
+  return subject.startsWith(NICKNAME_SUBJECT) ? subject.slice(NICKNAME_SUBJECT.length) : null;
+}
+
 export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_NamingScreen") return null;
   const screen = mem.global("sNamingScreen").deref();
@@ -156,7 +163,7 @@ export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
   const keys = keyboardRows(mem, decode, page);
   const cursor = mem.global("gSprites").at(screen.field("cursorSpriteId").int()).field("data");
   return {
-    subject: NAMING_SUBJECTS.get(screen.field("templateNum").int()) ?? `a nickname for ${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
+    subject: NAMING_SUBJECTS.get(screen.field("templateNum").int()) ?? `${NICKNAME_SUBJECT}${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
     maxLength: screen.field("template").deref().field("maxChars").int(),
     ready: screen.field("state").int() === NAMING_INPUT_STATE,
     page,

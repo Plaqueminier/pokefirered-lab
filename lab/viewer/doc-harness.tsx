@@ -192,7 +192,7 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
     tone: "bad",
     lines: ["all the Pokémon of the party faint", "with “stop at a whiteout”"],
     detail:
-      "all the Pokémon of the party faint, in or out of a battle (model bot with “stop at a whiteout”), after the action that reads the whiteout. The rules of the prompt tell the model to play safe. The result keeps the last text of the game.",
+      "all the Pokémon of the party faint, in or out of a battle (model bot with “stop at a whiteout”), after the action that reads the whiteout. The rules of the prompt tell the model that the Run ends, and also not to play too safe. The result keeps the last text of the game.",
   },
   "unknown screen": {
     icon: CircleHelp,

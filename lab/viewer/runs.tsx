@@ -1,6 +1,6 @@
 import { Play, Square } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, REASONING, type ReasoningLevel, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
 
@@ -101,8 +101,8 @@ const FROM_START = "";
 
 function shownModel(run: RunSummary | null): string {
   if (!run?.model) return "";
-  const { id, reasoning, starter, cost, costLimit } = run.model;
-  return `Run ${run.id}: model ${id}, reasoning ${reasoning}, starter ${starter}, cost ${dollars(cost)} of ${dollars(costLimit)}`;
+  const { id, reasoning, thinking, starter, cost, costLimit } = run.model;
+  return `Run ${run.id}: model ${id}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, cost ${dollars(cost)} of ${dollars(costLimit)}`;
 }
 
 export type Places = { free: number; limit: number };
@@ -118,13 +118,16 @@ function totalCost(count: number, given: string, byDefault: number | null): stri
   return count === 1 ? dollars(limit) : `${count} × ${dollars(limit)} = ${dollars(count * limit)}`;
 }
 
+const LEVEL_OPTIONS = REASONING.map((level) => ({ value: level, label: level }));
+
 export function BotsPanel({ shown, bots, records, places, send }: { shown: ShownRun | null; bots: readonly BotInfo[]; records: readonly string[]; places: Places; send: Send }) {
   const freePlaces = places.free;
   const names = bots.map((info) => info.name);
   const [bot, setBot] = useState("");
   const [model, setModel] = useState("");
   const [costLimit, setCostLimit] = useState("");
-  const [reasoning, setReasoning] = useState<(typeof REASONING)[number]>(DEFAULT_REASONING);
+  const [reasoning, setReasoning] = useState<ReasoningLevel>(DEFAULT_REASONING);
+  const [thinking, setThinking] = useState<ReasoningLevel>(DEFAULT_THINKING);
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
   const [stopAtWhiteout, setStopAtWhiteout] = useState(true);
   const [from, setFrom] = useState(FROM_START);
@@ -143,6 +146,7 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
       id: model.trim() || undefined,
       costLimit: limit ? Number(limit) : undefined,
       reasoning: option(reasoning, DEFAULT_REASONING),
+      thinking: option(thinking, DEFAULT_THINKING),
       starter: option(starter, DEFAULT_STARTER),
       stopAtWhiteout,
     };
@@ -167,10 +171,13 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
         <Field label="Cost limit" hint="Empty: LAB_COST_LIMIT, or 0.50 $.">
           <Input type="number" min="0.01" step="0.05" unit="$" placeholder="0.50" value={costLimit} onInput={(event) => setCostLimit(event.currentTarget.value)} />
         </Field>
-        <Field label="Reasoning" hint="off is cheaper, but the model makes more mistakes.">
-          <Select options={REASONING.map((level) => ({ value: level, label: level }))} value={reasoning} onChange={setReasoning} />
+        <Field label="Reasoning" hint="For the usual decisions. off is cheaper, but the model makes more mistakes.">
+          <Select options={LEVEL_OPTIONS} value={reasoning} onChange={setReasoning} />
         </Field>
-        <Field label="Starter" hint="free: the model chooses.">
+        <Field label="Thinking" hint="For the Character, Reflection and Review turns.">
+          <Select options={LEVEL_OPTIONS} value={thinking} onChange={setThinking} />
+        </Field>
+        <Field label="Starter" hint="free: the character of the model chooses.">
           <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
         </Field>
         <Field label="Count" hint={`Runs of the Bot to start: 1 to ${freePlaces}, the free places.`} error={countError(countOk, places)}>

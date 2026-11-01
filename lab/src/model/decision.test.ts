@@ -115,10 +115,10 @@ describe("readAction", () => {
     expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use buy, sell, leave or zoom');
   });
 
-  test("at the naming screen: name with the rest of the line as the text, with its spaces and its case, or name alone to keep the name; no press", () => {
+  test("at the naming screen: name with the rest of the line as the text, with its spaces and its case, or name alone to keep a name that is not a nickname; no press", () => {
     const naming: Asked = { kind: "naming", party, subject: "a nickname for BULBASAUR", maxLength: 10, keys: [] };
     expect(readAction("name Mr Bulb", naming)).toEqual({ name: "name", text: "Mr Bulb" });
-    expect(readAction("name", naming)).toEqual({ name: "name", text: "" });
+    expect(readAction("name", { ...naming, subject: "your name" })).toEqual({ name: "name", text: "" });
     expect(readAction("name(Bulby, Jr.)", naming)).toEqual({ name: "name", text: "Bulby, Jr." });
     expect(readAction("name A, B", naming)).toEqual({ name: "name", text: "A, B" });
     expect(() => readAction("press A", naming)).toThrow('"press" is not an action now: use name or zoom');

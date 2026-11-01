@@ -119,7 +119,7 @@ function ButtonDemo() {
 const REASONING_OPTIONS = ["off", "low", "medium", "high"].map((level) => ({ value: level, label: `reasoning ${level}` }));
 
 function FieldDemo() {
-  const [reasoning, setReasoning] = useState("low");
+  const [reasoning, setReasoning] = useState("off");
   const [whiteout, setWhiteout] = useState(true);
   const [sound, setSound] = useState(false);
   return (

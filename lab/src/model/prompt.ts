@@ -6,8 +6,10 @@ import { mapNamed } from "../harness/atlas";
 import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, modelEvents, type NodeRange, type RunEvent } from "../harness/record";
+import { nicknamedSpecies } from "../menus";
 import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText } from "../protocol";
+import { characterTurn, runCharacter } from "./character";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
 import { type MemoryTree, memoryLines, memoryTree, nodeName, zoomLines } from "./memory-tree";
@@ -46,8 +48,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 };
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
-const NICKNAME_QUESTION = /nickname/i;
-const CREATIVE_NAME = "A nickname has no effect on the game: be creative, there is nothing to optimize.";
+const NICKNAME_RULE = "Give a nickname to each Pokémon that you get.";
 const WORD_SCREEN_LEFT = "The game opened a screen to write the words of a profile, and you cannot write words: the program left it. A profile gives nothing in the game: choose NO when a person asks for your profile.";
 const TRANSFERS = [
   ["withdraw", "take items from the PC and put them in your Bag", "withdraw POTION 2"],
@@ -56,15 +57,22 @@ const TRANSFERS = [
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 
-const WHITEOUT_RULE =
-  "If all your Pokémon faint, the Run ends, and you cannot try again. Play safe: heal before your Pokémon are weak, switch or `run` when a battle goes badly, and catch more Pokémon, so that one lost Pokémon does not end the Run.";
+const WHITEOUT_ENDS =
+  "If all your Pokémon faint, the Run ends. But a Run that plays too safe also makes no progress: do not wait for a perfect team, accept fair battles and explore. Before a difficult battle, heal your Pokémon. When a battle goes very badly, switch or `run`.";
+const WHITEOUT_CONTINUES =
+  "If all your Pokémon faint, the Run continues: you lose some money (more with more badges and a higher level), your party is healed, and you are back at the last Pokémon Center that you entered, or your home. Then you continue from there.";
 
 function starterRule(starter: ModelSettings["starter"]): string {
-  return starter === "free" ? "Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer." : `Choose ${starter} as your first Pokémon.`;
+  return starter === "free" ? "Take the first Pokémon that your character chose." : `Choose ${starter} as your first Pokémon.`;
+}
+
+function characterLine(events: readonly RunEvent[]): string[] {
+  const decision = runCharacter(events);
+  return decision ? [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}. Play as this trainer.`] : [];
 }
 
 export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">): string {
-  const rules = [starterRule(starter), ...(stopAtWhiteout ? [WHITEOUT_RULE] : [])].join("\n");
+  const rules = [starterRule(starter), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES].join("\n");
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
@@ -90,6 +98,7 @@ Rules of the program:
 - When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
+- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer. At the question of a nickname, it answers YES.
 
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
@@ -105,7 +114,7 @@ Advice of a good player:
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
 - Buy Poké Balls and Potions at a Poké Mart.
 - Each Pokémon Center has a PC. It keeps your items, and the Pokémon that you catch when your party has 6 Pokémon. You cannot take a Pokémon from the PC yet.
-- When the game asks for a name or a nickname, choose freely: keep the name of the game, or give a name that you like, serious or funny.
+- ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
@@ -130,12 +139,24 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
-/** A reflection turn happens at a walk or a battle action, a review turn at a walk only. At a walk, both add the full Atlas. A reflection turn has the priority. */
-export type TurnKind = "normal" | "reflection" | "review";
+/** A character turn happens while a Run has no Pokémon and no character, and it comes first. A reflection turn happens at a walk or a battle action, a review turn at a walk only. At a walk, both add the full Atlas. A reflection turn has the priority over a review turn. */
+export type TurnKind = "normal" | "character" | "reflection" | "review";
 
-export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[] };
+export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[] };
 
-export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], noProgress: NoProgress): TurnKind {
+/** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
+export function turnRequest(turn: TurnKind, atWalk: boolean, starter: ModelSettings["starter"]): string[] {
+  if (turn === "character") return characterTurn(starter);
+  if (turn === "reflection") return reflection(atWalk);
+  return turn === "review" ? REVIEW : [];
+}
+
+export function showsAtlas(turn: TurnKind): boolean {
+  return turn === "reflection" || turn === "review";
+}
+
+export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], noProgress: NoProgress, partySize: number): TurnKind {
+  if (partySize === 0 && !runCharacter(events)) return "character";
   if ((kind === "walk" || kind === "battleAction") && reflectionDue(events, noProgress)) return "reflection";
   return kind === "walk" && reviewDue(events) ? "review" : "normal";
 }
@@ -153,7 +174,7 @@ function reviewDue(events: readonly RunEvent[]): boolean {
   return turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length >= REVIEW_EVERY;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened }: PromptState): string {
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const answers = answeredTurns(events);
   const calls = pastCalls(answers);
@@ -165,13 +186,14 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
     missionLine(events),
+    ...characterLine(events),
     "",
     memoryText(memoryTree(events)),
     "",
     waitLine(asked, events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): ${noProgress.stuck}.`,
-    ...(turn === "reflection" ? reflection(asked.kind === "walk") : turn === "review" ? REVIEW : []),
+    ...request,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     ...loopWarning(answers),
     "",
@@ -184,7 +206,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     ...world,
     ...context(asked),
-    ...(turn !== "normal" && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
+    ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
     "",
     "Actions:",
     ...actionLines(asked),
@@ -203,7 +225,7 @@ function waitLine(asked: Asked, events: readonly RunEvent[]): string {
   const question = lastText(events);
   if (!question) return `The game waits for ${WAITS.choice}: ${asked.options.join(", ")}.`;
   const line = `The game asks: "${question}" Choose ${alternatives(asked.options)}.`;
-  return NICKNAME_QUESTION.test(question) ? `${line} ${CREATIVE_NAME}` : line;
+  return line;
 }
 
 export function atlasMessage(asked: Asked & { kind: "walk" }): string {
@@ -456,7 +478,7 @@ function actionLines(asked: Asked): string[] {
     case "naming":
       return [
         `- name <text>: type the text and press OK, for example name Sparky. The keys of the keyboard: ${keyList(asked.keys)} A " in the text types “ or ”.`,
-        "- name: keep the name that the game gives.",
+        ...(nicknamedSpecies(asked.subject) ? [] : ["- name: keep the name that the game gives."]),
       ];
     case "learnMove": {
       const { nickname, moves } = asked.party[asked.slot];

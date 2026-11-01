@@ -12,7 +12,7 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     error: null,
     parent: null,
     continued: null,
-    model: { id: "a/b", costLimit: 0.5, reasoning: "low", starter: "free", cost: 0.12, callsStarted: 3 },
+    model: { id: "a/b", costLimit: 0.5, reasoning: "off", thinking: "medium", starter: "free", cost: 0.12, callsStarted: 3 },
     frame: 1000 * id,
     milestone: null,
     battle: false,

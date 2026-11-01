@@ -11,7 +11,7 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go A" ? "Mom is downstairs." : "" }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go A" ? "Mom is downstairs." : "", character: "A loud fan of fire.", starter: "CHARMANDER" }),
   usage: { promptTokens: 1000, cachedTokens: 600, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 
@@ -46,11 +46,11 @@ describe.skipIf(!ready)("the panel Model", () => {
     }
   });
 
-  test("it lists all the Model calls, shows the selected one in full, and tells when the model thinks", async () => {
+  test("it lists all the Model calls, shows the selected one in full, and tells when a Model call runs", async () => {
     const record = await modelRecord();
     const view = modelPanelView(record.events, 4, 1);
-    expect(view.thinking).toBe(true);
-    expect(view.rows.map((r) => [r.action, r.stuck, r.turn])).toEqual([["go A", 0, undefined], ["viewAtlas", 0, undefined], ["goTo 8 6", 0, undefined]]);
+    expect(view.calling).toBe(true);
+    expect(view.rows.map((r) => [r.action, r.stuck, r.turn])).toEqual([["go A", 0, "character turn"], ["viewAtlas", 0, undefined], ["goTo 8 6", 0, undefined]]);
     expect(view.call?.title).toMatch(/ · stuck 0$/);
     expect(view.selected).toBe(1);
     expect(view.call?.answer).toEqual({ action: "viewAtlas", reason: "I choose viewAtlas.", mission: "Get my first Pokémon", objective: "Leave the house", note: "" });
@@ -61,7 +61,7 @@ describe.skipIf(!ready)("the panel Model", () => {
     expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Situation", "History", "Events", "Party", "Local view", "Atlas", "Targets", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
     expect(afterAtlas[1].text).toBe("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1: Mom is downstairs.");
     expect(afterAtlas[10].text).toBe(reply("viewAtlas").content);
-    expect(modelPanelView(record.events, 3, null)).toMatchObject({ thinking: false, selected: 2 });
+    expect(modelPanelView(record.events, 3, null)).toMatchObject({ calling: false, selected: 2 });
   });
 });
 

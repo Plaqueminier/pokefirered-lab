@@ -12,10 +12,12 @@ const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
 const AFTER_RIVAL = ["go A", "go C"];
-const DECISIONS = ["go A", "go B", "go B", "go D", "go A", "go E", "choose YES", "choose NO", "go A", "fight 1", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0", "fight 0"];
+const DECISIONS = ["go A", "go B", "go B", "go D", "go A", "go E", "name Shelly", "go A", "fight 1", "fight 0", "fight 0", "fight 0"];
+
+const CHARACTER = "Spices as nicknames. A loud fan of water.";
 
 function reply(action: string, objective = "Get a Pokémon", note = "") {
-  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
+  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note, character: CHARACTER, starter: "SQUIRTLE" }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
 }
 
 function target(prompt: Prompt, ...labels: string[]): string {
@@ -36,8 +38,7 @@ function fakeModel(): { client: ModelClient; prompts: Prompt[] } {
   const client: ModelClient = async (prompt) => {
     prompts.push(prompt);
     const now = waitedFor(prompt);
-    const texts = [...prompt.user.matchAll(/^ +"(.*)"$/gm)].map((m) => m[1]);
-    if (now.startsWith("a choice")) return reply(texts.at(-1)?.includes("nickname") ? "choose NO" : "choose YES");
+    if (now.startsWith("a name")) return reply("name Shelly");
     if (now.startsWith("a battle action") || now.startsWith("a move")) return reply(fights++ === 0 ? "fight 1" : "fight 0");
     const map = prompt.user.match(/^Map (\w+)/m)?.[1];
     switch (map) {
@@ -82,8 +83,8 @@ function ballTalker(): { client: ModelClient; prompts: Prompt[] } {
 function noteTaker(...actions: string[]): { client: ModelClient; summaryPrompts: Prompt[] } {
   const summaryPrompts: Prompt[] = [];
   let calls = 0;
-  const client: ModelClient = async (prompt, format) => {
-    if (format?.name === "summary") {
+  const client: ModelClient = async (prompt, options) => {
+    if (options?.format?.name === "summary") {
       summaryPrompts.push(prompt);
       const parts = [...prompt.user.matchAll(/^#([\d-]+): /gm)].map((m) => m[1]);
       return { content: JSON.stringify({ summary: `summary of ${parts.join(" and ")}` }), usage: { promptTokens: 100, completionTokens: 20, reasoningTokens: 0, cost: COST } };
@@ -191,7 +192,7 @@ describe.skipIf(!ready)("model bot", () => {
       return prompt.user;
     };
     expect(prompts[0].system).toContain("Become the Champion: earn the 8 gym badges, then beat the Elite Four");
-    expect(prompts[0].system).toContain("Choose your first Pokémon as you like: BULBASAUR, CHARMANDER or SQUIRTLE. There is no correct answer.");
+    expect(prompts[0].system).toContain("Take the first Pokémon that your character chose.");
     expect(prompts[0].system).not.toContain("answer NO");
     expect(prompts[0].system).toContain("When your last decisions give nothing new, do not do them again");
     expect(prompts[0].system).toContain("heal your Pokémon at a Pokémon Center");
@@ -202,21 +203,15 @@ describe.skipIf(!ready)("model bot", () => {
     expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F, taken$/m);
     expect(pallet).toMatch(/^[A-Z]\. unseen cells north of \(\d+, \d+\), /m);
     expect(pallet).toMatch(/^- A \(door\) leads to PalletTown_PlayersHouse_1F\. /m);
-    const choice = first(/^The game asks: "Hm! SQUIRTLE is your choice\..*SQUIRTLE\?" Choose YES or NO\.$/m);
-    expect(choice).toContain('"Hm! SQUIRTLE is your choice.');
-    expect(choice).toContain("Objective: Get a Pokémon");
-    expect(choice).toMatch(/^Mission: Get my first Pokémon \(the same for \d+ decisions\)\.$/m);
-    expect(choice).toContain("Memory tree: none yet.");
-    expect(choice).toMatch(/Actions:\n- choose YES\n- choose NO\n- zoom <a-b>: .*$/);
-    expect(choice).not.toContain("goTo <x> <y>");
+    expect(harness.actions.filter((e) => e.action.name === "choose").map((e) => "option" in e.action && e.action.option)).toEqual(["YES", "YES"]);
     const battle = first(/^The game waits for a battle action\.$/m);
     expect(battle).toContain("- fight 1: TAIL WHIP (NORMAL, power ---, accuracy 100, PP 30/30)");
     expect(battle).toContain("Foe BULBASAUR (GRASS, POISON): level 5, HP 100%");
-    expect(battle).toMatch(/^1\. SQUIRTLE: level 5, HP \d+\/\d+, status none\. Type WATER\. Ability TORRENT: Ups WATER moves in a pinch\. Held item none\. Nature [A-Z]+\. Stats: attack \d+, defense \d+, speed \d+, special attack \d+, special defense \d+\. EXP 135, 44 to the next level\.$/m);
+    expect(battle).toMatch(/^1\. Shelly \(SQUIRTLE\): level 5, HP \d+\/\d+, status none\. Type WATER\. Ability TORRENT: Ups WATER moves in a pinch\. Held item none\. Nature [A-Z]+\. Stats: attack \d+, defense \d+, speed \d+, special attack \d+, special defense \d+\. EXP 135, 44 to the next level\.$/m);
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "12", model: { id: "fake/model", costLimit, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "13", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
@@ -225,7 +220,22 @@ describe.skipIf(!ready)("model bot", () => {
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     expect(harness.record().result.endReason).toBe("cost limit");
     expect(modelEvents(harness)).toHaveLength(3);
-    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends, and you cannot try again.");
+    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends.");
+  });
+
+  test("the character turn thinks, with the schema of the character, and the next calls do not; the record keeps the reasoning, and the next prompt has the character", async () => {
+    const harness = await Harness.open();
+    const asks: { format?: string; reasoning?: string }[] = [];
+    const client: ModelClient = async (_prompt, options) => {
+      asks.push({ format: options?.format?.name, reasoning: options?.reasoning });
+      return { ...reply("goTo 8 6"), reasoning: "I think." };
+    };
+    await harness.play(modelBot({ costLimit: 3 * COST - COST / 2 }, () => client));
+    expect(asks).toEqual([{ format: "character", reasoning: "medium" }, { format: undefined, reasoning: undefined }, { format: undefined, reasoning: undefined }]);
+    const [first, second] = modelEvents(harness);
+    expect(first.decision?.character).toBe(CHARACTER);
+    expect(first.reasoning).toBe("I think.");
+    expect(second.prompt.user).toContain(`Your character: ${CHARACTER} Your first Pokémon: SQUIRTLE.`);
   });
 
   test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {
@@ -258,9 +268,9 @@ describe.skipIf(!ready)("model bot", () => {
     parent.close();
 
     const { client, prompts } = { prompts: [] as Prompt[], client: answers("not JSON", good) };
-    const recording: ModelClient = async (prompt, format) => {
+    const recording: ModelClient = async (prompt, options) => {
       prompts.push(prompt);
-      return client(prompt, format);
+      return client(prompt, options);
     };
     expect(await harness.play(modelBot({ id: "other/model", costLimit: 2.5 * COST }, () => recording))).toMatchObject({ endReason: "cost limit" });
     const calls = modelEvents(harness).slice(parentCalls);

@@ -34,10 +34,18 @@ export const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
 
 export const REASONING = ["off", "low", "medium", "high"] as const;
 
-export const DEFAULT_REASONING: (typeof REASONING)[number] = "low";
+export type ReasoningLevel = (typeof REASONING)[number];
 
-/** The first Pokémon that the model bot must choose, or "free": it chooses. */
-export const STARTERS = ["free", "BULBASAUR", "CHARMANDER", "SQUIRTLE"] as const;
+export const DEFAULT_REASONING: ReasoningLevel = "off";
+
+export const DEFAULT_THINKING: ReasoningLevel = "medium";
+
+export const STARTER_SPECIES = ["BULBASAUR", "CHARMANDER", "SQUIRTLE"] as const;
+
+export type StarterSpecies = (typeof STARTER_SPECIES)[number];
+
+/** The first Pokémon that the model bot must choose, or "free": its character chooses. */
+export const STARTERS = ["free", ...STARTER_SPECIES] as const;
 
 export const DEFAULT_STARTER: (typeof STARTERS)[number] = "free";
 
@@ -74,8 +82,10 @@ type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
+type ModelFacts = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "thinking" | "starter">;
+
 /** The Model calls of a replay: `calls` and `cost` up to the frame of the replay, the totals for the whole record. */
-export type ReplayModel = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { calls: number; cost: number; totalCalls: number; totalCost: number };
+export type ReplayModel = ModelFacts & { calls: number; cost: number; totalCalls: number; totalCost: number };
 
 export type Jump = { from: number; to: number };
 
@@ -107,7 +117,7 @@ export type RunSummary = {
   parent: string | null;
   continued: Continuation | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
-  model: (Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "starter"> & { cost: number; callsStarted: number }) | null;
+  model: (ModelFacts & { cost: number; callsStarted: number }) | null;
   frame: number;
   milestone: Milestone | null;
   battle: boolean;

@@ -1,3 +1,4 @@
+import { nicknamedSpecies } from "../menus";
 import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange } from "../harness/record";
@@ -137,11 +138,15 @@ export function readJson(content: string): unknown {
   throw new Error("the answer is not JSON");
 }
 
-export function readDecision(content: string): Decision {
+export function readFields(content: string): Record<string, unknown> {
   if (content.trim() === "") throw new Error("the answer is empty");
   const value = readJson(content);
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("the answer is not a JSON object");
-  const fields = value as Record<string, unknown>;
+  return value as Record<string, unknown>;
+}
+
+export function readDecision(content: string): Decision {
+  const fields = readFields(content);
   const decision = {} as Decision;
   for (const field of FIELDS) {
     const text = fields[field];
@@ -185,6 +190,12 @@ export function readAction(text: string, asked: Asked): ModelAction {
       const option = asked.options.find((o) => o.toLowerCase() === action.option.toLowerCase());
       if (!option) throw new Error(`"${quoted(action.option)}" is not an option: ${asked.options.join(", ")}`);
       return { name: "choose", option };
+    }
+    case "name": {
+      const species = asked.kind === "naming" ? nicknamedSpecies(asked.subject) : null;
+      const text = action.text.trim().toLowerCase();
+      if (species && (text === "" || text === species.toLowerCase())) throw new Error(`a nickname must be a new name, not "${quoted(action.text)}": write name <text>, with a name that you invent`);
+      return action;
     }
     case "use":
       return readUse(action.item, action.on, asked);

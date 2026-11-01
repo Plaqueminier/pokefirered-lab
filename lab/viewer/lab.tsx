@@ -273,11 +273,11 @@ function useCursorCall() {
   const lab = useStore(data);
   const { cursor } = useStore(shared);
   const calls = useMemo(() => lab.rows.map((row) => row.call), [lab.rows]);
-  const waiting = useMemo(() => modelCalls(lab.events).thinking, [lab.events]);
+  const waiting = useMemo(() => modelCalls(lab.events).calling, [lab.events]);
   const index = callAt(calls, cursor);
-  const thinking = !cursor && lab.status !== null && waiting(callsStarted(lab.status.shown));
+  const calling = !cursor && lab.status !== null && waiting(callsStarted(lab.status.shown));
   const row = index === null ? null : (lab.rows[index] ?? null);
-  return { ...lab, cursor, calls, index, thinking, row, call: row?.call ?? null };
+  return { ...lab, cursor, calls, index, calling, row, call: row?.call ?? null };
 }
 
 function TopBar() {
@@ -369,7 +369,7 @@ function TopBar() {
 
 function DecisionLine() {
   const { shared } = useLab();
-  const { rows, cursor, row, call, thinking } = useCursorCall();
+  const { rows, cursor, row, call, calling } = useCursorCall();
   const turns = row?.flags.filter(({ flag }) => flag === "reflection" || flag === "review") ?? [];
   const line = (
     <Card size="sm">
@@ -388,7 +388,7 @@ function DecisionLine() {
       ) : (
         <span class="flex-1 text-muted">{cursor ? "no Model call at the cursor" : "no Model call yet"}</span>
       )}
-      {thinking && <Pill tone="info">the model thinks…</Pill>}
+      {calling && <Pill tone="info">Model call…</Pill>}
       </div>
     </Card>
   );
@@ -413,8 +413,8 @@ function DecisionLine() {
 
 function ModelPanelHost() {
   const { shared } = useLab();
-  const { rows, cursor, index, thinking } = useCursorCall();
-  return <ModelPanel rows={rows} index={index} following={!cursor} thinking={thinking} pick={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
+  const { rows, cursor, index, calling } = useCursorCall();
+  return <ModelPanel rows={rows} index={index} following={!cursor} calling={calling} pick={(call, frame) => shared.pickCall(call, frame)} now={() => shared.clear()} />;
 }
 
 function MemoryPanelHost() {

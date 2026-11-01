@@ -20,23 +20,24 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("modelSettings", () => {
-  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, a low reasoning, the temperature of the model, a free starter and a stop at a whiteout", () => {
-    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "low", temperature: null, starter: "free", stopAtWhiteout: true });
+  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, no reasoning, a medium thinking, the temperature of the model, a free starter and a stop at a whiteout", () => {
+    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, costLimit: 0.5, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true });
     expect(modelSettings({}, { LAB_COST_LIMIT: "0.2" }).costLimit).toBe(0.2);
-    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "off", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false });
+    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false });
   });
 
   test("it refuses a cost limit, a reasoning, a temperature or a starter that is not valid", () => {
     expect(() => modelSettings({}, { LAB_COST_LIMIT: "free" })).toThrow('the cost limit must be a number of dollars above 0, not "free"');
     expect(() => modelSettings({ costLimit: 0 }, {})).toThrow("the cost limit must be a number of dollars above 0");
     expect(() => modelSettings({ reasoning: "max" }, {})).toThrow('the reasoning must be off, low, medium, high, not "max"');
+    expect(() => modelSettings({ thinking: "max" }, {})).toThrow('the thinking must be off, low, medium, high, not "max"');
     expect(() => modelSettings({ temperature: 3 }, {})).toThrow("the temperature must be from 0 to 2");
     expect(() => modelSettings({ starter: "PIKACHU" }, {})).toThrow('the starter must be free, BULBASAUR, CHARMANDER, SQUIRTLE, not "PIKACHU"');
   });
 });
 
 describe("openRouter", () => {
-  test("it asks for the strict JSON schema of the answer, only from the providers that apply it, with a low reasoning and no temperature by default", async () => {
+  test("it asks for the strict JSON schema of the answer, only from the providers that apply it, with no reasoning and no temperature by default", async () => {
     const { calls, fetcher } = fakeFetch(200, REPLY);
     await openRouter(modelSettings({ id: "a/b" }, {}), KEY, fetcher)(PROMPT);
     expect(calls).toHaveLength(1);
@@ -52,15 +53,24 @@ describe("openRouter", () => {
       ],
       response_format: { type: "json_schema", json_schema: { name: "decision", strict: true, schema: DECISION_SCHEMA } },
       provider: { require_parameters: true },
-      max_tokens: 4000,
-      reasoning: { effort: "low" },
+      max_tokens: 32000,
+      reasoning: { effort: "none" },
     });
+  });
+
+  test("a call can give its own level, else the Run gives its reasoning; a reply keeps the text of the reasoning", async () => {
+    const { calls, fetcher } = fakeFetch(200, { ...REPLY, choices: [{ message: { content: "{}", reasoning: "I think." } }] });
+    const ask = openRouter(modelSettings({ reasoning: "off" }, {}), KEY, fetcher);
+    expect((await ask(PROMPT, { reasoning: "high" })).reasoning).toBe("I think.");
+    await ask(PROMPT);
+    expect(JSON.parse(String(calls[0].init.body)).reasoning).toEqual({ effort: "high" });
+    expect(JSON.parse(String(calls[1].init.body)).reasoning).toEqual({ effort: "none" });
   });
 
   test("it sends the reasoning effort and the temperature when the Run gives them", async () => {
     const { calls, fetcher } = fakeFetch(200, REPLY);
     await openRouter(modelSettings({ reasoning: "high", temperature: 0 }, {}), KEY, fetcher)(PROMPT);
-    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ reasoning: { effort: "high" }, temperature: 0, max_tokens: 4000 });
+    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ reasoning: { effort: "high" }, temperature: 0, max_tokens: 32000 });
     await openRouter(modelSettings({ reasoning: "off" }, {}), KEY, fetcher)(PROMPT);
     expect(JSON.parse(String(calls[1].init.body))).toMatchObject({ reasoning: { effort: "none" } });
   });

@@ -187,7 +187,7 @@ const DEMO_RUNS: RunSummary[] = [
     error: null,
     parent: null,
     continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "low", starter: "free", cost: 0.37, callsStarted: 120 },
+    model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "off", thinking: "medium", starter: "free", cost: 0.37, callsStarted: 120 },
     frame: 52_000,
     milestone: "has-pokemon",
     battle: false,
@@ -232,7 +232,7 @@ export function RunSelectDemo() {
 }
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "12", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "13", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
@@ -432,7 +432,7 @@ const DEMO_REPLAY: ReplayStatus = {
   frames: 457065,
   ended: false,
   endReason: "cost limit",
-  model: { id: "deepseek/deepseek-v4-flash", costLimit: 10, reasoning: "low", starter: "free", calls: 312, cost: 4.21, totalCalls: 717, totalCost: 10.02 },
+  model: { id: "deepseek/deepseek-v4-flash", costLimit: 10, reasoning: "off", thinking: "medium", starter: "free", calls: 312, cost: 4.21, totalCalls: 717, totalCost: 10.02 },
   continued: null,
   gameEvents: 393,
   reached: 200000,

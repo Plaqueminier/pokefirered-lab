@@ -75,6 +75,8 @@ const PROMPT_PARTS = [
 ] as const;
 
 const ANSWER = [
+  ["character", '"Pastry names. A shy baker…"', "only at the Character turn: the style of the nicknames, then the trainer"],
+  ["starter", '"CHARMANDER"', "only at the Character turn: the first Pokémon"],
   ["action", '"goTo 20 45"', "one action of the screen"],
   ["reason", '"The unseen area west…"', "why, in one or two sentences"],
   ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached"],
@@ -85,13 +87,13 @@ const ANSWER = [
 // A copy of the actions of the model bot at each screen: change it with them.
 const SCREENS = [
   { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "the map as a grid: `?` not seen, a letter is a target"], actions: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"] },
-  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: “be creative, there is nothing to optimize”"], actions: ["choose", "zoom"] },
+  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES"], actions: ["choose", "zoom"] },
   { title: "⚔️ Battle action", adds: ["your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use", "zoom"] },
   { title: "🎯 Move menu", adds: ["the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "zoom", "press"] },
   { title: "🔁 Party menu", adds: ["the Pokémon that can go into the battle, with their places", "for example after a faint"], actions: ["send", "zoom", "press"] },
   { title: "🛒 Poké Mart", adds: ["the items for sale with their prices", "the items of the Bag that the Mart buys, the money"], actions: ["buy", "sell", "leave", "zoom"] },
   { title: "💾 Item PC", adds: ["the items in the PC and in the ITEMS pocket, with quantities", "1 with no quantity; `leave` returns to the menu of the PC"], actions: ["withdraw", "deposit", "leave", "zoom"] },
-  { title: "✏️ Naming screen", adds: ["what the screen names, and the maximum length", "`name` alone keeps the name"], actions: ["name", "zoom"] },
+  { title: "✏️ Naming screen", adds: ["what the screen names, and the maximum length", "for a nickname, the text must be new; for another name, `name` alone keeps the name"], actions: ["name", "zoom"] },
   { title: "📖 Learn a move", adds: ["the new move and the 4 moves: type, power, accuracy, PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
 ];
 
@@ -135,12 +137,12 @@ export function PromptPage() {
         ],
         [
           "Guide",
-          "short generic advice in the rules, with no facts about the maps or the story. Read the signs and talk to the people. Write guesses in the notes and check them. Keep the POTIONS for when they are necessary. Use more than one Pokémon and make a balanced team. `run` from a wild battle that goes badly. Compare the levels before a trainer, and train when the trainers ahead are stronger. To train a weak Pokémon, put it first with `swap`, then `switch` to a strong one when the battle is difficult. Each Pokémon Center has a PC: it keeps the items, and the Pokémon caught with 6 Pokémon in the party; the model cannot take a Pokémon from it yet. For a name or a nickname, choose freely: keep the name of the game, or give a serious or funny name.",
+          "short generic advice in the rules, with no facts about the maps or the story. Read the signs and talk to the people. Write guesses in the notes and check them. Keep the POTIONS for when they are necessary. Use more than one Pokémon and make a balanced team. `run` from a wild battle that goes badly. Compare the levels before a trainer, and train when the trainers ahead are stronger. To train a weak Pokémon, put it first with `swap`, then `switch` to a strong one when the battle is difficult. Each Pokémon Center has a PC: it keeps the items, and the Pokémon caught with 6 Pokémon in the party; the model cannot take a Pokémon from it yet. Give a nickname to each Pokémon, in the style of the character and different from the species: it costs nothing, and it tells two Pokémon of the same species apart.",
         ],
         ["`viewAtlas`", "the full Atlas, one time at most at each Decision point. No frames run."],
         [
           "Choice",
-          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` For a nickname, the line adds `A nickname has no effect on the game: be creative, there is nothing to optimize.` A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, also in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the Pokémon storage is not possible yet.",
+          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, also in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the Pokémon storage is not possible yet.",
         ],
         ["Battle: own", "in a wild battle, one line after the foe tells how many Pokémon of its species the player owns, in the party and in the PC: `You own 2 PIDGEY: 1 in the party, 1 in the PC.` or `You own no PIDGEY.`"],
         [
@@ -166,7 +168,7 @@ export function PromptPage() {
           "Item PC",
           "the items in the PC and the items of the ITEMS pocket of the Bag, with their quantities. The actions are `withdraw <item> [quantity]`, `deposit <item> [quantity]` (1 with no quantity) and `leave` (back to the menu of the PC). The code does the lists and the quantity.",
         ],
-        ["Naming screen", "what the screen names and the maximum length. The actions are `name <text>`, and `name` alone to keep the name. The model is free to give a nickname."],
+        ["Naming screen", "what the screen names and the maximum length. The action is `name <text>`. For a nickname, the text must be new and different from the species. For another name, `name` alone keeps the name."],
         [
           "Learn a move",
           "“SQUIRTLE wants to learn BUBBLE (WATER, power 20, accuracy 100, PP 30/30).” with the description of the move, then “It already knows 4 moves. To learn BUBBLE, it must forget one of them:” and the 4 moves. The actions are `forget <move>` (a name, or the place 1 to 4) and `keep`. An HM move says that it cannot be forgotten. The code does all the menus.",
@@ -246,7 +248,9 @@ export function ProgressPage() {
         ],
         ["Loop warning", "when the last 3 decisions that played an action played the same actions with the same results, the prompt adds one line “Warning: …” after the tries since the last progress. A `zoom` or a `viewAtlas` does not count."],
         ["Notes", "a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with “Guess:”, or the advice of a person that helps later (“A person said: you can never have too many Poké Balls”). When a note becomes false or ends (a guess disproved, a person that moved, a trainer beaten), the model writes a new note that says so. Never HP values."],
-        ["Run record", "each Model call has `stuck`, `reflection` and `review`. The panel “Model” shows `reflection` and `review` as flags, and `stuck` as a chip of the shown call."],
+        ["Character turn", "the first Model call of a Run with no Pokémon. The program selects an idea at random (a shy baker), and the model writes the first Pokémon in `starter`, and the style of the nicknames and the trainer in `character`. Each later prompt has “Your character: …”. At a Poké Ball, the program answers with no Model call: YES to this Pokémon, NO to another."],
+        ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run, the other Model calls its reasoning level. The panel “Model” shows the text of the reasoning in a block."],
+        ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review` and `reasoning` (the text of the reasoning). The panel “Model” shows `reflection` and `review` as flags, and `stuck` as a chip of the shown call."],
       ]}
     >
       <div class={BLOCKS2}>

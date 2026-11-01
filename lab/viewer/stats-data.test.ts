@@ -17,7 +17,7 @@ const NOW = 1000;
 const OPTIONS: StatsOptions = { now: NOW, areas: {}, continued: null };
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: "" }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: "", character: "A shy baker.", starter: "SQUIRTLE" }),
   usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 

@@ -12,12 +12,17 @@ export function importantEvents(before: Observation | null, now: Observation, ev
   const impossible = impossibleInARow(events);
   return [
     ...new Set(recent.flatMap((e) => (e.type === "map" && !known.has(e.map) ? [`you entered the map ${e.map} for the first time`] : []))),
-    ...(textsOf(recent).some((t) => /whited out/i.test(t)) ? ["you lost a battle"] : []),
+    ...(textsOf(recent).some((t) => /whited out/i.test(t)) ? [whiteoutFact(before, now)] : []),
     ...(before && healed(before, now, recent) ? [healFact(now)] : []),
     ...(before ? newItems(before, now).map((item) => `you got ${item}`) : []),
     ...(recent.some((e) => e.type === "battle" && e.state === "end") ? careFact(now.party) : []),
     ...(impossible >= 2 ? [`your last ${impossible} actions were impossible: they changed nothing in the game`] : []),
   ];
+}
+
+function whiteoutFact(before: Observation | null, now: Observation): string {
+  const lost = before ? `${before.money - now.money} money` : "some money";
+  return `all your Pokémon fainted: you lost ${lost}, your party is healed, and you are back at the last Pokémon Center that you entered, or your home`;
 }
 
 function textsOf(events: readonly RunEvent[]): string[] {

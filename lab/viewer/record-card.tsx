@@ -18,6 +18,7 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
       ? [
           { label: "Model", value: model.id },
           { label: "Reasoning", value: model.reasoning },
+          { label: "Thinking", value: model.thinking },
           { label: "Starter", value: model.starter },
           { label: "Model calls", value: String(model.calls), detail: `/ ${model.totalCalls}` },
           { label: "Cost", value: dollars(model.cost), detail: `/ ${dollars(model.totalCost)}` },

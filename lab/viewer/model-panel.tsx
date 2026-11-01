@@ -57,6 +57,7 @@ const STATUS_TONES: Record<ActionEvent["result"]["status"], Tone> = { done: "ok"
 const OPEN_BLOCKS: ReadonlySet<BlockTitle> = new Set<BlockTitle>(["Situation", "Battle", "Actions", "Events", "Error", "Your answer", "Question"]);
 
 const BLOCK_ICONS: Record<BlockTitle, Icon> = {
+  Reasoning: Brain,
   Progress: Trophy,
   "Memory tree": ListTree,
   Situation: Eye,
@@ -193,6 +194,7 @@ function Goals({ row }: { row: UnusualCall }) {
   const { decision } = row.call;
   if (!decision) return null;
   const goals = [
+    ...(decision.character ? [{ term: "Character", text: decision.character, changed: false }] : []),
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
@@ -216,7 +218,7 @@ function Goals({ row }: { row: UnusualCall }) {
   );
 }
 
-export function CallSummary({ row, count, thinking }: { row: UnusualCall; count: number; thinking?: boolean }) {
+export function CallSummary({ row, count, calling }: { row: UnusualCall; count: number; calling?: boolean }) {
   const { call } = row;
   const review = call.review ? reviewText(call) : null;
   return (
@@ -228,9 +230,9 @@ export function CallSummary({ row, count, thinking }: { row: UnusualCall; count:
         <span class="flex items-center gap-1">
           <FlagIcons row={row} />
         </span>
-        {thinking && (
+        {calling && (
           <span class="ml-auto">
-            <Pill tone="info">the model thinks…</Pill>
+            <Pill tone="info">Model call…</Pill>
           </span>
         )}
       </div>
@@ -282,12 +284,12 @@ export type ModelPanelProps = {
   rows: readonly UnusualCall[];
   index: number | null;
   following: boolean;
-  thinking: boolean;
+  calling: boolean;
   pick: (index: number, frame: number) => void;
   now: () => void;
 };
 
-export function ModelPanel({ rows, index, following, thinking, pick, now }: ModelPanelProps) {
+export function ModelPanel({ rows, index, following, calling, pick, now }: ModelPanelProps) {
   const [on, setOn] = useState<ReadonlySet<Flag>>(new Set());
   const shown = useMemo(() => (on.size === 0 ? rows : rows.filter((row) => row.flags.some(({ flag }) => on.has(flag)))), [rows, on]);
   const list = useRef<HTMLDivElement>(null);
@@ -327,7 +329,7 @@ export function ModelPanel({ rows, index, following, thinking, pick, now }: Mode
         {row ? (
           <>
             <Card size="sm">
-              <CallSummary row={row} count={rows.length} thinking={thinking} />
+              <CallSummary row={row} count={rows.length} calling={calling} />
             </Card>
             <PromptBlocks call={row.call} />
           </>
