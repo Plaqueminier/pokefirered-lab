@@ -33,6 +33,38 @@ export class Store<T> implements Readable<T> {
   }
 }
 
+type Rgba = Uint8Array;
+
+// Each Run and each replay has a new id: keep the last screens of a few, enough for a Grid of 9 and the shown Run.
+const KEPT_SCREENS = 16;
+
+export class ScreenFeed {
+  readonly #latest = new Map<number, Rgba>();
+  readonly #listeners = new Map<number, Set<(screen: Rgba) => void>>();
+
+  put(runId: number, screen: Rgba): void {
+    this.#latest.delete(runId);
+    this.#latest.set(runId, screen);
+    for (const old of this.#latest.keys()) {
+      if (this.#latest.size <= KEPT_SCREENS) break;
+      this.#latest.delete(old);
+    }
+    for (const listener of this.#listeners.get(runId) ?? []) listener(screen);
+  }
+
+  subscribe(runId: number, listener: (screen: Rgba) => void): () => void {
+    const listeners = this.#listeners.get(runId) ?? new Set();
+    this.#listeners.set(runId, listeners);
+    listeners.add(listener);
+    const last = this.#latest.get(runId);
+    if (last) listener(last);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.#listeners.delete(runId);
+    };
+  }
+}
+
 /** Draws the component again at each change of the store. */
 export function useStore<T>(store: Readable<T>): T {
   const [, setChanges] = useState(0);

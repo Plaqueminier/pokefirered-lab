@@ -247,7 +247,7 @@ export function RecordPage() {
           "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The new record has the old keys and events, then the new ones. Its cost limit counts the new Model calls only.",
         ],
         ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
-        ["Parallel Runs", "4 Runs at most: the Viewer Run, and 3 Runs of Bots in workers, at full speed and with no sound. A Run of a Bot gives the same Run record as alone."],
+        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own cost limit."],
       ]}
     >
       <div class={BLOCKS2}>
@@ -275,7 +275,7 @@ export function RecordPage() {
       <div class={GRID3}>
         <DocCard icon={Play} title="Replay" lines={["choose the record in the list of the Run, in the top bar"]} />
         <DocCard icon={Repeat} title="Continue" lines={["the Harness replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit counts the new Model calls only"]} />
-        <DocCard icon={Layers} title="4 Runs at most" lines={["the Viewer Run, and 3 Runs of Bots in workers", "a Run in a worker gives the same record as alone"]} />
+        <DocCard icon={Layers} title="10 at most" lines={["the Viewer Run, and 9 places in workers for the Runs of the Bots and the Grid replays", "a Run in a worker gives the same record as alone"]} />
       </div>
     </Page>
   );

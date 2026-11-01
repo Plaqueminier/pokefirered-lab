@@ -1,13 +1,21 @@
 import { Play, Square } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, REASONING, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
 
 type Send = (message: ClientMessage) => void;
 
+export function botRunKey(id: number): string {
+  return `bot ${id}`;
+}
+
+export function replayKey(name: string): string {
+  return `viewer ${name}`;
+}
+
 export function runKey(shown: ShownRun): string {
-  return shown.kind === "bot" ? `bot ${shown.run.id}` : `viewer ${shown.replay?.name ?? ""}`;
+  return shown.kind === "bot" ? botRunKey(shown.run.id) : replayKey(shown.replay?.name ?? "");
 }
 
 export function dollars(cost: number): string {
@@ -97,8 +105,22 @@ function shownModel(run: RunSummary | null): string {
   return `Run ${run.id}: model ${id}, reasoning ${reasoning}, starter ${starter}, cost ${dollars(cost)} of ${dollars(costLimit)}`;
 }
 
-// Start a Run of a Bot, or stop the shown one.
-export function BotsPanel({ shown, bots, records, send }: { shown: ShownRun | null; bots: readonly string[]; records: readonly string[]; send: Send }) {
+export type Places = { free: number; limit: number };
+
+function countError(countOk: boolean, { free, limit }: Places): string | undefined {
+  if (free === 0) return `No free place: the Runs of the Bots and the Grid replays use the ${limit} places.`;
+  return countOk ? undefined : `From 1 to ${free}.`;
+}
+
+function totalCost(count: number, given: string, byDefault: number | null): string {
+  const limit = given.trim() ? Number(given) : byDefault;
+  if (limit === null || !Number.isFinite(limit)) return "no cost limit";
+  return count === 1 ? dollars(limit) : `${count} × ${dollars(limit)} = ${dollars(count * limit)}`;
+}
+
+export function BotsPanel({ shown, bots, records, places, send }: { shown: ShownRun | null; bots: readonly BotInfo[]; records: readonly string[]; places: Places; send: Send }) {
+  const freePlaces = places.free;
+  const names = bots.map((info) => info.name);
   const [bot, setBot] = useState("");
   const [model, setModel] = useState("");
   const [costLimit, setCostLimit] = useState("");
@@ -106,11 +128,16 @@ export function BotsPanel({ shown, bots, records, send }: { shown: ShownRun | nu
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
   const [stopAtWhiteout, setStopAtWhiteout] = useState(true);
   const [from, setFrom] = useState(FROM_START);
-  const chosenBot = bots.includes(bot) ? bot : (bots[0] ?? "");
+  const [countText, setCountText] = useState("1");
+  const count = Number(countText);
+  const countOk = Number.isInteger(count) && count >= 1 && count <= freePlaces;
+  const chosenBot = names.includes(bot) ? bot : (names[0] ?? "");
+  const chosenInfo = bots.find((info) => info.name === chosenBot);
+  const defaultLimit = chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
   const chosenFrom = records.includes(from) ? from : FROM_START;
   const run = shown?.kind === "bot" ? shown.run : null;
   const start = () => {
-    if (!chosenBot) return;
+    if (!chosenBot || !countOk) return;
     const limit = costLimit.trim();
     const options = {
       id: model.trim() || undefined,
@@ -119,13 +146,13 @@ export function BotsPanel({ shown, bots, records, send }: { shown: ShownRun | nu
       starter: option(starter, DEFAULT_STARTER),
       stopAtWhiteout,
     };
-    send({ type: "start-bot", name: chosenBot, model: options, ...(chosenFrom === FROM_START ? {} : { parent: chosenFrom }) });
+    send({ type: "start-bot", name: chosenBot, model: options, count, ...(chosenFrom === FROM_START ? {} : { parent: chosenFrom }) });
   };
   return (
     <div class="flex w-[560px] max-w-full flex-col gap-4">
       <div class="grid grid-cols-2 gap-3">
         <Field label="Bot">
-          <Select options={bots.map((name) => ({ value: name, label: name }))} value={chosenBot} placeholder="no Bot" onChange={setBot} />
+          <Select options={names.map((name) => ({ value: name, label: name }))} value={chosenBot} placeholder="no Bot" onChange={setBot} />
         </Field>
         <Field label="Start from">
           <Select
@@ -146,14 +173,20 @@ export function BotsPanel({ shown, bots, records, send }: { shown: ShownRun | nu
         <Field label="Starter" hint="free: the model chooses.">
           <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
         </Field>
+        <Field label="Count" hint={`Runs of the Bot to start: 1 to ${freePlaces}, the free places.`} error={countError(countOk, places)}>
+          <Input type="number" min="1" max={String(freePlaces)} step="1" invalid={!countOk} value={countText} onInput={(event) => setCountText(event.currentTarget.value)} />
+        </Field>
+        <Field label="Maximum total cost" hint="Each Run keeps its own cost limit.">
+          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalCost(countOk ? count : 1, costLimit, defaultLimit)}</p>
+        </Field>
       </div>
       <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
         Stop at a whiteout: the Run ends when all the Pokémon of the party faint
       </Checkbox>
       <div class="flex items-center gap-2">
-        <Button variant="primary" disabled={!chosenBot} onClick={start}>
+        <Button variant="primary" disabled={!chosenBot || !countOk} onClick={start}>
           <Play size={14} />
-          Start the Bot
+          {countOk && count > 1 ? `Start ${count} Runs` : "Start the Bot"}
         </Button>
         <Button
           variant="danger"
@@ -167,7 +200,7 @@ export function BotsPanel({ shown, bots, records, send }: { shown: ShownRun | nu
       </div>
       {run?.model && <p class="font-mono text-xs text-muted">{shownModel(run)}</p>}
       <p class="text-xs leading-relaxed text-faint">
-        The Runs of the Bots play at the same time, at full speed, with no sound. To show another Run does not stop them. "Stop the shown Run" ends it with
+        The Runs of the Bots play at the same time, at full speed, with no sound. They share {places.limit} places with the replays of the Grid. To show another Run does not stop them. "Stop the shown Run" ends it with
         user stop and writes its Run record. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas: the cost
         limit counts the new Model calls only, and the model can be another one.
       </p>

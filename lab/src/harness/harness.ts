@@ -151,7 +151,7 @@ export async function botInfos(): Promise<BotInfo[]> {
   return Promise.all(
     (await botNames()).map((name) =>
       loadBot(name).then(
-        (bot): BotInfo => ({ name, kind: bot.model ? "model" : "scripted", version: bot.version, goal: bot.goal ?? null }),
+        (bot): BotInfo => ({ name, kind: bot.model ? "model" : "scripted", version: bot.version, goal: bot.goal ?? null, costLimit: bot.model?.costLimit ?? null }),
         (error: unknown): BotInfo => ({ name, error: errorText(error) }),
       ),
     ),

@@ -66,7 +66,7 @@ export class Run {
   }
 
   screenHash(): string {
-    return sha256(this.core.screen()).slice(0, 16);
+    return screenHash(this.core.screen());
   }
 }
 
@@ -81,4 +81,8 @@ async function romHash(mem: Memory): Promise<string> {
 
 function sha256(data: Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(data).digest("hex");
+}
+
+export function screenHash(screen: Uint8Array): string {
+  return sha256(screen).slice(0, 16);
 }

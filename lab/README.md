@@ -1,6 +1,6 @@
 # Lab harness
 
-The harness runs the **Lab build** in libmgba from Bun. A **Bot** plays the game through **Macro-actions**. The **Viewer** shows one **Run** at a time in the browser.
+The harness runs the **Lab build** in libmgba from Bun. A **Bot** plays the game through **Macro-actions**. The **Viewer** shows the **Runs** in the browser: several in its **Grid**, and one in detail.
 
 - Terms: `../CONTEXT.md`. Decisions: `../docs/adr/`. Steps of the lab: `HISTORY.md`.
 - What the harness can do now: the Doc tab of the Viewer.
@@ -34,7 +34,7 @@ bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>]
   [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
 ```
 
-The command writes the **Run record** to `runs/<bot>-<version>-<date>.json`. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, and replay a **Run record** (the Select of the top bar).
+The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, and replay a **Run record** (the Select of the top bar).
 
 ## Checks
 

@@ -78,8 +78,8 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
 }
 
-test("the list of the Bots gives the model bot only, with its kind, its version and its goal", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "12", goal: null }]);
+test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "12", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {

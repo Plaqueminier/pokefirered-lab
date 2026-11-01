@@ -7,8 +7,10 @@ import { type Camera, readAreas, safely } from "./game";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
-import { MAX_RUNS, type PoolRun, RunPool, type RunEnd } from "./harness/pool";
-import { type Continuation, continuationOf, type ModelOptions, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { GridPlay } from "./grid";
+import { ScreenFanout } from "./screens";
+import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
+import { type Continuation, continuationOf, factsAt, Keyframes, type ModelOptions, modelEvents, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
 import {
   BinaryKind,
   type ClientMessage,
@@ -18,11 +20,11 @@ import {
   type ReplayModel,
   type ReplayStatus,
   type RunSummary,
-  SCREEN_INTERVAL_MS,
   type ServerMessage,
   type ShownRun,
   type Speed,
   STATE_INTERVAL_MS,
+  VIEWER_RUN_ID,
 } from "./protocol";
 import { ROM_NAME, Run, type RunOrigin, type RunState, SAVES_DIR, START_SAVE } from "./run";
 
@@ -33,32 +35,8 @@ const AUDIO_TARGET_MS = 60;
 
 type Keyframe = { frame: number; state: Uint8Array; atlas: AtlasWatch };
 
-type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframes; reached: number; jump: Jump | null };
+type Replay = { name: string; player: RecordPlayer; continued: Continuation | null; keyframes: Keyframes<Keyframe>; jump: Jump | null };
 
-const KEYFRAME_FRAMES = 3600;
-const MAX_KEYFRAMES = 256;
-
-// The saved states of a replay, in order. Above MAX_KEYFRAMES, it keeps every second one and doubles the interval: a long Run stays within the limit.
-class Keyframes {
-  #list: Keyframe[] = [];
-  #interval = KEYFRAME_FRAMES;
-
-  due(frame: number): boolean {
-    return frame % this.#interval === 0;
-  }
-
-  add(keyframe: Keyframe): void {
-    this.#list.push(keyframe);
-    if (this.#list.length <= MAX_KEYFRAMES) return;
-    this.#list = this.#list.filter((_, i) => i % 2 === 0);
-    this.#interval *= 2;
-  }
-
-  /** The last keyframe at or before `frame`. */
-  before(frame: number): Keyframe | undefined {
-    return this.#list.findLast((keyframe) => keyframe.frame <= frame);
-  }
-}
 const TICK_MS = 12;
 const JUMP_TICK_MS = 40;
 
@@ -108,8 +86,8 @@ class LivePlay {
     // No await from here on: a tick in between would run frames that the record does not have.
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) return differences;
-    this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: new Keyframes(), reached: 0, jump: null };
-    this.keepKeyframe(this.activeReplay);
+    this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: new Keyframes(), jump: null };
+    this.onReplayFrame(this.activeReplay);
     this.speed = 1;
     this.paused = false;
     this.syncAudio();
@@ -126,16 +104,9 @@ class LivePlay {
     return this.activeReplay?.jump ?? null;
   }
 
-  private keepKeyframe(replay: Replay): void {
-    replay.keyframes.add({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() });
-  }
-
   // A jump starts from a keyframe or from now, so the replay plays each new frame in order: the keyframes come in order.
   private onReplayFrame(replay: Replay): void {
-    const frame = this.run.frame;
-    if (frame <= replay.reached) return;
-    replay.reached = frame;
-    if (replay.keyframes.due(frame)) this.keepKeyframe(replay);
+    replay.keyframes.onFrame(this.run.frame, () => ({ frame: this.run.frame, state: this.run.core.saveState(), atlas: this.atlas.clone() }));
   }
 
   seek(target: number): void {
@@ -236,11 +207,13 @@ const [run, areas] = await Promise.all([Run.open(), readAreas()]);
 const live = new LivePlay(run);
 // The Run of the Viewer is one of the emulators.
 const pool = new RunPool(MAX_RUNS - 1);
+const grid = new GridPlay(pool);
+const writtenRecords = new Map<number, string>();
 
 /** What the Viewer sends of the Run that it shows. */
 type RunSource = {
+  id: number;
   frame(): number;
-  screen(): Uint8Array | null;
   state(): RunState;
   camera(): Camera | null;
   events(): readonly RunEvent[];
@@ -250,8 +223,8 @@ type RunSource = {
 };
 
 const viewerRun: RunSource = {
+  id: VIEWER_RUN_ID,
   frame: () => run.frame,
-  screen: () => run.core.screen(),
   state: () => run.readState(),
   camera: () => safely(() => run.game.camera()),
   events: () => live.replay?.player.played() ?? [],
@@ -262,8 +235,8 @@ const viewerRun: RunSource = {
 
 function botRun(poolRun: PoolRun): RunSource {
   return {
+    id: poolRun.id,
     frame: () => poolRun.view.frame,
-    screen: () => poolRun.view.screen,
     state: () => poolRun.view,
     camera: () => poolRun.view.camera,
     events: () => poolRun.events,
@@ -277,6 +250,7 @@ let shown = viewerRun;
 // The keyboard, the speeds, pause, the savestate and the Starting save act on the Run of the Viewer only.
 const VIEWER_RUN_MESSAGES = new Set<ClientMessage["type"]>(["keys", "speed", "pause", "audio-level", "quick-save", "quick-load", "reset", "write-start-save", "end-replay", "seek"]);
 const clients = new Set<ServerWebSocket<unknown>>();
+const screens = new ScreenFanout();
 const audioClients = new Set<ServerWebSocket<unknown>>();
 
 function setAudioClient(ws: ServerWebSocket<unknown>, enabled: boolean): void {
@@ -306,6 +280,8 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
       audio: live.audioActive,
       runs: pool.runs.map(runSummary),
       shown: shown.summary(),
+      places: { free: pool.free, limit: pool.limit },
+      grid: grid.status(),
     },
     to,
   );
@@ -350,7 +326,7 @@ async function recordNames(): Promise<string[]> {
   return names.filter((name) => name.endsWith(".json")).sort().reverse();
 }
 
-function replayStatus({ name, player, continued, reached }: Replay): ReplayStatus {
+function replayStatus({ name, player, continued, keyframes }: Replay): ReplayStatus {
   return {
     name,
     endReason: player.result.endReason,
@@ -359,7 +335,7 @@ function replayStatus({ name, player, continued, reached }: Replay): ReplayStatu
     model: replayModel(player),
     continued,
     gameEvents: player.stateEvents ? player.gameEvents.length : null,
-    reached,
+    reached: keyframes.reached,
     seeking: live.seeking,
   };
 }
@@ -374,10 +350,14 @@ function replayModel(player: RecordPlayer): ReplayModel | null {
   return { id: settings.id, costLimit: settings.costLimit, reasoning: settings.reasoning, starter, calls: played.calls, cost: played.cost, totalCalls: total.calls, totalCost: total.cost };
 }
 
-async function replayFile(name: string): Promise<string> {
+async function openRecord(name: string): Promise<RunRecord | string> {
   if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/.`;
-  const record = await readRunRecord(name);
-  if (!record) return `${name} is not a Run record.`;
+  return (await readRunRecord(name)) ?? `${name} is not a Run record.`;
+}
+
+async function replayFile(name: string): Promise<string> {
+  const record = await openRecord(name);
+  if (typeof record === "string") return record;
   const { parent } = record.header;
   const parentRecord = parent === undefined ? null : await readRunRecord(parent);
   const continued = parentRecord && continuationOf(parentRecord);
@@ -391,7 +371,8 @@ async function replayFile(name: string): Promise<string> {
   return `Replay of ${name}.${noParent}`;
 }
 
-function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopAsked }: PoolRun): RunSummary {
+function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopAsked, view }: PoolRun): RunSummary {
+  const { milestone, battle, cost } = factsAt(events, Number.POSITIVE_INFINITY);
   return {
     id,
     bot: spec.bot,
@@ -401,7 +382,12 @@ function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopA
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, starter: spec.model.starter, cost: modelTotals(events).cost, callsStarted: modelCallsStarted } : null,
+    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, starter: spec.model.starter, cost, callsStarted: modelCallsStarted } : null,
+    frame: view.frame,
+    milestone,
+    battle,
+    waits: end === null && modelCallsStarted > modelEvents(events).length,
+    record: writtenRecords.get(id) ?? null,
   };
 }
 
@@ -409,19 +395,22 @@ function show(next: RunSource): void {
   shown = next;
   live.keys = 0;
   live.rateTrim = 1;
-  screenFrame = null;
   sendEvents();
   sendMap(shown.state());
   sendSight();
   sendInventory();
 }
 
-async function startBot(name: string, given: ModelOptions, parent?: string): Promise<string> {
+function placesText(): string {
+  return `${pool.free} of the ${pool.limit} places are free (the Runs of the Bots and the Grid replays share them; ${MAX_RUNS} emulators at most, with the Viewer Run)`;
+}
+
+async function startBot(name: string, given: ModelOptions, parent: string | undefined, count: number): Promise<string> {
   if (!(await botNames()).includes(name)) return `No Bot ${name} in lab/bots/.`;
-  if (parent !== undefined && !(await recordNames()).includes(parent)) return `No Run record ${parent} in lab/runs/.`;
-  const parentRecord = parent === undefined ? null : await readRunRecord(parent);
-  if (parent !== undefined && !parentRecord) return `${parent} is not a Run record.`;
-  if (pool.full) return `No new Run: ${pool.limit} Runs of Bots play now (${MAX_RUNS} emulators at most, with the Viewer Run).`;
+  const parentRecord = parent === undefined ? null : await openRecord(parent);
+  if (typeof parentRecord === "string") return parentRecord;
+  if (!Number.isInteger(count) || count < 1) return `No new Run: the count ${count} is not a whole number from 1.`;
+  if (count > pool.free) return `No new Run: ${count} Runs need ${count} places, and ${placesText()}.`;
   let bot: Bot;
   try {
     bot = await loadBot(name, given);
@@ -429,18 +418,21 @@ async function startBot(name: string, given: ModelOptions, parent?: string): Pro
     return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
-  const started = pool.start({ bot: name, ...(model ? { model } : {}), ...(parent === undefined ? {} : { parent }) }, parentRecord && continuationOf(parentRecord));
-  show(botRun(started));
-  void started.done.then((end) => onBotEnd(started, end));
+  const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(parent === undefined ? {} : { parent }) }, count, parentRecord && continuationOf(parentRecord));
+  show(botRun(started[0]));
+  for (const run of started) void run.done.then((end) => onBotEnd(run, end));
   const from = parent === undefined ? "" : ` from the end of ${parent}`;
-  return `Run ${started.id}: the Bot ${name} plays${from}${model ? ` with the model ${model.id} (limit ${model.costLimit} $)` : ""}.`;
+  const runs = count === 1 ? `Run ${started[0].id}: the Bot ${name} plays` : `Runs ${started[0].id} to ${started[count - 1].id}: the Bot ${name} plays ${count} times`;
+  return `${runs}${from}${model ? ` with the model ${model.id} (limit ${model.costLimit} $ for each Run)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
   const failure = error ? ` · error: ${error}` : "";
   try {
     const lastText = record?.result.lastText === undefined ? "" : ` (last text "${record.result.lastText}")`;
-    const end = record ? `end: ${record.result.endReason}${lastText}, Run record runs/${basename(await writeRecord(record))}` : "no Run record";
+    const written = record && basename(await writeRecord(record));
+    if (written) writtenRecords.set(id, written);
+    const end = record ? `end: ${record.result.endReason}${lastText}, Run record runs/${written}` : "no Run record";
     send({ type: "notice", text: `Run ${id} (${spec.bot}): ${end}${failure}.` });
     send({ type: "records", names: await recordNames() });
   } catch (writeError) {
@@ -464,6 +456,12 @@ function sendEvents({ to, quiet }: { to?: ServerWebSocket<unknown>; quiet?: bool
 
 function sendNewEvents(): void {
   if (shown.events().length !== eventsSent) sendEvents();
+}
+
+async function addToGrid(cell: number, name: string): Promise<string | null> {
+  const record = await openRecord(name);
+  if (typeof record === "string") return record;
+  return grid.add(cell, name, record) ? null : `No replay of ${name}: ${placesText()}.`;
 }
 
 async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Promise<void> {
@@ -534,7 +532,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       void sendStatus();
       break;
     case "start-bot":
-      send({ type: "notice", text: await startBot(message.name, message.model, message.parent) });
+      send({ type: "notice", text: await startBot(message.name, message.model, message.parent, message.count) });
       break;
     case "stop-run": {
       const poolRun = pool.runs.find((r) => r.id === message.runId);
@@ -548,12 +546,32 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       show(poolRun ? botRun(poolRun) : viewerRun);
       break;
     }
+    case "follow":
+      screens.follow(ws, message.runIds, message.size);
+      return;
+    case "grid-add": {
+      const refused = await addToGrid(message.cell, message.name);
+      if (refused) send({ type: "notice", text: refused }, ws);
+      break;
+    }
+    case "grid-remove":
+      grid.remove(message.cell);
+      break;
+    case "grid-cursor":
+      grid.control(message);
+      break;
   }
   await sendStatus();
 }
 
-const screenMessage = new Uint8Array(1 + run.core.width * run.core.height * 4);
-screenMessage[0] = BinaryKind.Screen;
+function screenOf(id: number): ReplayView | undefined {
+  if (id === VIEWER_RUN_ID) return live.seeking ? undefined : { frame: run.frame, screen: run.core.screen() };
+  return pool.view(id);
+}
+
+function sendScreens(now: number): void {
+  if (screens.send(now, shown.id, screenOf) && live.overlay) send({ type: "camera", camera: shown.camera() });
+}
 
 /** Audio message: 2 header bytes (kind, 0) so the 16-bit samples stay aligned. */
 function sendAudio(): void {
@@ -590,9 +608,6 @@ function sendInventory(to?: ServerWebSocket<unknown>): void {
   send({ type: "inventory", from, entries: entries.slice(from) });
 }
 
-let lastScreen = 0;
-/** The frame of the last screen sent; null: send the next screen. */
-let screenFrame: number | null = null;
 let lastState = 0;
 /** The grid only when it changed; the actors each time. */
 function sendMap({ grid, actors }: RunState, to?: ServerWebSocket<unknown>): void {
@@ -604,8 +619,10 @@ function loop(): void {
   const now = performance.now();
   const jumped = live.seeking !== null;
   const ran = live.tick(now);
+  grid.tick(now);
   // The screens and the events of the frames between the two ends of a jump moved the panels forward and backward: a jump sends the status only.
   if (shown === viewerRun && live.seeking) {
+    sendScreens(now);
     if (now - lastState >= STATE_INTERVAL_MS) {
       lastState = now;
       void sendStatus();
@@ -614,21 +631,13 @@ function loop(): void {
     return;
   }
   if (shown === viewerRun && jumped) {
-    screenFrame = null;
+    screens.forget(VIEWER_RUN_ID);
     lastState = 0;
     sendEvents({ quiet: true });
   }
   if (ran > 0 && live.audioActive) sendAudio();
   sendNewEvents();
-  const frame = shown.frame();
-  const screen = clients.size > 0 && frame !== screenFrame && now - lastScreen >= SCREEN_INTERVAL_MS ? shown.screen() : null;
-  if (screen) {
-    lastScreen = now;
-    screenFrame = frame;
-    screenMessage.set(screen, 1);
-    for (const ws of clients) ws.send(screenMessage);
-    if (live.overlay) send({ type: "camera", camera: shown.camera() });
-  }
+  sendScreens(now);
   if (clients.size > 0 && now - lastState >= STATE_INTERVAL_MS) {
     lastState = now;
     const runState = shown.state();
@@ -643,6 +652,8 @@ function loop(): void {
   setTimeout(loop, live.speed === "max" && !live.paused ? 0 : 2);
 }
 
+let handling = Promise.resolve();
+
 Bun.serve({
   port: PORT,
   development: true,
@@ -654,6 +665,7 @@ Bun.serve({
   websocket: {
     open(ws) {
       clients.add(ws);
+      screens.add(ws);
       void sendStatus(ws);
       send({ type: "maps", names: run.game.allMapNames }, ws);
       send({ type: "areas", areas }, ws);
@@ -667,12 +679,19 @@ Bun.serve({
     },
     close(ws) {
       clients.delete(ws);
+      screens.delete(ws);
       setAudioClient(ws, false);
-      if (clients.size === 0) live.keys = 0;
+      // The Grid is not kept after a reload (#72).
+      if (clients.size === 0) {
+        live.keys = 0;
+        grid.clear();
+      }
     },
+    // One message at a time: the Grid sends a seek right after a replay, and the seek must find the replay started.
     message(ws, data) {
       if (typeof data !== "string") return;
-      void handle(JSON.parse(data) as ClientMessage, ws);
+      const message = JSON.parse(data) as ClientMessage;
+      handling = handling.then(() => handle(message, ws)).catch((error) => console.error(error));
     },
   },
 });

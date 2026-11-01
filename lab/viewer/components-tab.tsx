@@ -6,7 +6,7 @@ import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
-import { BotsDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
+import { BotsDemo, GridCellDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -156,7 +156,7 @@ const RUN_OPTIONS = [
   { value: "run:3", label: "Run 3 · model · plays", group: "Runs of the Bots" },
   { value: "run:4", label: `Run 4 · model (continues ${RECORD}) · end: cost limit`, group: "Runs of the Bots" },
   { value: `replay:${RECORD}`, label: RECORD, group: "Replay a Run record" },
-  { value: "replay:starter-3-2026-10-24T08-13-38.892Z.json", label: "starter-3-2026-10-24T08-13-38.892Z.json", group: "Replay a Run record" },
+  { value: "replay:00016-model-9-2026-10-27T08-40-44.237Z.json", label: "00016-model-9-2026-10-27T08-40-44.237Z.json", group: "Replay a Run record" },
 ];
 
 const RECORD_OPTIONS = RUN_OPTIONS.filter((option) => option.value.startsWith("replay:")).map(({ value, label }) => ({ value, label }));
@@ -858,7 +858,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Bots",
-    rule: "The form of the button “Bots”: it starts a Bot, from the Starting save or as the continuation of a Run record, and it stops the shown Run.",
+    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with the maximum total cost, and it stops the shown Run.",
     demo: () => <BotsDemo />,
   },
   {
@@ -878,6 +878,12 @@ const ENTRIES: Entry[] = [
     title: "Run record",
     rule: "The card of the HoverCard of the button next to the Run select: the state of the replay, the name of the Run record and its facts. Out of a replay, the button is disabled.",
     demo: () => <RecordCardDemo />,
+  },
+  {
+    category: "lab",
+    title: "Grid cell",
+    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, its Bot and model, its game time, last Milestone and cost. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
+    demo: () => <GridCellDemo />,
   },
   {
     category: "lab",

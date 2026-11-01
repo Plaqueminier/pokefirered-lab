@@ -108,7 +108,7 @@ _Avoid_: savestate
 A snapshot of the full emulator state at one frame. It becomes invalid after each rebuild, because code addresses move.
 
 **Run**:
-One emulator instance that plays the game from a **Starting save**. The **Harness** plays 4 **Runs** at most at the same time. This is a choice: the machine can play about 12 at full speed.
+One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed.
 _Avoid_: game, instance, session
 
 **Milestone**:
@@ -140,8 +140,12 @@ The Bag (its five pockets with their items and quantities) and the PC (its items
 _Avoid_: items (an item is one entry of a pocket), storage
 
 **Viewer**:
-The web page that shows one **Run** at a time (its screen and its state). It shows its own **Run**, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has three tabs: Lab (the screen and the panels), Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
+The web page that shows the **Runs**. Its **Grid** shows the screens of several **Runs**, and one **Run** at a time is the shown **Run**: the Viewer shows its screen and its state in detail. To focus a **Run** of the **Grid** is to make it the shown **Run**. The shown **Run** is the own **Run** of the Viewer, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has four tabs: Lab (the screen and the panels of the shown **Run**), Grid, Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).
 _Avoid_: emulator, web player
+
+**Grid**:
+The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
+_Avoid_: wall, multiview, dashboard
 
 **Timeline**:
 The track at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.
@@ -156,7 +160,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit, at a whiteout (an option, on by default) and at an unknown screen.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
-- The **Viewer** shows one **Run** at a time. The **Harness** owns all **Runs**.
+- The **Viewer** shows several **Runs** in its **Grid**, and one **Run** in detail: the shown **Run**. The **Harness** owns all **Runs**.
 - A **Savestate** is valid only for the build that made it. A **Starting save** is valid for all builds.
 
 ## Flagged ambiguities

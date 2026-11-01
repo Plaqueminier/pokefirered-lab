@@ -1,10 +1,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { mkdtemp, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
-import { isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, RECORD_FORMAT, RecordPlayer, replay, type RunRecord } from "./record";
+import { isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, RECORD_FORMAT, RecordPlayer, replay, type RunRecord, writeRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -56,6 +58,15 @@ describe("RecordPlayer", () => {
     expect(player.played()).toEqual([goTo, map, model, milestone]);
     expect(player.result).toEqual(result);
   });
+});
+
+test("a Run record file starts with the next Run id on 5 digits: two records written at the same time get two ids", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "runs-"));
+  await Bun.write(join(dir, "00007-model-3-2026-10-26T07-41-35.302Z.json"), "{}");
+  const record: RunRecord = { header, buttons: [[0, 6]], events: [], result };
+  await Promise.all([writeRecord(record, dir), writeRecord(record, dir)]);
+  const names = (await readdir(dir)).sort();
+  expect(names.map((name) => name.slice(0, 13))).toEqual(["00007-model-3", "00008-test-1-", "00009-test-1-"]);
 });
 
 describe("isRunRecord", () => {

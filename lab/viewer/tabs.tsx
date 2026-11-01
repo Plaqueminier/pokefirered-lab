@@ -1,16 +1,16 @@
-import { BookOpen, LayoutGrid, Shapes } from "lucide-preact";
+import { BookOpen, Grid2x2, LayoutGrid, Shapes } from "lucide-preact";
 import { render } from "preact";
-import { useState } from "preact/hooks";
 import { Tabs } from "./components";
 import { DOC_PARAM } from "./doc";
 
 const TABS = [
   { id: "lab", label: "Lab", icon: <LayoutGrid size={15} /> },
+  { id: "grid", label: "Grid", icon: <Grid2x2 size={15} /> },
   { id: "doc", label: "Doc", icon: <BookOpen size={15} /> },
   { id: "components", label: "Components", icon: <Shapes size={15} /> },
 ] as const;
 
-type Tab = (typeof TABS)[number]["id"];
+export type Tab = (typeof TABS)[number]["id"];
 
 function setDocParam(page: string | null): void {
   const url = new URL(location.href);
@@ -19,16 +19,11 @@ function setDocParam(page: string | null): void {
   history.replaceState(null, "", url);
 }
 
-function NavBar({ initial, onChange }: { initial: Tab; onChange: (tab: Tab) => void }) {
-  const [tab, setTab] = useState(initial);
-  const select = (next: Tab) => {
-    setTab(next);
-    onChange(next);
-  };
+function NavBar({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
   return (
     <div class="flex h-14 items-center gap-6 px-6">
       <span class="text-lg font-bold">FireRed Lab</span>
-      <Tabs items={[...TABS]} value={tab} onChange={select} />
+      <Tabs items={[...TABS]} value={value} onChange={onChange} />
     </div>
   );
 }
@@ -44,14 +39,12 @@ export class ViewerTabs {
 
   constructor(
     private readonly ui: TabElements,
-    private readonly onLeaveLab: () => void,
+    private readonly onShow: (tab: Tab) => void,
   ) {
-    const initial: Tab = this.#docPage === null ? "lab" : "doc";
-    render(<NavBar initial={initial} onChange={(tab) => this.#show(tab)} />, ui.nav);
-    this.#show(initial);
+    this.show(this.#docPage === null ? "lab" : "doc");
   }
 
-  #show(tab: Tab): void {
+  show(tab: Tab): void {
     if (this.#shown === "doc" && tab !== "doc") {
       this.#docPage = new URLSearchParams(location.search).get(DOC_PARAM);
       setDocParam(null);
@@ -59,7 +52,8 @@ export class ViewerTabs {
     if (tab === "doc" && this.#docPage !== null) setDocParam(this.#docPage);
     this.#shown = tab;
     for (const { id } of TABS) this.ui.tabs[id].hidden = id !== tab;
-    if (tab !== "lab") this.onLeaveLab();
+    render(<NavBar value={tab} onChange={(next) => this.show(next)} />, this.ui.nav);
+    this.onShow(tab);
   }
 
   get labShown(): boolean {

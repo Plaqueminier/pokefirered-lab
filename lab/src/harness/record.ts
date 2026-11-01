@@ -1,5 +1,5 @@
 // The buttons alone replay a Run: the game reads no input while it is frozen (docs/adr/0002).
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import type { REASONING, STARTERS } from "../protocol";
@@ -94,6 +94,17 @@ export function callTurns(events: readonly RunEvent[]): CallTurn[] {
     else turns[turns.length - 1].events.push(event);
   }
   return turns;
+}
+
+export function factsAt(events: readonly RunEvent[], frame: number): { milestone: Milestone | null; battle: boolean; cost: number } {
+  let milestone: Milestone | null = null;
+  let battle = false;
+  for (const event of events) {
+    if (event.frame > frame) break;
+    if (event.type === "milestone") milestone = event.milestone;
+    if (event.type === "battle") battle = event.state === "start";
+  }
+  return { milestone, battle, cost: modelTotals(events.filter((event) => event.frame <= frame)).cost };
 }
 
 export function modelTotals(events: readonly RunEvent[]): ModelTotals {
@@ -230,6 +241,34 @@ export class RecordPlayer {
   }
 }
 
+const KEYFRAME_FRAMES = 3600;
+const MAX_KEYFRAMES = 256;
+
+// Above MAX_KEYFRAMES, keep every second one and double the interval: a long Run stays within the limit.
+export class Keyframes<K extends { frame: number }> {
+  #list: K[] = [];
+  #interval = KEYFRAME_FRAMES;
+  #reached = -1;
+
+  get reached(): number {
+    return Math.max(0, this.#reached);
+  }
+
+  onFrame(frame: number, take: () => K): void {
+    if (frame <= this.#reached) return;
+    this.#reached = frame;
+    if (frame % this.#interval !== 0) return;
+    this.#list.push(take());
+    if (this.#list.length <= MAX_KEYFRAMES) return;
+    this.#list = this.#list.filter((_, i) => i % 2 === 0);
+    this.#interval *= 2;
+  }
+
+  before(frame: number): K | undefined {
+    return this.#list.findLast((keyframe) => keyframe.frame <= frame);
+  }
+}
+
 export type Replay = { events: GameEvent[]; frame: number; screen: string };
 
 export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin)[] {
@@ -302,10 +341,26 @@ export function continuationOf(parent: RunRecord): Continuation {
   return { frame: new RecordPlayer(parent).frames, events: parent.events.length };
 }
 
-export async function writeRecord(record: RunRecord): Promise<string> {
-  await mkdir(RUNS_DIR, { recursive: true });
-  const { name, version } = record.header.bot;
-  const path = join(RUNS_DIR, `${name}-${version}-${new Date().toISOString().replaceAll(":", "-")}.json`);
-  await Bun.write(path, JSON.stringify(record));
-  return path;
+const RUN_ID_DIGITS = 5;
+
+async function nextRunId(dir: string): Promise<string> {
+  const ids = (await readdir(dir)).map((file) => Number(/^(\d+)-/.exec(file)?.[1] ?? 0));
+  return String(Math.max(0, ...ids) + 1).padStart(RUN_ID_DIGITS, "0");
+}
+
+let writing: Promise<string> = Promise.resolve("");
+
+/** The file name starts with the Run id, so that the files sort in the order of the Runs. */
+export function writeRecord(record: RunRecord, dir = RUNS_DIR): Promise<string> {
+  // Two Runs can end at the same time: one write at a time, so that each one reads the id of the other.
+  writing = writing
+    .catch(() => "")
+    .then(async () => {
+      await mkdir(dir, { recursive: true });
+      const { name, version } = record.header.bot;
+      const path = join(dir, `${await nextRunId(dir)}-${name}-${version}-${new Date().toISOString().replaceAll(":", "-")}.json`);
+      await Bun.write(path, JSON.stringify(record));
+      return path;
+    });
+  return writing;
 }

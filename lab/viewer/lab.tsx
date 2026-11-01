@@ -1,13 +1,13 @@
-import { Backpack, Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
+import { ArrowLeft, Backpack, Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import type { InventoryAt } from "../src/inventory";
-import { type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
+import { type BotInfo, type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
-import { callAt, type SharedCursor, Store, useStore } from "./cursor";
+import { callAt, type Readable, type SharedCursor, Store, useStore } from "./cursor";
 import { InventoryPanel } from "./inventory-panel";
 import { CellPointerCard, MapPanel } from "./map-panel";
 import { memoryPanelView } from "./memory-panel";
@@ -15,7 +15,7 @@ import { MemoryTreePanel } from "./memory-tree-panel";
 import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
 import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
 import { PokemonCard } from "./pokemon";
-import { BotsPanel, RunSelect } from "./runs";
+import { BotsPanel, RunSelect, runKey } from "./runs";
 import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
 import { clock, stuckTone } from "./stats-format";
@@ -35,7 +35,7 @@ type LabData = {
   events: readonly RunEvent[];
   rows: readonly UnusualCall[];
   statusLine: string;
-  bots: readonly string[];
+  bots: readonly BotInfo[];
   records: readonly string[];
   areas: Areas;
   record: { name: string; events: readonly GameEvent[] } | null;
@@ -43,7 +43,16 @@ type LabData = {
 };
 
 // What viewer.ts gives to the Lab tab.
-type LabOptions = { shared: SharedCursor; send: (message: ClientMessage) => void; map: WholeMap; cellTip: Store<CellTip | null>; settings: ScreenSettings; settingsActions: ScreenSettingsActions };
+type LabOptions = {
+  shared: SharedCursor;
+  send: (message: ClientMessage) => void;
+  map: WholeMap;
+  cellTip: Store<CellTip | null>;
+  fromGrid: Readable<string | null>;
+  backToGrid: () => void;
+  settings: ScreenSettings;
+  settingsActions: ScreenSettingsActions;
+};
 
 type Lab = Omit<LabOptions, "settings"> & { data: Store<LabData> };
 
@@ -94,6 +103,7 @@ function LabLayout() {
   const panel = RAIL.find((entry) => entry.id === shown) ?? RAIL[0];
   return (
     <>
+      <GridBackBar />
       {ZONES.top.render()}
       <div class="flex flex-col min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:flex-row">
         <section
@@ -119,6 +129,21 @@ function LabLayout() {
       </section>
       <CellPointerCard tip={useStore(useLab().cellTip)} />
     </>
+  );
+}
+
+function GridBackBar() {
+  const { fromGrid, backToGrid, data } = useLab();
+  const key = useStore(fromGrid);
+  const { status } = useStore(data);
+  if (key === null || !status || runKey(status.shown) !== key) return null;
+  return (
+    <div class="flex h-9 shrink-0 items-center border-b border-line px-2">
+      <Button variant="ghost" size="sm" onClick={backToGrid}>
+        <ArrowLeft size={14} />
+        Grid
+      </Button>
+    </div>
   );
 }
 
@@ -278,7 +303,7 @@ function TopBar() {
         </span>
         <span class="shrink-0">
           <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-            <BotsPanel shown={shown} bots={bots} records={records} send={send} />
+            <BotsPanel shown={shown} bots={bots} records={records} places={status?.places ?? { free: 0, limit: 0 }} send={send} />
           </Popover>
         </span>
       </span>
@@ -505,7 +530,7 @@ export class LabTab {
     this.#patch({ record: { name, events } });
   }
 
-  onBots(bots: readonly string[]): void {
+  onBots(bots: readonly BotInfo[]): void {
     this.#patch({ bots });
   }
 

@@ -69,7 +69,7 @@ export function PrinciplePage() {
       ]}
     >
       <div class={GRID3}>
-        <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save", "4 at most at the same time"]} />
+        <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save", "10 at most at the same time: the Viewer Run and 9 places"]} />
         <DocCard icon={Bot} title="Bot" lines={["decides what to do", "acts only through the Harness"]} />
         <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
@@ -93,9 +93,13 @@ const LAB_SPOTS = [
 export function ViewerPage() {
   return (
     <Page
-      lead="Three tabs: Lab, Doc and Components; a change of tab stops no Run."
+      lead="Four tabs: Lab, Grid, Doc and Components; a change of tab stops no Run."
       details={[
-        ["Keyboard", "in the Doc and Components tabs, the keyboard does not play: the arrow keys scroll the page."],
+        ["Keyboard", "in the Grid, Doc and Components tabs, the keyboard does not play: the arrow keys scroll the page."],
+        [
+          "Grid",
+          "the second tab: 2, 4 or 9 cells, each with the screen of a Run, its name, Bot, model, game time, last Milestone, cost and state (plays, waits for the model, in battle, ended). The live Runs fill the cells; a Run record can go in any cell. The replays share one cursor (play, pause, ×1, ×4, ×20, a slider) from frame 0. A click on a cell shows its Run in the Lab tab, with a bar “← Grid” to go back. No sound.",
+        ],
         ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start a Bot, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
@@ -118,10 +122,10 @@ export function ViewerPage() {
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
-        ["Doc", "the second tab: 12 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
+        ["Doc", "the third tab: 12 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
         [
           "Components",
-          "the third tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
+          "the fourth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
         ],
       ]}
     >

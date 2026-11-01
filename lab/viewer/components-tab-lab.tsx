@@ -2,10 +2,12 @@ import { useState } from "preact/hooks";
 import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
+import type { BotInfo, ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
-import type { Span } from "./cursor";
+import { ScreenFeed, type Span } from "./cursor";
+import { type GridActions, GridCellView } from "./grid";
+import type { GridCell } from "./grid-cells";
 import { PokemonCard, PokemonSummary } from "./pokemon";
 import { RecordCard } from "./record-card";
 import { BotsPanel, RunSelect } from "./runs";
@@ -13,7 +15,7 @@ import { ScreenControls, type ScreenRun, type ScreenSettings } from "./screen-co
 import { availableKinds, Timeline } from "./timeline";
 import { type TimelineKind, timelineEvents } from "./timeline-events";
 
-export const RECORD = "model-10-2026-10-27T09-38-59.686Z.json";
+export const RECORD = "00017-model-10-2026-10-27T09-38-59.686Z.json";
 
 function move(name: string, type: string, power: number | null, accuracy: number | null, pp: number, maxPp: number, description: string): PartyMove {
   return { name, type, effect: 0, power, accuracy, pp, maxPp, description };
@@ -186,8 +188,28 @@ const DEMO_RUNS: RunSummary[] = [
     parent: null,
     continued: null,
     model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "low", starter: "free", cost: 0.37, callsStarted: 120 },
+    frame: 52_000,
+    milestone: "has-pokemon",
+    battle: false,
+    waits: true,
+    record: null,
   },
-  { id: 4, bot: "model", playing: false, stopAsked: false, endReason: "cost limit", error: null, parent: RECORD, continued: null, model: null },
+  {
+    id: 4,
+    bot: "model",
+    playing: false,
+    stopAsked: false,
+    endReason: "cost limit",
+    error: null,
+    parent: RECORD,
+    continued: null,
+    model: null,
+    frame: 81_000,
+    milestone: "first-rival-battle",
+    battle: false,
+    waits: false,
+    record: RECORD,
+  },
 ];
 
 const DEMO_SHOWN: { label: string; shown: ShownRun }[] = [
@@ -202,26 +224,32 @@ export function RunSelectDemo() {
       {DEMO_SHOWN.map(({ label, shown }) => (
         <div key={label}>
           <p class="mb-1.5 text-xs text-faint">{label}</p>
-          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "starter-3-2026-10-24T08-13-38.892Z.json"]} send={() => {}} />
+          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "00016-model-9-2026-10-27T08-40-44.237Z.json"]} send={() => {}} />
         </div>
       ))}
     </div>
   );
 }
 
+const DEMO_BOTS: BotInfo[] = [
+  { name: "model", kind: "model", version: "12", goal: null, costLimit: 0.5 },
+  { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
+];
+
 const BOTS_STATES = {
-  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: ["model", "starter"] },
-  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null } as ShownRun, bots: [] },
+  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: DEMO_BOTS, places: { free: 6, limit: 9 } },
+  full: { label: "No free place", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: DEMO_BOTS, places: { free: 0, limit: 9 } },
+  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null } as ShownRun, bots: [], places: { free: 9, limit: 9 } },
 };
 
 export function BotsDemo() {
   const [state, setState] = useState<keyof typeof BOTS_STATES>("plays");
-  const { shown, bots } = BOTS_STATES[state];
+  const { shown, bots, places } = BOTS_STATES[state];
   return (
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
       <PopoverBody>
-        <BotsPanel shown={shown} bots={bots} records={[RECORD]} send={() => {}} />
+        <BotsPanel shown={shown} bots={bots} records={[RECORD]} places={places} send={() => {}} />
       </PopoverBody>
     </div>
   );
@@ -417,6 +445,33 @@ const RECORD_STATES = {
   jumps: { label: "A replay that jumps", replay: { ...DEMO_REPLAY, seeking: { from: 200000, to: 80000 } } },
   old: { label: "A record with no Game events", replay: { ...DEMO_REPLAY, gameEvents: null } },
 };
+
+const DEMO_CELL: GridCell = { kind: "live", runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", cost: 0.37, state: { kind: "plays" }, record: null };
+
+const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
+  plays: { label: "Live, plays", cell: DEMO_CELL },
+  waits: { label: "Waits for the model", cell: { ...DEMO_CELL, state: { kind: "waits" } } },
+  battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
+  ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD } },
+  replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD } },
+  replayEnded: { label: "Replay, ended", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, state: { kind: "ended", result: "goal" } } },
+  empty: { label: "Empty", cell: null },
+};
+
+const DEMO_GRID_ACTIONS: GridActions = { send: () => {}, setSize: () => {}, focus: () => {} };
+
+export function GridCellDemo() {
+  const [state, setState] = useState("plays");
+  const [screens] = useState(() => new ScreenFeed());
+  return (
+    <div class="flex flex-col items-start gap-3">
+      <Tabs kind="segmented" items={Object.entries(CELL_STATES).map(([id, { label }]) => ({ id, label }))} value={state} onChange={setState} />
+      <div class="w-[340px] max-w-full">
+        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} actions={DEMO_GRID_ACTIONS} />
+      </div>
+    </div>
+  );
+}
 
 export function RecordCardDemo() {
   const [state, setState] = useState<keyof typeof RECORD_STATES>("plays");

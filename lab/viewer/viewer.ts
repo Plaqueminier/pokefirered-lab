@@ -1,15 +1,15 @@
-// The Viewer: shows one Run and sends keyboard input to the harness.
 import type { Camera, MapActors, MapGrid } from "../src/game";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { mountDocTab } from "./doc";
-import { SharedCursor, Store } from "./cursor";
+import { ScreenFeed, SharedCursor, Store } from "./cursor";
+import { GridTab } from "./grid";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
 import { type CellTip, describe, draw } from "./mapdraw";
 import { ViewerTabs } from "./tabs";
 import { WholeMap } from "./whole-map";
-import { BinaryKind, type BotInfo, Keys, type ClientMessage, replayOf, type ServerMessage } from "../src/protocol";
+import { BinaryKind, type BotInfo, Keys, type ClientMessage, replayOf, SCREEN_HEADER, type ServerMessage, VIEWER_RUN_ID } from "../src/protocol";
 
 const SCALE = 3;
 const VOLUME_KEY = "lab.volume";
@@ -47,19 +47,35 @@ const audio = new AudioOut((ms) => (audioLevel = ms));
 audio.setVolume(settings.volume);
 
 const shared = new SharedCursor();
+const screens = new ScreenFeed();
+let shownRunId = VIEWER_RUN_ID;
+let stopDrawing = screens.subscribe(shownRunId, drawGame);
+let gridShown = false;
+const fromGrid = new Store<string | null>(null);
+const gridTab = new GridTab($("grid"), { send, screens, fromGrid, openLab: () => tabs.show("lab") });
 const tabs = new ViewerTabs(
   {
     nav: $("nav"),
-    tabs: { lab: $("lab"), doc: $("doc"), components: $("components") },
+    tabs: { lab: $("lab"), grid: $("grid"), doc: $("doc"), components: $("components") },
   },
-  releaseKeys,
+  (tab) => {
+    if (tab !== "lab") releaseKeys();
+    gridShown = tab === "grid";
+    gridTab.onTab(gridShown);
+    syncAudio();
+  },
 );
 mountComponentsTab($("components"));
 const bots = new Store<BotInfo[] | null>(null);
 mountDocTab($("doc"), bots);
 const cellTip = new Store<CellTip | null>(null);
 const map = new WholeMap(send, cellTip);
-const lab = new LabTab($("lab"), $("toasts"), { shared, send, map, cellTip, settings, settingsActions: { setOverlay, setSound, setVolume } });
+const lab = new LabTab($("lab"), $("toasts"), { shared, send, map, cellTip, fromGrid, backToGrid: () => tabs.show("grid"), settings, settingsActions: { setOverlay, setSound, setVolume } });
+
+function drawGame(screen: Uint8Array): void {
+  image.data.set(screen);
+  gameCtx.putImageData(image, 0, 0);
+}
 
 function send(message: ClientMessage): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -72,8 +88,9 @@ function connect(): void {
     if (event.data instanceof ArrayBuffer) {
       const bytes = new Uint8Array(event.data);
       if (bytes[0] === BinaryKind.Screen) {
-        image.data.set(bytes.subarray(1));
-        gameCtx.putImageData(image, 0, 0);
+        const runId = new DataView(event.data).getUint32(1, true);
+        const screen = bytes.subarray(SCREEN_HEADER);
+        screens.put(runId, screen);
       } else if (bytes[0] === BinaryKind.Audio) {
         audio.push(event.data.slice(2));
       }
@@ -82,8 +99,9 @@ function connect(): void {
     onMessage(JSON.parse(event.data) as ServerMessage);
   };
   ws.onopen = () => {
+    gridTab.onOpen();
     if (settings.overlay) send({ type: "overlay", enabled: true });
-    if (settings.sound && audio.running) send({ type: "audio", enabled: true });
+    syncAudio();
   };
   ws.onclose = () => {
     lab.onStatusLine("disconnected, trying again…");
@@ -96,6 +114,13 @@ function onMessage(message: ServerMessage): void {
     case "status": {
       const run = message.shown.kind === "bot" ? message.shown.run : null;
       map.onRun(run?.id ?? null);
+      const runId = run?.id ?? VIEWER_RUN_ID;
+      if (runId !== shownRunId) {
+        shownRunId = runId;
+        stopDrawing();
+        stopDrawing = screens.subscribe(runId, drawGame);
+      }
+      gridTab.onStatus(message);
       const frame = replayOf(message.shown)?.seeking?.to ?? message.frame;
       const statusLine =
         `${message.rom} · frame ${frame} · ` +
@@ -146,9 +171,10 @@ function onMessage(message: ServerMessage): void {
       break;
     case "records":
       lab.onRecords(message.names);
+      gridTab.onRecords(message.names);
       break;
     case "bots":
-      lab.onBots(message.bots.map((bot) => bot.name));
+      lab.onBots(message.bots);
       bots.set(message.bots);
       break;
     case "events": {
@@ -200,19 +226,21 @@ function startSound(): void {
   if (!settings.sound || audio.running) return;
   void audio.start().then(() => {
     changeSettings({ soundStarted: audio.running });
-    send({ type: "audio", enabled: true });
+    syncAudio();
   });
 }
 
 function setSound(on: boolean): void {
   changeSettings({ sound: on });
-  if (on) {
-    startSound();
-    if (audio.running) send({ type: "audio", enabled: true });
-  } else {
-    send({ type: "audio", enabled: false });
-    audio.clear();
-  }
+  if (on) startSound();
+  syncAudio();
+}
+
+// The Grid has no sound (#72).
+function syncAudio(): void {
+  const on = settings.sound && audio.running && !gridShown;
+  send({ type: "audio", enabled: on });
+  if (!on) audio.clear();
 }
 
 // localStorage throws when the browser blocks the storage (for example in a private window).
