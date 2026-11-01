@@ -81,8 +81,20 @@ A **Model call** of a model bot at the first walk after 20 decisions since its l
 _Avoid_: review call, check turn
 
 **Summary call**:
-One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost counts in the cost of the **Run**.
+One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
+
+**Model provider**:
+The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code` or `codex`. A **Run** has one Model provider and one AI model.
+_Avoid_: backend, mode, API
+
+**Plan provider**:
+A **Model provider** that a person's subscription pays for: `claude-code` or `codex`. The calls of a **Run** on a Plan provider use the quota of the subscription and cost no money, so the cost of this **Run** is 0 and a **Token limit** replaces its cost limit.
+_Avoid_: free provider, subscription mode
+
+**Token limit**:
+The number of tokens that a **Run** on a **Plan provider** can use: all the input tokens with the cached tokens, and the output tokens, of its own **Model calls** and **Summary calls**. The default is 1,000,000.
+_Avoid_: quota (the quota is the limit of the subscription, for all its uses)
 
 **Knowledge level**:
 The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more, for example hidden items and exact enemy stats.
@@ -152,11 +164,11 @@ A change in the game that the **Harness** reads from the game state and writes i
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
-A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit counts its own **Model calls** only, and its model can be another one.
+A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
 _Avoid_: resumed run, restart, savestate
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them). The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `token limit` (the **Run** used more tokens than its **Token limit**), `plan limit` (the **Plan provider** refused a call because the quota of the subscription is used; a **Continued Run** can play on later), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them). The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Inventory**:
@@ -197,7 +209,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit, at a whiteout (an option, on by default) and at an unknown screen.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit or its **Token limit**, at a `plan limit`, at a whiteout (an option, on by default) and at an unknown screen.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - The **Viewer** shows several **Runs** in its **Grid**, and one **Run** in detail: the shown **Run**. The **Harness** owns all **Runs**.

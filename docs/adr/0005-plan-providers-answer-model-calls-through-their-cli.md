@@ -1,0 +1,7 @@
+# A Plan provider answers each Model call through its command-line tool
+
+Status: accepted. This ADR replaces part of ADR 0003.
+
+ADR 0003 did not use Claude Code, and so OpenRouter bills each model call. To play more Runs on the subscriptions that the user already pays for, the model bot can now also send its calls to `claude -p` or `codex exec`. The bot still calls its model from the pool: the RunPool plays it in a worker, each call is one new process with no shared context, the AI model never calls the harness, and the Viewer and the Run record show the Run as they show any other Run. So the reasons of ADR 0003 against an MCP server stay true. OpenRouter stays the default, because it has the widest choice of models and it gives a real cost.
+
+We measured one recorded prompt of 5,112 input tokens on OpenRouter: 8,241 input tokens through Claude Code and 7,306 through Codex, about 4 s for each call, and an answer that agrees with the schema. The cost: each call has an overhead of tokens that the bot does not control, the Run uses a quota that the user's own work also uses, the amount of this quota is not published, and the command line of each tool can change. A Plan provider gives no bill, and Codex gives no dollar value, so a Token limit replaces the cost limit, and a Run that reaches the quota ends with `plan limit` and does not wait, so that it never takes quota with no request from a person.

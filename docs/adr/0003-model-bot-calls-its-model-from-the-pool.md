@@ -1,3 +1,5 @@
 # A model bot calls its model from the pool; the model does not call the harness
 
 A model bot is a Bot in `bots/`. The RunPool plays it in a worker, and its code sends each model call to an OpenAI-compatible API (OpenRouter). Then the code calls the harness with the answer. The AI model never calls the harness itself. We did not use Claude Code with an MCP server of the harness. Claude Code adds its system prompt, its tool turns and a context that grows at each call, so each decision is slower. It also limits the bot to Claude models, and an MCP server in a separate process has its own emulator, so the Viewer cannot show its Run live. With this choice, any model on OpenRouter plays (cheap models also), the bot controls the context of each model call, and the Viewer and the Run record show a model bot as they show the scripted bot. The cost: OpenRouter bills each model call; the Claude Code plan does not pay for it.
+
+ADR 0005 changes the last sentence: a Run can now also use a subscription, through the command-line tool of a Plan provider. The rest of this ADR stays true.
