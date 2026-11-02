@@ -41,6 +41,23 @@ const OAK_TEXTS = [
 const BULBASAUR_QUESTION = "I see! BULBASAUR is your choice. It's very easy to raise. So, PLOK, you want to go with the GRASS POKéMON BULBASAUR?";
 
 describe.skipIf(!ready)("goTo", () => {
+  test("a goTo to a # cell that the player saw says it, and a # cell that the player did not see stays no route", async () => {
+    const harness = await Harness.open();
+    expect(await harness.goTo(0, 0, "PalletTown")).toMatchObject({ status: "impossible", reason: expect.stringContaining("no route from") });
+    const here = mapNamed(harness.observe().atlas, "PalletTown_PlayersHouse_2F");
+    const wall = here.cells.indexOf("#");
+    const [x, y] = [wall % here.width, Math.floor(wall / here.width)];
+    expect(await harness.goTo(x, y)).toMatchObject({ status: "impossible", reason: `(${x}, ${y}) is a # cell of ${here.name}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell` });
+  });
+
+  test("the exits of the Atlas show what a player sees, from the kind of the map of the ROM", async () => {
+    const harness = await Harness.open();
+    await harness.goTo(12, 3, "PalletTown");
+    const { warps } = mapNamed(harness.observe().atlas, "PalletTown");
+    expect(warps.find((w) => w.x === 6 && w.y === 7)?.place).toBe("house");
+    expect(warps.find((w) => w.x === 15 && w.y === 7)?.place).toBe("house");
+  });
+
   test("a goTo with a map to a door ends on the cell next to the door, also from inside the building", async () => {
     const harness = await Harness.open();
     expect(await harness.goTo(6, 7, "PalletTown")).toMatchObject({ status: "done" });
@@ -99,7 +116,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "16", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "17", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {

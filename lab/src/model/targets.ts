@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type MapGrid, OPPOSITE } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type ExitPlace, type MapGrid, OPPOSITE } from "../game";
 import { type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
@@ -36,11 +36,28 @@ export const TARGET_GROUPS: TargetGroup[] = [
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const EXIT_NAMES: [RegExp, string][] = [
-  [/CAVE_DOOR/, "cave entrance"],
+  [/CAVE_DOOR/, "entrance"],
   [/DOOR/, "door"],
-  [/STAIR|LADDER|ESCALATOR/, "stairs"],
+  [/LADDER/, "ladder"],
+  [/ESCALATOR/, "escalator"],
+  [/STAIR/, "stairs"],
   [/ARROW_WARP/, "exit mat"],
+  [/REGULAR_WARP/, "teleport pad"],
+  [/FALL_WARP/, "hole"],
 ];
+const PLACE_TEXT: Record<ExitPlace, string> = {
+  center: "a Pokémon Center",
+  mart: "a Poké Mart",
+  departmentStore: "a department store",
+  gym: "a Gym",
+  house: "a house",
+  gate: "a gate building",
+  cave: "a cave entrance",
+  path: "a path to another area",
+  harbor: "a harbor",
+  building: "a building",
+  outside: "the outside",
+};
 const EDGE_TRIES = 3;
 const BEYOND_TEXT: Record<Beyond, string> = { unseen: "unseen cells", exit: "an exit not taken", nothing: "nothing new" };
 
@@ -56,8 +73,8 @@ function taken(to: string | null): string {
   return to ? `${destination(to)}, taken` : destination(to);
 }
 
-function warpDestination({ to, arrival }: AtlasWarp): string {
-  return arrival ? `${destination(to)} (${arrival.x}, ${arrival.y})` : destination(to);
+function warpDestination({ place, to, arrival }: AtlasWarp): string {
+  return [...(place ? [PLACE_TEXT[place]] : []), arrival ? `${destination(to)} (${arrival.x}, ${arrival.y})` : destination(to)].join(", ");
 }
 
 function edgeName(side: Direction): string {
@@ -66,6 +83,10 @@ function edgeName(side: Direction): string {
 
 function exitPlace(w: AtlasWarp): string {
   return `${exitName(w.behavior)} at (${w.x}, ${w.y})`;
+}
+
+export function exitSight(w: AtlasWarp): string {
+  return [exitPlace(w), ...(w.place ? [PLACE_TEXT[w.place]] : [])].join(", ");
 }
 
 export function warpLabel(w: AtlasWarp): string {
@@ -146,12 +167,12 @@ export function away(distance: number): string {
 function leadLabel(lead: Lead, here: AtlasMap): string {
   const place = lead.map.name === here.name ? "in another part of this map" : `on ${lead.map.name}`;
   if (lead.kind === "unseen") return `unseen cells ${lead.direction} of (${lead.cell.x}, ${lead.cell.y}) ${place}, ${away(lead.away)}`;
-  return `${exitPlace(lead.warp)} ${place}, not taken, ${away(lead.away)}: go walks next to it`;
+  return `${exitPlace(lead.warp)} ${place}, ${warpDestination(lead.warp)}, ${away(lead.away)}: go walks next to it`;
 }
 
 function exitTarget(w: AtlasWarp, where: string, parts: Parts): LocalTarget {
   const beyond = parts.beyond(w);
-  return { kind: "exit", name: exitName(w.behavior), label: `${exitPlace(w)}, ${where}: ${w.to ? `${warpDestination(w)}, taken` : destination(w.to)}${beyond ? `; beyond it: ${BEYOND_TEXT[beyond]}` : ""}`, cell: { x: w.x, y: w.y }, to: w.to, warp: w };
+  return { kind: "exit", name: exitName(w.behavior), label: `${exitPlace(w)}, ${where}: ${warpDestination(w)}${w.to ? ", taken" : ""}${beyond ? `; beyond it: ${BEYOND_TEXT[beyond]}` : ""}`, cell: { x: w.x, y: w.y }, to: w.to, warp: w };
 }
 
 function edgeTarget(e: AtlasEdge, where: string): LocalTarget {

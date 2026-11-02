@@ -200,7 +200,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
     expect(prompts[1].user).toMatch(/You chose: go A\n +goTo\(10, 2\): done/);
     const pallet = first(/^Map PalletTown:/m);
-    expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F \(4, 8\), taken; beyond it: nothing new$/m);
+    expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: a house, to PalletTown_PlayersHouse_1F \(4, 8\), taken; beyond it: nothing new$/m);
     expect(pallet).toMatch(/^[A-Z]\. unseen cells north of \(\d+, \d+\), /m);
     expect(pallet).toMatch(/^- A \(door\) leads to PalletTown_PlayersHouse_1F\. /m);
     expect(harness.actions.filter((e) => e.action.name === "choose").map((e) => "option" in e.action && e.action.option)).toEqual(["YES", "YES"]);
@@ -211,7 +211,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "16", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "17", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {

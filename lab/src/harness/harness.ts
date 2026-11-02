@@ -11,6 +11,7 @@ import {
   isDecisionPoint,
   type GameInterruption,
   type GameState,
+  KIND,
   type MapActors,
   type MapGrid,
   MILESTONES,
@@ -22,7 +23,7 @@ import { isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
-import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, cellAt, seenIn, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
@@ -530,7 +531,7 @@ export class Harness {
         const maps = this.routeMaps();
         const route = findRoute(here, destination, maps);
         if (!route && !findRoute(here, destination, (name) => withoutPeople(maps(name)))) {
-          return { status: "impossible", reason: noRouteReason(here, destination, asked, maps) };
+          return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge)) };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
         switch (result) {
@@ -900,9 +901,11 @@ function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, bloc
   return `no map connects to the ${side} edge of ${map.name}; ${range}`;
 }
 
-function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource): string {
+function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas): string {
   const obstacle = obstacleOnRoute(here, destination, maps);
   if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}`;
+  const map = known.find((m) => m.name === asked.map);
+  if (map && seenIn(map)(asked) && cellAt(map, asked) === KIND.blocked) return `(${asked.x}, ${asked.y}) is a # cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
   return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
 }
 

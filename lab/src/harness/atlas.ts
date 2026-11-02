@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction, type ExitPlace, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -9,7 +9,7 @@ const SCREEN_UP = 5;
 const SCREEN_DOWN = 4;
 const RIVAL_GRAPHICS = "BLUE";
 
-export type AtlasWarp = { x: number; y: number; behavior: string; to: string | null; arrival: Cell | null };
+export type AtlasWarp = { x: number; y: number; behavior: string; place: ExitPlace | null; to: string | null; arrival: Cell | null };
 
 export type TakenWarp = { to: string; arrival: Cell | null };
 
@@ -315,7 +315,7 @@ export function atlasWarps(warps: Warp[], taken: ReadonlyMap<string, TakenWarp>,
     const shown = cells.find((w) => taken.has(cellKey(w))) ?? cells.find(isSeen);
     if (!shown) return [];
     const { to = null, arrival = null } = taken.get(cellKey(shown)) ?? {};
-    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, to, arrival }];
+    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, place: shown.place, to, arrival }];
   });
 }
 

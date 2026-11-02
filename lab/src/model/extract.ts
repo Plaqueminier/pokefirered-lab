@@ -2,14 +2,15 @@ import type { Direction, Obstacle } from "../game";
 import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, cellAt, mapNamed, seenIn, UNSEEN } from "../harness/atlas";
 import { type Cell, cellKey, kindAt } from "../harness/path";
 import { obstacleRemedy } from "../protocol";
-import { Parts } from "./parts";
-import { away, EXITS_GROUP, edgeLabel, isExit, leadTargets, type LocalTarget, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
+import { Parts, unseenAreas } from "./parts";
+import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, leadTargets, type LocalTarget, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
 export const FULL_ATLAS_BUDGET = 100_000;
-const LEGEND = 'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side';
+const LEGEND = 'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, rock or floor, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side';
 const LONG_MARK = "*";
-const OWN_PART_SEEN = "You saw all the cells of your part of this map: no cell that you saw leads from it to the other cells of this map.";
+const OWN_PART_SEEN = "You saw all the cells of your part of this map. A ? cell can be rock that you never see, or a part of this map that you see from another exit: take an exit or a lead.";
+const MAP_SEEN = "You saw all the cells of this map.";
 
 export type AtlasView = { lines: string[]; targets: Target[] };
 
@@ -20,12 +21,11 @@ export function atlasExtract(overworld: Overworld): AtlasView {
   const parts = new Parts(overworld.atlas, here, overworld.grid, overworld.player);
   const local = localTargets(overworld, here, parts);
   const leads = leadTargets(parts);
-  const view = [...localView(overworld, here, local), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
+  const view = [...localView(overworld, here, local), ...seenLines(here, local), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
   const outside = outsideLine(overworld.atlas, here, local);
-  const ownSeen = !local.some((t) => t.kind === "frontier") && here.cells.includes(UNSEEN) ? OWN_PART_SEEN : null;
   let neighbours: string[] = [];
   let targets = [...local, ...leads];
-  const lines = () => extractLines(view, neighbours, targets, [outside, ownSeen].flatMap((line) => line ?? []));
+  const lines = () => extractLines(view, neighbours, targets, outside);
   const localSize = lines().join("\n").length;
   for (const { map, distance } of byDistance(overworld.atlas, here.name)) {
     const before = { neighbours, targets };
@@ -52,11 +52,16 @@ export function localView({ grid, player }: Overworld, here: AtlasMap, targets: 
   return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legend, ...gridLines(here, cell)];
 }
 
-function extractLines(view: string[], neighbours: string[], targets: Target[], exitNotes: string[]): string[] {
+function seenLines(here: AtlasMap, targets: Target[]): string[] {
+  if (targets.some((t) => t.kind === "frontier")) return [];
+  return [here.cells.includes(UNSEEN) ? OWN_PART_SEEN : MAP_SEEN];
+}
+
+function extractLines(view: string[], neighbours: string[], targets: Target[], outside: string | null): string[] {
   const groups = TARGET_GROUPS.flatMap((group) => {
     const lines = targetLines(targets, (t) => group.kinds.includes(t.kind));
     const shown = lines.length > 0 ? [group.title, ...lines] : group.empty ? [`${group.title} ${group.empty}`] : [];
-    return group === EXITS_GROUP ? [...shown, ...exitNotes] : shown;
+    return group === EXITS_GROUP && outside ? [...shown, outside] : shown;
   });
   return [...view, ...(neighbours.length === 0 ? [] : ["", "Maps one exit away:", ...neighbours]), "", ...groups];
 }
@@ -209,14 +214,14 @@ function knownMapLine(atlas: Atlas, map: AtlasMap): string {
     if (outdoor.length === 0) buildings.push(warpLabel(warp));
     else passages.push(`${warpLabel(warp)}, a passage${through.length === 0 ? "" : ` through ${through.join(", ")}`} to ${outdoor.join(" and ")}`);
   }
-  const notEntered = map.warps.filter((w) => !w.to).length;
-  const unseen = [...map.cells].filter((c) => c === UNSEEN).length;
+  const notTaken = map.warps.filter((w) => !w.to).map(exitSight);
+  const areas = unseenAreas(map);
   return [
     `- ${map.name}: edges: ${map.edges.map(edge).join(", ") || "none seen"}.`,
     ...(passages.length === 0 ? [] : [`Passages: ${passages.join("; ")}.`]),
     ...(buildings.length === 0 ? [] : [`Buildings entered: ${buildings.join("; ")}.`]),
-    ...(notEntered === 0 ? [] : [`${notEntered} door${notEntered === 1 ? "" : "s"} not entered.`]),
-    `${unseen === 0 ? "No" : unseen} unseen cell${unseen === 1 ? "" : "s"} left.`,
+    ...(notTaken.length === 0 ? [] : [`Exits not taken: ${notTaken.join("; ")}.`]),
+    areas === 0 ? "No open cell next to unseen cells." : `${areas} unseen area${areas === 1 ? "" : "s"} next to open cells.`,
     ...(map.obstacles.length === 0 ? [] : [`Fixed obstacles: ${map.obstacles.map(({ name, x, y }) => `${name} at (${x}, ${y})`).join(", ")}.`]),
   ].join(" ");
 }
