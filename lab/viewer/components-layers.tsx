@@ -109,8 +109,7 @@ export function Popover({ label, icon, title, disabled, children }: { label: Com
   );
 }
 
-// Options with the same group follow each other: the list shows the name of the group above them.
-type SelectOption<T extends string> = { value: T; label: string; group?: string };
+type SelectOption<T extends string> = { value: T; label: string; group?: string; disabledReason?: string };
 
 type SelectSearch = { placeholder: string; empty: (query: string) => string };
 
@@ -173,7 +172,7 @@ export function Select<T extends string>({
   };
   const choose = (index: number) => {
     const option = shown[index];
-    if (!option) return;
+    if (!option || option.disabledReason) return;
     close();
     if (option.value !== value) onChange(option.value);
   };
@@ -309,12 +308,14 @@ export function Select<T extends string>({
                 role="option"
                 tabIndex={-1}
                 aria-selected={index === selected}
-                title={option.label}
+                aria-disabled={option.disabledReason ? true : undefined}
+                title={option.disabledReason ?? option.label}
                 onClick={() => choose(index)}
                 onPointerMove={() => setActive(index)}
-                class={`flex h-8 cursor-pointer items-center gap-2 rounded-sm px-2.5 text-sm ${index === active ? "bg-raised" : ""} ${index === selected ? "font-semibold text-accent" : "text-fg"}`}
+                class={`flex h-8 items-center gap-2 rounded-sm px-2.5 text-sm ${option.disabledReason ? "cursor-not-allowed text-faint" : "cursor-pointer"} ${index === active ? "bg-raised" : ""} ${option.disabledReason ? "" : index === selected ? "font-semibold text-accent" : "text-fg"}`}
               >
                 <span class="min-w-0 flex-1 truncate">{option.label}</span>
+                {option.disabledReason && <span class="min-w-0 max-w-[240px] truncate text-xs">{option.disabledReason}</span>}
                 {index === selected && <Check size={14} class="shrink-0" />}
               </div>,
             ])}

@@ -1,8 +1,8 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type CurrentRecord, isCurrentRecord, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
+import { type CurrentRecord, isCurrentRecord, limitOf, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
 import { NORMAL_TRAINER, shownCharacter } from "../model/character";
-import { modelEvents, parseRunId } from "../protocol";
+import { modelEvents, parseRunId, type SpendUnit, spentIn } from "../protocol";
 import { encodeTrack, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
@@ -11,6 +11,7 @@ export const RACE_SUFFIX = ".json.gz";
 
 const MODEL_BOT = "model";
 const COST_STEP = 0.01;
+const TOKEN_STEP = 10_000;
 
 function battlesOf(events: readonly RunEvent[], lastFrame: number): RaceBattle[] {
   const battles: RaceBattle[] = [];
@@ -26,7 +27,8 @@ function battlesOf(events: readonly RunEvent[], lastFrame: number): RaceBattle[]
   return open === null ? battles : [...battles, [open, lastFrame]];
 }
 
-function costOf(events: readonly RunEvent[]): RaceRun["cost"] {
+function costOf(events: readonly RunEvent[], unit: SpendUnit): RaceRun["cost"] {
+  const step = unit === "tokens" ? TOKEN_STEP : COST_STEP;
   const points: RaceRun["cost"] = [];
   let cost = 0;
   let calls = 0;
@@ -35,9 +37,9 @@ function costOf(events: readonly RunEvent[]): RaceRun["cost"] {
   for (const event of events) {
     if (event.type !== "model" && event.type !== "summary") continue;
     if (event.type === "model") calls++;
-    cost += event.usage.cost;
+    cost += spentIn(unit, event.usage);
     last = [event.frame, cost, calls];
-    if (cost - kept < COST_STEP) continue;
+    if (cost - kept < step) continue;
     points.push(last);
     kept = cost;
   }
@@ -52,6 +54,7 @@ function moneyOf(events: readonly RunEvent[]): RaceRun["money"] {
 function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
   const { events, header } = record;
   const lastFrame = new RecordPlayer(record).frames;
+  const unit = header.bot.model ? limitOf(header.bot.model).unit : "dollars";
   return {
     number,
     record: name,
@@ -64,7 +67,8 @@ function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
     milestones: events.flatMap((e) => (e.type === "milestone" ? [[e.frame, e.milestone] as [number, string]] : [])),
     end: { frame: lastFrame, result: record.result.endReason },
     state: record.state,
-    cost: costOf(events),
+    ...(unit === "tokens" ? { unit } : {}),
+    cost: costOf(events, unit),
     faints: events.flatMap((e) => (e.type === "faint" && e.side === "player" ? [e.frame] : [])),
     money: moneyOf(events),
   };

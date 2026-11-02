@@ -84,7 +84,7 @@ export function PrinciplePage() {
 
 // x and y in percent of the screenshot.
 const LAB_SPOTS = [
-  { x: 40, y: 9, title: "Top bar", text: "the Run, Bots, the cost and its limit, the Stuck counter, the Model calls, the badges, the money, the map, the time" },
+  { x: 40, y: 9, title: "Top bar", text: "the Run, Bots, the cost or the tokens and the limit, the Stuck counter, the Model calls, the badges, the money, the map, the time" },
   { x: 6, y: 30, title: "Screen", text: "the game, and under it the controls: pause, the speeds ×1 to ×16 and Max, the overlay, the sound, the savestate, the keys" },
   { x: 6, y: 82, title: "Decision line and party", text: "a hover shows the answer of the call; the Pokémon cards" },
   { x: 47.7, y: 36, title: "Rail", text: "Whole map, Model, Stats, Memory tree, Bag and PC" },
@@ -98,18 +98,18 @@ export function ViewerPage() {
       lead="Five tabs: Lab, Grid, Race, Doc and Components; a change of tab stops no Run. This page tells the Lab tab; the Grid and the Race have their own pages."
       details={[
         ["Keyboard", "in the Grid, Race, Doc and Components tabs, the keyboard does not play. In the Grid, Doc and Components tabs, the arrow keys scroll the page."],
-        ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost, stop the shown Run), the cost with its limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
+        ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost or tokens, stop the shown Run), the cost or the tokens with the limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
         ["Decision line", "the last action of the Bot; a hover shows the answer of the call, with no character."],
         ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer."],
         [
           "Model",
-          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost, then the character of the Run and the blocks of its prompt, in colors, that fold.",
+          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
         ],
         [
           "Stats",
-          "the Run for a video, in large numbers: the time, the cost, the Stuck counter and the prompt tokens at the cursor, what happened since the last heal, the latest Game events, then the chapters (up to each Milestone), the Areas and the charts of the cost, the Stuck counter and the prompt tokens, and the counts of the selection (heals, purchases, money spent, catches, fainted Pokémon of the player, trainers beaten, whiteouts, Unusual calls).",
+          "the Run for a video, in large numbers: the time, the cost or the tokens, the Stuck counter and the prompt tokens at the cursor, what happened since the last heal, the latest Game events, then the chapters (up to each Milestone), the Areas and the charts of the cost or the tokens, the Stuck counter and the prompt tokens, and the counts of the selection (heals, purchases, money spent, catches, fainted Pokémon of the player, trainers beaten, whiteouts, Unusual calls).",
         ],
         ["Stats selection", "a click on a chapter or an Area selects it, and the stats and the charts follow it; a drag on a chart selects a range; “−2 h” shows the 2 hours before the cursor in the charts; “Whole Run” selects the whole Run again and returns the cursor to now. The Model calls of the selection and their actions fold under the stats."],
         ["Memory tree", "the tree at the cursor, one node at a time: the top nodes as the model sees them, and “(removed)” on a node with no sentence left; a click opens a node, its two halves and the Summary call that made it (its prompt and answer). A tab lists the Summary calls of the selection."],
@@ -152,8 +152,8 @@ export function ViewerPage() {
       <Block label="🧭 The panels" sub="One cursor (a frame) and one selection (a range of frames) for all the panels. Esc returns them to now.">
         <div class={GRID3}>
           <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer"]} />
-          <DocCard icon={Bot} title="Model" lines={["the Model calls, with the flags of the Unusual calls", "one call in full: answer, result, cost, prompt"]} />
-          <DocCard icon={ChartColumn} title="Stats" lines={["large numbers for a video: time, cost, Stuck counter", "chapters, Areas, charts, the counts of the selection"]} />
+          <DocCard icon={Bot} title="Model" lines={["the Model calls, with the flags of the Unusual calls", "one call in full: answer, result, cost if any, prompt"]} />
+          <DocCard icon={ChartColumn} title="Stats" lines={["large numbers for a video: time, cost or tokens, Stuck counter", "chapters, Areas, charts, the counts of the selection"]} />
           <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them", "a click opens a node and its Summary call"]} />
           <DocCard icon={Backpack} title="Bag and PC" lines={["the five pockets, the PC and its boxes at the cursor", "the changes, with their times"]} />
           <DocCard icon={Shapes} title="Components tab" lines={["the design system (ADR 0004)", "each component in all its states"]} />
@@ -174,7 +174,7 @@ export function GridPage() {
         ["End of a replay", "a replay at its last frame stays on it and shows its Run result, and the others go on. The cursor stops at the end of the longest replay."],
         ["Click on a cell", "a live Run becomes the shown Run. A replay plays in the Lab tab, at the frame of the Grid cursor."],
         ["Places", "the 9 places are for the Runs of the Bots and the replays of the Grid together, and the bar gives the free places. A start past the free places gets a notice."],
-        ["Cost", "the form “Bots” shows the maximum total cost of its N Runs. Each Run keeps its own cost limit."],
+        ["Cost", "the form “Bots” shows the maximum total cost of its N Runs, or the maximum total tokens on a Plan provider. Each Run keeps its own limit."],
         ["Smaller Grid", "a replay in a cell that goes away leaves the Grid."],
         ["Reload", "the Grid does not keep its replays when the last page closes. The live Runs fill it again."],
         ["Errors", "a worker that fails, or a Run record of another origin, shows its error in its cell."],
@@ -190,7 +190,7 @@ export function GridPage() {
               ["Screen", "the game of the Run; dim when it waits for the model or when the Run ended"],
               ["Kind", "live or replay"],
               ["State", "plays, waits for the model, in battle, or ended with its Run result"],
-              ["Facts", "the name, the Bot, the model, the game time, the last Milestone, the cost"],
+              ["Facts", "the name, the Bot, the model, the game time, the last Milestone, the cost or the tokens"],
               ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
             ]}
           />
@@ -224,7 +224,7 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track and the State track of each Run on one game time, with its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost and its Run result. A Race file of an older version does not open: make it again."],
+        ["Race file", "the track and the State track of each Run on one game time, with its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Race file of an older version does not open: make it again."],
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
@@ -266,7 +266,7 @@ export function RacePage() {
           <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
           <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "a click on a row follows one Ghost, and a second click ends it", "the button “Frame the Ghosts” gives it back"]} />
           <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
-          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, cost, team and badges of each Run"]} />
+          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, cost or tokens, team and badges of each Run"]} />
           <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>

@@ -1,5 +1,6 @@
 import type { PoolReplay, RunPool } from "./harness/pool";
-import { factsAt, RecordPlayer, type RunRecord } from "./harness/record";
+import { factsAt, limitOf, RecordPlayer, type RunRecord } from "./harness/record";
+import { spentIn } from "./protocol";
 import { GBA_FPS, type GridCursor, type GridCursorControl, type GridReplay, type GridSpeed } from "./protocol";
 
 type Cell = { name: string; replay: PoolReplay; frames: number };
@@ -63,8 +64,9 @@ export class GridPlay {
     const replays = [...this.#cells].map(([cell, { name, replay, frames }]): GridReplay => {
       const { header, result, events } = replay.record;
       const { frame } = replay.view;
-      const { milestone, battle, cost } = factsAt(events, frame);
-      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model?.id ?? null, frames, frame, endReason: result.endReason, error: replay.error, milestone, battle, cost: header.bot.model ? cost : null };
+      const { milestone, battle, totals } = factsAt(events, frame);
+      const unit = header.bot.model && limitOf(header.bot.model).unit;
+      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model?.id ?? null, frames, frame, endReason: result.endReason, error: replay.error, milestone, battle, spent: unit ? { unit, amount: spentIn(unit, totals) } : null };
     });
     return { cursor: { frame: Math.floor(this.#frame), paused: this.#paused, speed: this.#speed, end: this.#end }, replays };
   }

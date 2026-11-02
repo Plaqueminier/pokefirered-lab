@@ -19,7 +19,7 @@ import {
   type WaitingFor,
 } from "../game";
 import { isHmMove, type PartyMon, sendableSlots } from "../party";
-import { type BotInfo, Keys, obstacleRemedy } from "../protocol";
+import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
@@ -82,9 +82,9 @@ export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
-export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
+export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
-export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number; lastText?: string };
+export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number; lastText?: string; planLimit?: string };
 
 /** `since`: the number of events of the Run at the last progress. */
 export type NoProgress = { stuck: number; since: number };
@@ -204,7 +204,10 @@ export type Bot = {
 const STOP_CHECK_MS = 100;
 
 class RunEnd extends Error {
-  constructor(readonly reason: EndReason) {
+  constructor(
+    readonly reason: EndReason,
+    readonly planLimit?: string,
+  ) {
     super(`the Run ends: ${reason}`);
   }
 }
@@ -212,14 +215,13 @@ class RunEnd extends Error {
 /** The end reasons whose result has `lastText`: the Bot reads the last text of the game to know why. */
 const ENDS_WITH_TEXT: readonly EndReason[] = ["whiteout", "unknown screen"];
 
-type Limits = { goal: Milestone; lastFrame: number; noProgressLimit: number; costLimit: number; progress: number; firstEvent: number; stopAtWhiteout: boolean };
+type Limits = { goal: Milestone; lastFrame: number; noProgressLimit: number; costLimit: number; tokenLimit: number; progress: number; firstEvent: number; stopAtWhiteout: boolean };
 
 class RunLimits {
   #noProgress: NoProgress;
   #whitedOut = false;
   #progress: number;
 
-  /** The cost limit counts the Model calls from `firstEvent`: a continued Run does not count the calls of its parent. */
   constructor(private readonly limits: Limits) {
     this.#noProgress = { stuck: 0, since: limits.firstEvent };
     this.#progress = limits.progress;
@@ -249,7 +251,9 @@ class RunLimits {
   }
 
   afterCall(events: readonly RunEvent[]): void {
-    if (modelTotals(events.slice(this.limits.firstEvent)).cost > this.limits.costLimit) throw new RunEnd("cost limit");
+    const totals = modelTotals(events.slice(this.limits.firstEvent));
+    if (totals.cost > this.limits.costLimit) throw new RunEnd("cost limit");
+    if (spentIn("tokens", totals) > this.limits.tokenLimit) throw new RunEnd("token limit");
   }
 }
 
@@ -353,17 +357,20 @@ export class Harness {
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
     const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
-    const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, costLimit, progress: this.progress(), firstEvent: this.#events.length, stopAtWhiteout: bot.model?.stopAtWhiteout ?? false });
+    const tokenLimit = bot.model?.tokenLimit ?? Number.POSITIVE_INFINITY;
+    const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, costLimit, tokenLimit, progress: this.progress(), firstEvent: this.#events.length, stopAtWhiteout: bot.model?.stopAtWhiteout ?? false });
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
+    let planLimit: string | undefined;
     let result: RunResult | null = null;
     try {
       await bot.play(this);
     } catch (error) {
       if (!(error instanceof RunEnd)) throw error;
       endReason = error.reason;
+      planLimit = error.planLimit;
     } finally {
-      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}) };
+      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}), ...(planLimit === undefined ? {} : { planLimit }) };
       this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}) }, result };
     }
     return result;
@@ -378,7 +385,11 @@ export class Harness {
     throw new RunEnd(reason);
   }
 
-  /** A model bot asks its AI model in `ask`, which must not throw an error and must end when its signal aborts. The Run record keeps the answer as a `model` event; the Harness returns the action to the Bot. */
+  endAtPlanLimit(text: string): never {
+    throw new RunEnd("plan limit", text);
+  }
+
+  /** `ask` must end when its signal aborts, and can throw only through `endAtPlanLimit`. */
   async modelCall<T>(ask: (signal: AbortSignal) => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
     this.#onModelCallStart?.(this);
     const start = performance.now();

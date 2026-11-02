@@ -1,10 +1,11 @@
 import { Network, ScrollText } from "lucide-preact";
-import { useState } from "preact/hooks";
+import { useContext, useState } from "preact/hooks";
+import { spendText } from "../src/protocol";
 import { Breadcrumb, Button, Card, Collapsible, LABEL, ListRow, Pill, Tabs, Tooltip } from "./components";
 import { type Focus, focusOn, type MemoryPanelView, type SummaryCallRow, type TreeNode } from "./memory-panel";
-import { CostPills, NowButton } from "./model-panel";
+import { CostPills, NowButton, SpendUnitContext } from "./model-panel";
 import { PromptText } from "./prompt-text";
-import { dollars, seconds } from "./runs";
+import { seconds } from "./runs";
 import { clock } from "./stats-format";
 
 type PickCall = (call: number, frame: number) => void;
@@ -16,9 +17,10 @@ const ROOT = "What the model sees";
 const OPEN_BLOCKS: Record<string, boolean> = { Prompt: true, Answer: true, Rules: false };
 
 function Counts({ view }: { view: MemoryPanelView }) {
+  const unit = useContext(SpendUnitContext);
   return (
     <span class="min-w-0 truncate text-xs text-faint tabular-nums">
-      {view.notes} notes · {view.calls.length} Summary calls{view.selection && " in the selection"} · {dollars(view.cost)}
+      {view.notes} notes · {view.calls.length} Summary calls{view.selection && " in the selection"} · {spendText({ unit, amount: unit === "tokens" ? view.tokens : view.cost })}
       {view.failed > 0 && <span class="text-bad"> · {view.failed} failed</span>}
     </span>
   );

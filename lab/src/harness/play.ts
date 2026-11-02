@@ -1,17 +1,18 @@
 import { basename, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
-import { actionText, REASONING, STARTERS } from "../protocol";
+import { providerProblem } from "../model/providers";
+import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
 import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
-import { modelTotals, readRecord, writeRecord } from "./record";
+import { limitOf, modelTotals, providerOf, readRecord, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full]
-       bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
+       bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
-  options: { "cost-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" } },
+  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" } },
 });
 const [name, ...rest] = positionals;
 const isLevel = (arg: string): arg is KnowledgeLevel => (KNOWLEDGE_LEVELS as readonly string[]).includes(arg);
@@ -21,11 +22,17 @@ if (!name || ids.length > 1) {
   process.exit(1);
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
-const model = { id: ids[0], costLimit: number(values["cost-limit"]), reasoning: values.reasoning, thinking: values.thinking, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: !values["no-stop-at-whiteout"] };
+const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: !values["no-stop-at-whiteout"] };
 const bot = await loadBot(name, model).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);
 });
+const provider = bot.model ? providerOf(bot.model) : DEFAULT_PROVIDER;
+const problem = bot.model ? await providerProblem(provider) : null;
+if (problem) {
+  console.error(problem);
+  process.exit(1);
+}
 
 // A continued Run takes the Knowledge level of its parent when the command gives none.
 let parent: ParentRecord | undefined;
@@ -50,10 +57,12 @@ const harness = await Harness.open({
   },
   onModelCall: ({ decision, error, usage, latencyMs }) => {
     const answer = decision ? `${decision.action}: ${decision.reason} (Mission: ${decision.mission}; Objective: ${decision.objective})` : `no action: ${error}`;
-    console.log(`model ${(latencyMs / 1000).toFixed(1)} s, ${usage.cost} $  ${answer}`);
+    const unit = bot.model ? limitOf(bot.model).unit : "dollars";
+    console.log(`model ${(latencyMs / 1000).toFixed(1)} s, ${unit === "tokens" ? spendText({ unit, amount: spentIn(unit, usage) }) : `${usage.cost} $`}  ${answer}`);
   },
 });
-const settings = bot.model ? `, model ${bot.model.id} (cost limit ${bot.model.costLimit} $, reasoning ${bot.model.reasoning}, thinking ${bot.model.thinking}, temperature ${bot.model.temperature ?? "of the model"}, starter ${bot.model.starter}, stop at a whiteout ${bot.model.stopAtWhiteout ? "on" : "off"})` : "";
+const limit = bot.model && limitOf(bot.model);
+const settings = bot.model ? `, model ${bot.model.id} on ${provider} (${limit && `${SPEND_WORDS[limit.unit].limit.toLowerCase()} ${spendText(limit)}`}, reasoning ${bot.model.reasoning}, thinking ${bot.model.thinking}, temperature ${bot.model.temperature ?? "of the model"}, starter ${bot.model.starter}, stop at a whiteout ${bot.model.stopAtWhiteout ? "on" : "off"})` : "";
 const from = parent ? `, continues ${parent.name}` : "";
 console.log(`Bot ${bot.name} ${bot.version}${settings}${from}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
 const error = await harness.play(bot).then(
@@ -65,7 +74,7 @@ console.log(`Run record: ${relative(process.cwd(), await writeRecord(record))}`)
 if (error) console.error(`The Bot stops with an error: ${errorText(error)}`);
 
 const { result } = record;
-console.log(`Run end: ${result.endReason}, ${result.frames} frames, raw inputs ${result.rawInputs}${result.lastText === undefined ? "" : `, last text "${result.lastText}"`}`);
+console.log(`Run end: ${result.endReason}, ${result.frames} frames, raw inputs ${result.rawInputs}${result.lastText === undefined ? "" : `, last text "${result.lastText}"`}${result.planLimit === undefined ? "" : `, ${result.planLimit}`}`);
 console.log(`Milestones: ${result.milestones.join(", ") || "none"}`);
 if (bot.model) {
   const totals = modelTotals(record.events);

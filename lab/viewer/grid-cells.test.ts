@@ -12,7 +12,7 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     error: null,
     parent: null,
     continued: null,
-    model: { id: "a/b", costLimit: 0.5, reasoning: "off", thinking: "medium", starter: "free", cost: 0.12, callsStarted: 3 },
+    model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 }, callsStarted: 3 },
     frame: 1000 * id,
     milestone: null,
     battle: false,
@@ -23,7 +23,7 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
 }
 
 function replay(cell: number, name: string, frames: number, facts: Partial<GridReplay> = {}): GridReplay {
-  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", cost: null, battle: false, endReason: "goal", error: null, ...facts };
+  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", spent: null, battle: false, endReason: "goal", error: null, ...facts };
 }
 
 const short = (cell: GridCell | null) => cell && `${cell.kind} ${cell.runId} ${cell.state.kind}${cell.state.kind === "ended" ? ` ${cell.state.result}` : ""}`;
@@ -49,9 +49,9 @@ test("the Grid puts each chosen Run record in its cell, then the live Runs that 
     "replay 27 plays",
     null,
   ]);
-  expect(nine[3]).toMatchObject({ name: "Run 3", bot: "model-bot", model: "a/b", frame: 3000, milestone: "first-rival-battle", cost: 0.12, record: null });
+  expect(nine[3]).toMatchObject({ name: "Run 3", bot: "model-bot", model: "a/b", frame: 3000, milestone: "first-rival-battle", spent: { unit: "dollars", amount: 0.12 }, record: null });
   expect(nine[4]).toMatchObject({ record: "model-bot-1.json" });
-  expect(nine[0]).toMatchObject({ name: "a.json", bot: "starter", model: null, frame: 300, milestone: "has-pokemon", cost: null, record: "a.json" });
+  expect(nine[0]).toMatchObject({ name: "a.json", bot: "starter", model: null, frame: 300, milestone: "has-pokemon", spent: null, record: "a.json" });
 
   expect(gridCells(2, runs, replays, 300).map(short)).toEqual(["replay 20 battle", "live 2 waits"]);
   expect(gridCells(4, [], [], 0)).toEqual([null, null, null, null]);

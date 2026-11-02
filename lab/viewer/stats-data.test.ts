@@ -6,7 +6,7 @@ import { Harness } from "../src/harness/harness";
 import { continuationOf, type ModelEvent, RecordPlayer, type RunEvent, type RunRecord } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { ROM_FILE, START_SAVE } from "../src/run";
-import { costScale, hasModel, type StatsOptions, scopeOf, scopeSpans, scopeText, selected, statsView } from "./stats-data";
+import { spentScale, hasModel, type StatsOptions, scopeOf, scopeSpans, scopeText, selected, statsView } from "./stats-data";
 import { eventLines, gameCounts } from "./stats-events";
 import { stuckLevel } from "./stats-format";
 
@@ -93,13 +93,13 @@ test("it places the calls, the played actions and the Summary calls at their fra
     [50, 2, "blocked"],
   ]);
   expect(view.summaries).toEqual([{ frame: 40 }]);
-  expect(view.costSteps).toEqual([
-    { frame: 10, cost: 0.25 },
-    { frame: 40, cost: 0.75 },
-    { frame: 50, cost: 1 },
-    { frame: 50, cost: 1.25 },
+  expect(view.spentSteps).toEqual([
+    { frame: 10, spent: 0.25 },
+    { frame: 40, spent: 0.75 },
+    { frame: 50, spent: 1 },
+    { frame: 50, spent: 1.25 },
   ]);
-  expect(view.cost).toBe(1.25);
+  expect(view.spent).toBe(1.25);
 });
 
 test("each Model call keeps its prompt tokens, and a Run record with no usage has none", () => {
@@ -136,7 +136,7 @@ describe("a selection", () => {
     expect(range.calls.map((c) => c.index)).toEqual([1, 2]);
     expect(range.played.map((p) => p.frame)).toEqual([20, 30, 35]);
     expect(range.summaries).toHaveLength(1);
-    expect(range.cost).toBe(1);
+    expect(range.spent).toBe(1);
     expect(range.notes).toBe(1);
     expect(range.stuckMax).toBe(12);
     expect(range.reflections).toBe(1);
@@ -156,7 +156,7 @@ describe("a selection", () => {
     expect(one.calls.map((c) => c.index)).toEqual([0]);
     expect(one.played.map((p) => p.frame)).toEqual([10, 20]);
     expect(one.summaries).toHaveLength(1);
-    expect(one.cost).toBe(0.75);
+    expect(one.spent).toBe(0.75);
     expect(one.notes).toBe(1);
   });
 
@@ -174,15 +174,15 @@ test("the Stuck counter is low under a third of the Reflection turn interval, mi
 });
 
 test("the cost scale stops at the cost while the cost is less than half of the limit, and then it shows the limit as a line", () => {
-  expect(costScale(0.1, 1)).toEqual({ max: 0.1, limitLine: false });
-  expect(costScale(0.6, 1)).toEqual({ max: 1, limitLine: true });
-  expect(costScale(1.2, 1)).toEqual({ max: 1.2, limitLine: true });
-  expect(costScale(0.1, null)).toEqual({ max: 0.1, limitLine: false });
+  expect(spentScale(0.1, 1)).toEqual({ max: 0.1, limitLine: false });
+  expect(spentScale(0.6, 1)).toEqual({ max: 1, limitLine: true });
+  expect(spentScale(1.2, 1)).toEqual({ max: 1.2, limitLine: true });
+  expect(spentScale(0.1, null)).toEqual({ max: 0.1, limitLine: false });
 });
 
 test("for a Continued Run, the cost scale reads only its own cost, and its limit line is above the cost of the parent", () => {
-  expect(costScale(0.05, 1, 0.75)).toEqual({ max: 0.8, limitLine: false });
-  expect(costScale(0.625, 1, 0.75)).toEqual({ max: 1.75, limitLine: true });
+  expect(spentScale(0.05, 1, 0.75)).toEqual({ max: 0.8, limitLine: false });
+  expect(spentScale(0.625, 1, 0.75)).toEqual({ max: 1.75, limitLine: true });
 });
 
 test("a Continued Run starts at the last frame of the buttons of its parent, after all its events", () => {
@@ -193,9 +193,9 @@ test("a Continued Run starts at the last frame of the buttons of its parent, aft
 test("a Continued Run starts at the end of its parent, and the cost of the parent is the cost of the events before its own", () => {
   const events = [call(10, "go A"), call(50, "go B"), call(50, "go C")];
   const view = statsView(events, { ...OPTIONS, continued: { frame: 50, events: 2 } });
-  expect(view.parentEnd).toEqual({ frame: 50, cost: 0.5 });
-  expect(view.cost).toBe(0.75);
-  expect(statsView(events.slice(0, 2), { ...OPTIONS, continued: { frame: 50, events: 2 } }).parentEnd).toEqual({ frame: 50, cost: 0.5 });
+  expect(view.parentEnd).toEqual({ frame: 50, spent: 0.5 });
+  expect(view.spent).toBe(0.75);
+  expect(statsView(events.slice(0, 2), { ...OPTIONS, continued: { frame: 50, events: 2 } }).parentEnd).toEqual({ frame: 50, spent: 0.5 });
   expect(statsView(events, OPTIONS).parentEnd).toBeNull();
 });
 

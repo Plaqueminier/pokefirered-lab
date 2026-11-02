@@ -24,15 +24,20 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 15, no goal). It asks an AI model on OpenRouter for each decision (ADR 0003).
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 15, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005).
 
-1. Put an OpenRouter key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file.
+1. Prepare the provider:
+   - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
+   - `claude-code`: install Claude Code, and log in with your subscription (`claude auth login`).
+   - `codex`: `bun install` in `lab/` gives Codex at a fixed version. Log in with your ChatGPT subscription (`node_modules/.bin/codex login`).
 2. In `lab/`:
 
 ```
-bun run bot model [<OpenRouter model id>] [player|full] [--cost-limit <dollars>] [--reasoning off|low|medium|high] [--thinking off|low|medium|high]
-  [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
+bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|codex] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning off|low|medium|high]
+  [--thinking off|low|medium|high] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
 ```
+
+The default models are `deepseek/deepseek-v4.1-flash`, `haiku` and `gpt-5.6-luna`. A **Plan provider** (`claude-code`, `codex`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, and replay a **Run record** (the Select of the top bar).
 

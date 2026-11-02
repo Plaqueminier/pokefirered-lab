@@ -180,7 +180,9 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
   goal: { icon: Trophy, tone: "ok", lines: ["the goal Milestone is reached", "with no goal: `badge-8`"], detail: "the goal Milestone is reached (with no goal: `badge-8`)." },
   "bot stopped": { icon: OctagonX, lines: ["the Bot stops or throws an error"], detail: "the Bot stops or throws an error." },
   "user stop": { icon: Hand, lines: ["“Stop the Run”, after the current action", "at once in a Model call"], detail: "“Stop the Run”, after the current action, or at once in a Model call." },
-  "cost limit": { icon: Coins, tone: "warn", lines: ["the Model calls cost more than the limit"], detail: "the Model calls cost more than the cost limit (model bot)." },
+  "cost limit": { icon: Coins, tone: "warn", lines: ["the Model calls cost more than the limit"], detail: "the Model calls cost more than the cost limit (model bot on OpenRouter)." },
+  "token limit": { icon: Coins, tone: "warn", lines: ["the Model calls used more tokens than the limit"], detail: "the Model calls used more tokens than the Token limit (model bot on a Plan provider)." },
+  "plan limit": { icon: Coins, tone: "warn", lines: ["the subscription has no more quota", "a Continued Run can play on later"], detail: "the Plan provider refused a call because the quota of the subscription is used. The result keeps its text, and a Continued Run can play on later: the Run does not wait or start again by itself." },
   "frame budget": {
     icon: Timer,
     lines: ["no more frames, when a budget is given", "the scripted test bot: 30 000"],
@@ -235,7 +237,7 @@ export function RecordPage() {
     <Page
       lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save), Bot, keys at each frame, events, track, State track and result."],
+        ["Fields", "format version, origin (ROM, seed, save), Bot (with its Model provider and its cost limit or Token limit; a record with no provider played on `openrouter`), keys at each frame, events, track, State track and result."],
         ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
@@ -246,10 +248,10 @@ export function RecordPage() {
         ["Replay", "choose the record in the list of the Run, in the top bar."],
         [
           "Continue",
-          "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The new record has the old keys and events, then the new ones. Its cost limit counts the new Model calls only.",
+          "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones.",
         ],
         ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
-        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own cost limit."],
+        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit."],
       ]}
     >
       <div class={BLOCKS2}>
@@ -264,7 +266,7 @@ export function RecordPage() {
               ["Events", "the Game events, the Model calls"],
               ["Track", "the place of the player at each change of cell, map or facing"],
               ["State track", "the team and the battle at each change"],
-              ["Result", "the reason of the end"],
+              ["Result", "the reason of the end, and the text of the provider at a `plan limit`"],
             ]}
           />
         </Block>
@@ -278,7 +280,7 @@ export function RecordPage() {
       </div>
       <div class={GRID3}>
         <DocCard icon={Play} title="Replay" lines={["choose the record in the list of the Run, in the top bar"]} />
-        <DocCard icon={Repeat} title="Continue" lines={["the Harness replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit counts the new Model calls only"]} />
+        <DocCard icon={Repeat} title="Continue" lines={["the Harness replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit or the Token limit counts the new Model calls only"]} />
         <DocCard icon={Layers} title="10 at most" lines={["the Viewer Run, and 9 places in workers for the Runs of the Bots and the Grid replays", "a Run in a worker gives the same record as alone"]} />
       </div>
     </Page>

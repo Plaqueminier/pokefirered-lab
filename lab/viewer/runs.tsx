@@ -1,6 +1,6 @@
 import { Play, Square } from "lucide-preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, REASONING, type ReasoningLevel, type RunSummary, type ShownRun, STARTERS } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
 
@@ -16,10 +16,6 @@ export function replayKey(name: string): string {
 
 export function runKey(shown: ShownRun): string {
   return shown.kind === "bot" ? botRunKey(shown.run.id) : replayKey(shown.replay?.name ?? "");
-}
-
-export function dollars(cost: number): string {
-  return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
 }
 
 // Under 0.1 m$, 2 decimals would show 0.00.
@@ -45,8 +41,10 @@ export function signedMoney(change: number): string {
   return signed(change, money);
 }
 
-export function tokens(count: number): string {
-  return count.toLocaleString("en-US");
+export function spendShort({ unit, amount }: Spend): string {
+  if (unit === "dollars") return `${amount.toFixed(2)} $`;
+  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(2)}M tok`;
+  return amount >= 1000 ? `${(amount / 1000).toFixed(1)}k tok` : `${Math.round(amount)} tok`;
 }
 
 function runState(run: RunSummary): string {
@@ -101,8 +99,8 @@ const FROM_START = "";
 
 function shownModel(run: RunSummary | null): string {
   if (!run?.model) return "";
-  const { id, reasoning, thinking, starter, cost, costLimit } = run.model;
-  return `Run ${run.id}: model ${id}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, cost ${dollars(cost)} of ${dollars(costLimit)}`;
+  const { id, provider, reasoning, thinking, starter, ownSpent, limit } = run.model;
+  return `Run ${run.id}: model ${id} on ${provider}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, used ${spendText(ownSpent)} of ${spendText(limit)}`;
 }
 
 export type Places = { free: number; limit: number };
@@ -112,20 +110,24 @@ function countError(countOk: boolean, { free, limit }: Places): string | undefin
   return countOk ? undefined : `From 1 to ${free}.`;
 }
 
-function totalCost(count: number, given: string, byDefault: number | null): string {
-  const limit = given.trim() ? Number(given) : byDefault;
-  if (limit === null || !Number.isFinite(limit)) return "no cost limit";
-  return count === 1 ? dollars(limit) : `${count} × ${dollars(limit)} = ${dollars(count * limit)}`;
+function totalLimit(count: number, given: string, byDefault: number | null, unit: SpendUnit): string {
+  const givenAmount = unit === "tokens" ? tokensFromMillions(Number(given)) : Number(given);
+  const amount = given.trim() ? givenAmount : byDefault;
+  if (amount === null || !Number.isFinite(amount)) return "no limit";
+  const text = (shown: number) => spendText({ unit, amount: shown });
+  return count === 1 ? text(amount) : `${count} × ${text(amount)} = ${text(count * amount)}`;
 }
 
 const LEVEL_OPTIONS = REASONING.map((level) => ({ value: level, label: level }));
 
-export function BotsPanel({ shown, bots, records, places, send }: { shown: ShownRun | null; bots: readonly BotInfo[]; records: readonly string[]; places: Places; send: Send }) {
+export function BotsPanel({ shown, bots, providers, records, places, send }: { shown: ShownRun | null; bots: readonly BotInfo[]; providers: readonly ProviderStatus[]; records: readonly string[]; places: Places; send: Send }) {
   const freePlaces = places.free;
   const names = bots.map((info) => info.name);
   const [bot, setBot] = useState("");
   const [model, setModel] = useState("");
+  const [provider, setProvider] = useState<ModelProvider>(DEFAULT_PROVIDER);
   const [costLimit, setCostLimit] = useState("");
+  const [tokenLimit, setTokenLimit] = useState("");
   const [reasoning, setReasoning] = useState<ReasoningLevel>(DEFAULT_REASONING);
   const [thinking, setThinking] = useState<ReasoningLevel>(DEFAULT_THINKING);
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
@@ -136,15 +138,22 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
   const countOk = Number.isInteger(count) && count >= 1 && count <= freePlaces;
   const chosenBot = names.includes(bot) ? bot : (names[0] ?? "");
   const chosenInfo = bots.find((info) => info.name === chosenBot);
-  const defaultLimit = chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
+  const plan = isPlanProvider(provider);
+  const problemOf = (name: ModelProvider) => providers.find((status) => status.provider === name)?.problem ?? null;
+  const problem = problemOf(provider);
+  const words = SPEND_WORDS[plan ? "tokens" : "dollars"];
+  const defaultLimit = plan ? DEFAULT_TOKEN_LIMIT : chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
   const chosenFrom = records.includes(from) ? from : FROM_START;
   const run = shown?.kind === "bot" ? shown.run : null;
   const start = () => {
-    if (!chosenBot || !countOk) return;
-    const limit = costLimit.trim();
+    if (!chosenBot || !countOk || problem) return;
+    const cost = costLimit.trim();
+    const limit = tokenLimit.trim();
     const options = {
       id: model.trim() || undefined,
-      costLimit: limit ? Number(limit) : undefined,
+      provider: option(provider, DEFAULT_PROVIDER),
+      costLimit: !plan && cost ? Number(cost) : undefined,
+      tokenLimit: plan && limit ? tokensFromMillions(Number(limit)) : undefined,
       reasoning: option(reasoning, DEFAULT_REASONING),
       thinking: option(thinking, DEFAULT_THINKING),
       starter: option(starter, DEFAULT_STARTER),
@@ -165,13 +174,22 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
             onChange={setFrom}
           />
         </Field>
+        <Field label="Provider" hint="openrouter bills each call. claude-code and codex use your subscription." error={problem ?? undefined}>
+          <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemOf(name) ?? undefined }))} value={provider} onChange={setProvider} />
+        </Field>
+        {plan ? (
+          <Field label="Token limit" hint={`In millions of tokens. Empty: ${DEFAULT_TOKEN_LIMIT / MILLION}. All the input and output tokens of this Run.`}>
+            <Input type="number" min="0" step="0.1" unit="M" placeholder={String(DEFAULT_TOKEN_LIMIT / MILLION)} value={tokenLimit} onInput={(event) => setTokenLimit(event.currentTarget.value)} />
+          </Field>
+        ) : (
+          <Field label="Cost limit" hint="Empty: LAB_COST_LIMIT, or 0.50 $.">
+            <Input type="number" min="0.01" step="0.05" unit="$" placeholder="0.50" value={costLimit} onInput={(event) => setCostLimit(event.currentTarget.value)} />
+          </Field>
+        )}
         <Field label="Model" hint="Empty: the default model.">
-          <Input value={model} placeholder={DEFAULT_MODEL} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
+          <Input value={model} placeholder={DEFAULT_MODELS[provider]} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
         </Field>
-        <Field label="Cost limit" hint="Empty: LAB_COST_LIMIT, or 0.50 $.">
-          <Input type="number" min="0.01" step="0.05" unit="$" placeholder="0.50" value={costLimit} onInput={(event) => setCostLimit(event.currentTarget.value)} />
-        </Field>
-        <Field label="Reasoning" hint="For the usual decisions. off is cheaper, but the model makes more mistakes.">
+        <Field label="Reasoning" hint={provider === "claude-code" ? "For the usual decisions. Claude Code has no off: off plays as low." : "For the usual decisions. off is cheaper, but the model makes more mistakes."}>
           <Select options={LEVEL_OPTIONS} value={reasoning} onChange={setReasoning} />
         </Field>
         <Field label="Thinking" hint="For the Character, Reflection and Review turns.">
@@ -183,15 +201,15 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
         <Field label="Count" hint={`Runs of the Bot to start: 1 to ${freePlaces}, the free places.`} error={countError(countOk, places)}>
           <Input type="number" min="1" max={String(freePlaces)} step="1" invalid={!countOk} value={countText} onInput={(event) => setCountText(event.currentTarget.value)} />
         </Field>
-        <Field label="Maximum total cost" hint="Each Run keeps its own cost limit.">
-          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalCost(countOk ? count : 1, costLimit, defaultLimit)}</p>
+        <Field label={`Maximum total ${words.name.toLowerCase()}`} hint={`Each Run keeps its own ${words.limit.toLowerCase()}.`}>
+          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalLimit(countOk ? count : 1, plan ? tokenLimit : costLimit, defaultLimit, plan ? "tokens" : "dollars")}</p>
         </Field>
       </div>
       <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
         Stop at a whiteout: the Run ends when all the Pokémon of the party faint
       </Checkbox>
       <div class="flex items-center gap-2">
-        <Button variant="primary" disabled={!chosenBot || !countOk} onClick={start}>
+        <Button variant="primary" disabled={!chosenBot || !countOk || problem !== null} onClick={start}>
           <Play size={14} />
           {countOk && count > 1 ? `Start ${count} Runs` : "Start the Bot"}
         </Button>
@@ -208,8 +226,8 @@ export function BotsPanel({ shown, bots, records, places, send }: { shown: Shown
       {run?.model && <p class="font-mono text-xs text-muted">{shownModel(run)}</p>}
       <p class="text-xs leading-relaxed text-faint">
         The Runs of the Bots play at the same time, at full speed, with no sound. They share {places.limit} places with the replays of the Grid. To show another Run does not stop them. "Stop the shown Run" ends it with
-        user stop and writes its Run record. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas: the cost
-        limit counts the new Model calls only, and the model can be another one.
+        user stop and writes its Run record. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas: its limit
+        counts the new Model calls only, and its model and its provider can be other ones.
       </p>
     </div>
   );

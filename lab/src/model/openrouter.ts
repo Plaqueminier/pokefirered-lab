@@ -1,10 +1,8 @@
-import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { DEFAULT_MODEL, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
+import type { ModelSettings, Prompt, Usage } from "../harness/record";
+import type { ReasoningLevel } from "../protocol";
 import { DECISION_SCHEMA } from "./decision";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_COST_LIMIT = 0.5;
-const MAX_TEMPERATURE = 2;
 // OpenRouter counts the reasoning tokens in max_tokens, also for a model that always reasons: the JSON comes after them.
 const MAX_TOKENS = 32000;
 // The longest Model call of the Runs took 303 s for 25 142 tokens: at that speed, MAX_TOKENS takes about 6.5 minutes, and this limit leaves a margin.
@@ -14,31 +12,13 @@ export type ModelReply = { content: string; usage: Usage; reasoning?: string };
 
 type AnswerFormat = { name: "decision" | "character" | "review" | "summary"; schema: object };
 
-const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
+export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
+
+export const NO_OPENROUTER_KEY = "OPENROUTER_API_KEY is not set: put it in lab/.env";
 
 export type AskOptions = { format?: AnswerFormat; reasoning?: ReasoningLevel; signal?: AbortSignal };
 
 export type ModelClient = (prompt: Prompt, options?: AskOptions) => Promise<ModelReply>;
-
-function levelOf(name: string, given: string | undefined, fallback: ReasoningLevel): ReasoningLevel {
-  const level = REASONING.find((known) => known === (given ?? fallback));
-  if (!level) throw new Error(`the ${name} must be ${REASONING.join(", ")}, not "${given}"`);
-  return level;
-}
-
-export function modelSettings(given: ModelOptions, env: Record<string, string | undefined> = process.env): ModelSettings {
-  const costLimit = given.costLimit ?? (env.LAB_COST_LIMIT === undefined ? DEFAULT_COST_LIMIT : Number(env.LAB_COST_LIMIT));
-  if (!Number.isFinite(costLimit) || costLimit <= 0) {
-    throw new Error(`the cost limit must be a number of dollars above 0, not "${given.costLimit ?? env.LAB_COST_LIMIT}"`);
-  }
-  const reasoning = levelOf("reasoning", given.reasoning, DEFAULT_REASONING);
-  const thinking = levelOf("thinking", given.thinking, DEFAULT_THINKING);
-  const temperature = given.temperature ?? null;
-  if (temperature !== null && !(temperature >= 0 && temperature <= MAX_TEMPERATURE)) throw new Error(`the temperature must be from 0 to ${MAX_TEMPERATURE}`);
-  const starter = STARTERS.find((name) => name === (given.starter ?? DEFAULT_STARTER));
-  if (!starter) throw new Error(`the starter must be ${STARTERS.join(", ")}, not "${given.starter}"`);
-  return { id: given.id || DEFAULT_MODEL, costLimit, reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true };
-}
 
 type ChatReply = {
   choices?: { message?: { content?: string | null; reasoning?: string | null } }[];
@@ -47,7 +27,7 @@ type ChatReply = {
 };
 
 export function openRouter(settings: ModelSettings, apiKey = process.env.OPENROUTER_API_KEY, fetcher: typeof fetch = fetch, timeoutMs = CALL_TIMEOUT_MS): ModelClient {
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set: put it in lab/.env");
+  if (!apiKey) throw new Error(NO_OPENROUTER_KEY);
   const temperature = settings.temperature === null ? {} : { temperature: settings.temperature };
   return async ({ system, user, turns = [] }, { format = DECISION_FORMAT, reasoning = settings.reasoning, signal } = {}) => {
     const ended = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);

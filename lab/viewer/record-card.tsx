@@ -1,7 +1,7 @@
 import { Fragment } from "preact";
 import type { ReplayStatus } from "../src/protocol";
 import { LABEL, Pill } from "./components";
-import { dollars } from "./runs";
+import { SPEND_WORDS, spendText } from "../src/protocol";
 import { clock } from "./stats-format";
 import { NO_GAME_EVENTS } from "./timeline-events";
 
@@ -17,12 +17,13 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
     ...(model
       ? [
           { label: "Model", value: model.id },
+          { label: "Provider", value: model.provider },
           { label: "Reasoning", value: model.reasoning },
           { label: "Thinking", value: model.thinking },
           { label: "Starter", value: model.starter },
           { label: "Model calls", value: String(model.calls), detail: `/ ${model.totalCalls}` },
-          { label: "Cost", value: dollars(model.cost), detail: `/ ${dollars(model.totalCost)}` },
-          { label: "Cost limit", value: dollars(model.costLimit) },
+          { label: SPEND_WORDS[model.limit.unit].name, value: spendText(model.spent), detail: `/ ${spendText(model.totalSpent)}` },
+          { label: SPEND_WORDS[model.limit.unit].limit, value: spendText(model.limit) },
         ]
       : [{ label: "Model", value: "none (a scripted Bot)" }]),
     ...(continued ? [{ label: "Continues", value: `from ${clock(continued.frame)}`, detail: `${continued.events} events` }] : []),

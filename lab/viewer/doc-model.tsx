@@ -22,13 +22,14 @@ export function BotsPage() {
     <Page
       lead="A Bot decides what to do, and acts only through the Harness."
       details={[
-        ["model", "plays past the first rival battle, to the cost limit, a user stop, a whiteout, an unknown screen or `badge-8`. At each Decision point, it asks an AI model for the action (a Model call). The code reads the texts alone."],
+        ["model", "plays past the first rival battle, to the cost limit or the Token limit, a plan limit, a user stop, a whiteout, an unknown screen or `badge-8`. At each Decision point, it asks an AI model for the action (a Model call). The code reads the texts alone."],
+        ["Model provider", "who answers the calls of a Run: `openrouter` (the default, it bills each call), or a Plan provider, `claude-code` or `codex`, which uses a subscription. The page “Model providers” tells how to use them."],
         ["starter", "the scripted bot is a tool for the tests of the Harness only: it is not in the list."],
         ["The list", "comes from the server: each module of `bots/`, with its kind, version and goal, or the error of a module that does not load."],
       ]}
     >
       <div class={GRID2}>
-        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call)", "the code reads the texts alone", "plays to the cost limit, a user stop, a whiteout, an unknown screen or `badge-8`"]} />
+        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call)", "the code reads the texts alone", "plays to its limit, a user stop, a whiteout, an unknown screen or `badge-8`"]} />
         <DocCard icon={Cpu} title="starter (scripted)" lines={["a tool for the tests of the Harness only", "not in the list"]} />
       </div>
       <Block label="🤖 The Bots of the server">
@@ -54,6 +55,98 @@ export function BotsPage() {
             ))}
           </div>
         )}
+      </Block>
+    </Page>
+  );
+}
+
+export function ProvidersPage() {
+  return (
+    <Page
+      lead="A Run can use a subscription in place of OpenRouter: Claude Code or Codex then answer each Model call, and a Token limit replaces the cost limit."
+      details={[
+        ["Why", "OpenRouter bills each Model call, and the user already pays for the subscriptions (ADR 0005). OpenRouter stays the default: it has the widest choice of models and it gives a real cost."],
+        ["Rules of the subscriptions", "the help of Claude tells that `claude -p`, with a login on a plan, uses the limits of the subscription (read in 2026-11). The docs of Codex tell that `codex exec` reuses the saved login, and they recommend an API key for automation. These rules changed during 2026: read them again before many Runs."],
+        ["One Run, one provider", "all the Model calls and Summary calls of a Run use the same provider and the same model. A Continued Run can use another provider and another model."],
+        ["Each call", "one new process of `claude -p` or `codex exec`, in a new temporary directory, with no shared context. The Bot still calls the Harness, and the AI model never does (ADR 0003)."],
+        ["No API key", "the tool does not get `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY` or `OPENROUTER_API_KEY`, because each tool bills a key when it finds one. A login with an API key is not accepted: the provider stays disabled."],
+        ["No settings", "the tools do not read your settings or your MCP servers, and they keep no session."],
+        ["One message", "a conversation of a Decision point (the answer of the program after an impossible action) goes in one user message, so each try is a new request."],
+        ["Reasoning", "Claude Code has no level `off`: `off` plays as `low`, and the Run record keeps `low`. Codex plays `off` as `none`."],
+        ["Temperature", "a Plan provider refuses `--temperature`, because the tools do not take one."],
+        ["Codex tools", "three tools stay in Codex. A call that uses a tool stops at once and counts as a failed request. The Bot asks again, and 3 errors in a row end the Run."],
+        ["Time limit", "a call with no answer ends with an error after 5 minutes (10 minutes on OpenRouter)."],
+        ["User stop", "a user stop ends the process of the tool at once."],
+        ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code is the global `claude` command, so it can change when you update it."],
+        ["Token limit", "you give it in millions of tokens, and the Run record keeps a number of tokens. It counts the prompt tokens (with the cached tokens) and the completion tokens of all the calls of the Run, also the Summary calls. The Run ends after the call that goes above the limit, so it can use one call more than the limit."],
+        ["Quota", "the amount of the quota is not published, and your own work uses the same quota. The Token limit is not a part of this quota: it only stops the Run."],
+        ["Measure of the overhead", "one recorded prompt of 5,112 input tokens on OpenRouter took 8,241 through Claude Code and 7,306 through Codex, about 4 s for each call."],
+      ]}
+    >
+      <div class={GRID3}>
+        <DocCard title="openrouter" lines={["the default model: `deepseek/deepseek-v4.1-flash`", "bills each call", "limit: a cost in dollars"]} />
+        <DocCard title="claude-code" lines={["the default model: `haiku`", "uses your Claude subscription", "limit: a number of tokens"]} />
+        <DocCard title="codex" lines={["the default model: `gpt-5.6-luna`", "uses your ChatGPT subscription", "limit: a number of tokens"]} />
+      </div>
+      <Block label="🔑 1. Log in" sub="In `lab/`. You do this one time. You do not need a global install of Codex.">
+        <Terms
+          rows={[
+            ["Claude Code", "`claude auth login`. To check: `claude auth status` must give `\"authMethod\": \"claude.ai\"`."],
+            ["Codex", "`bun install`, then `node_modules/.bin/codex login`. To check: `node_modules/.bin/codex login status` must give `Logged in using ChatGPT`."],
+          ]}
+        />
+      </Block>
+      <Block label="▶️ 2. Start a Run">
+        <Terms
+          rows={[
+            ["In the Viewer", "button “Bots”, then select the Provider, and write the Token limit in millions of tokens: `0.5` is 500,000 tokens. Empty: 1 million. The Model field shows the default model. The form disables a provider that is not installed or not logged in, and it shows the reason."],
+            ["In a terminal", "`bun run bot model --provider codex --token-limit 0.5`"],
+            ["Another model", "`bun run bot model sonnet --provider claude-code --token-limit 0.5`"],
+            ["Continue", "`bun run bot model --provider codex --continue <Run record>`, or “Start from” in the form. The Token limit counts the new calls only."],
+          ]}
+        />
+      </Block>
+      <Block label="📏 3. Choose a Token limit" sub="The measures come from the Runs of versions 13 and 14 on OpenRouter. The values for the Plan providers are estimates: each call adds about 3,100 tokens on Claude Code and 2,200 on Codex. Another model can use more or fewer calls.">
+        <Terms
+          rows={[
+            ["`0.01` (10,000 tokens)", "1 or 2 calls: this checks that the provider works"],
+            ["First Pokémon", "about 47 calls: 165k on OpenRouter, 310k on Claude Code, 270k on Codex"],
+            ["First rival battle", "about 62 calls: 227k on OpenRouter, 420k on Claude Code, 360k on Codex"],
+            ["Pokédex", "about 154 calls: 500k on OpenRouter, 980k on Claude Code, 840k on Codex"],
+            ["Badge 1", "about 700 calls: 3.1M on OpenRouter, 5.3M on Claude Code, 4.7M on Codex"],
+          ]}
+        />
+      </Block>
+      <div class={BLOCKS2}>
+        <Block label="👁️ What changes in the Viewer">
+          <Terms
+            rows={[
+              ["Tokens", "the tokens replace the dollars: top bar, panels “Model” and “Stats”, Grid, Race"],
+              ["Cost", "always 0 on a Plan provider, because it means real money"],
+              ["Run record", "the provider and the Token limit are in the Bot of the record"],
+            ]}
+          />
+        </Block>
+        <Block label="🏁 How the Run ends">
+          <Terms
+            rows={[
+              ["`token limit`", "the Run used its Token limit"],
+              ["`plan limit`", "the subscription has no more quota. The Run does not wait: continue it later"],
+              ["3 errors in a row", "the same end as on OpenRouter"],
+            ]}
+          />
+        </Block>
+      </div>
+      <Block label="🛠️ When it does not start">
+        <Terms
+          rows={[
+            ["`zsh: command not found: codex`", "normal: Codex is in `lab/node_modules/.bin/`. Use the full path of step 1."],
+            ["`the command codex is not found`", "run `bun install` in `lab/`"],
+            ["`the command claude is not found`", "install Claude Code"],
+            ["`not logged in with a subscription`", "do step 1. The form reads the login at each new connection, so reload the page after you log in."],
+            ["`has a token limit, not a cost limit`", "a Plan provider refuses `--cost-limit`; `openrouter` refuses `--token-limit`"],
+          ]}
+        />
       </Block>
     </Page>
   );
@@ -124,7 +217,7 @@ export function PromptPage() {
       details={[
         ["Model call", "at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC, at the naming screen and when a Pokémon must forget a move to learn a new one."],
         ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003)."],
-        ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
+        ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
           "Each prompt",
           "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, and the part of the Decision point (at a walk, the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
@@ -322,7 +415,7 @@ export function MemoryPage() {
         ["Summary call", "merges two nodes of the same size. It drops a fact that a later note makes false or ends, and keeps the later fact. It keeps “Guess:” before each guess. A summary that is too long ends at its last full sentence."],
         ["Size", "a node of 2^k notes has 200 × (k + 1) characters at most, with the newest facts first."],
         ["`zoom <a-b>`", "opens a node: its two halves, down to the notes."],
-        ["Cost", "a Summary call counts in the cost of the Run."],
+        ["Cost", "a Summary call counts in the cost of the Run, or in its tokens on a Plan provider."],
       ]}
     >
       <Card>
@@ -349,7 +442,7 @@ export function MemoryPage() {
             rows={[
               ["Top nodes", "in each prompt"],
               ["`zoom a-b`", "opens the two halves of a node, down to the notes"],
-              ["Cost", "a Summary call counts in the cost of the Run"],
+              ["Cost", "a Summary call counts in the cost of the Run, or in its tokens on a Plan provider"],
             ]}
           />
         </Block>

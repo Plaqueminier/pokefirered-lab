@@ -12,7 +12,8 @@ import { ScreenFanout } from "./screens";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
-import { type Continuation, continuationOf, factsAt, Keyframes, type ModelOptions, modelTotals, originDifferences, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { type Continuation, continuationOf, factsAt, Keyframes, limitOf, type ModelOptions, type ModelSettings, modelTotals, originDifferences, providerOf, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { providerProblem, providerStatuses } from "./model/providers";
 import {
   BinaryKind,
   type ClientMessage,
@@ -26,6 +27,8 @@ import {
   type ServerMessage,
   type ShownRun,
   type Speed,
+  spendText,
+  spentIn,
   STATE_INTERVAL_MS,
   VIEWER_RUN_ID,
 } from "./protocol";
@@ -335,7 +338,7 @@ function replayStatus({ name, player, continued, keyframes }: Replay): ReplaySta
     endReason: player.result.endReason,
     frames: player.frames,
     ended: player.ended,
-    model: replayModel(player),
+    model: replayModel(player, continued),
     continued,
     gameEvents: player.stateEvents ? player.gameEvents.length : null,
     reached: keyframes.reached,
@@ -343,16 +346,23 @@ function replayStatus({ name, player, continued, keyframes }: Replay): ReplaySta
   };
 }
 
-function replayModel(player: RecordPlayer): ReplayModel | null {
+function replayModel(player: RecordPlayer, continued: Continuation | null): ReplayModel | null {
   const settings = player.header.bot.model;
   if (!settings) return null;
-  const played = modelTotals(player.played());
-  const total = player.modelTotals;
+  const first = continued?.events ?? 0;
+  const played = modelTotals(player.played().slice(first));
+  const total = player.modelTotalsFrom(first);
+  const { unit } = limitOf(settings);
   // A Run record from before the starter option has none: its model chose freely.
   const starter = settings.starter ?? DEFAULT_STARTER;
   // A Run record from before the thinking option has one level for all its Model calls.
   const thinking = settings.thinking ?? settings.reasoning;
-  return { id: settings.id, costLimit: settings.costLimit, reasoning: settings.reasoning, thinking, starter, calls: played.calls, cost: played.cost, totalCalls: total.calls, totalCost: total.cost };
+  return { ...modelFacts(settings), thinking, starter, calls: played.calls, spent: { unit, amount: spentIn(unit, played) }, totalCalls: total.calls, totalSpent: { unit, amount: spentIn(unit, total) } };
+}
+
+function modelFacts(settings: ModelSettings) {
+  const { id, reasoning, thinking, starter } = settings;
+  return { id, provider: providerOf(settings), reasoning, thinking, starter, limit: limitOf(settings) };
 }
 
 async function openRecord(name: string): Promise<RunRecord | string> {
@@ -372,12 +382,14 @@ async function replayFile(name: string): Promise<string> {
   if (differences.length > 0) {
     return `${name} does not replay here (different ${differences.join(", ")}). The Run starts again from the Starting save, and the keyboard plays it.`;
   }
-  const noParent = parent !== undefined && continued === null ? ` Its parent ${parent} does not read: the panel Stats counts the cost of the parent in the cost limit.` : "";
+  const noParent = parent !== undefined && continued === null ? ` Its parent ${parent} does not read: the panel Stats counts the calls of the parent in the limit.` : "";
   return `Replay of ${name}.${noParent}`;
 }
 
 function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopAsked, view }: PoolRun): RunSummary {
-  const { milestone, battle, cost } = factsAt(events, Number.POSITIVE_INFINITY);
+  const { milestone, battle, totals } = factsAt(events, Number.POSITIVE_INFINITY);
+  const facts = spec.model && modelFacts(spec.model);
+  const own = continued ? modelTotals(events.slice(continued.events)) : totals;
   return {
     id,
     bot: spec.bot,
@@ -387,7 +399,7 @@ function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopA
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: spec.model ? { id: spec.model.id, costLimit: spec.model.costLimit, reasoning: spec.model.reasoning, thinking: spec.model.thinking, starter: spec.model.starter, cost, callsStarted: modelCallsStarted } : null,
+    model: facts ? { ...facts, spent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, totals) }, ownSpent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, own) }, callsStarted: modelCallsStarted } : null,
     frame: view.frame,
     milestone,
     battle,
@@ -428,16 +440,17 @@ async function startBot(name: string, given: ModelOptions, parent: string | unde
   for (const run of started) void run.done.then((end) => onBotEnd(run, end));
   const from = parent === undefined ? "" : ` from the end of ${parent}`;
   const runs = count === 1 ? `Run ${started[0].id}: the Bot ${name} plays` : `Runs ${started[0].id} to ${started[count - 1].id}: the Bot ${name} plays ${count} times`;
-  return `${runs}${from}${model ? ` with the model ${model.id} (limit ${model.costLimit} $ for each Run)` : ""}.`;
+  return `${runs}${from}${model ? ` with the model ${model.id} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
   const failure = error ? ` · error: ${error}` : "";
   try {
     const lastText = record?.result.lastText === undefined ? "" : ` (last text "${record.result.lastText}")`;
+    const planLimit = record?.result.planLimit === undefined ? "" : ` (${record.result.planLimit})`;
     const written = record && basename(await writeRecord(record));
     if (written) writtenRecords.set(id, written);
-    const end = record ? `end: ${record.result.endReason}${lastText}, Run record runs/${written}` : "no Run record";
+    const end = record ? `end: ${record.result.endReason}${lastText}${planLimit}, Run record runs/${written}` : "no Run record";
     send({ type: "notice", text: `Run ${id} (${spec.bot}): ${end}${failure}.` });
     send({ type: "records", names: await recordNames() });
   } catch (writeError) {
@@ -668,6 +681,19 @@ async function raceFile(name: string): Promise<Response> {
 
 let handling = Promise.resolve();
 
+// One message at a time: the Grid sends a seek right after a replay, and the seek must find the replay started.
+function enqueue(message: ClientMessage, ws: ServerWebSocket<unknown>): void {
+  handling = handling.then(() => handle(message, ws)).catch((error) => console.error(error));
+}
+
+// The check of a provider runs a command, so it stays out of the queue: a stop does not wait for it.
+async function startWhenReady(message: Extract<ClientMessage, { type: "start-bot" }>, ws: ServerWebSocket<unknown>): Promise<void> {
+  const bot = await loadBot(message.name, message.model).catch(() => null);
+  const problem = bot?.model ? await providerProblem(providerOf(bot.model)) : null;
+  if (problem) send({ type: "notice", text: `No Run: ${problem}.` });
+  else enqueue(message, ws);
+}
+
 Bun.serve({
   port: PORT,
   development: true,
@@ -689,7 +715,7 @@ Bun.serve({
       send({ type: "maps", names: run.game.allMapNames }, ws);
       send({ type: "areas", areas }, ws);
       void recordNames().then((names) => send({ type: "records", names }, ws));
-      void botInfos().then((bots) => send({ type: "bots", bots }, ws));
+      void Promise.all([botInfos(), providerStatuses()]).then(([bots, providers]) => send({ type: "bots", bots, providers }, ws));
       sendReplayEvents(ws);
       sendEvents({ to: ws });
       sendMap(shown.state(), ws);
@@ -706,11 +732,11 @@ Bun.serve({
         grid.clear();
       }
     },
-    // One message at a time: the Grid sends a seek right after a replay, and the seek must find the replay started.
     message(ws, data) {
       if (typeof data !== "string") return;
       const message = JSON.parse(data) as ClientMessage;
-      handling = handling.then(() => handle(message, ws)).catch((error) => console.error(error));
+      if (message.type === "start-bot") void startWhenReady(message, ws);
+      else enqueue(message, ws);
     },
   },
 });

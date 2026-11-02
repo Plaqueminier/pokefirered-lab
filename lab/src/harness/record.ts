@@ -2,7 +2,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import { parseRunId, type ReasoningLevel, runIdText, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { DEFAULT_PROVIDER, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
@@ -36,10 +36,21 @@ export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
 type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
-export type ModelSettings = { id: string; costLimit: number; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean };
+export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean } & ModelLimit;
+
+// Run records from before the Model providers have no provider: they played on OpenRouter.
+type ModelLimit = { provider?: "openrouter"; costLimit: number; tokenLimit?: undefined } | { provider: PlanProvider; tokenLimit: number; costLimit?: undefined };
+
+export function providerOf({ provider }: { provider?: ModelProvider }): ModelProvider {
+  return provider ?? DEFAULT_PROVIDER;
+}
+
+export function limitOf(settings: ModelLimit): Spend {
+  return settings.tokenLimit === undefined ? { unit: "dollars", amount: settings.costLimit } : { unit: "tokens", amount: settings.tokenLimit };
+}
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; costLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
+export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
 
 export type Prompt = { system: string; user: string; turns?: Turn[] };
 
@@ -102,7 +113,7 @@ export function callTurns(events: readonly RunEvent[]): CallTurn[] {
   return turns;
 }
 
-export function factsAt(events: readonly RunEvent[], frame: number): { milestone: Milestone | null; battle: boolean; cost: number } {
+export function factsAt(events: readonly RunEvent[], frame: number): { milestone: Milestone | null; battle: boolean; totals: ModelTotals } {
   let milestone: Milestone | null = null;
   let battle = false;
   for (const event of events) {
@@ -110,7 +121,7 @@ export function factsAt(events: readonly RunEvent[], frame: number): { milestone
     if (event.type === "milestone") milestone = event.milestone;
     if (event.type === "battle") battle = event.state === "start";
   }
-  return { milestone, battle, cost: modelTotals(events.filter((event) => event.frame <= frame)).cost };
+  return { milestone, battle, totals: modelTotals(events.filter((event) => event.frame <= frame)) };
 }
 
 export function modelTotals(events: readonly RunEvent[]): ModelTotals {
@@ -266,9 +277,9 @@ export class RecordPlayer {
     return this.#record.header;
   }
 
-  /** The Model calls of the whole record. */
-  get modelTotals(): ModelTotals {
-    return modelTotals(this.#record.events);
+  /** `first`: the first event to count, for a Continued Run that counts its own calls. */
+  modelTotalsFrom(first: number): ModelTotals {
+    return modelTotals(this.#record.events.slice(first));
   }
 
   played(): RunEvent[] {

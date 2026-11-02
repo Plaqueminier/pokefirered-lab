@@ -7,6 +7,7 @@ import { useStore } from "./cursor";
 import { GhostCard, GhostFace, GhostState, GhostStatsRow, TeamIcons } from "./race-cards";
 import type { GhostNow } from "./race-ghosts";
 import type { RaceView } from "./race-view";
+import { spendShort } from "./runs";
 
 const EXTRA_ROWS = 4;
 
@@ -18,7 +19,7 @@ function Row({ view, ghost, rank, selected }: { view: RaceView; ghost: GhostNow;
       id={runIdText(ghost.number)}
       team={<TeamIcons view={view} ghost={ghost} />}
       badges={<Badges got={ghost.stats.badges} />}
-      cost={`${ghost.stats.cost.toFixed(2)} $`}
+      cost={spendShort({ unit: ghost.unit, amount: ghost.stats.cost })}
       state={<GhostState ghost={ghost} />}
       faded={ghost.result !== null}
       selected={selected}

@@ -1,7 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { modelSettings } from "../model/openrouter";
+import { modelSettings } from "../model/providers";
 import { CACHE_DIR } from "../core";
 import { Memory } from "../memory";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";

@@ -1,5 +1,5 @@
 import type { EndReason } from "../src/harness/harness";
-import { type MonHealth, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
+import { type MonHealth, type SpendUnit, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
 import { decodeTrack, type RaceBattle, type RaceFile, type RaceRun } from "../src/race/file";
 import type { Door, WorldMap, WorldPlace } from "../src/race/world";
 import type { CellBox } from "./race-camera";
@@ -33,6 +33,7 @@ export type GhostNow = {
   result: EndReason | null;
   place: GhostPlace;
   team: GhostMon[];
+  unit: SpendUnit;
   stats: GhostStats;
 };
 
@@ -274,7 +275,7 @@ export class RaceGhosts {
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
     const battle = battleAt(ghost, frame);
-    const now: GhostNow = { run: index, number: run.number, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], stats: statsAt(ghost, frame) };
+    const now: GhostNow = { run: index, number: run.number, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

@@ -151,6 +151,12 @@ function FieldDemo() {
   );
 }
 
+const PROVIDER_OPTIONS = [
+  { value: "openrouter", label: "openrouter" },
+  { value: "claude-code", label: "claude-code" },
+  { value: "codex", label: "codex", disabledReason: "Codex is not logged in with a subscription" },
+];
+
 const RUN_OPTIONS = [
   { value: "viewer", label: "Viewer Run (keyboard)", group: "Viewer Run" },
   { value: "run:3", label: "Run 3 · model · plays", group: "Runs of the Bots" },
@@ -184,6 +190,9 @@ function SelectDemo() {
       </Field>
       <Field label="Starter" hint="Disabled.">
         <Select options={[{ value: "free", label: "starter free" }]} value="free" onChange={() => {}} disabled />
+      </Field>
+      <Field label="Provider" hint="An option can be disabled, with its reason: codex.">
+        <Select options={PROVIDER_OPTIONS} value="openrouter" onChange={() => {}} />
       </Field>
       <Field label="Map" hint="searchable: type “viridian city” (a part of a name; no case, “_” and spaces do not count), or “xyz” for no match. The value stays empty.">
         <Select
@@ -730,7 +739,7 @@ const ENTRIES: Entry[] = [
   {
     category: "controls",
     title: "Select",
-    rule: "All the dropdowns of the Viewer. A click or Enter opens the list. Arrows, Home, End and a letter move in it, Enter or a click chooses, Esc closes. Options can have groups. With searchable, a field at the top of the list takes the focus at each opening and filters the options on a part of their label, with no case, and “_” and spaces do not count; the arrows move, Enter chooses, Esc or a click outside closes.",
+    rule: "All the dropdowns of the Viewer. A click or Enter opens the list. Arrows, Home, End and a letter move in it, Enter or a click chooses, Esc closes. Options can have groups. An option can be disabled, with its reason beside its label: a person cannot choose it. With searchable, a field at the top of the list takes the focus at each opening and filters the options on a part of their label, with no case, and “_” and spaces do not count; the arrows move, Enter chooses, Esc or a click outside closes.",
     demo: () => <SelectDemo />,
   },
   {
@@ -786,7 +795,7 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "LeaderboardRow",
-    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state and cost, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
+    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
     demo: () => <LeaderboardRowDemo />,
   },
   { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
@@ -865,7 +874,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Bots",
-    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with the maximum total cost, and it stops the shown Run.",
+    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with its Model provider and the maximum total cost or tokens, and it stops the shown Run. A provider that is not ready is disabled, with its reason.",
     demo: () => <BotsDemo />,
   },
   {
@@ -889,7 +898,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, its Bot and model, its game time, last Milestone and cost. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
+    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
     demo: () => <GridCellDemo />,
   },
   {

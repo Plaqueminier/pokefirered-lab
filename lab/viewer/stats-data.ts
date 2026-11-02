@@ -3,7 +3,7 @@ import type { ActionResult } from "../src/harness/harness";
 import type { Continuation, RunEvent } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { isNewNote } from "../src/model/memory-tree";
-import { actionText, GBA_FPS } from "../src/protocol";
+import { actionText, GBA_FPS, type SpendUnit, spentIn } from "../src/protocol";
 import type { Moment, Span } from "./cursor";
 import { clock, spanText } from "./stats-format";
 import { areaOf, MILESTONE_NAMES } from "./timeline-events";
@@ -25,32 +25,33 @@ type Played = { frame: number; call: number | null; name: string; text: string; 
 
 type AreaStay = Span & { area: string; order: number };
 
-export type StatsOptions = { now: number; areas: Areas; continued: Continuation | null };
+export type StatsOptions = { now: number; areas: Areas; continued: Continuation | null; unit?: SpendUnit };
 
 export type StatsView = {
   now: number;
   calls: Call[];
   played: Played[];
   summaries: { frame: number }[];
-  costSteps: { frame: number; cost: number }[];
-  cost: number;
+  unit: SpendUnit;
+  spentSteps: { frame: number; spent: number }[];
+  spent: number;
   /** A chapter is the time up to a Milestone, with its name; the last one is open: "After Pokédex", or "Start". */
   chapters: (Span & { name: string })[];
   areas: AreaStay[];
   /** For a Continued Run: its first frame, and the cost of its parent, which its cost limit does not count. */
-  parentEnd: { frame: number; cost: number } | null;
+  parentEnd: { frame: number; spent: number } | null;
 };
 
-export function statsView(events: readonly RunEvent[], { now, areas, continued }: StatsOptions): StatsView {
-  const view: StatsView = { now, calls: [], played: [], summaries: [], costSteps: [], cost: 0, chapters: [], areas: [], parentEnd: null };
+export function statsView(events: readonly RunEvent[], { now, areas, continued, unit = "dollars" }: StatsOptions): StatsView {
+  const view: StatsView = { now, calls: [], played: [], summaries: [], unit, spentSteps: [], spent: 0, chapters: [], areas: [], parentEnd: null };
   const visited: string[] = [];
   let chapter = 0;
   let lastNote: string | undefined;
   events.forEach((event, i) => {
-    if (continued && i === continued.events) view.parentEnd = { frame: continued.frame, cost: view.cost };
+    if (continued && i === continued.events) view.parentEnd = { frame: continued.frame, spent: view.spent };
     if ("usage" in event) {
-      view.cost += event.usage.cost;
-      view.costSteps.push({ frame: event.frame, cost: view.cost });
+      view.spent += spentIn(unit, event.usage);
+      view.spentSteps.push({ frame: event.frame, spent: view.spent });
     }
     switch (event.type) {
       case "map": {
@@ -95,7 +96,7 @@ export function statsView(events: readonly RunEvent[], { now, areas, continued }
         break;
     }
   });
-  if (continued && !view.parentEnd) view.parentEnd = { frame: continued.frame, cost: view.cost };
+  if (continued && !view.parentEnd) view.parentEnd = { frame: continued.frame, spent: view.spent };
   const reached = view.chapters.at(-1)?.name;
   view.chapters.push({ name: reached ? `After ${reached}` : "Start", from: chapter, to: now });
   view.areas = withoutShortStays(view.areas);
@@ -111,7 +112,7 @@ export type Selected = {
   calls: Call[];
   played: Played[];
   summaries: { frame: number }[];
-  cost: number;
+  spent: number;
   notes: number;
   stuckMax: number | null;
   reflections: number;
@@ -133,7 +134,7 @@ export function selected(view: StatsView, spans: readonly Span[]): Selected {
     calls,
     played,
     summaries,
-    cost: spans.reduce((sum, s) => sum + costAt(view, s.to) - costAt(view, s.from - 1), 0),
+    spent: spans.reduce((sum, s) => sum + spentAt(view, s.to) - spentAt(view, s.from - 1), 0),
     notes: calls.filter((c) => c.note).length,
     stuckMax: stucks.length > 0 ? Math.max(...stucks) : null,
     reflections: calls.filter((c) => c.reflection).length,
@@ -144,8 +145,8 @@ export function selected(view: StatsView, spans: readonly Span[]): Selected {
   };
 }
 
-export function costAt(view: StatsView, frame: number): number {
-  return view.costSteps.findLast((s) => s.frame <= frame)?.cost ?? 0;
+export function spentAt(view: StatsView, frame: number): number {
+  return view.spentSteps.findLast((s) => s.frame <= frame)?.spent ?? 0;
 }
 
 /** A Model call goes from its frame to the frame before the next call at a later frame, or to now. */
@@ -188,13 +189,13 @@ export function upTo(spans: readonly Span[], frame: number): Span[] {
 }
 
 /** A scale up to a limit far above the cost gives a flat curve. `base`: the cost of the parent of a Continued Run, which its limit does not count. */
-export function costScale(cost: number, limit: number | null, base = 0): { max: number; limitLine: boolean } {
-  const limitLine = limit !== null && cost > limit / 2;
-  return { max: Math.max(limitLine ? base + limit : 0, base + cost), limitLine };
+export function spentScale(spent: number, limit: number | null, base = 0): { max: number; limitLine: boolean } {
+  const limitLine = limit !== null && spent > limit / 2;
+  return { max: Math.max(limitLine ? base + limit : 0, base + spent), limitLine };
 }
 
-export function hasModel(view: StatsView, costLimit: number | null): boolean {
-  return costLimit !== null || view.calls.length > 0 || view.summaries.length > 0;
+export function hasModel(view: StatsView, limit: number | null): boolean {
+  return limit !== null || view.calls.length > 0 || view.summaries.length > 0;
 }
 
 const SHORT_STAY = 10 * GBA_FPS;

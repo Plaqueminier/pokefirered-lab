@@ -4,14 +4,14 @@ import type { ComponentChildren, ComponentType } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas } from "../src/game";
 import type { Continuation, RunEvent } from "../src/harness/record";
-import { GBA_FPS } from "../src/protocol";
+import { GBA_FPS, SPEND_WORDS, type Spend, spendText, tokens } from "../src/protocol";
 import { Bar, Button, Card, Collapsible, LABEL, ListRow, Pill, StatTile, type Tone, Tooltip, toneText } from "./components";
 import type { Moment, Span } from "./cursor";
 import type { UnusualCall } from "./model-calls";
-import { dollars, money, signedMoney, tokens } from "./runs";
+import { money, signedMoney, spendShort } from "./runs";
 import { AreaRow, ChapterSteps, Chart, type Graph, type Picks, TimeAxis } from "./stats-charts";
 import {
-  costAt,
+  spentAt,
   graphWindow,
   hasModel,
   isInside,
@@ -41,7 +41,7 @@ export type StatsPanelProps = {
   rows: readonly UnusualCall[];
   playing: number;
   moment: Moment;
-  costLimit: number | null;
+  limit: Spend | null;
   continued: Continuation | null;
   kinds: ReadonlySet<TimelineKind>;
   picks: Picks;
@@ -263,7 +263,7 @@ function ModelCalls({ part, picked, picks }: { part: Selected; picked: number | 
   );
 }
 
-function AtCursor({ view, at, costLimit, model }: { view: StatsView; at: number; costLimit: number | null; model: boolean }) {
+function AtCursor({ view, at, limit, model }: { view: StatsView; at: number; limit: Spend | null; model: boolean }) {
   const stuck = stuckAt(view, at);
   const prompt = promptAt(view, at);
   return (
@@ -271,7 +271,7 @@ function AtCursor({ view, at, costLimit, model }: { view: StatsView; at: number;
       <StatTile size="lg" label="Time" value={clock(at)} />
       {model && (
         <>
-          <StatTile size="lg" label="Cost" value={`${costAt(view, at).toFixed(2)} $`} detail={costLimit === null ? undefined : `limit ${dollars(costLimit)}`} />
+          <StatTile size="lg" label={SPEND_WORDS[view.unit].name} value={spendShort({ unit: view.unit, amount: Math.max(0, spentAt(view, at) - (view.parentEnd?.spent ?? 0)) })} detail={limit === null ? undefined : `limit ${spendText(limit)}`} />
           <StatTile size="lg" label="Stuck counter" value={stuck ?? "–"} tone={stuck === null ? undefined : stuckTone(stuck)} />
           <StatTile size="lg" label="Prompt tokens" value={prompt === null ? "–" : tokens(prompt)} />
         </>
@@ -283,10 +283,11 @@ function AtCursor({ view, at, costLimit, model }: { view: StatsView; at: number;
 // `now` moves in steps of 60 frames (about one second), so the panel makes the view of the Run again once a second, not at each status.
 const NOW_STEP = 60;
 
-export function StatsPanel({ events, gameEvents, areas, rows, playing, moment, costLimit, continued, kinds, picks, jump }: StatsPanelProps) {
+export function StatsPanel({ events, gameEvents, areas, rows, playing, moment, limit, continued, kinds, picks, jump }: StatsPanelProps) {
   const now = Math.ceil(Math.max(playing, events.at(-1)?.frame ?? 0) / NOW_STEP) * NOW_STEP;
   const at = moment.cursor?.frame ?? playing;
-  const view = useMemo(() => statsView(events, { now, areas, continued }), [events, now, areas, continued]);
+  const unit = limit?.unit;
+  const view = useMemo(() => statsView(events, { now, areas, continued, unit }), [events, now, areas, continued, unit]);
   const allLines = useMemo(() => (gameEvents ? eventLines(gameEvents, areas) : []), [gameEvents, areas]);
   const flagged = useMemo(() => rows.filter((row) => row.flags.length > 0), [rows]);
   const [area, setArea] = useState<string | null>(null);
@@ -294,11 +295,11 @@ export function StatsPanel({ events, gameEvents, areas, rows, playing, moment, c
   const spans = scopeSpans(view, scope);
   const part = selected(view, spans);
   const text = scopeText(view, scope);
-  const model = hasModel(view, costLimit);
+  const model = hasModel(view, limit?.amount ?? null);
   const last = useLastHours(at, moment.cursor?.frame ?? null);
   const chosen = scope.kind !== "run";
   const shown = graphWindow(scope, spans, last.extent, Math.max(1, now, at));
-  const graph: Graph = { view, part, shown, at, spans: chosen ? spans : [], costLimit, short: text.short, picks };
+  const graph: Graph = { view, part, shown, at, spans: chosen ? spans : [], limit: limit?.amount ?? null, short: text.short, picks };
   const setScope = (next: Scope) => {
     const again = (next.kind === "chapter" || next.kind === "stay") && scope.kind === next.kind && scope.index === next.index;
     setArea(next.kind === "area" ? next.area : null);
@@ -325,7 +326,7 @@ export function StatsPanel({ events, gameEvents, areas, rows, playing, moment, c
   return (
     <div class="flex flex-col gap-5">
       <Section title={`${moment.cursor ? "At the cursor" : "Now"} · ${clock(at)}`}>
-        <AtCursor view={view} at={at} costLimit={costLimit} model={model} />
+        <AtCursor view={view} at={at} limit={limit} model={model} />
         {gameEvents ? (
           <div class="grid grid-cols-1 gap-2 min-[1280px]:grid-cols-2">
             <SinceCard since={since} at={at} />
@@ -360,7 +361,7 @@ export function StatsPanel({ events, gameEvents, areas, rows, playing, moment, c
       </Section>
       <Section title={text.title} detail={text.detail} action={wholeRun}>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted tabular-nums">
-          <span>{dollars(part.cost)}</span>
+          <span>{spendText({ unit: view.unit, amount: part.spent })}</span>
           <span>{plural(part.calls.length, "Model call")}</span>
           <span class={impossible > 0 ? "text-bad" : ""}>{impossible} impossible</span>
           {part.stuckMax !== null && <Pill tone={stuckTone(part.stuckMax)}>Stuck max {part.stuckMax}</Pill>}

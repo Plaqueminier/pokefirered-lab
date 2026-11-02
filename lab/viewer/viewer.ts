@@ -177,7 +177,7 @@ function onMessage(message: ServerMessage): void {
       gridTab.onRecords(message.names);
       break;
     case "bots":
-      lab.onBots(message.bots);
+      lab.onBots(message.bots, message.providers);
       bots.set(message.bots);
       break;
     case "events": {

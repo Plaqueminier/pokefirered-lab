@@ -6,7 +6,8 @@ import { Button, Card, LABEL, Pill, Slider, Tabs, type Tone, Tooltip } from "./c
 import { Popover, Select } from "./components-layers";
 import { type ScreenFeed, Store, useStore } from "./cursor";
 import { type CellState, type GridCell, gridCells } from "./grid-cells";
-import { botRunKey, dollars, replayKey } from "./runs";
+import { SPEND_WORDS, spendText } from "../src/protocol";
+import { botRunKey, replayKey } from "./runs";
 import { clock } from "./stats-format";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
@@ -127,7 +128,7 @@ function FilledCell({ cell, index, records, screens, actions }: { cell: GridCell
           <span class="flex gap-3 text-xs">
             <Fact label="time" value={clock(cell.frame)} />
             <Fact label="Milestone" value={cell.milestone ?? "–"} shrink />
-            <Fact label="cost" value={cell.cost === null ? "–" : dollars(cell.cost)} />
+            <Fact label={SPEND_WORDS[cell.spent?.unit ?? "dollars"].name.toLowerCase()} value={cell.spent ? spendText(cell.spent) : "–"} />
           </span>
         </button>
         <span class="absolute top-1.5 right-1.5 flex gap-1 rounded-ctl bg-bg/70">

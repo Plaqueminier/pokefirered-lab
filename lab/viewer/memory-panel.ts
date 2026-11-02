@@ -1,4 +1,5 @@
 import type { Prompt, RunEvent, SummaryEvent } from "../src/harness/record";
+import { spentIn } from "../src/protocol";
 import { type MemoryNode, memoryTree, type NewNote, newNotes, nodeLine, nodeName, nodeText, topNodes, zoomNodes } from "../src/model/memory-tree";
 import type { Cursor, Span } from "./cursor";
 
@@ -9,6 +10,7 @@ export type SummaryCallRow = {
   result: string;
   failed: boolean;
   cost: number;
+  tokens: number;
   latencyMs: number;
   promptTokens: number;
   completionTokens: number;
@@ -37,6 +39,7 @@ export type MemoryPanelView = {
   calls: SummaryCallRow[];
   selection: boolean;
   cost: number;
+  tokens: number;
   failed: number;
 };
 
@@ -76,6 +79,7 @@ export function memoryPanelView(all: readonly RunEvent[], cursor: Cursor | null 
     calls,
     selection: range !== null,
     cost: calls.reduce((sum, call) => sum + call.cost, 0),
+    tokens: calls.reduce((sum, call) => sum + call.tokens, 0),
     failed: calls.filter((call) => call.failed).length,
   };
 }
@@ -127,6 +131,7 @@ function callRow(call: SummaryEvent, id: number): SummaryCallRow {
     result: call.summary ?? call.error,
     failed: call.summary === null,
     cost: call.usage.cost,
+    tokens: spentIn("tokens", call.usage),
     latencyMs: call.latencyMs,
     promptTokens: call.usage.promptTokens,
     completionTokens: call.usage.completionTokens,

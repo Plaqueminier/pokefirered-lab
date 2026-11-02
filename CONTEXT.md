@@ -184,7 +184,7 @@ The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each 
 _Avoid_: wall, multiview, dashboard
 
 **Race**:
-A file that a command makes from a set of **Run records**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
+A file that a command makes from a set of **Run records**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost or its tokens and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:

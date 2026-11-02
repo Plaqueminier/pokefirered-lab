@@ -30,15 +30,16 @@ import {
   Users,
   ZoomIn,
 } from "lucide-preact";
-import type { ComponentType } from "preact";
-import { useMemo, useRef, useState } from "preact/hooks";
+import { type ComponentType, createContext } from "preact";
+import { useContext, useMemo, useRef, useState } from "preact/hooks";
+import { type SpendUnit, tokens } from "../src/protocol";
 import type { ActionEvent, ModelEvent } from "../src/harness/record";
 import { shownCharacter } from "../src/model/character";
 import { actionText } from "../src/protocol";
 import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText, useKeepInView } from "./components";
 import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
-import { milliDollars, seconds, tokens } from "./runs";
+import { milliDollars, seconds } from "./runs";
 import { clock, stuckTone } from "./stats-format";
 
 type Icon = ComponentType<{ size?: number }>;
@@ -165,12 +166,17 @@ function UsagePills({ call }: { call: ModelEvent }) {
   );
 }
 
+export const SpendUnitContext = createContext<SpendUnit>("dollars");
+
 export function CostPills({ cost, latencyMs, promptTokens, completionTokens }: { cost: number; latencyMs: number; promptTokens: number; completionTokens: number }) {
+  const unit = useContext(SpendUnitContext);
   return (
     <>
-      <Tooltip text="Cost of the call">
-        <Pill>{milliDollars(cost)}</Pill>
-      </Tooltip>
+      {(unit === "dollars" || cost > 0) && (
+        <Tooltip text="Cost of the call">
+          <Pill>{milliDollars(cost)}</Pill>
+        </Tooltip>
+      )}
       <Tooltip text="Latency">
         <Pill>{seconds(latencyMs)}</Pill>
       </Tooltip>

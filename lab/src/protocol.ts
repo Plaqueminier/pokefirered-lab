@@ -30,8 +30,55 @@ export function obstacleRemedy(move: string): string {
   return `Only a Pokémon that knows ${move} can remove it`;
 }
 
+export const MODEL_PROVIDERS = ["openrouter", "claude-code", "codex"] as const;
+
+export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
+
+export type PlanProvider = Exclude<ModelProvider, "openrouter">;
+
+export const DEFAULT_PROVIDER: ModelProvider = "openrouter";
+
+export function isPlanProvider(provider: ModelProvider): provider is PlanProvider {
+  return provider !== "openrouter";
+}
+
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
+
+export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "haiku", codex: "gpt-5.6-luna" };
+
+export const MILLION = 1_000_000;
+
+export const DEFAULT_TOKEN_LIMIT = tokensFromMillions(1);
+
+/** A person gives a Token limit in millions of tokens; the Harness and the Run record keep tokens. */
+export function tokensFromMillions(millions: number): number {
+  return Math.round(millions * MILLION);
+}
+
+export type SpendUnit = "dollars" | "tokens";
+
+export type Spend = { unit: SpendUnit; amount: number };
+
+export const SPEND_WORDS: Record<SpendUnit, { name: string; limit: string }> = { dollars: { name: "Cost", limit: "Cost limit" }, tokens: { name: "Tokens", limit: "Token limit" } };
+
+function dollars(cost: number): string {
+  return `${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} $`;
+}
+
+export function tokens(count: number): string {
+  return count.toLocaleString("en-US");
+}
+
+export function spendText({ unit, amount }: Spend): string {
+  return unit === "tokens" ? `${tokens(Math.round(amount))} tokens` : dollars(amount);
+}
+
+export function spentIn(unit: SpendUnit, { promptTokens, completionTokens, cost }: { promptTokens: number; completionTokens: number; cost: number }): number {
+  return unit === "tokens" ? promptTokens + completionTokens : cost;
+}
+
+export type ProviderStatus = { provider: ModelProvider; problem: string | null };
 
 export const REASONING = ["off", "low", "medium", "high"] as const;
 
@@ -83,10 +130,9 @@ type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-type ModelFacts = Pick<ModelSettings, "id" | "costLimit" | "reasoning" | "thinking" | "starter">;
+type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; limit: Spend };
 
-/** The Model calls of a replay: `calls` and `cost` up to the frame of the replay, the totals for the whole record. */
-export type ReplayModel = ModelFacts & { calls: number; cost: number; totalCalls: number; totalCost: number };
+export type ReplayModel = ModelFacts & { calls: number; spent: Spend; totalCalls: number; totalSpent: Spend };
 
 export type Jump = { from: number; to: number };
 
@@ -118,7 +164,7 @@ export type RunSummary = {
   parent: string | null;
   continued: Continuation | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
-  model: (ModelFacts & { cost: number; callsStarted: number }) | null;
+  model: (ModelFacts & { spent: Spend; ownSpent: Spend; callsStarted: number }) | null;
   frame: number;
   milestone: Milestone | null;
   battle: boolean;
@@ -135,7 +181,7 @@ export type GridReplay = {
   frames: number;
   frame: number;
   milestone: Milestone | null;
-  cost: number | null;
+  spent: Spend | null;
   battle: boolean;
   endReason: EndReason;
   error: string | null;
@@ -164,7 +210,7 @@ export type ServerMessage =
   | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string }
   | { type: "records"; names: string[] }
-  | { type: "bots"; bots: BotInfo[] }
+  | { type: "bots"; bots: BotInfo[]; providers: ProviderStatus[] }
   | { type: "areas"; areas: Areas }
   | { type: "replay-events"; name: string; events: GameEvent[] }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */

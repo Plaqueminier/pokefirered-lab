@@ -4,7 +4,7 @@ import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/h
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import type { InventoryAt } from "../src/inventory";
-import { type BotInfo, type ClientMessage, replayOf, type ServerMessage, type ShownRun } from "../src/protocol";
+import { type BotInfo, type ClientMessage, type ProviderStatus, replayOf, type ServerMessage, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spentIn } from "../src/protocol";
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
 import { callAt, type Readable, type SharedCursor, Store, useStore } from "./cursor";
@@ -13,9 +13,9 @@ import { CellPointerCard, MapPanel } from "./map-panel";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
 import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
-import { CallSummary, FLAG_LOOKS, ModelPanel } from "./model-panel";
+import { CallSummary, FLAG_LOOKS, ModelPanel, SpendUnitContext } from "./model-panel";
 import { PokemonCard } from "./pokemon";
-import { BotsPanel, RunSelect, runKey } from "./runs";
+import { BotsPanel, RunSelect, runKey, spendShort } from "./runs";
 import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
 import { clock, stuckTone } from "./stats-format";
@@ -36,6 +36,7 @@ type LabData = {
   rows: readonly UnusualCall[];
   statusLine: string;
   bots: readonly BotInfo[];
+  providers: readonly ProviderStatus[];
   records: readonly string[];
   areas: Areas;
   record: { name: string; events: readonly GameEvent[] } | null;
@@ -227,7 +228,7 @@ function StatsPanelHost() {
       rows={rows}
       playing={playing}
       moment={moment}
-      costLimit={model?.costLimit ?? null}
+      limit={model?.limit ?? null}
       continued={model?.continued ?? null}
       kinds={shownKinds}
       picks={lab.shared}
@@ -252,18 +253,18 @@ function RecordButton() {
   );
 }
 
-function modelOf(shown: ShownRun): { costLimit: number; continued: Continuation | null } | null {
-  if (shown.kind === "bot") return shown.run.model && { costLimit: shown.run.model.costLimit, continued: shown.run.continued };
-  return shown.replay?.model ? { costLimit: shown.replay.model.costLimit, continued: shown.replay.continued } : null;
+function modelOf(shown: ShownRun): { limit: Spend; continued: Continuation | null } | null {
+  if (shown.kind === "bot") return shown.run.model && { limit: shown.run.model.limit, continued: shown.run.continued };
+  return shown.replay?.model ? { limit: shown.replay.model.limit, continued: shown.replay.continued } : null;
 }
 
-function costTo(events: readonly RunEvent[], frame: number, from = 0): number {
-  let cost = 0;
+function spentTo(unit: SpendUnit, events: readonly RunEvent[], frame: number, from = 0): number {
+  let spent = 0;
   for (let i = from; i < events.length && events[i].frame <= frame; i++) {
     const event = events[i];
-    if ("usage" in event) cost += event.usage.cost;
+    if ("usage" in event) spent += spentIn(unit, event.usage);
   }
-  return cost;
+  return spent;
 }
 
 const MODES = { overworld: "map", battle: "battle", other: "menu" };
@@ -282,13 +283,14 @@ function useCursorCall() {
 
 function TopBar() {
   const { send } = useLab();
-  const { status, state, events, cursor, calls, index, call, bots, records } = useCursorCall();
+  const { status, state, events, cursor, calls, index, call, bots, providers, records } = useCursorCall();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
   const jump = replayOf(shown)?.seeking;
   const frame = cursor?.frame ?? jump?.to ?? status?.frame ?? 0;
   const from = model?.continued?.events ?? 0;
-  const cost = useMemo(() => costTo(events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, from), [events, cursor, from]);
+  const unit = model?.limit.unit ?? "dollars";
+  const spent = useMemo(() => spentTo(unit, events, cursor ? cursor.frame : Number.POSITIVE_INFINITY, from), [unit, events, cursor, from]);
   return (
     <header
       style={sizeVars(ZONES.top.size)}
@@ -303,7 +305,7 @@ function TopBar() {
         </span>
         <span class="shrink-0">
           <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-            <BotsPanel shown={shown} bots={bots} records={records} places={status?.places ?? { free: 0, limit: 0 }} send={send} />
+            <BotsPanel shown={shown} bots={bots} providers={providers} records={records} places={status?.places ?? { free: 0, limit: 0 }} send={send} />
           </Popover>
         </span>
       </span>
@@ -312,11 +314,11 @@ function TopBar() {
           <>
             <span class="shrink-0 @max-[600px]:hidden">
               <Metric
-                tip={model ? "Cost of the Model calls at the cursor / cost limit" : "Cost of the Model calls at the cursor"}
+                tip={`${SPEND_WORDS[unit].name} of the Model calls at the cursor${model ? ` / ${SPEND_WORDS[unit].limit.toLowerCase()}` : ""}`}
                 icon={<Coins size={14} />}
-                value={`${cost.toFixed(2)} $`}
-                chars={7}
-                detail={model ? `/ ${model.costLimit.toFixed(2)} $` : undefined}
+                value={spendShort({ unit, amount: spent })}
+                chars={unit === "tokens" ? 10 : 7}
+                detail={model ? `/ ${spendShort(model.limit)}` : undefined}
               />
             </span>
             <span class="shrink-0 @max-[680px]:hidden">
@@ -409,6 +411,11 @@ function DecisionLine() {
       )}
     </div>
   );
+}
+
+function SpendUnitScope({ children }: { children: ComponentChildren }) {
+  const { status } = useStore(useLab().data);
+  return <SpendUnitContext.Provider value={(status?.shown && modelOf(status.shown)?.limit.unit) ?? "dollars"}>{children}</SpendUnitContext.Provider>;
 }
 
 function ModelPanelHost() {
@@ -508,10 +515,12 @@ export class LabTab {
   #toastId = 0;
 
   constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
-    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], records: [], areas: {}, record: null, inventory: [] });
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], providers: [], records: [], areas: {}, record: null, inventory: [] });
     render(
       <LabContext.Provider value={{ ...lab, data: this.#data }}>
-        <LabLayout />
+        <SpendUnitScope>
+          <LabLayout />
+        </SpendUnitScope>
       </LabContext.Provider>,
       root,
     );
@@ -530,8 +539,8 @@ export class LabTab {
     this.#patch({ record: { name, events } });
   }
 
-  onBots(bots: readonly BotInfo[]): void {
-    this.#patch({ bots });
+  onBots(bots: readonly BotInfo[], providers: readonly ProviderStatus[]): void {
+    this.#patch({ bots, providers });
   }
 
   onRecords(records: readonly string[]): void {

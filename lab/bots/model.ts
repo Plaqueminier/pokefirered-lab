@@ -5,7 +5,8 @@ import type { ModelAnswer, ModelOptions, ModelSettings, NodeRange, Prompt, NodeS
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
-import { type AskOptions, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
+import type { AskOptions, ModelClient, ModelReply } from "../src/model/openrouter";
+import { modelClient, modelSettings, PlanLimitError } from "../src/model/providers";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
@@ -22,7 +23,7 @@ const TURN_FORMATS: Partial<Record<TurnKind, AskOptions["format"]>> = {
   review: { name: "review", schema: REVIEW_SCHEMA },
 };
 
-export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = openRouter): Bot {
+export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = modelClient): Bot {
   const settings = modelSettings(options);
   return {
     name: "model",
@@ -167,6 +168,7 @@ class ModelPlay {
     try {
       return await this.ask(prompt, options);
     } catch (error) {
+      if (error instanceof PlanLimitError) this.harness.endAtPlanLimit(error.message);
       return `the request failed: ${errorText(error)}`;
     }
   }

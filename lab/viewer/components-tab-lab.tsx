@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { BotInfo, ClientMessage, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
+import type { BotInfo, ClientMessage, ProviderStatus, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, MonIcon } from "./components-race";
@@ -189,7 +189,7 @@ const DEMO_RUNS: RunSummary[] = [
     error: null,
     parent: null,
     continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", costLimit: 1, reasoning: "off", thinking: "medium", starter: "free", cost: 0.37, callsStarted: 120 },
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 }, callsStarted: 120 },
     frame: 52_000,
     milestone: "has-pokemon",
     battle: false,
@@ -233,6 +233,12 @@ export function RunSelectDemo() {
   );
 }
 
+const DEMO_PROVIDERS: ProviderStatus[] = [
+  { provider: "openrouter", problem: null },
+  { provider: "claude-code", problem: null },
+  { provider: "codex", problem: "the command codex is not found: run bun install in lab/" },
+];
+
 const DEMO_BOTS: BotInfo[] = [
   { name: "model", kind: "model", version: "15", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
@@ -251,7 +257,7 @@ export function BotsDemo() {
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
       <PopoverBody>
-        <BotsPanel shown={shown} bots={bots} records={[RECORD]} places={places} send={() => {}} />
+        <BotsPanel shown={shown} bots={bots} providers={DEMO_PROVIDERS} records={[RECORD]} places={places} send={() => {}} />
       </PopoverBody>
     </div>
   );
@@ -434,7 +440,7 @@ const DEMO_REPLAY: ReplayStatus = {
   frames: 457065,
   ended: false,
   endReason: "cost limit",
-  model: { id: "deepseek/deepseek-v4-flash", costLimit: 10, reasoning: "off", thinking: "medium", starter: "free", calls: 312, cost: 4.21, totalCalls: 717, totalCost: 10.02 },
+  model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 10 }, reasoning: "off", thinking: "medium", starter: "free", calls: 312, spent: { unit: "dollars", amount: 4.21 }, totalCalls: 717, totalSpent: { unit: "dollars", amount: 10.02 } },
   continued: null,
   gameEvents: 393,
   reached: 200000,
@@ -443,12 +449,19 @@ const DEMO_REPLAY: ReplayStatus = {
 
 const RECORD_STATES = {
   plays: { label: "A replay that plays", replay: DEMO_REPLAY },
-  ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, cost: 10.02 } } },
+  tokens: {
+    label: "A Run on a Plan provider",
+    replay: {
+      ...DEMO_REPLAY,
+      model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, id: "haiku", provider: "claude-code" as const, limit: { unit: "tokens" as const, amount: 1_000_000 }, spent: { unit: "tokens" as const, amount: 412_000 }, totalSpent: { unit: "tokens" as const, amount: 980_000 } },
+    },
+  },
+  ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, spent: { unit: "dollars" as const, amount: 10.02 } } } },
   jumps: { label: "A replay that jumps", replay: { ...DEMO_REPLAY, seeking: { from: 200000, to: 80000 } } },
   old: { label: "A record with no Game events", replay: { ...DEMO_REPLAY, gameEvents: null } },
 };
 
-const DEMO_CELL: GridCell = { kind: "live", runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", cost: 0.37, state: { kind: "plays" }, record: null };
+const DEMO_CELL: GridCell = { kind: "live", runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", spent: { unit: "dollars", amount: 0.37 }, state: { kind: "plays" }, record: null };
 
 const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   plays: { label: "Live, plays", cell: DEMO_CELL },
@@ -456,6 +469,7 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
   ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD } },
   replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD } },
+  tokens: { label: "On a Plan provider", cell: { ...DEMO_CELL, model: "haiku", spent: { unit: "tokens", amount: 412_000 } } },
   replayEnded: { label: "Replay, ended", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, state: { kind: "ended", result: "goal" } } },
   empty: { label: "Empty", cell: null },
 };
@@ -509,6 +523,7 @@ export function LeaderboardRowDemo() {
     { rank: 1, id: "00017", ghost: { result: null, battle: null }, cost: "1.24 $", size: 6, got: 8, faded: false },
     { rank: 2, id: "00003", ghost: { result: null, battle: inBattle }, cost: "12.08 $", size: 3, got: 2, faded: false },
     { rank: 3, id: "00041", ghost: { result: null, battle: null }, cost: "0.00 $", size: 0, got: 0, faded: false },
+    { rank: 4, id: "00052", ghost: { result: null, battle: null }, cost: "412.0k tok", size: 2, got: 0, faded: false },
     { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, cost: "0.31 $", size: 3, got: 1, faded: true },
   ] as const;
   return (

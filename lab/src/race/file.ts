@@ -22,7 +22,7 @@ export type RaceRun = {
   milestones: [frame: number, milestone: string][];
   end: { frame: number; result: EndReason };
   state: StateEntry[];
-  /** Added up: a point at each change of a cent or more, and at the end. */
+  unit?: "tokens";
   cost: [frame: number, cost: number, calls: number][];
   faints: number[];
   money: [frame: number, money: number][];

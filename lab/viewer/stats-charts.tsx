@@ -3,8 +3,8 @@ import { useRef, useState } from "preact/hooks";
 import { REFLECTION_EVERY } from "../src/model/decision";
 import { LABEL, Tip, Tooltip, useWidth } from "./components";
 import type { SharedCursor, Span } from "./cursor";
-import { dollars, tokens } from "./runs";
-import { callSpan, costAt, costScale, type GraphWindow, hull, promptAt, type Scope, type Selected, type StatsView, stuckAt } from "./stats-data";
+import { SPEND_WORDS, spendText, tokens } from "../src/protocol";
+import { callSpan, spentAt, spentScale, type GraphWindow, hull, promptAt, type Scope, type Selected, type StatsView, stuckAt } from "./stats-data";
 import { clock, spanText, stuckLevel } from "./stats-format";
 
 export type Picks = Pick<SharedCursor, "pickCall" | "pickFrame" | "selectRange" | "clear">;
@@ -16,7 +16,7 @@ export type Graph = {
   shown: GraphWindow;
   at: number;
   spans: readonly Span[];
-  costLimit: number | null;
+  limit: number | null;
   short: string;
   picks: Picks;
 };
@@ -210,16 +210,16 @@ type Plot = { graph: Graph; axis: Axis; width: number };
 const y = (value: number, lo: number, hi: number) => PLOT_HEIGHT - PAD - ((value - lo) / Math.max(hi - lo, 1e-9)) * (PLOT_HEIGHT - 2 * PAD);
 
 // The y scale follows the window, so a zoom keeps the shape of the curves.
-function CostPlot({ graph: { view, shown: { extent }, costLimit }, axis: { x }, width }: Plot) {
+function CostPlot({ graph: { view, shown: { extent }, limit: spendLimit }, axis: { x }, width }: Plot) {
   const whole = extent.from === 0 && extent.to >= view.now;
-  const base = view.parentEnd?.cost ?? 0;
-  const scale = costScale(view.cost - base, costLimit, base);
-  const lo = whole ? 0 : costAt(view, extent.from);
-  const hi = whole ? Math.max(scale.max, 0.0001) * 1.1 : Math.max(costAt(view, extent.to), lo + 0.0001);
+  const base = view.parentEnd?.spent ?? 0;
+  const scale = spentScale(view.spent - base, spendLimit, base);
+  const lo = whole ? 0 : spentAt(view, extent.from);
+  const hi = whole ? Math.max(scale.max, 0.0001) * 1.1 : Math.max(spentAt(view, extent.to), lo + 0.0001);
   let path = `M ${x(0)} ${y(0, lo, hi)}`;
-  for (const step of view.costSteps) path += ` H ${x(step.frame)} V ${y(step.cost, lo, hi)}`;
+  for (const step of view.spentSteps) path += ` H ${x(step.frame)} V ${y(step.spent, lo, hi)}`;
   path += ` H ${x(view.now)}`;
-  const limit = costLimit !== null && scale.limitLine && whole ? y(base + costLimit, lo, hi) : null;
+  const limit = spendLimit !== null && scale.limitLine && whole ? y(base + spendLimit, lo, hi) : null;
   return (
     <>
       <path d={`${path} V ${PLOT_HEIGHT} H ${x(0)} Z`} class="fill-warn/12" />
@@ -264,29 +264,33 @@ function PromptPlot({ graph: { view, shown: { extent } }, axis: { x } }: Plot) {
 const kilo = (count: number) => `${(count / 1000).toFixed(1)}k`;
 
 type ChartLook = {
-  name: string;
+  name: (view: StatsView) => string;
   /** The value at the cursor, the value of the selection, and a note at the right. */
   header: (graph: Graph) => { now: string; part: string; note: string | null };
   hover: (view: StatsView, frame: number) => string;
   Plot: (plot: Plot) => ComponentChildren;
 };
 
-function costNote({ view, costLimit }: Graph): string | null {
-  const own = view.cost - (view.parentEnd?.cost ?? 0);
-  const limit = costLimit === null ? null : `limit ${dollars(costLimit)} · ${Math.round((100 * own) / costLimit)} % used`;
+function spentText(view: StatsView, amount: number): string {
+  return spendText({ unit: view.unit, amount });
+}
+
+function costNote({ view, limit: spendLimit }: Graph): string | null {
+  const own = view.spent - (view.parentEnd?.spent ?? 0);
+  const limit = spendLimit === null ? null : `limit ${spentText(view, spendLimit)} · ${Math.round((100 * own) / spendLimit)} % used`;
   const continued = view.parentEnd ? `continued at ${clock(view.parentEnd.frame)}` : null;
   return [limit, continued].filter(Boolean).join(" · ") || null;
 }
 
 const CHARTS: Record<ChartKind, ChartLook> = {
   cost: {
-    name: "Cost",
-    header: (graph) => ({ now: dollars(costAt(graph.view, graph.at)), part: `${dollars(graph.part.cost)} in ${graph.short}`, note: costNote(graph) }),
-    hover: (view, frame) => `${clock(frame)} · ${dollars(costAt(view, frame))}`,
+    name: (view) => SPEND_WORDS[view.unit].name,
+    header: (graph) => ({ now: spentText(graph.view, spentAt(graph.view, graph.at)), part: `${spentText(graph.view, graph.part.spent)} in ${graph.short}`, note: costNote(graph) }),
+    hover: (view, frame) => `${clock(frame)} · ${spentText(view, spentAt(view, frame))}`,
     Plot: CostPlot,
   },
   stuck: {
-    name: "Stuck counter",
+    name: () => "Stuck counter",
     header: ({ view, at, part, short }) => ({
       now: String(stuckAt(view, at) ?? "–"),
       part: part.stuckMax === null ? "–" : `max ${part.stuckMax} in ${short}`,
@@ -296,7 +300,7 @@ const CHARTS: Record<ChartKind, ChartLook> = {
     Plot: StuckPlot,
   },
   prompt: {
-    name: "Prompt tokens",
+    name: () => "Prompt tokens",
     header: ({ view, at, part, short }) => {
       const now = promptAt(view, at);
       return { now: now === null ? "–" : tokens(now), part: part.prompt ? `${tokens(part.prompt.min)} to ${tokens(part.prompt.max)} in ${short}` : "–", note: null };
@@ -318,7 +322,7 @@ export function Chart({ kind, graph }: { kind: ChartKind; graph: Graph }) {
   return (
     <div class="flex min-w-0 flex-col gap-1">
       <div class="flex min-w-0 items-baseline gap-2">
-        <span class={`${LABEL} shrink-0`}>{look.name}</span>
+        <span class={`${LABEL} shrink-0`}>{look.name(graph.view)}</span>
         <span class="shrink-0 text-xl font-semibold tabular-nums">{head.now}</span>
         <span class="min-w-0 truncate text-xs text-muted tabular-nums">{head.part}</span>
         {head.note && <span class="ml-auto shrink-0 text-xs text-faint tabular-nums">{head.note}</span>}

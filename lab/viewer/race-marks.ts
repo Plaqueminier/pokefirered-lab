@@ -9,6 +9,8 @@ export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | und
   "user stop": { icon: Square, tone: undefined },
   "bot stopped": { icon: Square, tone: undefined },
   "cost limit": { icon: CircleDollarSign, tone: "warn" },
+  "token limit": { icon: CircleDollarSign, tone: "warn" },
+  "plan limit": { icon: CircleDollarSign, tone: "warn" },
   "frame budget": { icon: CircleDollarSign, tone: "warn" },
   whiteout: { icon: Skull, tone: "bad" },
   "no progress": { icon: CircleQuestionMark, tone: "info" },
