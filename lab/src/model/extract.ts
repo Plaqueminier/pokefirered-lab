@@ -7,9 +7,9 @@ import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, leadTargets, type Loca
 
 export const OTHER_MAPS_BUDGET = 1500;
 export const FULL_ATLAS_BUDGET = 100_000;
-const LEGEND = 'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, rock or floor, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side';
+const LEGEND = 'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, wall or floor, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side';
 const LONG_MARK = "*";
-const OWN_PART_SEEN = "You saw all the cells of your part of this map. A ? cell can be rock that you never see, or a part of this map that you see from another exit: take an exit or a lead.";
+const OWN_PART_SEEN = "You saw all the cells of your part of this map. A ? cell can be a wall that you never see, or a part of this map that you see from another exit: take an exit or a lead.";
 const MAP_SEEN = "You saw all the cells of this map.";
 
 export type AtlasView = { lines: string[]; targets: Target[] };

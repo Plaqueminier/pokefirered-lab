@@ -108,9 +108,9 @@ describe("the parts of a map", () => {
     expect(view.targets.at(1)).toMatchObject({ kind: "exit", cell: { x: 1, y: 1 } });
   });
 
-  test("with no unseen cell in the part of the player, the extract says that a ? can be rock or another part", () => {
+  test("with no unseen cell in the part of the player, the extract says that a ? can be a wall or another part", () => {
     const view = atlasExtract(overworld(lower, [upper], { x: 6, y: 1 }));
-    expect(view.lines).toContain("You saw all the cells of your part of this map. A ? cell can be rock that you never see, or a part of this map that you see from another exit: take an exit or a lead.");
+    expect(view.lines).toContain("You saw all the cells of your part of this map. A ? cell can be a wall that you never see, or a part of this map that you see from another exit: take an exit or a lead.");
     expect(atlasExtract(overworld(lower, [upper], { x: 2, y: 1 })).lines).not.toContainEqual(expect.stringContaining("You saw all the cells"));
   });
 
@@ -132,7 +132,7 @@ describe("the parts of a map", () => {
     const walled: AtlasMap = { ...LAB, name: "Cave", width: 3, height: 4, cells: "..." + "..." + "---" + "???", warps: [], entry: null };
     const view = atlasExtract(overworld(walled, [], { x: 1, y: 1 }));
     expect(view.lines.join("\n")).not.toContain("unseen cells south");
-    expect(view.lines).toContain("You saw all the cells of your part of this map. A ? cell can be rock that you never see, or a part of this map that you see from another exit: take an exit or a lead.");
+    expect(view.lines).toContain("You saw all the cells of your part of this map. A ? cell can be a wall that you never see, or a part of this map that you see from another exit: take an exit or a lead.");
   });
 
   test("the unseen cells of a room that fits on the screen are no lead, and they are not beyond an exit", () => {
@@ -211,10 +211,10 @@ describe("what the prompt tells of the exits and of the unseen cells", () => {
     for (const word of ["ladder at (1, 0)", "escalator at (3, 0)", "teleport pad at (5, 0)", "hole at (7, 0)", "entrance at (9, 0)", "stairs at (11, 0)", "exit mat at (13, 0)"]) expect(lines).toContain(word);
   });
 
-  test("with no unseen cell in the part of the player, a line under the map says that a ? can be rock", () => {
+  test("with no unseen cell in the part of the player, a line under the map says that a ? can be a wall", () => {
     const walled = town([], "#".repeat(16) + "..#?????????????" + "#".repeat(16));
     const { lines } = atlasExtract(overworld(walled, [], { x: 0, y: 1 }));
-    const line = "You saw all the cells of your part of this map. A ? cell can be rock that you never see, or a part of this map that you see from another exit: take an exit or a lead.";
+    const line = "You saw all the cells of your part of this map. A ? cell can be a wall that you never see, or a part of this map that you see from another exit: take an exit or a lead.";
     expect(lines).toContain(line);
     expect(lines.indexOf(line)).toBe(lines.findLastIndex((l) => l.startsWith("y=")) + 1);
   });
@@ -227,18 +227,18 @@ describe("what the prompt tells of the exits and of the unseen cells", () => {
     expect(atlasExtract(overworld(town([], "?".repeat(16) + ".".repeat(32)), [], { x: 0, y: 2 })).lines.join("\n")).not.toContain("You saw all");
   });
 
-  test("the legend says that a ? can be rock or floor", () => {
-    expect(atlasExtract(overworld(town([], open), [], { x: 0, y: 1 })).lines.join("\n")).toContain("? not seen, rock or floor");
+  test("the legend says that a ? can be a wall or floor", () => {
+    expect(atlasExtract(overworld(town([], open), [], { x: 0, y: 1 })).lines.join("\n")).toContain("? not seen, wall or floor");
   });
 
   test("the Known world counts the unseen areas next to open cells, not the ? cells that the player never sees, and gives the cell of each exit not taken", () => {
-    const rock = "#".repeat(16);
-    const unseenRock = "?".repeat(16);
-    const closed = town([{ x: 8, y: 0, behavior: "MB_WARP_DOOR", place: "mart", to: null, arrival: null }, { x: 9, y: 0, behavior: "MB_WARP_DOOR", place: "house", to: null, arrival: null }], rock);
-    expect(knownWorld({ maps: [{ ...closed, height: 5, cells: rock + ".".repeat(16) + rock + unseenRock + unseenRock }], lastTalk: null })[1]).toBe("- Town: edges: none seen. Exits not taken: door at (8, 0), a Poké Mart; door at (9, 0), a house. No open cell next to unseen cells.");
-    const twoAreas = "?..............?" + rock + rock;
+    const wall = "#".repeat(16);
+    const unseenWall = "?".repeat(16);
+    const closed = town([{ x: 8, y: 0, behavior: "MB_WARP_DOOR", place: "mart", to: null, arrival: null }, { x: 9, y: 0, behavior: "MB_WARP_DOOR", place: "house", to: null, arrival: null }], wall);
+    expect(knownWorld({ maps: [{ ...closed, height: 5, cells: wall + ".".repeat(16) + wall + unseenWall + unseenWall }], lastTalk: null })[1]).toBe("- Town: edges: none seen. Exits not taken: door at (8, 0), a Poké Mart; door at (9, 0), a house. No open cell next to unseen cells.");
+    const twoAreas = "?..............?" + wall + wall;
     expect(knownWorld({ maps: [town([], twoAreas)], lastTalk: null })[1]).toBe("- Town: edges: none seen. 2 unseen areas next to open cells.");
-    const oneArea = "...............?" + rock + rock;
+    const oneArea = "...............?" + wall + wall;
     expect(knownWorld({ maps: [town([], oneArea)], lastTalk: null })[1]).toBe("- Town: edges: none seen. 1 unseen area next to open cells.");
   });
 });
@@ -264,7 +264,7 @@ describe("the extract of the Atlas", () => {
     const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true }]));
     expect(view.lines).toEqual([
       "Map House: x from 0 to 7, y from 0 to 5. You are at (3, 1), facing north.",
-      'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, rock or floor, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side.',
+      'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, wall or floor, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side.',
       "      0",
       "      01234567",
       "y= 0  ###C####",
