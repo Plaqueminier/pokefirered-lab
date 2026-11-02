@@ -21,6 +21,7 @@ import {
 import { isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
+import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, blockedText, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
@@ -305,7 +306,7 @@ export class Harness {
       run?.core.close();
       throw new Error(`${startSave} not found: make the Starting save first (lab/README.md)`);
     }
-    const opened = run ?? (await Run.open(startSave));
+    const opened = run ?? (await Run.open({ startSave, names: options.parent?.record.header.names }));
     try {
       const harness = new Harness(opened, options);
       if (options.parent) {
@@ -389,11 +390,29 @@ export class Harness {
     throw new RunEnd("plan limit", text);
   }
 
+  trainerNames(): TrainerNames {
+    return { player: this.#run.game.playerName(), rival: this.#run.game.rivalName() };
+  }
+
+  /** The names that the Bot cannot change, or null before the first action of the Run. */
+  fixedNames(): TrainerNames | null {
+    return this.#events.some((e) => e.type === "action") ? this.trainerNames() : null;
+  }
+
+  // The bootup does not read the names: the same buttons give the same state, so the watches stay right.
+  nameTrainers(names: TrainerNames): void {
+    if (this.fixedNames()) throw new Error("the names of a Run change only before its first action");
+    this.#run.rename(names, this.#buttons.holds);
+  }
+
   /** `ask` must end when its signal aborts, and can throw only through `endAtPlanLimit`. */
   async modelCall<T>(ask: (signal: AbortSignal) => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
     this.#onModelCallStart?.(this);
     const start = performance.now();
     const { answer, action } = await this.untilStop(ask);
+    // Before callEnded: a limit can end the Run there, and its record must agree with its game.
+    const names = answer.decision?.names;
+    if (names && !this.fixedNames()) this.nameTrainers(names);
     this.callEnded({ type: "model", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onModelCall);
     return action;
   }

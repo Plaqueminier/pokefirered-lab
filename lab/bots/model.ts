@@ -27,7 +27,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "15",
+    version: "16",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -112,7 +112,7 @@ class ModelPlay {
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
       const tree = memoryTree(this.harness.events);
-      const written = request.character ? readCharacterDecision(reply.content, this.settings.starter) : readDecision(reply.content);
+      const written = request.character ? readCharacterDecision(reply.content, this.settings.starter, this.harness.fixedNames()) : readDecision(reply.content);
       const action = readAction(written.action, asked);
       if (action.name === "viewAtlas" && asked.kind === "walk") {
         conversation.atlasShown = true;
@@ -135,7 +135,7 @@ class ModelPlay {
     const happened = importantEvents(this.#promptObservation, observation, events);
     const tree = memoryTree(events);
     const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter), memory: memory.lines });
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter, this.harness.fixedNames()), memory: memory.lines });
     return { system: systemPrompt(this.settings, observation.party.length > 0), user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal", sentences: memory.sentences };
   }
 

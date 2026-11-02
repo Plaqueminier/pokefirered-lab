@@ -195,6 +195,7 @@ const DEMO_RUNS: RunSummary[] = [
     battle: false,
     waits: true,
     record: null,
+    names: { player: "Mira", rival: "Crumb" },
   },
   {
     id: 4,
@@ -211,6 +212,7 @@ const DEMO_RUNS: RunSummary[] = [
     battle: false,
     waits: false,
     record: RECORD,
+    names: null,
   },
 ];
 
@@ -240,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "15", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "16", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
@@ -461,10 +463,11 @@ const RECORD_STATES = {
   old: { label: "A record with no Game events", replay: { ...DEMO_REPLAY, gameEvents: null } },
 };
 
-const DEMO_CELL: GridCell = { kind: "live", runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", spent: { unit: "dollars", amount: 0.37 }, state: { kind: "plays" }, record: null };
+const DEMO_CELL: GridCell = { kind: "live", names: null, runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", spent: { unit: "dollars", amount: 0.37 }, state: { kind: "plays" }, record: null };
 
 const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   plays: { label: "Live, plays", cell: DEMO_CELL },
+  named: { label: "With the names of its character", cell: { ...DEMO_CELL, names: { player: "Mira", rival: "Crumb" } } },
   waits: { label: "Waits for the model", cell: { ...DEMO_CELL, state: { kind: "waits" } } },
   battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
   ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD } },

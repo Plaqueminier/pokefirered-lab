@@ -1,4 +1,5 @@
 import type { PoolReplay, RunPool } from "./harness/pool";
+import { runCharacter } from "./model/character";
 import { factsAt, limitOf, RecordPlayer, type RunRecord } from "./harness/record";
 import { spentIn } from "./protocol";
 import { GBA_FPS, type GridCursor, type GridCursorControl, type GridReplay, type GridSpeed } from "./protocol";
@@ -66,7 +67,7 @@ export class GridPlay {
       const { frame } = replay.view;
       const { milestone, battle, totals } = factsAt(events, frame);
       const unit = header.bot.model && limitOf(header.bot.model).unit;
-      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model?.id ?? null, frames, frame, endReason: result.endReason, error: replay.error, milestone, battle, spent: unit ? { unit, amount: spentIn(unit, totals) } : null };
+      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model?.id ?? null, frames, frame, endReason: result.endReason, error: replay.error, names: runCharacter(events)?.names ?? null, milestone, battle, spent: unit ? { unit, amount: spentIn(unit, totals) } : null };
     });
     return { cursor: { frame: Math.floor(this.#frame), paused: this.#paused, speed: this.#speed, end: this.#end }, replays };
   }

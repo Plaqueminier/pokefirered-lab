@@ -1,9 +1,10 @@
-// The buttons alone replay a Run: the game reads no input while it is frozen (docs/adr/0002).
+// From the same origin, the buttons alone replay a Run: the game reads no input while it is frozen (ADR 0002).
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import { DEFAULT_PROVIDER, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
+import type { TrainerNames } from "../save-file";
 import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
@@ -58,7 +59,7 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; character?: string; starter?: StarterSpecies };
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; character?: string; starter?: StarterSpecies; names?: TrainerNames };
 
 export type NodeRange = { from: number; to: number };
 
@@ -135,7 +136,7 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
 }
 
 /** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
-export type RunHeader = RunOrigin & { knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
+export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
 
 export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; state?: StateEntry[]; result: RunResult };
 
@@ -321,7 +322,7 @@ export type Replay = { events: GameEvent[]; frame: number; screen: string; track
 
 
 export function originDifferences(run: Run, record: RunRecord): (keyof RunOrigin)[] {
-  return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => run.origin[key] !== record.header[key]);
+  return (Object.keys(run.origin) as (keyof RunOrigin)[]).filter((key) => !Bun.deepEquals(run.origin[key], record.header[key] ?? null));
 }
 
 const EVENT_TYPES = new Set<unknown>(["action", "model", "summary", "map", "battle", "milestone"] satisfies RunEvent["type"][]);
@@ -356,7 +357,7 @@ function oldNotes(event: RunEvent): RunEvent {
 }
 
 export async function replay(record: RunRecord): Promise<Replay> {
-  const run = await Run.open();
+  const run = await Run.open({ names: record.header.names });
   try {
     const differences = originDifferences(run, record);
     if (differences.length > 0) throw new Error(`the Run record does not replay here: different ${differences.join(", ")}`);

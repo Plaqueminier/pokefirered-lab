@@ -898,7 +898,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
+    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
     demo: () => <GridCellDemo />,
   },
   {

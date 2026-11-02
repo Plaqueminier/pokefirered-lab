@@ -13,6 +13,7 @@ import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
 import { type Continuation, continuationOf, factsAt, Keyframes, limitOf, type ModelOptions, type ModelSettings, modelTotals, originDifferences, providerOf, readRunRecord, RecordPlayer, type RunEvent, type RunRecord, RUNS_DIR, writeRecord } from "./harness/record";
+import { runCharacter } from "./model/character";
 import { providerProblem, providerStatuses } from "./model/providers";
 import {
   BinaryKind,
@@ -33,6 +34,7 @@ import {
   VIEWER_RUN_ID,
 } from "./protocol";
 import { ROM_NAME, Run, type RunOrigin, type RunState, SAVES_DIR, START_SAVE } from "./run";
+import { hasCompleteSlot, type TrainerNames } from "./save-file";
 
 const PORT = Number(process.env.LAB_PORT ?? 8766);
 const AUDIO_RATE = 48000;
@@ -72,9 +74,9 @@ class LivePlay {
     return this.atlas.sight();
   }
 
-  async reset(): Promise<void> {
+  async reset(names: TrainerNames | null = null): Promise<void> {
     this.endReplay();
-    await this.run.reset();
+    await this.run.reset(names);
     this.inventory = new InventoryHistory();
     this.atlas = new AtlasWatch(this.run.game);
     this.resyncClock();
@@ -88,10 +90,14 @@ class LivePlay {
   }
 
   async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
-    await this.reset();
-    // No await from here on: a tick in between would run frames that the record does not have.
+    // A save with no place for the names gives a notice through the differences below.
+    await this.reset(record.header.names).catch(() => this.reset());
     const differences = originDifferences(this.run, record);
-    if (differences.length > 0) return differences;
+    if (differences.length > 0) {
+      await this.reset();
+      return differences;
+    }
+    // No await from here on: a tick in between would run frames that the record does not have.
     this.activeReplay = { name, player: new RecordPlayer(record), continued, keyframes: new Keyframes(), jump: null };
     this.onReplayFrame(this.activeReplay);
     this.speed = 1;
@@ -293,26 +299,8 @@ async function sendStatus(to?: ServerWebSocket<unknown>): Promise<void> {
   );
 }
 
-/** True when one save slot has all its sectors (the game writes them over several frames). */
-function hasCompleteSlot(save: Uint8Array): boolean {
-  const SECTOR_SIZE = 0x1000;
-  const SECTORS_PER_SLOT = 14;
-  const view = new DataView(save.buffer, save.byteOffset, save.byteLength);
-  for (let slot = 0; slot < 2; slot++) {
-    const ids = new Set<number>();
-    const counters = new Set<number>();
-    for (let i = 0; i < SECTORS_PER_SLOT; i++) {
-      const base = (slot * SECTORS_PER_SLOT + i) * SECTOR_SIZE;
-      if (base + SECTOR_SIZE > save.length || view.getUint32(base + 0xff8, true) !== 0x08012025) break;
-      ids.add(view.getUint16(base + 0xff4, true));
-      counters.add(view.getUint32(base + 0xffc, true));
-    }
-    if (ids.size === SECTORS_PER_SLOT && counters.size === 1) return true;
-  }
-  return false;
-}
-
 async function writeStartSave(): Promise<string> {
+  if (run.origin.names) return "This emulator has the names of a replay in its save. Reset it, save in the game, then try again.";
   const save = run.core.saveData();
   if (!hasCompleteSlot(save)) {
     return "No complete save. Save in the game, wait for the message at the end of the save, then try again.";
@@ -393,6 +381,7 @@ function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopA
   return {
     id,
     bot: spec.bot,
+    names: runCharacter(events)?.names ?? null,
     parent: spec.parent ?? null,
     continued,
     playing: end === null,
@@ -518,8 +507,12 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "camera", camera: shown.camera() }, ws);
       break;
     case "quick-save":
-      live.quickState = run.core.saveState();
-      send({ type: "notice", text: "Savestate kept (in memory)." });
+      if (run.origin.names) {
+        send({ type: "notice", text: "No savestate of a replay with names: its game must not become the Starting save." }, ws);
+      } else {
+        live.quickState = run.core.saveState();
+        send({ type: "notice", text: "Savestate kept (in memory)." });
+      }
       break;
     case "quick-load":
       if (live.replay) {

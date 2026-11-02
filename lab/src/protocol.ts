@@ -5,6 +5,7 @@ import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
+import type { TrainerNames } from "./save-file";
 
 /** GBA key bits, as setKeys expects them. */
 export const Keys = {
@@ -155,6 +156,7 @@ export function replayOf(shown: ShownRun | null): ReplayStatus | null {
 export type RunSummary = {
   id: number;
   bot: string;
+  names: TrainerNames | null;
   playing: boolean;
   /** A person asked to stop the Run, and it plays to the end of its action. */
   stopAsked: boolean;
@@ -185,6 +187,7 @@ export type GridReplay = {
   battle: boolean;
   endReason: EndReason;
   error: string | null;
+  names: TrainerNames | null;
 };
 
 export type GridCursor = { frame: number; paused: boolean; speed: GridSpeed; end: number };

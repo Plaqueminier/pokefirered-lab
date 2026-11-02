@@ -149,6 +149,21 @@ function keyboardRows(mem: Memory, decode: Decode, page: number): string[] {
   return Array.from({ length: rows.length }, (_, row) => decode(rows.at(row).bytes()).slice(0, columns));
 }
 
+export function keyboardBytes(mem: Memory, decode: Decode): Map<string, number> {
+  const keyboards = mem.global("sKeyboardChars");
+  const bytes = new Map<string, number>();
+  for (let keyboard = 0; keyboard < keyboards.length; keyboard++) {
+    const rows = keyboards.at(keyboard);
+    for (let row = 0; row < rows.length; row++) {
+      for (const byte of rows.at(row).bytes()) {
+        const letter = decode(Uint8Array.of(byte));
+        if (letter !== "") bytes.set(letter, byte);
+      }
+    }
+  }
+  return bytes;
+}
+
 const NICKNAME_SUBJECT = "a nickname for ";
 
 /** The species of the Pokémon that gets a nickname, or null when the naming screen asks for another name. */

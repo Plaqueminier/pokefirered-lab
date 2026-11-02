@@ -11,7 +11,7 @@ setDefaultTimeout(60_000);
 const COST = 0.001;
 
 const reply = (action: string) => ({
-  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go A" ? "Mom is downstairs." : "", character: "A loud fan of fire.", starter: "CHARMANDER" }),
+  content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective: "Leave the house", note: action === "go A" ? "Mom is downstairs." : "", character: "A loud fan of fire.", starter: "CHARMANDER", name: "PLOK", rival: "BOB" }),
   usage: { promptTokens: 1000, cachedTokens: 600, completionTokens: 30, reasoningTokens: 0, cost: COST },
 });
 

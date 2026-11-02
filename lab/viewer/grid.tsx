@@ -121,7 +121,8 @@ function FilledCell({ cell, index, records, screens, actions }: { cell: GridCell
           <span class="flex min-w-0 items-center gap-1.5">
             <Pill tone={cell.kind === "live" ? "accent" : undefined}>{cell.kind}</Pill>
             <Pill tone={look.tone}>{look.label}</Pill>
-            <span class="min-w-0 truncate text-xs text-muted">
+            <span class="min-w-0 truncate text-xs text-muted" title={cell.names ? `${cell.names.player}, rival ${cell.names.rival}` : undefined}>
+              {cell.names && `${cell.names.player} / ${cell.names.rival} · `}
               {cell.bot} · {cell.model ?? "no model"}
             </span>
           </span>

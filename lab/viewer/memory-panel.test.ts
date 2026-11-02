@@ -20,7 +20,7 @@ const noteTaker = (): ModelClient => {
       return { content: JSON.stringify({ summary: `summary of ${parts.join(" and ")}` }), usage: USAGE };
     }
     calls++;
-    const content = { reason: "r", action: "goTo 8 6", mission: "Get my first Pokémon", objective: "Leave the house", note: `fact ${calls}`, character: "A shy baker.", starter: "SQUIRTLE" };
+    const content = { reason: "r", action: "goTo 8 6", mission: "Get my first Pokémon", objective: "Leave the house", note: `fact ${calls}`, character: "A shy baker.", starter: "SQUIRTLE", name: "PLOK", rival: "BOB" };
     return { content: JSON.stringify(content), usage: USAGE };
   };
 };

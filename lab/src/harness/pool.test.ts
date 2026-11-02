@@ -23,7 +23,7 @@ async function playAlone(options: HarnessOptions = {}) {
 }
 
 async function screenAt(record: RunRecord, frame: number): Promise<string> {
-  const run = await Run.open();
+  const run = await Run.open({ names: record.header.names });
   try {
     const player = new RecordPlayer(record);
     while (player.frame < frame) run.runFrame(player.next());
@@ -90,6 +90,32 @@ export const modelBot = (options) => real(options, () => (_prompt, { signal }) =
     expect(run.view.frame).toBe(new RecordPlayer(alone.record).frames);
     expect(run.view.screen && screenHash(run.view.screen)).toBe(alone.screen);
     expect(run.view.state).toMatchObject({ map: { name: alone.record.events.findLast((e) => e.type === "map")?.map } });
+  });
+
+  test("a Grid replay of a Run with names boots with these names: it reaches the last screen of the Run, then goes back", async () => {
+    const harness = await Harness.open();
+    await harness.play({
+      ...starter,
+      async play(h) {
+        h.nameTrainers({ player: "Mira", rival: "Crumb" });
+        await starter.play(h);
+      },
+    });
+    const record = harness.record();
+    const end = harness.frame;
+    const screen = harness.screenHash();
+    harness.close();
+    const replay = new RunPool(1).replay(record);
+    for (const [frame, expected] of [
+      [end, screen],
+      [700, await screenAt(record, 700)],
+    ] as const) {
+      replay.seek(frame);
+      while (replay.view.frame !== frame && !replay.error) await Bun.sleep(5);
+      expect(replay.error).toBeNull();
+      expect(replay.view.screen && screenHash(replay.view.screen)).toBe(expected);
+    }
+    replay.stop();
   });
 
   test("a Grid replay takes a place; moved to a frame, forward or back, it shows the screen of the replay on the main thread at that frame", async () => {

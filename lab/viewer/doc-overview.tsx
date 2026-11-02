@@ -59,7 +59,7 @@ export function PrinciplePage() {
     <Page
       lead="The words of the lab, each with one meaning (CONTEXT.md)."
       details={[
-        ["Run", "an emulator that plays from the Starting save."],
+        ["Run", "an emulator that plays from the Starting save, or from a copy with the names of its character."],
         ["Bot", "decides what to do, and acts only through the Harness."],
         ["Harness", "plays the actions of the Bot in the game; decides nothing."],
         ["Decision point", "the game waits for an input: walk, text, choice, battle action…"],
@@ -71,7 +71,7 @@ export function PrinciplePage() {
       ]}
     >
       <div class={GRID3}>
-        <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save", "10 at most at the same time: the Viewer Run and 9 places"]} />
+        <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save, or a copy with names", "10 at most at the same time: the Viewer Run and 9 places"]} />
         <DocCard icon={Bot} title="Bot" lines={["decides what to do", "acts only through the Harness"]} />
         <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
@@ -172,6 +172,7 @@ export function GridPage() {
       details={[
         ["Game time", "the frames of the game as h:mm:ss, with the battles in it and the waits for the model out of it."],
         ["End of a replay", "a replay at its last frame stays on it and shows its Run result, and the others go on. The cursor stops at the end of the longest replay."],
+        ["Names", "a cell shows the names of the trainer and the rival of its Run, when its Run has a Character turn with names. Each Run has its own emulator, so it keeps its names when another Run becomes the shown Run."],
         ["Click on a cell", "a live Run becomes the shown Run. A replay plays in the Lab tab, at the frame of the Grid cursor."],
         ["Places", "the 9 places are for the Runs of the Bots and the replays of the Grid together, and the bar gives the free places. A start past the free places gets a notice."],
         ["Cost", "the form “Bots” shows the maximum total cost of its N Runs, or the maximum total tokens on a Plan provider. Each Run keeps its own limit."],
@@ -190,7 +191,7 @@ export function GridPage() {
               ["Screen", "the game of the Run; dim when it waits for the model or when the Run ended"],
               ["Kind", "live or replay"],
               ["State", "plays, waits for the model, in battle, or ended with its Run result"],
-              ["Facts", "the name, the Bot, the model, the game time, the last Milestone, the cost or the tokens"],
+              ["Facts", "the name, the names of the character, the Bot, the model, the game time, the last Milestone, the cost or the tokens"],
               ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
             ]}
           />
@@ -224,14 +225,14 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track and the State track of each Run on one game time, with its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Race file of an older version does not open: make it again."],
+        ["Race file", "the track and the State track of each Run on one game time, with its names and its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Race file of an older version does not open: make it again."],
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
         ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces."],
         ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in. Viridian Forest, the Safari Zone and the three floors of Mt Moon are islands on the map: the Ghosts walk on them, with no count at a door."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
-        ["Hover on Ghosts", "the Run id, its state, its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
+        ["Hover on Ghosts", "the Run id, its state, its names and its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
         ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],
         ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],
         ["Keyboard", "it does not play in this tab. The Race draws only while its tab shows."],

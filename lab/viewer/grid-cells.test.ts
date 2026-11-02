@@ -18,13 +18,22 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     battle: false,
     waits: false,
     record: null,
+    names: null,
     ...facts,
   };
 }
 
 function replay(cell: number, name: string, frames: number, facts: Partial<GridReplay> = {}): GridReplay {
-  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", spent: null, battle: false, endReason: "goal", error: null, ...facts };
+  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", spent: null, battle: false, endReason: "goal", error: null, names: null, ...facts };
 }
+
+test("a cell shows the names of its Run, for a live Run and for a replay", () => {
+  const names = { player: "Mira", rival: "Crumb" };
+  const [replayed, withNames, withNone] = gridCells(4, [live(1, { names }), live(2, {})], [replay(0, "a.json", 5000, { names: { player: "Al", rival: "Bo" } })], 300);
+  expect(replayed?.names).toEqual({ player: "Al", rival: "Bo" });
+  expect(withNames?.names).toEqual(names);
+  expect(withNone?.names).toBeNull();
+});
 
 const short = (cell: GridCell | null) => cell && `${cell.kind} ${cell.runId} ${cell.state.kind}${cell.state.kind === "ended" ? ` ${cell.state.result}` : ""}`;
 

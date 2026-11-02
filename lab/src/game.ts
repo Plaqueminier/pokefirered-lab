@@ -22,10 +22,11 @@ import { readTypeChart, type TypeChart } from "./battle-facts";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
-import { FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
+import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
 import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
 import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
+import { namedSave, type TrainerNames } from "./save-file";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
 
@@ -615,6 +616,14 @@ export class Game {
 
   rivalName(): string {
     return this.decode(this.saveBlock1.field("rivalName").bytes());
+  }
+
+  playerName(): string {
+    return this.decode(this.mem.global("gSaveBlock2Ptr").deref().field("playerName").bytes());
+  }
+
+  namedSave(save: Uint8Array, names: TrainerNames): Uint8Array {
+    return namedSave(this.mem, keyboardBytes(this.mem, this.decode), save, names);
   }
 
   flag(id: number): boolean {

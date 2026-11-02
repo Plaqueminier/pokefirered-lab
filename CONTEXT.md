@@ -61,7 +61,7 @@ The number of **Decision points** of a **Run** since its last progress. Progress
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Character turn**:
-The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker. The AI model invents the trainer that it plays, with the first Pokémon and the style of the nicknames. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
+The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and the style of the nicknames. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
 _Avoid_: persona call, personality turn
 
 **Normal trainer**:
@@ -137,7 +137,7 @@ A button press that a **Bot** sends directly, when no **Macro-action** covers th
 _Avoid_: key press
 
 **Starting save**:
-The battery save that each run starts from. It stays valid after a rebuild while the saved data layout does not change.
+The battery save that each run starts from. It stays valid after a rebuild while the saved data layout does not change. A **Run** with names plays from a copy of it, and the file does not change.
 _Avoid_: savestate
 
 **Savestate**:
@@ -156,7 +156,7 @@ The part of a **Run** up to a **Milestone**, with the name of that **Milestone**
 _Avoid_: stage, level (a level is the level of a Pokémon)
 
 **Run record**:
-The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, **Bot** and **Knowledge level**, the buttons at each frame, the events, the track, the **State track** and the **Run result**. Its buttons alone replay the **Run**. The track is the place of the player at each change of cell, of map or of facing, apart from the events. A **Run record** from before format 1 has only the map, battle and **Milestone** events of the **Game events**, a **Run record** from before format 2 has no track, and a **Run record** from before format 3 has no **State track**: a command adds them from its buttons, and, on a **Run record** from before format 1, the **Game events** of the state.
+The file that keeps one **Run**: the version of its format, its build, seed, **Starting save**, names, **Bot** and **Knowledge level**, the buttons at each frame, the events, the track, the **State track** and the **Run result**. From the same build, seed, **Starting save** and names, its buttons alone replay the **Run**. The track is the place of the player at each change of cell, of map or of facing, apart from the events. A **Run record** from before format 1 has only the map, battle and **Milestone** events of the **Game events**, a **Run record** from before format 2 has no track, and a **Run record** from before format 3 has no **State track**: a command adds them from its buttons, and, on a **Run record** from before format 1, the **Game events** of the state.
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
@@ -164,7 +164,7 @@ A change in the game that the **Harness** reads from the game state and writes i
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
-A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
+A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** boots with the names of the parent, replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
 _Avoid_: resumed run, restart, savestate
 
 **Run result**:

@@ -9,6 +9,7 @@ import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, type Nod
 import { nicknamedSpecies } from "../menus";
 import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, modelEvents } from "../protocol";
+import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
@@ -68,7 +69,9 @@ function starterRule(starter: ModelSettings["starter"]): string {
 
 function characterLine(events: readonly RunEvent[]): string[] {
   const decision = runCharacter(events);
-  return decision ? [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}. Play as this trainer.`] : [];
+  if (!decision) return [];
+  const names = decision.names ? ` Your name: ${decision.names.player}. Your rival: ${decision.names.rival}.` : "";
+  return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.`];
 }
 
 export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">, hasPokemon: boolean): string {
@@ -148,8 +151,8 @@ export type TurnKind = "normal" | "character" | "reflection" | "review";
 export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[] };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
-export function turnRequest(turn: TurnKind, atWalk: boolean, starter: ModelSettings["starter"]): string[] {
-  if (turn === "character") return characterTurn(starter);
+export function turnRequest(turn: TurnKind, atWalk: boolean, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
+  if (turn === "character") return characterTurn(starter, gameNames);
   if (turn === "reflection") return reflection(atWalk);
   return turn === "review" ? REVIEW : [];
 }

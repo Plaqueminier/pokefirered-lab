@@ -66,7 +66,7 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
     const { bot: name, model, parent: parentName, ...options } = spec;
     const bot = await loadBot(name, model);
     const parent = parentName === undefined ? undefined : await parentRecord(parentName);
-    const run = await Run.open();
+    const run = await Run.open({ names: parent?.record.header.names });
     const poster = new ViewPoster(run);
     const harness = await Harness.open(
       {

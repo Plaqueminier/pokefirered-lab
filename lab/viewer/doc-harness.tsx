@@ -235,9 +235,9 @@ const EVENT_KINDS: Record<GameEvent["type"], string> = {
 export function RecordPage() {
   return (
     <Page
-      lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and its keys alone replay the Run."
+      lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and from its origin, its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save), Bot (with its Model provider and its cost limit or Token limit; a record with no provider played on `openrouter`), keys at each frame, events, track, State track and result."],
+        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider and its cost limit or Token limit; a record with no provider played on `openrouter`), keys at each frame, events, track, State track and result."],
         ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
@@ -260,7 +260,7 @@ export function RecordPage() {
             numbered
             rows={[
               ["Format version", "a record before format 1 has only map, battle and Milestone events; a record before format 2 has no track; a record before format 3 has no State track"],
-              ["Origin", "ROM, seed, save"],
+              ["Origin", "ROM, seed, save, and the names that the Run wrote in its copy of the save"],
               ["Bot", "its name and version"],
               ["Keys", "the buttons at each frame"],
               ["Events", "the Game events, the Model calls"],

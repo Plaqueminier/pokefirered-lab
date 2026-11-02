@@ -17,7 +17,7 @@ const DECISIONS = ["go A", "go B", "go B", "go D", "go B", "go E", "name Shelly"
 const CHARACTER = "Spices as nicknames. A loud fan of water.";
 
 function reply(action: string, objective = "Get a Pokémon", note = "") {
-  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note, character: CHARACTER, starter: "SQUIRTLE" }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
+  return { content: JSON.stringify({ reason: `I choose ${action}.`, action, mission: "Get my first Pokémon", objective, note, character: CHARACTER, starter: "SQUIRTLE", name: "PLOK", rival: "BOB" }), usage: { promptTokens: 1000, completionTokens: 30, reasoningTokens: 0, cost: COST } };
 }
 
 function target(prompt: Prompt, ...labels: string[]): string {
@@ -211,7 +211,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "15", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "16", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -250,6 +250,93 @@ describe.skipIf(!ready)("model bot", () => {
     expect(first.decision?.character).toBe(CHARACTER);
     expect(first.reasoning).toBe("I think.");
     expect(second.prompt.user).toContain(`Your character: ${CHARACTER} Your first Pokémon: SQUIRTLE.`);
+  });
+
+  describe("the names of the character turn", () => {
+    function named(action: string, name: string, rival: string) {
+      const { content, usage } = reply(action);
+      return { content: JSON.stringify({ ...JSON.parse(content), name, rival }), usage };
+    }
+
+    function client(...replies: ReturnType<typeof named>[]): { client: ModelClient; prompts: Prompt[] } {
+      const prompts: Prompt[] = [];
+      return {
+        prompts,
+        client: async (prompt) => {
+          prompts.push(prompt);
+          return replies[Math.min(prompts.length - 1, replies.length - 1)];
+        },
+      };
+    }
+
+    test("the Run boots with the names of the answer, before its first action, and its record replays to the same screen", async () => {
+      const harness = await Harness.open();
+      const { frame } = harness;
+      const model = client(named("goTo 8 6", "Mira", "Crumb"));
+      await harness.play(modelBot({ costLimit: 2 * COST - COST / 2 }, () => model.client));
+      expect(harness.trainerNames()).toEqual({ player: "Mira", rival: "Crumb" });
+      const record = harness.record();
+      expect(record.header.names).toEqual({ player: "Mira", rival: "Crumb" });
+      const [first] = modelEvents(harness);
+      expect(first.frame).toBe(frame);
+      expect(first.decision?.names).toEqual({ player: "Mira", rival: "Crumb" });
+      expect(model.prompts[1].user).toContain("Your name: Mira. Your rival: Crumb.");
+      const replayed = await replay(record);
+      expect(replayed.frame).toBe(harness.frame);
+      expect(replayed.screen).toBe(harness.screenHash());
+      harness.close();
+    });
+
+    test("a limit that ends the Run at the character turn still gives a record that agrees with its game", async () => {
+      const harness = await Harness.open();
+      const model = client(named("goTo 8 6", "Mira", "Crumb"));
+      await harness.play(modelBot({ costLimit: COST / 2 }, () => model.client));
+      const record = harness.record();
+      expect(record.header.names).toEqual({ player: "Mira", rival: "Crumb" });
+      expect(harness.trainerNames()).toEqual({ player: "Mira", rival: "Crumb" });
+      expect(modelEvents(harness)[0].decision?.names).toEqual({ player: "Mira", rival: "Crumb" });
+      harness.close();
+    });
+
+    test("a bad name asks the model again and changes nothing", async () => {
+      const harness = await Harness.open();
+      const model = client(named("goTo 8 6", "Too long name", "Crumb"), named("goTo 8 6", "Mira", "Crumb"));
+      await harness.play(modelBot({ costLimit: 2 * COST - COST / 2 }, () => model.client));
+      const [bad, good] = modelEvents(harness);
+      expect(bad.decision).toBeNull();
+      expect(bad.error).toContain('"name": 1 to 7 characters');
+      expect(good.frame).toBe(bad.frame);
+      expect(model.prompts[1].turns?.at(-1)?.user).toContain('"name": 1 to 7 characters');
+      expect(harness.record().header.names).toEqual({ player: "Mira", rival: "Crumb" });
+      harness.close();
+    });
+
+    test("before the first action, a new answer of the same turn gives the names of the Run", async () => {
+      const harness = await Harness.open();
+      const model = client(named("viewAtlas", "Old", "Older"), named("goTo 8 6", "Mira", "Crumb"));
+      await harness.play(modelBot({ costLimit: 2 * COST - COST / 2 }, () => model.client));
+      expect(harness.record().header.names).toEqual({ player: "Mira", rival: "Crumb" });
+      harness.close();
+    });
+
+    test("a continued Run with no character and no names keeps the names of the game: its record still replays", async () => {
+      const parent = await Harness.open();
+      await parent.play({ name: "walker", version: "1", play: async (h) => void (await h.goTo(8, 6)) });
+      const record = parent.record();
+      parent.close();
+      expect(record.header.names).toBeNull();
+      const harness = await Harness.open({ parent: { name: "parent.json", record } });
+      const model = client(named("goTo 6 6", "Mira", "Crumb"));
+      await harness.play(modelBot({ costLimit: COST / 2 }, () => model.client));
+      expect(model.prompts[0].user).toContain('The game already has your names: write PLOK in "name" and BOB in "rival".');
+      expect(modelEvents(harness)[0].decision?.names).toEqual({ player: "PLOK", rival: "BOB" });
+      expect(harness.trainerNames()).toEqual({ player: "PLOK", rival: "BOB" });
+      const continued = harness.record();
+      expect(continued.header.names).toBeNull();
+      const replayed = await replay(continued);
+      expect(replayed.screen).toBe(harness.screenHash());
+      harness.close();
+    });
   });
 
   test("after an empty answer, the next calls of the same turn do not think: the reasoning took all the tokens of the empty answer", async () => {

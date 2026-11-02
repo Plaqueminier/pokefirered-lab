@@ -62,7 +62,7 @@ self.onmessage = async ({ data }: MessageEvent<ReplayWorkerMessage>) => {
       return reply({ type: "error", error: String(error) });
     }
   }
-  const run = await Run.open();
+  const run = await Run.open({ names: data.record.header.names });
   const differences = originDifferences(run, data.record);
   if (differences.length > 0) return reply({ type: "error", error: `the Run record does not replay here (different ${differences.join(", ")})` });
   const keyframes = new Keyframes<Keyframe>();

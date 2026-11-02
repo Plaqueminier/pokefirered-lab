@@ -4,7 +4,7 @@ import { battleTurn, fightFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { ModelEvent, RunEvent } from "../harness/record";
-import { characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
+import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
 import { askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
 import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
@@ -416,6 +416,14 @@ describe("the rules and the character turn", () => {
     expect(shownCharacter([played])).toBe("Normal trainer");
   });
 
+  test("a Run shows the names of its character with the character, in the prompt and in the Viewer", () => {
+    const played = call("go A");
+    const turn: ModelEvent = { ...played, character: true, decision: { ...played.decision!, character: "Pastry names. A shy baker.", starter: "SQUIRTLE", names: { player: "Mira", rival: "Crumb" } }, error: null };
+    expect(shownCharacter([turn])).toBe("Mira, rival Crumb. Pastry names. A shy baker.");
+    const prompt = userPrompt(route1(22, [POTION]), askedOf(route1(22, [POTION]), false)!, [turn], NO_TURN);
+    expect(prompt).toContain("Your character: Pastry names. A shy baker. Your first Pokémon: SQUIRTLE. Your name: Mira. Your rival: Crumb.");
+  });
+
   test("a free starter is the choice of the character; a given starter stays; a stop at a whiteout warns with no fear; with no stop, the rules tell what a whiteout costs", () => {
     expect(systemPrompt(settings, false)).toContain("Take the first Pokémon that your character chose.");
     expect(systemPrompt({ ...settings, starter: "SQUIRTLE" }, false)).toContain("Choose SQUIRTLE as your first Pokémon.");
@@ -433,7 +441,7 @@ describe("the rules and the character turn", () => {
 
     const observation = route1(22, []);
     const asked = askedOf(observation, false)!;
-    const turn = userPrompt(observation, asked, [], { ...NO_TURN, turn: "character", request: turnRequest("character", true, "free") });
+    const turn = userPrompt(observation, asked, [], { ...NO_TURN, turn: "character", request: turnRequest("character", true, "free", null) });
     expect(turn).toContain("Character turn:");
     expect(turn).toContain('Write in "character"');
     expect(userPrompt(observation, asked, [invented], NO_TURN)).toContain("Your character: A loud fan of fire. Your first Pokémon: CHARMANDER.");
@@ -441,17 +449,62 @@ describe("the rules and the character turn", () => {
   });
 
   test("a character turn with a free starter asks the character for the starter; with a given starter it tells the starter", () => {
-    const free = characterTurn("free", () => 0.5).join("\n");
+    const free = characterTurn("free", null, () => 0.5).join("\n");
     expect(free).toContain("CHARMANDER, BULBASAUR or SQUIRTLE");
     expect(free).toContain("Start from this idea");
-    const given = characterTurn("SQUIRTLE").join("\n");
+    const given = characterTurn("SQUIRTLE", null).join("\n");
     expect(given).toContain("The first Pokémon of this trainer is SQUIRTLE.");
     expect(given).not.toContain("BULBASAUR");
-    const answer = (character?: string, starter?: string) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character, starter });
-    expect(readCharacterDecision(answer(" A shy baker. ", "SQUIRTLE"), "free")).toMatchObject({ character: "A shy baker.", starter: "SQUIRTLE" });
-    expect(() => readCharacterDecision(answer("A shy baker.", "PIKACHU"), "free")).toThrow('"starter" must be BULBASAUR, CHARMANDER or SQUIRTLE');
-    expect(readCharacterDecision(answer("A shy baker.", "PIKACHU"), "SQUIRTLE").starter).toBe("SQUIRTLE");
-    expect(() => readCharacterDecision(answer(), "SQUIRTLE")).toThrow('the answer has no string "character"');
+    const answer = (character?: string, starter?: string) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character, starter, name: "Mira", rival: "Crumb" });
+    expect(readCharacterDecision(answer(" A shy baker. ", "SQUIRTLE"), "free", null)).toMatchObject({ character: "A shy baker.", starter: "SQUIRTLE" });
+    expect(() => readCharacterDecision(answer("A shy baker.", "PIKACHU"), "free", null)).toThrow('"starter" must be BULBASAUR, CHARMANDER or SQUIRTLE');
+    expect(readCharacterDecision(answer("A shy baker.", "PIKACHU"), "SQUIRTLE", null).starter).toBe("SQUIRTLE");
+    expect(() => readCharacterDecision(answer(), "SQUIRTLE", null)).toThrow('the answer has no string "character"');
+  });
+
+  describe("the names of a character turn", () => {
+    const answer = (name?: string, rival?: string) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character: "A shy baker.", starter: "SQUIRTLE", name, rival });
+
+    test("the turn asks for the two names and tells their rules, and the schema requires them", () => {
+      const turn = characterTurn("free", null, () => 0.5).join("\n");
+      expect(turn).toContain('"name"');
+      expect(turn).toContain('"rival"');
+      expect(turn).toContain("7 characters at most");
+      expect(turn).toContain("♂♀/-…“”‘'");
+      expect(CHARACTER_SCHEMA.required).toEqual(expect.arrayContaining(["name", "rival"]));
+    });
+
+    test.each(["I", "Al Bo", "A.B-C", "WWWWWWW", "♂…“”‘'!"])("%s is a name", (name) => {
+      expect(readCharacterDecision(answer(name, "O"), "free", null).names).toEqual({ player: name, rival: "O" });
+      expect(readCharacterDecision(answer("O", name), "free", null).names).toEqual({ player: "O", rival: name });
+    });
+
+    test.each([
+      ["", "1 to 7 characters"],
+      ["ABCDEFGH", "1 to 7 characters"],
+      [" Al", "no space at the start or the end"],
+      ["Al ", "no space at the start or the end"],
+      ["   ", "no space at the start or the end"],
+      ["é", 'the character "é" is not on the keyboard'],
+      ["Al:", 'the character ":" is not on the keyboard'],
+      ['A"B', 'the character """ is not on the keyboard'],
+    ])("%p is not a name: %s", (name, problem) => {
+      expect(() => readCharacterDecision(answer(name, "O"), "free", null)).toThrow(`"name": ${problem}`);
+      expect(() => readCharacterDecision(answer("O", name), "free", null)).toThrow(`"rival": ${problem}`);
+    });
+
+    test("an answer with no name is an error", () => {
+      expect(() => readCharacterDecision(answer(undefined, "O"), "free", null)).toThrow('the answer has no string "name"');
+      expect(() => readCharacterDecision(answer("O"), "free", null)).toThrow('the answer has no string "rival"');
+    });
+
+    test("when the game already plays, the turn tells the names of the game, and an answer cannot change them", () => {
+      const names = { player: "PLOK", rival: "BOB" };
+      const turn = characterTurn("free", names, () => 0.5).join("\n");
+      expect(turn).toContain('The game already has your names: write PLOK in "name" and BOB in "rival".');
+      expect(turn).not.toContain("7 characters at most");
+      expect(readCharacterDecision(answer("Mira", "?bad?name"), "free", names).names).toEqual(names);
+    });
   });
 });
 
@@ -465,7 +518,7 @@ describe("the stuck counter and the reflection turn", () => {
     expect(systemPrompt(SYSTEM, true)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn at a walk or a battle action");
 
     const noted = [call("go A", "", "fact 1")];
-    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", true, "free"), memory: ["#1: fact 1"] });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", true, "free", null), memory: ["#1: fact 1"] });
     expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 20.");
     expect(prompt).toContain(
       [
@@ -482,7 +535,7 @@ describe("the stuck counter and the reflection turn", () => {
     expect(normal).not.toContain("Reflection turn");
     expect(normal).not.toContain("Full Atlas");
     const battle = wildPidgey();
-    const inBattle = userPrompt(battle, askedOf(battle, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", false, "free") });
+    const inBattle = userPrompt(battle, askedOf(battle, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", false, "free", null) });
     expect(inBattle).toContain("Reflection turn: stop and think before you act.\n- Read your Memory tree above. Use zoom freely");
     expect(inBattle).not.toContain("Full Atlas");
   });
@@ -498,7 +551,7 @@ describe("the review turn", () => {
     expect([at(decided(20), "battleAction"), at([...decided(5), ...reviewed, ...decided(19)])]).toEqual(["normal", "normal"]);
     expect(systemPrompt(SYSTEM, true)).toContain("Every 20 decisions, you get a review turn");
 
-    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review", request: turnRequest("review", true, "free") });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review", request: turnRequest("review", true, "free", null) });
     expect(prompt).toContain(
       [
         "Review turn: check your plan against the facts before you act.",

@@ -1,5 +1,6 @@
 import type { Milestone } from "../src/game";
 import type { GridReplay, GridSize, RunSummary, Spend } from "../src/protocol";
+import type { TrainerNames } from "../src/save-file";
 
 export type CellState = { kind: "plays" } | { kind: "waits" } | { kind: "battle" } | { kind: "ended"; result: string };
 
@@ -14,6 +15,7 @@ export type GridCell = {
   spent: Spend | null;
   state: CellState;
   record: string | null;
+  names: TrainerNames | null;
 };
 
 function liveState(run: RunSummary): CellState {
@@ -23,14 +25,14 @@ function liveState(run: RunSummary): CellState {
 }
 
 function liveCell(run: RunSummary): GridCell {
-  const { id, bot, model, frame, milestone, record } = run;
-  return { kind: "live", runId: id, name: `Run ${id}`, bot, model: model?.id ?? null, frame, milestone, spent: model?.spent ?? null, state: liveState(run), record };
+  const { id, bot, model, frame, milestone, record, names } = run;
+  return { kind: "live", runId: id, name: `Run ${id}`, bot, model: model?.id ?? null, frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names };
 }
 
 function replayCell(replay: GridReplay, cursor: number): GridCell {
-  const { id, name, bot, model, frame, milestone, spent, battle, endReason, error, frames } = replay;
+  const { id, name, bot, model, frame, milestone, spent, battle, endReason, error, frames, names } = replay;
   const state: CellState = error ? { kind: "ended", result: `error: ${error}` } : cursor >= frames ? { kind: "ended", result: endReason } : battle ? { kind: "battle" } : { kind: "plays" };
-  return { kind: "replay", runId: id, name, bot, model, frame, milestone, spent, state, record: name };
+  return { kind: "replay", runId: id, name, bot, model, frame, milestone, spent, state, record: name, names };
 }
 
 // The Runs that play come before the ended ones, so a small Grid shows what plays now.

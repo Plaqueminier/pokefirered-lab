@@ -20,11 +20,11 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 1. Start the Viewer with no `saves/start.sav`. The game then starts as the vanilla game.
 2. Play to your room and set the text speed to "Fast".
 3. Save in the game, and wait for the end of the save.
-4. Click "Write the Starting save" (the icon at the right of the screen controls), then click it again in the next 3 s. The harness writes `saves/start.sav` and keeps the previous file next to it.
+4. Click "Write the Starting save" (the icon at the right of the screen controls), then click it again in the next 3 s. The harness writes `saves/start.sav` and keeps the previous file next to it. After a replay with names, it refuses until you reset the game, because the save of the emulator holds these names. The savestate also refuses during that time.
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 15, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005).
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 16, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005).
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.

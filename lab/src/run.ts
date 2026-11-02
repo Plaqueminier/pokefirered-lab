@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { CACHE_DIR, Core } from "./core";
 import { type Camera, Game, type GameState, type MapActors, type MapGrid, safely } from "./game";
 import { Memory } from "./memory";
+import type { TrainerNames } from "./save-file";
 import { loadSymbols } from "./symbols";
 
 const REPO_DIR = join(import.meta.dir, "..", "..");
@@ -11,12 +12,13 @@ export const ROM_NAME = process.env.LAB_ROM ?? "pokefirered_modern_lab";
 export const ROM_FILE = join(REPO_DIR, `${ROM_NAME}.gba`);
 const ROM_ADDRESS = 0x08000000;
 
-export type RunOrigin = { rom: string; seed: number; startSave: string | null };
+export type RunOrigin = { rom: string; seed: number; startSave: string | null; names: TrainerNames | null };
 
 export type RunState = { state: GameState | null; grid: MapGrid | null; actors: MapActors | null; camera: Camera | null };
 
 export class Run {
   #origin: RunOrigin;
+  #save: Uint8Array | null = null;
 
   private constructor(
     readonly core: Core,
@@ -27,21 +29,38 @@ export class Run {
     this.#origin = origin;
   }
 
-  static async open(startSavePath = START_SAVE): Promise<Run> {
+  static async open({ startSave = START_SAVE, names = null }: { startSave?: string; names?: TrainerNames | null } = {}): Promise<Run> {
     if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
     const core = await Core.open(ROM_FILE);
     const mem = new Memory(core, await loadSymbols(join(REPO_DIR, `${ROM_NAME}.elf`), CACHE_DIR));
-    const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null }, startSavePath);
-    await run.reset();
+    const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null, names: null }, startSave);
+    try {
+      await run.reset(names);
+    } catch (error) {
+      core.close();
+      throw error;
+    }
     return run;
   }
 
-  async reset(): Promise<void> {
+  async reset(names: TrainerNames | null = null): Promise<void> {
+    const file = Bun.file(this.startSavePath);
+    this.boot((await file.exists()) ? new Uint8Array(await file.arrayBuffer()) : null, names);
+  }
+
+  // The bytes of the last boot, not the file: a person can write the file while a Model call waits.
+  rename(names: TrainerNames, holds: readonly (readonly [number, number])[]): void {
+    this.boot(this.#save, names);
+    for (const [keys, frames] of holds) for (let i = 0; i < frames; i++) this.runFrame(keys);
+  }
+
+  private boot(save: Uint8Array | null, names: TrainerNames | null): void {
+    if (names && !save) throw new Error("no Starting save to write the names in");
+    const played = save && names ? this.game.namedSave(save, names) : save;
     this.core.reset();
-    const save = Bun.file(this.startSavePath);
-    const data = (await save.exists()) ? new Uint8Array(await save.arrayBuffer()) : null;
-    if (data) this.core.loadSaveData(data);
-    this.#origin = { ...this.#origin, startSave: data && sha256(data) };
+    if (played) this.core.loadSaveData(played);
+    this.#save = save;
+    this.#origin = { ...this.#origin, startSave: save && sha256(save), names };
     this.core.reset();
   }
 
