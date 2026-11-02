@@ -69,7 +69,7 @@ The character that the Viewer shows for a **Run** with no **Character turn**, fo
 _Avoid_: default persona, neutral character
 
 **Thinking**:
-The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**.
+The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer.
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:
@@ -89,8 +89,20 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
+
+**Part**:
+The cells of a map that the player can walk to from one cell, on the cells that it saw and with no other map on the way. A floor of a cave can have many **Parts**: the only way between them goes through other maps. The code makes them from the **Atlas** only, so they show only what the player saw.
+_Avoid_: zone, area (an **Area** is a place of the Town Map), region
+
+**Lead**:
+A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
+_Avoid_: frontier (the unseen cells of the **Part** of the player), hint
+
+**Thin wall**:
+An open cell with a wall on one side: the player cannot step across that side, in either direction. Its metatile behaviour is `MB_IMPASSABLE_*`, with no collision bit. It is not a **Fixed obstacle**.
+_Avoid_: one-way wall, directional collision
 
 **Known world**:
 A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the number of doors not entered, the unseen cells left and the **Fixed obstacles**. The code makes it from the **Atlas** only, so it shows only what the player saw.

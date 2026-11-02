@@ -52,6 +52,8 @@ const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle
 const MB_TALL_GRASS = 0x02;
 export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
 export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
+export const WALL: Record<Direction, string> = { north: "-", south: "_", west: "[", east: "]" };
+const MB_WALL: Record<number, string> = { 0x30: WALL.east, 0x31: WALL.west, 0x32: WALL.north, 0x33: WALL.south };
 const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
 // From IsWarpMetatileBehavior, TryArrowWarp and TryDoorWarp in field_control_avatar.c.
 const STEP_WARPS = new Set(["MB_CAVE_DOOR", "MB_LADDER", "MB_UP_ESCALATOR", "MB_DOWN_ESCALATOR", "MB_REGULAR_WARP", "MB_UNION_ROOM_WARP", "MB_FALL_WARP", "MB_LAVARIDGE_1F_WARP"]);
@@ -77,6 +79,7 @@ const SIGN_PLAYER_FACING: Record<number, Direction> = { 1: "north", 2: "south", 
 const CONNECTION_SIDES: Record<number, ConnectionSide> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
 export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
 export const DIRECTION_STEPS = Object.entries(DIRECTION_STEP) as [Direction, [number, number]][];
+export const OPPOSITE: Record<Direction, Direction> = { north: "south", south: "north", west: "east", east: "west" };
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 const T_NOT_MOVING = 0;
@@ -119,7 +122,7 @@ export type Direction = "south" | "north" | "west" | "east";
 
 export type PlayerPosition = { x: number; y: number; facing: Direction };
 
-type WarpHow = { how: "step" } | { how: "press"; from: { x: number; y: number }; direction: Direction } | { how: "none" };
+type WarpHow = { how: "step"; from?: { x: number; y: number } } | { how: "press"; from: { x: number; y: number }; direction: Direction } | { how: "none" };
 
 export type WarpExit = { x: number; y: number; to: string; warpId: number } & WarpHow;
 
@@ -143,7 +146,7 @@ export type MapGrid = {
   /** Size of the map itself, inside the border. */
   mapWidth: number;
   mapHeight: number;
-  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), . open. */
+  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), . open. */
   kinds: string;
   outside: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
@@ -817,6 +820,7 @@ export class Game {
       kinds +=
         MB_JUMP[behavior] ??
         (block === 0x03ff || block & 0x0c00 ? KIND.blocked
+        : MB_WALL[behavior] ? MB_WALL[behavior]
         : behavior < surfable.length && surfable.at(behavior).int() & 1 ? KIND.water
         : behavior === MB_TALL_GRASS ? KIND.grass
         : KIND.open);
@@ -999,5 +1003,6 @@ function badgeFlag(badge: number): number {
 function warpHow(x: number, y: number, behavior: string): WarpHow {
   const push = PUSH_WARPS[behavior];
   if (push) return { how: "press", from: { x, y: push.from === "below" ? y + 1 : y }, direction: push.direction };
+  if (behavior === "MB_CAVE_DOOR") return { how: "step", from: { x, y: y + 1 } };
   return STEP_WARPS.has(behavior) ? { how: "step" } : { how: "none" };
 }

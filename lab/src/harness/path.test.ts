@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Direction } from "../game";
-import { type Cell, findRoute, type Leg, type MapSource, type RouteMap } from "./path";
+import { type Cell, destinationOf, findRoute, reached, type Leg, type MapSource, type RouteMap } from "./path";
 
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
@@ -38,6 +38,35 @@ function summary(legs: Leg[] | null): string[] | null {
   return legs?.map((leg) => `${leg.map}: ${leg.moves.map((m) => `${m.kind} ${m.direction}`).join(", ")}`) ?? null;
 }
 
+describe("destinationOf", () => {
+  const at = { map: "A", x: 2, y: 1 };
+  const warp = { x: 2, y: 1, to: "B", warpId: 0 };
+  const b = map("B", ["..."], { warps: [{ x: 1, y: 0, to: "A", warpId: 0, how: "step" }] });
+  const load = (w: RouteMap["warps"][number]) => world(map("A", ["...", "...", "..."], { warps: [w] }), b);
+
+  test("with a map, a cave door is the cell below it: the door moves the player off its cell, so a walk cannot end on it", () => {
+    expect(destinationOf(at, false, load({ ...warp, how: "step", from: { x: 2, y: 2 } }))).toEqual({ map: "A", x: 2, y: 2 });
+  });
+
+  test("with a map, a door that the player takes with a press is the cell where it presses", () => {
+    expect(destinationOf(at, false, load({ ...warp, how: "press", from: { x: 2, y: 2 }, direction: "north" }))).toEqual({ map: "A", x: 2, y: 2 });
+  });
+
+  test("an exit is reached at its arrival or on the next cell, where a door moves the player, and not on another cell of its map: the route can pass through this map first", () => {
+    const exit = { map: "B", x: 5, y: 5, exit: true };
+    expect(reached(exit, { map: "B", x: 5, y: 5 })).toBe(true);
+    expect(reached(exit, { map: "B", x: 5, y: 6 })).toBe(true);
+    expect(reached(exit, { map: "B", x: 20, y: 5 })).toBe(false);
+    expect(reached(exit, { map: "A", x: 5, y: 5 })).toBe(false);
+  });
+
+  test("stairs stay a cell with a map, and with no map they are an exit", () => {
+    const stairs: RouteMap["warps"][number] = { ...warp, how: "step" };
+    expect(destinationOf(at, false, load(stairs))).toEqual(at);
+    expect(destinationOf(at, true, load(stairs))).toEqual({ map: "B", x: 1, y: 0, exit: true });
+  });
+});
+
 describe("findRoute on one map", () => {
   test("walks in a straight line on open cells", () => {
     expect(path(map("A", ["....."]), { x: 0, y: 0 }, { x: 3, y: 0 })).toEqual(["east", "east", "east"]);
@@ -53,6 +82,19 @@ describe("findRoute on one map", () => {
     expect(route).toHaveLength(8);
     expect(walk({ x: 0, y: 0 }, route!)).toEqual({ x: 4, y: 0 });
     expect(visits({ x: 0, y: 0 }, route!).some((c) => c.x === 2 && c.y < 2)).toBe(false);
+  });
+
+  test("a thin wall stops a step across it, in both directions, and the cell behind it stays open from the other sides", () => {
+    const rows = [
+      "...",
+      "---",
+      "...",
+    ];
+    expect(path(map("A", rows), { x: 0, y: 0 }, { x: 0, y: 1 })).toBeNull();
+    expect(path(map("A", ["...", "...", "---"]), { x: 0, y: 2 }, { x: 0, y: 1 })).toBeNull();
+    expect(path(map("A", rows), { x: 0, y: 2 }, { x: 2, y: 1 })).toEqual(["north", "east", "east"]);
+    expect(path(map("A", [".].", "...", ".[."]), { x: 2, y: 0 }, { x: 1, y: 0 })).toEqual(["south", "west", "north"]);
+    expect(path(map("A", ["._.", "..."]), { x: 1, y: 0 }, { x: 1, y: 1 })).toEqual(["west", "south", "east"]);
   });
 
   test("has no route to a blocked cell", () => {

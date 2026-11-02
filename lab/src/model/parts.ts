@@ -1,0 +1,140 @@
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, LEDGE, WALL } from "../game";
+import { type Atlas, type AtlasMap, type AtlasWarp, fitsScreen, seenIn } from "../harness/atlas";
+import { type Cell, cellKey, inside, kindAt, type MapCells, walkable, wallBetween } from "../harness/path";
+
+export type Part = {
+  map: AtlasMap;
+  from: Cell;
+  cells: Cell[];
+  keys: Set<string>;
+  exits: AtlasWarp[];
+  touches(cell: Cell): boolean;
+  view: MapCells;
+};
+
+export type Lead = { map: AtlasMap; away: number; cell: Cell } & ({ kind: "unseen"; direction: Direction } | { kind: "exit"; warp: AtlasWarp });
+
+export type Beyond = "unseen" | "exit" | "nothing";
+
+type PartAway = { part: Part; away: number };
+
+const MAX_LEADS = 4;
+
+function isStepExit(map: AtlasMap, { x, y }: Cell): boolean {
+  return map.stepExits.some((c) => c.x === x && c.y === y);
+}
+
+function partOf(map: AtlasMap, view: MapCells, from: Cell): Part {
+  const seen = seenIn(map);
+  const cells = [{ x: from.x, y: from.y }];
+  const keys = new Set([cellKey(from)]);
+  const add = (cell: Cell) => {
+    if (keys.has(cellKey(cell))) return;
+    keys.add(cellKey(cell));
+    cells.push(cell);
+  };
+  for (const [i, cell] of cells.entries()) {
+    if (i > 0 && isStepExit(map, cell)) continue;
+    for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
+      const next = { x: cell.x + dx, y: cell.y + dy };
+      if (!seen(next) || wallBetween(view, cell, direction)) continue;
+      const landing = { x: next.x + dx, y: next.y + dy };
+      if (kindAt(view, next) === LEDGE[direction] && seen(landing) && walkable(view, landing)) add(landing);
+      else if (walkable(view, next)) add(next);
+    }
+  }
+  const touches = (c: Cell) => keys.has(cellKey(c)) || (!walkable(view, c) && Object.values(DIRECTION_STEP).some(([dx, dy]) => keys.has(cellKey({ x: c.x + dx, y: c.y + dy }))));
+  return { map, from, cells, keys, exits: map.warps.filter(touches), touches, view };
+}
+
+export function unseenSides({ map, cells, view }: Part): { direction: Direction; cell: Cell }[] {
+  const seen = seenIn(map);
+  return DIRECTION_STEPS.flatMap(([direction, [dx, dy]]) => {
+    const cell = cells.find((c) => {
+      const next = { x: c.x + dx, y: c.y + dy };
+      const far = seen(next) && kindAt(view, next) === LEDGE[direction] ? { x: next.x + dx, y: next.y + dy } : next;
+      return !isStepExit(map, c) && inside(view, far) && !seen(far) && kindAt(view, c) !== WALL[direction];
+    });
+    return cell ? [{ direction, cell }] : [];
+  });
+}
+
+function leadsOf(part: Part, away: number): Lead[] {
+  const unseen = fitsScreen(part.map) ? [] : unseenSides(part);
+  const leads: Lead[] = unseen.map(({ direction, cell }) => ({ kind: "unseen", map: part.map, away, cell, direction }));
+  for (const warp of part.exits) {
+    if (warp.to) continue;
+    const cell = part.cells.find((c) => Math.abs(c.x - warp.x) + Math.abs(c.y - warp.y) === 1 && !isStepExit(part.map, c));
+    if (cell) leads.push({ kind: "exit", map: part.map, away, cell, warp });
+  }
+  return leads;
+}
+
+export function atlasCells(map: AtlasMap): MapCells {
+  return { kinds: map.cells, x0: 0, y0: 0, width: map.width, mapWidth: map.width, mapHeight: map.height };
+}
+
+export class Parts {
+  readonly own: Part;
+  readonly #parts = new Map<string, Part>();
+  #around: PartAway[] | null = null;
+
+  constructor(
+    private readonly atlas: Atlas,
+    here: AtlasMap,
+    grid: MapCells,
+    player: Cell,
+  ) {
+    this.own = partOf(here, grid, player);
+  }
+
+  /** Null for an exit not taken, and for an exit to an outdoor map other than the map of the player: the Known world tells these maps. */
+  partPast({ to, arrival }: AtlasWarp): Part | null {
+    const map = this.atlas.maps.find((m) => m.name === to);
+    if (!map || !arrival || (map.outside && map.name !== this.own.map.name)) return null;
+    const key = `${map.name} ${cellKey(arrival)}`;
+    const part = this.#parts.get(key) ?? partOf(map, atlasCells(map), arrival);
+    this.#parts.set(key, part);
+    return part;
+  }
+
+  beyond(warp: AtlasWarp): Beyond | null {
+    const next = this.partPast(warp);
+    if (!next) return null;
+    const leads = this.partsFrom([next]).flatMap(({ part, away }) => leadsOf(part, away));
+    if (leads.some((lead) => lead.kind === "unseen")) return "unseen";
+    return leads.length > 0 ? "exit" : "nothing";
+  }
+
+  leads(): Lead[] {
+    return this.around().flatMap(({ part, away }) => leadsOf(part, away)).slice(0, MAX_LEADS);
+  }
+
+  exitsTo(cells: Cell[]): number {
+    return this.around().find(({ part }) => part.map.name === this.own.map.name && cells.some(part.touches))?.away ?? Number.POSITIVE_INFINITY;
+  }
+
+  private around(): PartAway[] {
+    this.#around ??= this.partsFrom(this.partsPast(this.own));
+    return this.#around;
+  }
+
+  private partsPast(part: Part): Part[] {
+    return part.exits.flatMap((warp) => this.partPast(warp) ?? []);
+  }
+
+  private partsFrom(first: Part[]): PartAway[] {
+    const found: PartAway[] = [];
+    const known = ({ map, from }: Part) => [this.own, ...found.map(({ part }) => part)].some((part) => part.map.name === map.name && part.touches(from));
+    for (let level = first, away = 1; level.length > 0; away++) {
+      const next: Part[] = [];
+      for (const part of level) {
+        if (known(part)) continue;
+        found.push({ part, away });
+        next.push(...this.partsPast(part));
+      }
+      level = next;
+    }
+    return found;
+  }
+}

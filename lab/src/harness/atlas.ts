@@ -9,7 +9,9 @@ const SCREEN_UP = 5;
 const SCREEN_DOWN = 4;
 const RIVAL_GRAPHICS = "BLUE";
 
-export type AtlasWarp = { x: number; y: number; behavior: string; to: string | null };
+export type AtlasWarp = { x: number; y: number; behavior: string; to: string | null; arrival: Cell | null };
+
+export type TakenWarp = { to: string; arrival: Cell | null };
 
 export type AtlasEdge = { side: Direction; to: string | null; blocked?: EdgeBlock };
 
@@ -33,6 +35,8 @@ export type AtlasMap = {
   people: AtlasPerson[];
   obstacles: Obstacle[];
   entry: Cell | null;
+  /** The seen cells where a step leaves the map, also the other cells of a wide exit. */
+  stepExits: Cell[];
 };
 
 export type Atlas = { maps: AtlasMap[]; lastTalk: { map: string; localId: number } | null };
@@ -53,6 +57,10 @@ export function seenIn(map: AtlasMap): (cell: Cell) => boolean {
   return (c) => inside({ mapWidth: map.width, mapHeight: map.height }, c) && cellAt(map, c) !== UNSEEN;
 }
 
+export function fitsScreen({ width, height }: Pick<AtlasMap, "width" | "height">): boolean {
+  return width <= SCREEN_LEFT + SCREEN_RIGHT + 1 && height <= SCREEN_UP + SCREEN_DOWN + 1;
+}
+
 export function mapNamed(atlas: Atlas, name: string): AtlasMap {
   const map = atlas.maps.find((m) => m.name === name);
   if (!map) throw new Error(`the Atlas has no map ${name}`);
@@ -67,7 +75,7 @@ type Visit = {
   seen: Uint8Array;
   entry: Cell | null;
   /** The destination of each warp taken, by cellKey. */
-  warpsTaken: Map<string, string>;
+  warpsTaken: Map<string, TakenWarp>;
   edgesTaken: Map<Direction, string>;
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
@@ -169,7 +177,7 @@ export class AtlasWatch {
     const maps = this.game.allMapNames.flatMap((names, group) =>
       names.flatMap((name, num) => {
         const grid = this.grid(name, group, num);
-        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name)), blocked)] : [];
+        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name), (w) => this.arrivalOf(w)), blocked)] : [];
       }),
     );
     return { maps, lastTalk };
@@ -242,8 +250,16 @@ export class AtlasWatch {
   private crossed(from: Place, to: Place): void {
     const left = this.#visits.get(from.map);
     const arrived = this.#visits.get(to.map);
-    if (left) take(left, from, to.map, warpOn(left.grid, from) ?? pressWarpFrom(left.grid, from, to.map));
-    if (arrived) take(arrived, to, from.map, warpOn(arrived.grid, to));
+    if (left) take(left, from, { to: to.map, arrival: { x: to.x, y: to.y } }, warpOn(left.grid, from) ?? pressWarpFrom(left.grid, from, to.map));
+    if (!arrived) return;
+    const pair = warpOn(arrived.grid, to);
+    if (!pair) take(arrived, to, { to: from.map, arrival: null }, pair);
+    else if (pair.to === from.map) take(arrived, to, { to: from.map, arrival: this.arrivalOf(pair) }, pair);
+  }
+
+  private arrivalOf(warp: Warp): Cell | null {
+    const arrival = this.grid(warp.to, warp.group, warp.num)?.warps[warp.warpId];
+    return arrival ? { x: arrival.x, y: arrival.y } : null;
   }
 }
 
@@ -258,13 +274,13 @@ function told(talk: Talk, part: string): void {
   talk.index = texts.includes(talk.text) ? null : texts.push(talk.text) - 1;
 }
 
-function take(visit: Visit, cell: Cell, other: string, warp: Warp | undefined): void {
+function take(visit: Visit, cell: Cell, taken: TakenWarp, warp: Warp | undefined): void {
   if (warp) {
-    visit.warpsTaken.set(cellKey(warp), other);
+    visit.warpsTaken.set(cellKey(warp), taken);
     return;
   }
-  const side = edgesOf(visit.grid).find((c) => c.map === other && edgeCells(visit.grid, c.direction).some((e) => e.x === cell.x && e.y === cell.y))?.direction;
-  if (side) visit.edgesTaken.set(side, other);
+  const side = edgesOf(visit.grid).find((c) => c.map === taken.to && edgeCells(visit.grid, c.direction).some((e) => e.x === cell.x && e.y === cell.y))?.direction;
+  if (side) visit.edgesTaken.set(side, taken.to);
 }
 
 function warpOn(grid: MapGrid, { x, y }: Cell): Warp | undefined {
@@ -294,10 +310,12 @@ function exitCells(warps: Warp[]): Warp[][] {
   return exits;
 }
 
-export function atlasWarps(warps: Warp[], taken: ReadonlyMap<string, string>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
+export function atlasWarps(warps: Warp[], taken: ReadonlyMap<string, TakenWarp>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
   return exitCells(warps.filter((w) => w.how !== "none")).flatMap((cells) => {
     const shown = cells.find((w) => taken.has(cellKey(w))) ?? cells.find(isSeen);
-    return shown ? [{ x: shown.x, y: shown.y, behavior: shown.behavior, to: taken.get(cellKey(shown)) ?? null }] : [];
+    if (!shown) return [];
+    const { to = null, arrival = null } = taken.get(cellKey(shown)) ?? {};
+    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, to, arrival }];
   });
 }
 
@@ -329,16 +347,19 @@ function atlasMap(visit: Visit, blocked: BlockOf): AtlasMap {
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
     obstacles: [...obstacles.values()],
     entry,
+    stepExits: grid.warps.flatMap((w) => (w.how === "step" && isSeen(w) ? [{ x: w.x, y: w.y }] : [])),
   };
 }
 
 /** At the full level, the player knows a map as if it saw all its cells and took all its exits. */
-function fullVisit(grid: MapGrid, visit: Visit | undefined): Visit {
+function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null): Visit {
   return {
     grid,
     seen: new Uint8Array(grid.mapWidth * grid.mapHeight).fill(1),
     entry: visit?.entry ?? entryOf(grid),
-    warpsTaken: new Map(grid.warps.map((w) => [cellKey(w), w.to])),
+    warpsTaken: new Map(
+      grid.warps.map((w) => [cellKey(w), { to: w.to, arrival: arrivalOf(w) }]),
+    ),
     edgesTaken: new Map(edgesOf(grid).map((c) => [c.direction, c.map])),
     signTexts: visit?.signTexts ?? new Map(),
     people: visit?.people ?? new Map(),

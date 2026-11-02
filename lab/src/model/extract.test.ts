@@ -11,8 +11,8 @@ const LAB: AtlasMap = {
   height: 4,
   cells: "#####" + "#..?#" + "#..?#" + "##.##",
   warps: [
-    { x: 2, y: 3, behavior: "MB_SOUTH_ARROW_WARP", to: "Town" },
-    { x: 0, y: 1, behavior: "MB_WARP_DOOR", to: null },
+    { x: 2, y: 3, behavior: "MB_SOUTH_ARROW_WARP", to: "Town", arrival: null },
+    { x: 0, y: 1, behavior: "MB_WARP_DOOR", to: null, arrival: null },
   ],
   edges: [],
   hasEdges: false,
@@ -21,6 +21,7 @@ const LAB: AtlasMap = {
   people: [],
   obstacles: [],
   entry: { x: 2, y: 2 },
+  stepExits: [],
 };
 
 function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 }, people: Person[] = []): Overworld {
@@ -60,6 +61,7 @@ function chain(routes: number): AtlasMap[] {
     people: [],
     obstacles: [],
     entry: { x: 5, y: 5 },
+    stepExits: [],
   }));
 }
 
@@ -68,10 +70,126 @@ describe("the exits of the Atlas", () => {
   const seen = () => true;
 
   test("the neighbour cells of a wide exit are one exit, and a walk through one cell takes the whole exit; other maps and far cells stay other exits", () => {
-    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map(), seen)).toEqual([{ x: 4, y: 9, behavior: "MB_CAVE_DOOR", to: null }]);
-    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map([["5,9", "Gate"]]), seen)).toEqual([{ x: 5, y: 9, behavior: "MB_CAVE_DOOR", to: "Gate" }]);
+    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map(), seen)).toEqual([{ x: 4, y: 9, behavior: "MB_CAVE_DOOR", to: null, arrival: null }]);
+    expect(atlasWarps([cell(4), cell(5), cell(6)], new Map([["5,9", { to: "Gate", arrival: { x: 3, y: 3 } }]]), seen)).toEqual([{ x: 5, y: 9, behavior: "MB_CAVE_DOOR", to: "Gate", arrival: { x: 3, y: 3 } }]);
     expect(atlasWarps([cell(4, "Gate"), cell(5, "House")], new Map(), seen)).toHaveLength(2);
     expect(atlasWarps([cell(4), cell(8)], new Map(), seen)).toHaveLength(2);
+  });
+});
+
+describe("the parts of a map", () => {
+  const stairs = (x: number, to: string): AtlasMap["warps"][number] => ({ x, y: 1, behavior: "MB_LADDER", to, arrival: { x, y: 1 } });
+  const floor = (name: string, row: string, to: string, more: Partial<AtlasMap> = {}): AtlasMap => ({ ...LAB, name, width: 16, height: 3, cells: "#".repeat(16) + row.padEnd(16, "#") + "#".repeat(16), warps: [stairs(1, to), stairs(7, to)], stepExits: [{ x: 1, y: 1 }, { x: 7, y: 1 }], entry: null, ...more });
+  const upper = floor("Upper", "#.......#", "Lower");
+  const lower = floor("Lower", "#..?#...#", "Upper");
+
+  test("an exit shows its arrival cell and what is beyond it, and the unseen cells of a part behind an exit stay a target", () => {
+    const view = atlasExtract(overworld(upper, [lower], { x: 4, y: 1 }));
+    expect(view.lines).toContain("A. stairs at (1, 1), 3 west: to Lower (1, 1), taken; beyond it: unseen cells");
+    expect(view.lines).toContain("B. stairs at (7, 1), 3 east: to Lower (7, 1), taken; beyond it: nothing new");
+    expect(view.lines).toContain("Leads, what you did not explore in other parts and maps:");
+    expect(view.lines).toContain("C. unseen cells east of (2, 1) on Lower, 1 exit away");
+    expect(view.targets.at(2)).toMatchObject({ kind: "lead", map: "Lower", cell: { x: 2, y: 1 } });
+  });
+
+  test("the line of a neighbour map shows, for each part where its exits arrive, the exits of that part only", () => {
+    const view = atlasExtract(overworld(upper, [lower], { x: 4, y: 1 }));
+    expect(view.lines).toContain("- A (stairs) leads to Lower. From there you can walk to: stairs at (1, 1), to Upper (1, 1).");
+    expect(view.lines).toContain("- B (stairs) leads to Lower. From there you can walk to: stairs at (7, 1), to Upper (7, 1).");
+  });
+
+  test("an exit or a person in another part of the map shows how far it is in exits, comes after the targets of the part, and the unseen cells of the other part stay a target", () => {
+    const rocket = { localId: 2, graphics: "ROCKET_M", x: 2, y: 1, loaded: true };
+    const view = atlasExtract(overworld({ ...lower, people: [{ ...rocket, texts: [] }] }, [upper], { x: 6, y: 1 }, [rocket]));
+    expect(view.lines).toContain("A. stairs at (7, 1), adjacent east: to Upper (7, 1), taken; beyond it: unseen cells");
+    expect(view.lines).toContain("B. stairs at (1, 1), in another part of this map, 2 exits away: to Upper (1, 1), taken; beyond it: unseen cells");
+    expect(view.lines).toContain("C. ROCKET M at (2, 1), in another part of this map, 2 exits away");
+    expect(view.lines).toContain("D. unseen cells east of (2, 1) in another part of this map, 2 exits away");
+    expect(view.targets.at(1)).toMatchObject({ kind: "exit", cell: { x: 1, y: 1 } });
+  });
+
+  test("with no unseen cell in the part of the player, the extract says that the other cells have no seen way from here", () => {
+    const view = atlasExtract(overworld(lower, [upper], { x: 6, y: 1 }));
+    expect(view.lines).toContain("You saw all the cells of your part of this map: no cell that you saw leads from it to the other cells of this map.");
+    expect(atlasExtract(overworld(lower, [upper], { x: 2, y: 1 })).lines).not.toContainEqual(expect.stringContaining("You saw all the cells"));
+  });
+
+  test("the cell next to an exit not taken is never a step on another cell of a wide exit: go has no route to such a cell", () => {
+    const holes = floor("Lower", "#.......#", "Upper", { warps: [stairs(1, "Upper"), { x: 7, y: 1, behavior: "MB_LADDER", to: null, arrival: null }], stepExits: [{ x: 1, y: 1 }, { x: 6, y: 1 }, { x: 7, y: 1 }] });
+    const view = atlasExtract(overworld({ ...upper, warps: [stairs(1, "Lower")] }, [holes], { x: 4, y: 1 }));
+    expect(view.targets.filter((t) => t.kind === "lead")).toEqual([]);
+  });
+
+  test("an exit not taken on another map is a lead, and go walks next to it", () => {
+    const below = floor("Lower", "#.......#", "Upper", { warps: [stairs(1, "Upper"), { x: 7, y: 1, behavior: "MB_LADDER", to: null, arrival: null }], stepExits: [{ x: 1, y: 1 }, { x: 7, y: 1 }] });
+    const view = atlasExtract(overworld({ ...upper, warps: [stairs(1, "Lower")] }, [below], { x: 4, y: 1 }));
+    expect(view.lines).toContain("A. stairs at (1, 1), 3 west: to Lower (1, 1), taken; beyond it: an exit not taken");
+    expect(view.lines).toContain("B. stairs at (7, 1) on Lower, not taken, 1 exit away: go walks next to it");
+    expect(view.targets.at(1)).toMatchObject({ kind: "lead", map: "Lower", cell: { x: 6, y: 1 } });
+  });
+
+  test("a thin wall ends the part, and the unseen cells behind it are not a target", () => {
+    const walled: AtlasMap = { ...LAB, name: "Cave", width: 3, height: 4, cells: "..." + "..." + "---" + "???", warps: [], entry: null };
+    const view = atlasExtract(overworld(walled, [], { x: 1, y: 1 }));
+    expect(view.lines.join("\n")).not.toContain("unseen cells south");
+    expect(view.lines).toContain("You saw all the cells of your part of this map: no cell that you saw leads from it to the other cells of this map.");
+  });
+
+  test("the unseen cells of a room that fits on the screen are no lead, and they are not beyond an exit", () => {
+    const room = { ...lower, width: 9, cells: "#########" + "#..?#...#" + "#########" };
+    const view = atlasExtract(overworld(upper, [room], { x: 4, y: 1 }));
+    expect(view.lines).toContain("A. stairs at (1, 1), 3 west: to Lower (1, 1), taken; beyond it: nothing new");
+    expect(view.targets.filter((t) => t.kind === "lead")).toEqual([]);
+  });
+
+  test("a door next to the part of the player is in that part: the way back through a house is not another part", () => {
+    const town: AtlasMap = { ...LAB, name: "Town", outside: true, width: 16, height: 2, cells: "#".repeat(16) + ".".repeat(16), warps: [{ x: 3, y: 0, behavior: "MB_WARP_DOOR", to: "House", arrival: { x: 1, y: 1 } }], entry: null };
+    const house = { ...upper, name: "House", warps: [{ ...stairs(1, "Town"), arrival: { x: 3, y: 0 } }] };
+    const view = atlasExtract(overworld(town, [house], { x: 3, y: 1 }));
+    expect(view.lines).toContain("A. door at (3, 0), adjacent north, you face it: to House (1, 1), taken; beyond it: nothing new");
+    expect(view.lines.join("\n")).not.toContain("another part");
+  });
+
+  test("a thin wall on a cell that the player did not see stays unknown: the unseen cells stay a target", () => {
+    const hidden: AtlasMap = { ...LAB, name: "Cave", width: 3, height: 3, cells: "..." + "..." + "???", warps: [], entry: null };
+    const ow = overworld(hidden, [], { x: 1, y: 1 });
+    const view = atlasExtract({ ...ow, grid: { ...ow.grid, kinds: "..." + "..." + "---" } });
+    expect(view.lines).toContain("A. unseen cells south of (1, 1), you stand on it");
+    expect(view.lines.join("\n")).not.toContain("You saw all the cells");
+  });
+
+  test("a target with no seen way to it keeps its direction, and an exit there says that no seen way goes there yet", () => {
+    const gap: AtlasMap = { ...LAB, name: "Gap", width: 16, height: 1, cells: "..?.............", warps: [{ x: 5, y: 0, behavior: "MB_LADDER", to: null, arrival: null }], stepExits: [{ x: 5, y: 0 }], entry: null };
+    const view = atlasExtract(overworld(gap, [], { x: 0, y: 0 }));
+    expect(view.lines).toContain("A. stairs at (5, 0), 5 east, no seen way there yet: not taken");
+  });
+
+  test("an edge in another part shows the number of exits to it, not a direction", () => {
+    const road: AtlasMap = { ...LAB, name: "Road", outside: true, width: 16, height: 3, cells: "#".repeat(16) + "..#..#.........." + "#".repeat(16), warps: [{ x: 0, y: 1, behavior: "MB_CAVE_DOOR", to: "Cave", arrival: { x: 1, y: 1 } }, { x: 3, y: 1, behavior: "MB_CAVE_DOOR", to: "Cave", arrival: { x: 7, y: 1 } }], stepExits: [{ x: 0, y: 1 }, { x: 3, y: 1 }], edges: [{ side: "east", to: "Town" }], hasEdges: true, entry: null };
+    const cave = { ...upper, name: "Cave", warps: [{ ...stairs(1, "Road"), arrival: { x: 0, y: 1 } }, { ...stairs(7, "Road"), arrival: { x: 3, y: 1 } }] };
+    const view = atlasExtract(overworld(road, [cave], { x: 1, y: 1 }));
+    expect(view.lines).toContain("C. east edge, 15 east, no seen way there yet: to Town, taken");
+    const beside = atlasExtract(overworld({ ...road, cells: "#".repeat(16) + "..#............." + "#".repeat(16) }, [cave], { x: 1, y: 1 }));
+    expect(beside.lines).toContain("C. east edge, in another part of this map, 2 exits away: to Town, taken");
+  });
+
+  test("a ledge with an unseen landing is an unseen side of the part", () => {
+    const ledge: AtlasMap = { ...LAB, name: "Hill", width: 3, height: 3, cells: "..." + "vvv" + "???", warps: [], entry: null };
+    const view = atlasExtract(overworld(ledge, [], { x: 1, y: 0 }));
+    expect(view.lines).toContain("A. unseen cells south of (1, 0), you stand on it");
+    expect(view.lines.join("\n")).not.toContain("You saw all the cells");
+  });
+
+  test("the line of a neighbour map with no exit seen from the arrival gives all the exits of the map", () => {
+    const pit: AtlasMap = { ...floor("Pit", "#.......#", "Upper"), warps: [{ ...stairs(7, "Upper"), arrival: null }], stepExits: [{ x: 7, y: 1 }], cells: "#".repeat(16) + "#..#....#".padEnd(16, "#") + "#".repeat(16) };
+    const view = atlasExtract(overworld({ ...upper, warps: [{ ...stairs(1, "Pit"), arrival: { x: 1, y: 1 } }] }, [pit], { x: 4, y: 1 }));
+    expect(view.lines).toContain("- A (stairs) leads to Pit. Its exits (cells of Pit): stairs at (7, 1), to Upper.");
+  });
+
+  test("a walk does not continue past an exit: a stairs cell ends the part", () => {
+    const hall: AtlasMap = { ...LAB, name: "Hall", width: 5, height: 1, cells: "...?.", warps: [{ x: 1, y: 0, behavior: "MB_LADDER", to: null, arrival: null }], stepExits: [{ x: 1, y: 0 }], entry: null };
+    const view = atlasExtract(overworld(hall, [], { x: 0, y: 0 }));
+    expect(view.lines.join("\n")).not.toContain("unseen cells east");
   });
 });
 
@@ -82,7 +200,7 @@ describe("the extract of the Atlas", () => {
       width: 8,
       height: 6,
       cells: "########" + "#......#".repeat(3) + "?".repeat(16),
-      warps: [{ x: 6, y: 1, behavior: "MB_UP_RIGHT_STAIR_WARP", to: "House_2F" }],
+      warps: [{ x: 6, y: 1, behavior: "MB_UP_RIGHT_STAIR_WARP", to: "House_2F", arrival: null }],
       edges: [],
       hasEdges: false,
       outside: false,
@@ -90,12 +208,13 @@ describe("the extract of the Atlas", () => {
       people: [{ localId: 1, graphics: "MOM", x: 5, y: 3, texts: ["MOM: Hi!", "MOM: Take care!"] }],
       obstacles: [],
       entry: { x: 6, y: 2 },
+      stepExits: [],
     };
-    const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", to: "House" }], signs: [], people: [] };
+    const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", to: "House", arrival: null }], signs: [], people: [] };
     const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true }]));
     expect(view.lines).toEqual([
       "Map House: x from 0 to 7, y from 0 to 5. You are at (3, 1), facing north.",
-      'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, @ you, letters the targets.',
+      'Legend: # blocked, . open, " tall grass, ~ water, ^ v < > a ledge that you jump down in that direction only, ? not seen, @ you, letters the targets, - _ [ ] an open cell with a thin wall on its north, south, west or east side: you cannot step across that side.',
       "      0",
       "      01234567",
       "y= 0  ###C####",
@@ -165,7 +284,7 @@ describe("the extract of the Atlas", () => {
 
   test("a large map of the player does not remove the maps one exit away", () => {
     const size = 80;
-    const city: AtlasMap = { ...LAB, name: "City", width: size, height: size, cells: ".".repeat(size * size), warps: [{ x: 2, y: 3, behavior: "MB_WARP_DOOR", to: "Town" }] };
+    const city: AtlasMap = { ...LAB, name: "City", width: size, height: size, cells: ".".repeat(size * size), warps: [{ x: 2, y: 3, behavior: "MB_WARP_DOOR", to: "Town", arrival: null }] };
     const view = atlasExtract(overworld(city, chain(3)));
     expect(view.lines).toContain("- A (door) leads to Town. Its exits (cells of Town): south edge, not taken; north edge, to Route0.");
     expect(view.lines).toContain(`y=79  ${".".repeat(size)}`);
@@ -198,7 +317,7 @@ describe("the extract of the Atlas", () => {
 
   test("the Known world has one line for each outdoor map, in the order of the first visit: its edges, its passages to other outdoor maps, the buildings entered, the doors not entered, the unseen cells left and the obstacles", () => {
     const map = (name: string, outside: boolean, warps: AtlasMap["warps"], edges: AtlasMap["edges"] = []): AtlasMap => ({ ...LAB, name, outside, warps, edges, hasEdges: edges.length > 0 });
-    const door = (x: number, to: string | null) => ({ x, y: 4, behavior: "MB_WARP_DOOR", to });
+    const door = (x: number, to: string | null) => ({ x, y: 4, behavior: "MB_WARP_DOOR", to, arrival: null });
     const town = map("Town", true, [door(3, "Town_Mart"), door(6, null)], [
       { side: "north", to: "Route1" },
       { side: "south", to: null, blocked: "water" },

@@ -12,7 +12,7 @@ const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
 const AFTER_RIVAL = ["go A", "go C"];
-const DECISIONS = ["go A", "go B", "go B", "go D", "go A", "go E", "name Shelly", "go A", "fight 1", "fight 0", "fight 0", "fight 0"];
+const DECISIONS = ["go A", "go B", "go B", "go D", "go B", "go E", "name Shelly", "go A", "fight 1", "fight 0", "fight 0", "fight 0"];
 
 const CHARACTER = "Spices as nicknames. A loud fan of water.";
 
@@ -200,7 +200,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(prompts[0].user).toContain("Map PalletTown_PlayersHouse_2F");
     expect(prompts[1].user).toMatch(/You chose: go A\n +goTo\(10, 2\): done/);
     const pallet = first(/^Map PalletTown:/m);
-    expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F, taken$/m);
+    expect(pallet).toMatch(/^A\. door at \(6, 7\), adjacent north: to PalletTown_PlayersHouse_1F \(4, 8\), taken; beyond it: nothing new$/m);
     expect(pallet).toMatch(/^[A-Z]\. unseen cells north of \(\d+, \d+\), /m);
     expect(pallet).toMatch(/^- A \(door\) leads to PalletTown_PlayersHouse_1F\. /m);
     expect(harness.actions.filter((e) => e.action.name === "choose").map((e) => "option" in e.action && e.action.option)).toEqual(["YES", "YES"]);
@@ -211,7 +211,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "14", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "15", model: { id: "fake/model", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -250,6 +250,18 @@ describe.skipIf(!ready)("model bot", () => {
     expect(first.decision?.character).toBe(CHARACTER);
     expect(first.reasoning).toBe("I think.");
     expect(second.prompt.user).toContain(`Your character: ${CHARACTER} Your first Pokémon: SQUIRTLE.`);
+  });
+
+  test("after an empty answer, the next calls of the same turn do not think: the reasoning took all the tokens of the empty answer", async () => {
+    const harness = await Harness.open();
+    const asks: (string | undefined)[] = [];
+    const client: ModelClient = async (_prompt, options) => {
+      asks.push(options?.reasoning);
+      return asks.length === 1 ? { ...reply("goTo 8 6"), content: "" } : reply("goTo 8 6");
+    };
+    await harness.play(modelBot({ costLimit: 2 * COST - COST / 2 }, () => client));
+    expect(asks).toEqual(["medium", undefined]);
+    expect(modelEvents(harness).map((e) => e.error)).toEqual(["the answer is empty", null]);
   });
 
   test("it stops after 3 answers in a row that it cannot read; at the same Decision point, the next call has that answer and the error", async () => {

@@ -66,7 +66,7 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination and arrival cell, the exits seen, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >

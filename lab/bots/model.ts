@@ -8,7 +8,7 @@ import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName
 import { type AskOptions, type ModelClient, type ModelReply, modelSettings, openRouter } from "../src/model/openrouter";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
-import { approaches, interactCell, type Overworld, type Target } from "../src/model/targets";
+import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
 import { modelEvents } from "../src/protocol";
 
 const MAX_UNREADABLE = 3;
@@ -26,7 +26,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "14",
+    version: "15",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -37,7 +37,7 @@ export function unknownScreen(events: readonly RunEvent[]): boolean {
   return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
-type Conversation = { system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; sentences: NodeSentence[] };
+type Conversation = { system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
 class ModelPlay {
   #conversation: Conversation | null = null;
@@ -102,10 +102,12 @@ class ModelPlay {
     const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
     const reply = await this.tryAsk(prompt, {
       format: TURN_FORMATS[conversation.turnKind],
-      reasoning: conversation.turnKind === "normal" ? undefined : this.settings.thinking,
+      reasoning: conversation.thinks ? this.settings.thinking : undefined,
       signal,
     });
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
+    // The reasoning counts in max_tokens: in Run 00035 it took them all, 3 times in a row, and the Run stopped.
+    if (reply.content.trim() === "") conversation.thinks = false;
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
       const tree = memoryTree(this.harness.events);
@@ -133,7 +135,7 @@ class ModelPlay {
     const tree = memoryTree(events);
     const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
     const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, asked.kind === "walk", this.settings.starter), memory: memory.lines });
-    return { system: systemPrompt(this.settings, observation.party.length > 0), user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, sentences: memory.sentences };
+    return { system: systemPrompt(this.settings, observation.party.length > 0), user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal", sentences: memory.sentences };
   }
 
   private async summarize(): Promise<void> {
@@ -185,6 +187,7 @@ class ModelPlay {
   private async go(target: Target, overworld: Overworld): Promise<ActionResult | null> {
     switch (target.kind) {
       case "map":
+      case "lead":
         return this.harness.goTo(target.cell.x, target.cell.y, target.map);
       case "person":
         return this.talkTo(target, overworld, (now) => now.people.find((p) => p.localId === target.localId && p.loaded) ?? null);
@@ -211,7 +214,7 @@ class ModelPlay {
     return result;
   }
 
-  private async walkTo(target: Exclude<Target, { kind: "map" }>, overworld: Overworld): Promise<ActionResult | null> {
+  private async walkTo(target: LocalTarget, overworld: Overworld): Promise<ActionResult | null> {
     let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
       result = await this.harness.goTo(cell.x, cell.y);

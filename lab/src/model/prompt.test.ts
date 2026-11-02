@@ -32,7 +32,7 @@ const POTION = { name: "POTION", quantity: 5, description: "It restores the HP o
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, obstacles: [], entry: null };
+  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, obstacles: [], entry: null, stepExits: [] };
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
@@ -152,7 +152,7 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
     atlas: { maps: [], lastTalk: null },
     battle: {
       kind: "wild",
-      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", states: [], stats, moves: [], statStages: stages, partyIndex: 0 },
+      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", states: [], encoredSlot: null, stats, moves: [], statStages: stages, partyIndex: 0 },
       enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", states: [], statStages: stages, movesSeen: [] },
       inPc: pc,
       fights: [],
@@ -201,7 +201,7 @@ describe("the battle facts", () => {
       { name: "SEISMIC TOSS", type: "FIGHTING", effect: 87, power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
       { name: "WATER GUN", type: "WATER", effect: 0, power: 40, accuracy: 100, pp: 0, maxPp: 25, description: "" },
     ];
-    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
+    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], encoredSlot: null, stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
     const bulbasaur = { ...squirtle, species: "BULBASAUR", nickname: "BULBASAUR", types: ["GRASS", "POISON"], hp: 20, stats: { attack: 11, defense: 11, speed: 10, spAttack: 13, spDefense: 13 }, moves: [] };
     const now: Battle = { kind: "trainer", player: squirtle, enemy: bulbasaur };
     const before: Battle = { kind: "trainer", player: { ...squirtle, hp: 22 }, enemy: { ...bulbasaur, hp: 22 } };
@@ -258,7 +258,7 @@ describe("the battle facts", () => {
     const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
     const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
     const move = (name: string, type: string, effect: number, pp = 10) => ({ name, type, effect, power: null, accuracy: 100, pp, maxPp: 10, description: "" });
-    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], stats, statStages: { ...stages, defense: 6 }, moves: [], partyIndex: 0 };
+    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], encoredSlot: null, stats, statStages: { ...stages, defense: 6 }, moves: [], partyIndex: 0 };
     const nidoran = { ...ivysaur, species: "NIDORAN♀", nickname: "NIDORAN♀", types: ["POISON"], status: "sleep" as const, states: ["seeded"], statStages: { ...stages, attack: -6 } };
     const geodude = { ...nidoran, species: "GEODUDE", nickname: "GEODUDE", types: ["ROCK", "GROUND"], status: "none" as const, states: ["behind a SUBSTITUTE"], statStages: stages };
     const chart = { effects: [{ attack: "ELECTRIC", defense: "GROUND", multiplier: 0 }], special: ["ELECTRIC", "GRASS"] };
@@ -269,6 +269,9 @@ describe("the battle facts", () => {
       return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     };
     const statusMoves = [move("POISONPOWDER", "POISON", 66), move("SLEEP POWDER", "GRASS", 1), move("LEECH SEED", "GRASS", 84), move("GROWL", "NORMAL", 18)];
+    const underEncore = prompt({ ...ivysaur, moves: statusMoves, encoredSlot: 1 }, nidoran);
+    expect(underEncore).toMatch(/^- fight 1: SLEEP POWDER .* The ENCORE allows only this move\.$/m);
+    expect(underEncore).not.toContain("- fight 0:");
     expect(prompt({ ...ivysaur, moves: statusMoves }, nidoran)).toContain(
       [
         "- fight 0: POISONPOWDER (POISON, power ---, accuracy 100, PP 10/10). No effect: the foe is a POISON type.",
@@ -502,7 +505,7 @@ describe("the review turn", () => {
         "- Where are you on the way to the next Milestone?",
         "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
         "- What do the signs and the people tell you? Which of your guesses do they confirm?",
-        "- Which exits, edges and unseen cells are left to explore?",
+        "- Which exits, edges, unseen cells and leads are left to explore?",
         "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
         '- Write in "remove" the numbers of the sentences of your Memory tree that are false now or useless, 5 at most, or an empty list. The number of a sentence is the [n] before it. You cannot change a sentence.',
         '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',

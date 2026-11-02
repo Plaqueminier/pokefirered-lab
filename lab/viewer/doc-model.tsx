@@ -88,7 +88,7 @@ const ANSWER = [
 
 // A copy of the actions of the model bot at each screen: change it with them.
 const SCREENS = [
-  { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "the map as a grid: `?` not seen, a letter is a target"], actions: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"] },
+  { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "the map as a grid: `?` not seen, `-` `_` `[` `]` a thin wall, a letter is a target"], actions: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"] },
   { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES"], actions: ["choose", "zoom"] },
   { title: "⚔️ Battle action", adds: ["your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use", "zoom"] },
   { title: "🎯 Move menu", adds: ["the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "zoom", "press"] },
@@ -136,7 +136,7 @@ export function PromptPage() {
         ["Walk", "an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: `?` is a cell not seen, a letter is a target (`go B`)."],
         [
           "Targets",
-          "in groups (exits, unseen cells, people and signs, far maps), each with its distance and direction (a wide exit, with neighbour cells that lead to the same map, is one target), and the marks talked (with the last text of the person), read or taken. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
+          "in groups (exits, unseen cells, people and signs, leads, far maps), each with its distance and direction (a wide exit, with neighbour cells that lead to the same map, is one target), and the marks talked (with the last text of the person), read or taken. A door, stairs or a mat that the player took shows its arrival cell. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A target in another part of the map shows the number of exits to it, not a direction; with no known exits to it, it keeps its direction and says “no seen way there yet”. The leads are at most 4: the nearest unseen cells and exits not taken in other parts and cave or building maps, and `go` walks to them across the maps. The unseen cells of a room that fits on the screen are no lead. When the part of the player has no unseen cell and the map has some, a line says so. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
         ],
         [
           "Guide",
@@ -184,6 +184,8 @@ export function PromptPage() {
         ["Impossible action", "the same conversation continues with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example."],
         ["Word screen", "when the Harness left the word screen of a profile, the last decisions add one line: the program left it, a profile gives nothing in the game, and the model must choose NO when a person asks for its profile."],
         ["Blocked edge", "an edge with water between the two maps: only SURF crosses it. The extract and the full Atlas say “you cannot go there now” with the reason, the edge is not a target, and a `goTo` past it gives the same reason. A `goTo` past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell."],
+        ["Part", "the cells of a map that the player can walk to from one cell, on the cells that it saw and with no other map on the way. The code makes the parts from the Atlas only. The line of a map one exit away gives, for each part where its exits arrive, the exits of that part. A walk through exits stops at an outdoor map, except the map of the player."],
+        ["Thin wall", "an open cell with a wall on one side (`-` north, `_` south, `[` west, `]` east in the grid): no step across that side, in both directions. It can make two parts on one floor, as on B2F of Mt Moon."],
         ["Fixed obstacle", "the cut tree, the rock of ROCK SMASH and the boulder of STRENGTH: not people. Their cell is blocked, and `goTo` never waits for them. A `goTo` that only a fixed obstacle stops is impossible at once, and the reason names the obstacle, its cell and the move. The extract and the full Atlas list them with the move and no letter."],
       ]}
     >
@@ -224,6 +226,8 @@ export function PromptPage() {
       <div class={GRID3}>
         <DocCard title="📘 Guide in the rules" lines={["read the signs, talk to the people", "write guesses in the notes, and check them", "keep the POTIONS; make a balanced team", "run from a wild battle that goes badly", "compare the levels before a trainer"]} />
         <DocCard title="🌊 Blocked edge" lines={["water between two maps: only SURF crosses it", "not a target; a `goTo` past it is impossible, with the reason"]} />
+        <DocCard title="🧩 Part" lines={["the cells that the player can walk to on one map", "another part shows the number of exits to it, or “no seen way there yet”", "the leads keep the unseen cells of the other parts"]} />
+        <DocCard title="🧱 Thin wall" lines={["`-` `_` `[` `]`: a wall on the north, south, west or east side of an open cell", "no step across it, in both directions"]} />
         <DocCard title="🪨 Fixed obstacle" lines={["a cut tree, a rock, a boulder: not people", "a `goTo` that only it stops is impossible at once, with the move"]} />
       </div>
     </Page>
@@ -252,7 +256,7 @@ export function ProgressPage() {
         ["Loop warning", "when the last 3 decisions that played an action played the same actions with the same results, the prompt adds one line “Warning: …” after the tries since the last progress. A `zoom` or a `viewAtlas` does not count."],
         ["Notes", "a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with “Guess:”, or the advice of a person that helps later (“A person said: you can never have too many Poké Balls”). When a note becomes false or ends (a guess disproved, a person that moved, a trainer beaten), the model writes a new note that says so. Never HP or PP values. The program removes a sentence with an HP or PP number and a note with nearly the same words as one of the last 32 notes (a number, a negation or “Guess:” in only one of them makes two facts), and it writes “Guess:” before a sentence with a word like “might” or “likely”."],
         ["Character turn", "the first Model call of a Run with no Pokémon. The program selects an idea at random (a shy baker), and the model writes the first Pokémon in `starter`, and the style of the nicknames and the trainer in `character`. Each later prompt has “Your character: …”. At a Poké Ball, the program answers with no Model call: YES to this Pokémon, NO to another. The panel “Model” shows the character in a block on each Model call, and “Normal trainer” for a Run with no Character turn. There is no block while a Character turn has no readable answer."],
-        ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run, the other Model calls its reasoning level. The panel “Model” shows the text of the reasoning in a block."],
+        ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run, the other Model calls its reasoning level. After an empty answer, when the reasoning took all the tokens, the next calls of the same turn use the reasoning level. The panel “Model” shows the text of the reasoning in a block."],
         ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review`, `reasoning` (the text of the reasoning) and `removed` (the sentences that a Review turn removed, with their nodes). The panel “Model” shows `reflection` and `review` as flags, `stuck` as a chip of the shown call, and `removed` in a “Removed” line under the note."],
       ]}
     >

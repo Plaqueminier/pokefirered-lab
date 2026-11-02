@@ -172,8 +172,8 @@ export class MenuDriver {
   }
 
   input(keys: number, watch?: () => void): Outcome {
-    const battle = this.tap(keys);
-    return battle ? BATTLE_INTERRUPTION : this.untilDecision(watch);
+    const pressed = this.pressUntilRead(keys);
+    return pressed.status === "done" ? this.untilDecision(watch) : pressed;
   }
 
   untilDecision(watch: () => void = () => {}): Outcome {
@@ -191,10 +191,8 @@ export class MenuDriver {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
     };
-    // Wireless tasks in a Pokémon Center make some frames skip the keys.
-    const press = (keys: number) => this.menuToDecision(keys);
-    const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns), press);
-    return moved.status === "done" ? press(Keys.A) : moved;
+    const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns));
+    return moved.status === "done" ? this.input(Keys.A) : moved;
   }
 
   fight(move: number): Outcome & Partial<Texts> {
@@ -202,8 +200,9 @@ export class MenuDriver {
     const { player } = game.requireBattle();
     const chosen = player.moves[move];
     if (!chosen) return impossible(`the Pokémon has no move ${move}`);
-    // The game opens no move menu: FIGHT plays STRUGGLE at once.
+    // The game opens no move menu: FIGHT plays STRUGGLE or the ENCORE move at once (HandleTurnActionSelectionState).
     if (struggles(player)) return game.waitingFor().kind === "battleAction" ? this.turn("battleAction", FIGHT_CURSOR) : impossible("the move menu is open, but no move has PP");
+    if (player.encoredSlot !== null) return move === player.encoredSlot ? this.turn("battleAction", FIGHT_CURSOR) : impossible(`the ENCORE allows only fight ${player.encoredSlot}`);
     if (chosen.pp === 0) return impossible(`${chosen.name} has no PP`);
     if (game.waitingFor().kind === "battleAction") {
       const opened = this.select("battleAction", FIGHT_CURSOR);
@@ -300,7 +299,7 @@ export class MenuDriver {
   }
 
   leave(): Outcome & Texts {
-    if (this.game.waitingFor().kind === "itemPc") return withText(this.menuToDecision(Keys.B));
+    if (this.game.waitingFor().kind === "itemPc") return withText(this.input(Keys.B));
     const menu = this.toShopMenu();
     if (menu.status !== "done") return withText(menu);
     const left = this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop");
@@ -378,7 +377,7 @@ export class MenuDriver {
     if (game.waitingFor().kind !== "partyPick") return withText(impossible("the party menu does not open"));
     const sent = this.sendOut(game.battleMenuSlot(slot));
     if (sent.status !== "impossible") return sent;
-    const closed = this.menuToDecision(Keys.B);
+    const closed = this.input(Keys.B);
     return closed.status === "done" ? sent : withText(closed, sent.text);
   }
 
@@ -514,7 +513,7 @@ export class MenuDriver {
   private endWalkUse(item: string, id: number, before: number, text: string[]): Outcome & Partial<Texts> {
     const { game } = this;
     if (game.mode() === "overworld") {
-      const escaped = this.menuToDecision(Keys.A);
+      const escaped = this.input(Keys.A);
       return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
     }
     const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
@@ -681,8 +680,7 @@ export class MenuDriver {
     const cursor = () => (game.waitingFor().kind === menu ? game.battleCursor(menu) : null);
     const moved = this.moveCursor(target, cursor, (at) => gridKey(at, target));
     if (moved.status !== "done") return moved;
-    const battle = this.tap(Keys.A);
-    return battle ? BATTLE_INTERRUPTION : this.untilDecision(watch);
+    return this.input(Keys.A, watch);
   }
 
   private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number, press = (keys: number) => this.input(keys)): Outcome {
@@ -711,10 +709,6 @@ export class MenuDriver {
     return { status: "done" };
   }
 
-  private menuToDecision(keys: number): Outcome {
-    return this.menuInput(keys, () => this.game.waitingFor().kind !== "busy");
-  }
-
   private menuInput(keys: number, ready: () => boolean): Outcome {
     const pressed = this.pressUntilRead(keys);
     return pressed.status === "done" ? this.untilReady(ready) : pressed;
@@ -722,7 +716,8 @@ export class MenuDriver {
 
   // A menu reads the keys from the frame after the frame that shows it.
   private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
-    if (this.tap(keys)) return BATTLE_INTERRUPTION;
+    const pressed = this.pressUntilRead(keys);
+    if (pressed.status !== "done") return pressed;
     for (let frames = 0; !shown(); frames++) {
       if (frames === DECISION_FRAME_LIMIT) return impossible(`the game does not show ${screen} after ${DECISION_FRAME_LIMIT} frames`);
       if (this.frames.advance(0)) return BATTLE_INTERRUPTION;
@@ -730,7 +725,7 @@ export class MenuDriver {
     return this.frames.advance(0) ? BATTLE_INTERRUPTION : { status: "done" };
   }
 
-  // A slow menu reads the input on some frames only: wait for it to read the release, then press the keys until it reads them.
+  // A slow frame of the game skips the keys, so a press of one frame can be lost.
   private pressUntilRead(keys: number): Outcome {
     const { game } = this;
     for (const [held, read] of [

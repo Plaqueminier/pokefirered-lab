@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type Obstacle, type WarpExit } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type Obstacle, OPPOSITE, WALL, type WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
 export type Place = Cell & { map: string };
@@ -18,7 +18,7 @@ export type MapSource = (name: string) => RouteMap | null;
 
 export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight">;
 
-const WALKABLE = new Set<string>([KIND.open, KIND.grass]);
+const WALKABLE = new Set<string>([KIND.open, KIND.grass, ...Object.values(WALL)]);
 const WARP_COST = 4;
 export const MAX_ROUTE_MAPS = 32;
 
@@ -96,6 +96,7 @@ function* edges(place: Place, load: MapSource): Generator<Edge> {
       if (across) yield { to: across, move: walk, cost: 1, leaves: true };
       continue;
     }
+    if (wallBetween(map, place, direction)) continue;
     if (kindAt(map, next) === LEDGE[direction]) {
       const landing = { map: place.map, x: next.x + dx, y: next.y + dy };
       if (inside(map, landing) && free(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: 2, leaves: false };
@@ -112,19 +113,26 @@ function* edges(place: Place, load: MapSource): Generator<Edge> {
   }
 }
 
-/** A cell of the player's map can be an exit: a warp that the player can take, or the cell past an edge with a neighbour map. */
+// The exit task of a door moves the player off its cell (SetUpWarpExitTask), so a walk cannot end on it.
 export function destinationOf(cell: Place, canExit: boolean, load: MapSource): Destination {
-  const map = canExit ? load(cell.map) : null;
+  const map = load(cell.map);
+  const warp = map && warpAt(map, cell);
+  if (!canExit) return warp && "from" in warp && warp.from ? { map: cell.map, ...warp.from } : cell;
   const arrival = map && exitArrival(map, cell, load);
   return arrival && arrival.map !== cell.map ? { ...arrival, exit: true } : cell;
 }
 
 export function reached(destination: Destination, here: Place): boolean {
-  return destination.exit ? here.map === destination.map : here.map === destination.map && here.x === destination.x && here.y === destination.y;
+  const steps = Math.abs(here.x - destination.x) + Math.abs(here.y - destination.y);
+  return here.map === destination.map && steps <= (destination.exit ? 1 : 0);
+}
+
+function warpAt(map: RouteMap, { x, y }: Cell): WarpExit | undefined {
+  return map.warps.find((w) => w.how !== "none" && w.x === x && w.y === y);
 }
 
 function exitArrival(map: RouteMap, cell: Cell, load: MapSource): Place | null {
-  const warp = map.warps.find((w) => w.how !== "none" && w.x === cell.x && w.y === cell.y);
+  const warp = warpAt(map, cell);
   if (warp) return arrivalOf(warp, load);
   const side = pastEdge(map, cell);
   return side && acrossConnection(map, { map: map.name, ...cell }, side, load);
@@ -201,6 +209,11 @@ export function kindAt(map: MapCells, c: Cell): string {
 
 export function walkable(map: MapCells, c: Cell): boolean {
   return inside(map, c) && WALKABLE.has(kindAt(map, c));
+}
+
+export function wallBetween(map: MapCells, from: Cell, direction: Direction): boolean {
+  const [dx, dy] = DIRECTION_STEP[direction];
+  return kindAt(map, from) === WALL[direction] || kindAt(map, { x: from.x + dx, y: from.y + dy }) === WALL[OPPOSITE[direction]];
 }
 
 export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {

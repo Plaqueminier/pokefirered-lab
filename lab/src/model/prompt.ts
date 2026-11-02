@@ -83,7 +83,7 @@ At each decision, you get your Milestones, the next Milestone (the next big step
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and ? for the cells that you did not see on the screen, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree, a rock or a boulder) with the move that removes each one, the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows where it leads only when you went through it, and a door, stairs or a mat then also shows the cell where you arrive. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. The leads are what you did not explore in other parts and maps: unseen cells and exits not taken. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the doors that you did not enter, the unseen cells left and the fixed obstacles.
 
 In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
 
@@ -136,7 +136,7 @@ const REVIEW = [
   "- Where are you on the way to the next Milestone?",
   "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
   "- What do the signs and the people tell you? Which of your guesses do they confirm?",
-  "- Which exits, edges and unseen cells are left to explore?",
+  "- Which exits, edges, unseen cells and leads are left to explore?",
   "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
   `- Write in "remove" ${REMOVE_RULE}. The number of a sentence is the [n] before it. You cannot change a sentence.`,
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
@@ -520,10 +520,11 @@ function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()):
 
 function fights({ player, fights: facts }: BattleState): string[] {
   if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
-  return player.moves.map((move, i) => {
+  return player.moves.flatMap((move, i) => {
+    if (player.encoredSlot !== null && player.encoredSlot !== i) return [];
     const fact = facts[i];
     const about = move.pp === 0 ? ". No PP: you cannot use it." : !fact ? "" : "noEffect" in fact ? `. No effect: ${fact.noEffect}.` : `. On the foe: ${fightText(fact)}.`;
-    return `- fight ${i}: ${move.name} (${moveText(move)})${about}`;
+    return [`- fight ${i}: ${move.name} (${moveText(move)})${about}${player.encoredSlot === i ? " The ENCORE allows only this move." : ""}`];
   });
 }
 

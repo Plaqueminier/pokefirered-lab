@@ -81,8 +81,8 @@ export type PrintedMove = { partyIndex: number; move: number };
 
 type StatStages = Record<StageName, number>;
 
-/** `states` are the volatile states of the battle, for example "seeded" or "confused". */
-export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages };
+/** `states` are the volatile states of the battle, for example "seeded" or "confused". `encoredSlot`: the only move that FIGHT can play under an ENCORE. */
+export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages; encoredSlot: number | null };
 
 export type Battle = { kind: "trainer" | "wild"; player: BattleMon & { partyIndex: number }; enemy: BattleMon & { partyIndex: number } };
 
@@ -240,10 +240,16 @@ function battleMon(mem: Memory, battler: number, decode: Decode): BattleMon {
     maxHp: mon.field("maxHP").int(),
     status: statusOf(mon.field("status1").int()),
     states: battleStates(mem, battler, mon.field("status2").int(), decode),
+    encoredSlot: encoredSlot(mem, battler),
     moves: readMoves(mem, decode, mon.field("ppBonuses").int(), (slot) => ({ move: mon.field("moves").at(slot).int(), pp: mon.field("pp").at(slot).int() })),
     stats: readStats(mon),
     statStages: Object.fromEntries(STAGE_NAMES.map((name, i) => [name, stages.at(i + 1).int() - DEFAULT_STAT_STAGE])) as StatStages,
   };
+}
+
+function encoredSlot(mem: Memory, battler: number): number | null {
+  const disable = mem.global("gDisableStructs").at(battler);
+  return disable.field("encoredMove").int() === MOVE_NONE ? null : disable.field("encoredMovePos").int();
 }
 
 function battleStates(mem: Memory, battler: number, status2: number, decode: Decode): string[] {

@@ -21,7 +21,7 @@ type MacroScreen = (typeof MACRO_SCREENS)[number]["id"];
 
 // Exactly one entry for each Macro-action of the Harness (doc.test.ts).
 export const MACRO_DOC: { form: string; when: string; effect: string; cards: Partial<Record<MacroScreen, string>> }[] = [
-  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell, it takes the exit.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
+  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
   { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, an item.", cards: { walk: "turn to the next cell and press A" } },
   {
     form: "readText()",
@@ -36,7 +36,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     effect: "Moves the cursor to the option and presses A. Impossible for SOMEONE'S PC or BILL'S PC: the Pokémon storage is not covered.",
     cards: { choice: "yes/no, a script menu, the menus of the PC" },
   },
-  { form: "fight(move)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
+  { form: "fight(move)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE. Under an ENCORE, FIGHT plays the encored move, and another move is impossible.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
   { form: "switch(slot)", when: "battle", effect: "Sends another Pokémon of the party into the battle.", cards: { battle: "send another Pokémon" } },
   { form: "send(slot)", when: "party menu of a battle", effect: "Sends a Pokémon, for example after a faint.", cards: { battle: "send a Pokémon after a faint" } },
   { form: "swap(first, second)", when: "walk", effect: "Changes the order of two Pokémon of the party.", cards: { walk: "change the order of two Pokémon" } },

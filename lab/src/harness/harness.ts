@@ -465,6 +465,7 @@ export class Harness {
           return waiting.kind === "choice" ? waiting.options.map((option) => ({ name, option })) : [];
         case "fight": {
           const { player } = game.requireBattle();
+          if (player.encoredSlot !== null) return [{ name, move: player.encoredSlot }];
           return struggles(player) ? [{ name, move: 0 }] : player.moves.flatMap((m, move) => (m.pp > 0 ? [{ name, move }] : []));
         }
         case "run":

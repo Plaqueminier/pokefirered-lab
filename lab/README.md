@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 14, no goal). It asks an AI model on OpenRouter for each decision (ADR 0003).
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 15, no goal). It asks an AI model on OpenRouter for each decision (ADR 0003).
 
 1. Put an OpenRouter key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file.
 2. In `lab/`:
