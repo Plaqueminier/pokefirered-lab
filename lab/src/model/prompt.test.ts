@@ -448,6 +448,8 @@ describe("the rules and the character turn", () => {
     expect(userPrompt(observation, asked, [], NO_TURN)).not.toContain("Your character:");
   });
 
+  const characterAnswer = (fields: { character?: string; starter?: string; name?: string; rival?: string }) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character: "A shy baker.", starter: "SQUIRTLE", name: "Mira", rival: "Crumb", ...fields });
+
   test("a character turn with a free starter asks the character for the starter; with a given starter it tells the starter", () => {
     const free = characterTurn("free", null, () => 0.5).join("\n");
     expect(free).toContain("CHARMANDER, BULBASAUR or SQUIRTLE");
@@ -455,15 +457,44 @@ describe("the rules and the character turn", () => {
     const given = characterTurn("SQUIRTLE", null).join("\n");
     expect(given).toContain("The first Pokémon of this trainer is SQUIRTLE.");
     expect(given).not.toContain("BULBASAUR");
-    const answer = (character?: string, starter?: string) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character, starter, name: "Mira", rival: "Crumb" });
+    const answer = (character?: string, starter?: string) => characterAnswer({ character, starter });
     expect(readCharacterDecision(answer(" A shy baker. ", "SQUIRTLE"), "free", null)).toMatchObject({ character: "A shy baker.", starter: "SQUIRTLE" });
     expect(() => readCharacterDecision(answer("A shy baker.", "PIKACHU"), "free", null)).toThrow('"starter" must be BULBASAUR, CHARMANDER or SQUIRTLE');
     expect(readCharacterDecision(answer("A shy baker.", "PIKACHU"), "SQUIRTLE", null).starter).toBe("SQUIRTLE");
     expect(() => readCharacterDecision(answer(), "SQUIRTLE", null)).toThrow('the answer has no string "character"');
   });
 
+  describe("the idea of a character turn", () => {
+    const idea = (trait: number, job: number, hobby: number) => {
+      const draws = [0, trait, job, hobby];
+      return characterTurn("free", null, () => draws.shift() ?? 0).find((line) => line.includes("Start from this idea"));
+    };
+
+    test("the idea has a trait, a job and a hobby", () => {
+      expect(idea(0, 0, 0)).toBe("- Start from this idea, and make it your own: a shy baker who collects old maps.");
+      expect(idea(0.999, 0.999, 0.999)).toBe("- Start from this idea, and make it your own: a generous gym teacher who collects rocks.");
+    });
+
+    test("the program selects from 100 jobs, 12 traits and 33 hobbies, with no word two times", () => {
+      const distinctIdeas = (draw: (part: number) => string | undefined) => new Set(Array.from({ length: 1000 }, (_, i) => draw((i + 0.5) / 1000))).size;
+      expect(distinctIdeas((part) => idea(0, part, 0))).toBe(100);
+      expect(distinctIdeas((part) => idea(part, 0, 0))).toBe(12);
+      expect(distinctIdeas((part) => idea(0, 0, part))).toBe(33);
+    });
+  });
+
+  test("the nicknames of a character turn mix the job and the hobby", () => {
+    expect(characterTurn("free", null, () => 0.5)).toContain("- Choose a style for the nicknames of this trainer, that mixes the job and the hobby.");
+  });
+
+  test("the character has 400 characters at most", () => {
+    expect(characterTurn("free", null, () => 0.5).join("\n")).toContain('Write in "character", in at most 400 characters');
+    expect(CHARACTER_SCHEMA.properties.character.description).toContain("400 characters at most");
+    expect(readCharacterDecision(characterAnswer({ character: "x".repeat(500) }), "free", null).character).toHaveLength(400);
+  });
+
   describe("the names of a character turn", () => {
-    const answer = (name?: string, rival?: string) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character: "A shy baker.", starter: "SQUIRTLE", name, rival });
+    const answer = (name?: string, rival?: string) => characterAnswer({ name, rival });
 
     test("the turn asks for the two names and tells their rules, and the schema requires them", () => {
       const turn = characterTurn("free", null, () => 0.5).join("\n");

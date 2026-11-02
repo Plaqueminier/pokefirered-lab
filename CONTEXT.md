@@ -61,7 +61,7 @@ The number of **Decision points** of a **Run** since its last progress. Progress
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Character turn**:
-The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and the style of the nicknames. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
+The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker who collects old maps. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and a style of the nicknames; the request asks that this style mixes the job and the hobby of the idea. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
 _Avoid_: persona call, personality turn
 
 **Normal trainer**:

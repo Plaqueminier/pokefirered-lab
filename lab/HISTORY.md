@@ -163,7 +163,7 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     At the end of the quota, the Run ends with `plan limit`, and a Continued Run plays on later. The game is frozen, so the Run could wait, but it would then take quota with no request from a person, and that can block the work of the user. A provider that is not installed or not logged in is disabled in the form, so the Select gets a disabled state for one option. The user decided on no new automated tests for this feature.
 
-    The Doc gets a page "Model providers": how to log in, how to start a Run, which Token limit to choose and what to do when a provider does not start. With the overhead of each tool, the first rival battle takes about 420k tokens on Claude Code and 360k on Codex. These two values are estimates, because no long Run has used a Plan provider yet.
+    The Doc gets a page "Model providers": how to log in, how to start a Run, which Token limit to choose and what to do when a provider does not start. With the overhead of each tool, the first rival battle takes about 420k tokens on Claude Code and 360k on Codex. These two values are estimates, because no long Run had used a Plan provider when this entry was written.
 
 ## 15. The model names its trainer and its rival (2026-11-02)
 
@@ -185,7 +185,7 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     82 of the 555 `goTo` of these Runs went to a `#` cell. The texts of the model read `#` as a wall, but its reasoning counts the columns by hand, so the fault looks like an incorrect count. The answer was "no route", which did not tell the model that. A `#` cell that the player saw now gets its own reason. A cell that the player did not see stays "no route", so the reason does not show what the player did not see. This does not stop the wrong count, and a false note of the model can also still send it to a wrong place.
 
-    Run 00037, on version 15, shows the cost of the false word. At (5, 13) in Viridian Forest, the way out to Pewter City was 4 cells north, in the prompt as `cave entrance at (5, 9), 4 north: not taken`. The model wrote "the north-west route is walled" and walked to the unseen cells 26 cells east. The grid was correct: its 2 658 seen cells all agree with the collision data of the map. This exit now reads `entrance at (5, 9), 4 north: a gate building, not taken`. No Run has played this text yet, so it is not known if the model now takes this exit.
+    Run 00037, on version 15, shows the cost of the false word. At (5, 13) in Viridian Forest, the way out to Pewter City was 4 cells north, in the prompt as `cave entrance at (5, 9), 4 north: not taken`. The model wrote "the north-west route is walled" and walked to the unseen cells 26 cells east. The grid was correct: its 2 658 seen cells all agree with the collision data of the map. This exit now reads `entrance at (5, 9), 4 north: a gate building, not taken`. When this entry was written, no Run had played this text, so it was not known if the model takes this exit. Runs 00041 to 00044, on version 18, all took this exit.
 
 60. The model bot goes to version 18, for a clearer map. On the last map of Viridian Forest in Run 00037, only 29 of the 1 049 `?` cells were next to an open cell. So a `?` now stands only where an open cell that the player saw leads to an unseen cell, and every other unseen cell is blank. The same rule makes the unseen cells of the targets and the signs of the grid agree. The column numbers come again every 10 rows, because the model counted columns by hand, and the legend lists only the signs of the map. Each sign has its own entry in the legend, so a map with only `v` does not list `^`, `<` or `>`. The full Atlas has its own legend.
 
@@ -193,4 +193,18 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     A blank cell still counts as unseen for the line under the map. The code must not read the kind of an unseen cell, so it cannot tell a wall from a part that the player never saw. A review showed the cost: when the line used "no `?` on the map" to say that all the map was seen, Route 4 got "You saw all the cells of this map" with 1 593 of its 2 160 cells unseen, and 745 of these cells open. So this line stands only with no unseen cell at all, and most maps keep "your part of this map".
 
-    No Run has played version 17 or 18 yet, so the effect on the model is not known. The first things to check are the exit of Viridian Forest, Mt. Moon and Route 4, and the number of `goTo` that aim at a `#` (82 of 555 before).
+    When this change was made, no Run had played version 17 or 18, so the effect on the model was not known. The first things to check are the exit of Viridian Forest, Mt. Moon and Route 4, and the number of `goTo` that aim at a `#` (82 of 555 before).
+
+## 17. More ideas for a character (2026-11-02)
+
+61. The model bot goes to version 19, for more diverse characters. The idea of the Character turn had 18 jobs and 12 traits. In the 12 Runs 00026 to 00037, the nicknames came from the job 12 times: two street musicians gave Chord and Tempo, a tailor gave Velour and Serge. With a free starter, in 11 of these Runs, CHARMANDER came 7 times, BULBASAUR 3 times and SQUIRTLE 1 time. With 18 jobs, 12 Runs have the same job two times about 99 % of the time.
+
+    The 5 Runs of version 18 with a character (00038 and 00041 to 00044, on GPT models) gave 4 nickname styles from the job, and one from the job and the trait (lucky charms and healing herbs, for a superstitious nurse). They chose SQUIRTLE 2 times, BULBASAUR 2 times and CHARMANDER 1 time. All their names were correct, for example Penny and Blaze, but one rival is only `Rival`.
+
+    The idea now has 100 jobs, 12 traits and 33 hobbies, for example a shy baker who collects old maps. This gives 39 600 ideas, and 12 Runs have the same job two times about 50 % of the time. The request now asks for a style of nicknames that mixes the job and the hobby, because the model could otherwise use only the job.
+
+    The old rule was that the words suggest no type. The new lists drop it on purpose: firefighter or sailor can push the first Pokémon, and this is part of the character. The rule came from the test of item 51, where a plain request to invent gave CHARMANDER 10 times in 12 answers.
+
+    The limit of `character` goes from 300 to 400 characters, because 3 of the 12 answers reached 300 and lost their end, two in the middle of a word. The 5 Runs of version 18 stayed under 200 characters, so this limit matters only for some models. This change keeps the sentence "what the trainer likes, fears and wants", which gives many answers the same form. It also adds no rule for how the trainer plays.
+
+    When this change was made, no Run had played version 19, so the effect on the model was not known. The first things to check are the first Pokémon, whether the nicknames really use the hobby, whether they stay in the 10 characters of a nickname, and whether the answers still reach 400 characters.
