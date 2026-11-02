@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { BattleSide, StateEntry } from "../src/protocol";
 import { RACE_VERSION, type RaceFile, type RaceRun } from "../src/race/file";
-import { framedBox, type GhostWorld, RaceGhosts } from "./race-ghosts";
+import { framedBox, type GhostWorld, modelFamily, RaceGhosts, shortModelId } from "./race-ghosts";
 
 const PALLET = "3.0";
 const ROUTE = "3.1";
@@ -46,6 +46,27 @@ function ghostsOf(...runs: RaceRun[]): RaceGhosts {
   const race: RaceFile = { version: RACE_VERSION, runs };
   return new RaceGhosts(race, world);
 }
+
+test("the family of a model comes from its id alone", () => {
+  for (const id of ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4.1-flash"]) expect(modelFamily(id)).toBe("deepseek");
+  for (const id of ["gpt-5.6-terra", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-6.-luna", "openai/gpt-5.5"]) expect(modelFamily(id)).toBe("gpt");
+  for (const id of ["haiku", "sonnet", "opus", "fable", "claude-sonnet-5-5", "anthropic/claude-opus-5.5"]) expect(modelFamily(id)).toBe("claude");
+});
+
+test("a model of another family, or no model, has no family", () => {
+  for (const id of ["", "a/b", "mistralai/mistral-large", "haiku-of-another-maker", "my-gpt-copy"]) expect(modelFamily(id)).toBeNull();
+});
+
+test("the short id of a model has no prefix", () => {
+  expect(shortModelId("deepseek/deepseek-v4.1-flash")).toBe("deepseek-v4.1-flash");
+  expect(shortModelId("haiku")).toBe("haiku");
+  expect(shortModelId("")).toBe("");
+});
+
+test("a Ghost gives the model of its Run", () => {
+  const ghosts = ghostsOf(run({ model: "deepseek/deepseek-v4-flash", points: [[0, 3, 0, 5, 5, 0]] }), run({ number: 2, model: "haiku", points: [[0, 3, 0, 5, 5, 0]] }));
+  expect(ghosts.at(0).ghosts.map(({ model }) => model)).toEqual(["deepseek/deepseek-v4-flash", "haiku"]);
+});
 
 test("a step: the Ghost slides from its cell to the next one in 16 frames, with a walk frame in the first half and its new facing", () => {
   const ghosts = ghostsOf(run({ points: [[0, 3, 0, 5, 5, 0], [100, 3, 0, 5, 4, 1], [200, 3, 0, 5, 3, 1]] }));

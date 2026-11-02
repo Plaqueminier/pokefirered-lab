@@ -10,6 +10,22 @@ const DOOR_REACH = 2;
 const BADGE_PREFIX = "badge-";
 const NO_BADGES: boolean[] = new Array(8).fill(false);
 
+export type ModelFamily = "deepseek" | "claude" | "gpt";
+
+// The aliases of the claude command: a Race file holds only the id, with no provider.
+const CLAUDE_ALIASES = ["haiku", "sonnet", "opus", "fable"];
+
+export function shortModelId(id: string): string {
+  return id.slice(id.lastIndexOf("/") + 1);
+}
+
+export function modelFamily(id: string): ModelFamily | null {
+  const short = shortModelId(id);
+  if (short.startsWith("deepseek")) return "deepseek";
+  if (short.startsWith("gpt-")) return "gpt";
+  return short.startsWith("claude") || CLAUDE_ALIASES.includes(short) ? "claude" : null;
+}
+
 export type GhostWorld = { places: readonly WorldPlace[]; maps: readonly Pick<WorldMap, "key" | "warps" | "door">[] };
 
 type GhostBattle = Extract<StateEntry, { kind: "battle" }>;
@@ -23,6 +39,7 @@ export type GhostPlace = { kind: "world"; x: number; y: number; scale: number } 
 export type GhostNow = {
   run: number;
   number: number;
+  model: string;
   character: string;
   map: string;
   x: number;
@@ -275,7 +292,7 @@ export class RaceGhosts {
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
     const battle = battleAt(ghost, frame);
-    const now: GhostNow = { run: index, number: run.number, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
+    const now: GhostNow = { run: index, number: run.number, model: run.model, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

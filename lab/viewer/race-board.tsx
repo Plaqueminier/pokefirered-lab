@@ -21,6 +21,7 @@ function Row({ view, ghost, rank, selected }: { view: RaceView; ghost: GhostNow;
       badges={<Badges got={ghost.stats.badges} />}
       cost={spendShort({ unit: ghost.unit, amount: ghost.stats.cost })}
       state={<GhostState ghost={ghost} />}
+      model={ghost.model}
       faded={ghost.result !== null}
       selected={selected}
       onClick={() => view.followGhost(ghost.run)}

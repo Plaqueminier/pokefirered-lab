@@ -3,6 +3,7 @@ import { h, render } from "preact";
 import type { EndReason } from "../src/harness/harness";
 import { TILE } from "../src/race/file";
 import type { Tone } from "./components";
+import type { ModelFamily } from "./race-ghosts";
 
 export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | undefined }> = {
   goal: { icon: Flag, tone: "ok" },
@@ -17,7 +18,7 @@ export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | und
   "unknown screen": { icon: CircleQuestionMark, tone: "info" },
 };
 
-export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; font: string; textSm: string; radius: number };
+export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; black: string; modelColor: (family: ModelFamily) => string; font: string; textSm: string; radius: number };
 
 export function raceTheme(element: Element): RaceTheme {
   const style = getComputedStyle(element);
@@ -35,6 +36,8 @@ export function raceTheme(element: Element): RaceTheme {
     bad: token("bad"),
     warn: token("warn"),
     line: token("line-strong"),
+    black: token("black"),
+    modelColor: (family) => token(`model-${family}`),
     font: value("font-sans"),
     textSm: value("text-sm"),
     radius: Number.parseFloat(value("radius-sm")),
@@ -53,6 +56,10 @@ function iconImage(icon: LucideIcon, color: string): HTMLImageElement {
 const LABEL_HEIGHT = 14;
 const ICON = 13;
 const BADGE_SIZE = TILE * 2;
+const DOT_SIZE = 8;
+const DOT_ROW = DOT_SIZE + 2;
+const CROWN = 14;
+const NAME_ROW = 19;
 
 export type Box = { x: number; y: number; w: number; h: number };
 
@@ -67,13 +74,14 @@ function touches(a: Box, b: Box): boolean {
 export type GhostLabel = {
   x: number;
   y: number;
-  text: string | null;
+  text: string;
   ended: boolean;
   group: boolean;
   battle: { trainer: boolean; count: number } | null;
   crown: boolean;
   result: EndReason | null;
   selected: string | null;
+  family: ModelFamily | null;
 };
 
 export class RaceMarks {
@@ -117,24 +125,47 @@ export class RaceMarks {
     ctx.fill();
   }
 
+  #dot(ctx: CanvasRenderingContext2D, x: number, y: number, family: ModelFamily): void {
+    ctx.fillStyle = this.#theme.modelColor(family);
+    ctx.strokeStyle = this.#theme.black;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, (DOT_SIZE - ctx.lineWidth) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  /** The label of a Ghost with no number shown: the dot takes the place of the pill. */
+  dotAlone(ctx: CanvasRenderingContext2D, x: number, y: number, family: ModelFamily | null): Box {
+    if (family) this.#dot(ctx, x, y, family);
+    const w = family ? DOT_SIZE : 0;
+    return { x: x - w / 2, y: y - LABEL_HEIGHT / 2, w, h: LABEL_HEIGHT };
+  }
+
   /** Gives the box of the label on the screen. */
-  label(ctx: CanvasRenderingContext2D, { x, y, text, ended, group, battle, crown, result, selected }: GhostLabel): Box {
+  label(ctx: CanvasRenderingContext2D, { x, y, text, ended, group, battle, crown, result, selected, family }: GhostLabel): Box {
     const { accent, accentFg, faint, fg, bad, warn } = this.#theme;
     ctx.font = this.#labelFont;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const width = text === null ? 0 : Math.max(16, ctx.measureText(text).width + 8);
-    if (text !== null) {
-      this.#pill(ctx, x - width / 2, y - LABEL_HEIGHT / 2, width, LABEL_HEIGHT, ended ? faint : group ? fg : accent);
-      ctx.fillStyle = ended ? fg : accentFg;
-      ctx.fillText(text, x, y + 0.5);
-    }
-    if (result && text !== null) {
+    const width = Math.max(16, ctx.measureText(text).width + 8);
+    this.#pill(ctx, x - width / 2, y - LABEL_HEIGHT / 2, width, LABEL_HEIGHT, ended ? faint : group ? fg : accent);
+    ctx.fillStyle = ended ? fg : accentFg;
+    ctx.fillText(text, x, y + 0.5);
+    if (result) {
       const left = x - width / 2 - ICON - 3;
       this.#disc(ctx, left + ICON / 2, y, ICON / 2 + 2.5, null);
       ctx.drawImage(this.#results[result], left, y - ICON / 2, ICON, ICON);
     }
-    if (crown) ctx.drawImage(this.#crown, x - 7, y - 21, 14, 14);
+    let top = y - LABEL_HEIGHT / 2;
+    if (family) {
+      top -= DOT_ROW;
+      this.#dot(ctx, x, top + DOT_SIZE / 2, family);
+    }
+    if (crown) {
+      top -= CROWN;
+      ctx.drawImage(this.#crown, x - CROWN / 2, top, CROWN, CROWN);
+    }
     if (battle) {
       const center = x + width / 2 + ICON / 2 + 4;
       this.#disc(ctx, center, y, ICON / 2 + 3, battle.trainer ? bad : warn);
@@ -145,8 +176,7 @@ export class RaceMarks {
         ctx.fillText(`${battle.count}`, center + ICON / 2 + 9, y + 0.5);
       }
     }
-    if (selected) this.selectedName(ctx, x, crown ? y - 40 : y - 26, selected);
-    const top = y - (crown ? 21 : LABEL_HEIGHT / 2);
+    if (selected) this.selectedName(ctx, x, top - NAME_ROW, selected);
     return { x: x - width / 2, y: top, w: width, h: y + LABEL_HEIGHT / 2 - top };
   }
 
@@ -193,7 +223,7 @@ export class RaceMarks {
     ctx.textBaseline = "middle";
     ctx.fillText(text, left + 19, top + h / 2 + 0.5);
     ctx.textAlign = "center";
-    if (crown) ctx.drawImage(this.#crown, x - 7, top - 15, 14, 14);
+    if (crown) ctx.drawImage(this.#crown, x - CROWN / 2, top - 15, CROWN, CROWN);
     return crown ? { x: left, y: top - 15, w, h: h + 15 } : { x: left, y: top, w, h };
   }
 

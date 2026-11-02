@@ -4,7 +4,7 @@ import type { Door, IslandLink, World, WorldGym, WorldMap, WorldPlace } from "..
 import { Store } from "./cursor";
 import { fitCanvas, RaceArt } from "./race-art";
 import { RaceCamera } from "./race-camera";
-import { framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
+import { framedBox, type GhostNow, modelFamily, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
 import { type Box, inBox, RaceMarks, type RaceTheme, raceTheme } from "./race-marks";
 import { FRAME_WIDTH, SHEET_HEIGHT } from "./race-sprite";
 
@@ -21,7 +21,6 @@ const HIT_MARGIN = 4;
 const HIT_MIN_WIDTH = 24;
 const ENDED_ALPHA = 0.4;
 const OFF_SCREEN = 60;
-const LABEL_REACH = 7;
 
 // Down, up, left, right: the stand frame and the two walk frames. The game mirrors the left frames for the right facing.
 const SPRITE_FRAMES = [
@@ -49,7 +48,7 @@ export function nearestGhost(hits: readonly GhostHit[], x: number, y: number): G
   for (const hit of hits) {
     const { box } = hit;
     if (Math.hypot(Math.max(box.x - x, 0, x - box.x - box.w), Math.max(box.y - y, 0, y - box.y - box.h)) > HIT_MARGIN) continue;
-    const distance = Math.hypot(box.x + box.w / 2 - x, box.y + box.h / 2 - y);
+    const distance = Math.hypot(box.x + box.w / 2 - x, box.y + box.h - y);
     if (distance < nearest) {
       nearest = distance;
       best = hit;
@@ -267,10 +266,12 @@ export class RaceView {
     const labels: Box[] = [];
     for (const { items: members } of groups.sort((a, b) => a.items[0].y - b.items[0].y)) {
       const lead = members.find(({ ghost }) => ghost.run === this.selected.value) ?? members.find(({ ghost }) => ghost.run === leader) ?? members.find(({ ghost }) => !ghost.result) ?? members[0];
-      labels.push(this.#drawLabel(frame, members, lead, labelY(lead.y), zoom));
+      const label = this.#drawLabel(frame, members, lead, labelY(lead.y), zoom);
+      labels.push(label);
       const group = members.map(({ ghost }) => ghost);
       const w = Math.max(FRAME_WIDTH * scale, HIT_MIN_WIDTH);
-      for (const { ghost, x, y } of members) hits.push({ ghost, group, box: { x: x - w / 2, y: labelY(y) - LABEL_REACH, w, h: y - labelY(y) + LABEL_REACH } });
+      const reach = labelY(lead.y) - label.y;
+      for (const { ghost, x, y } of members) hits.push({ ghost, group, box: { x: x - w / 2, y: labelY(y) - reach, w, h: y - labelY(y) + reach } });
     }
     return { hits, labels };
   }
@@ -298,17 +299,20 @@ export class RaceView {
     const crown = members.some((member) => member.ghost.run === this.moment.leader);
     const selected = members.find((member) => member.ghost.run === this.selected.value)?.ghost;
     const group = members.length > 1;
+    const family = group ? null : modelFamily(ghost.model);
     const shown = zoom >= NUMBERS_ZOOM || group || fights.length > 0 || crown || selected !== undefined;
+    if (!shown) return marks.dotAlone(ctx, x, y, family);
     return marks.label(ctx, {
       x,
       y,
-      text: !shown ? null : group ? `×${members.length}` : `${ghost.number}`,
+      text: group ? `×${members.length}` : `${ghost.number}`,
       ended: members.every((member) => member.ghost.result),
       group,
       battle: fights.length === 0 ? null : { trainer: fights.some((member) => member.ghost.battle && member.ghost.battle.trainer !== null), count: group ? fights.length : 0 },
       crown,
       result: group ? null : ghost.result,
       selected: selected ? runName(selected) : null,
+      family,
     });
   }
 

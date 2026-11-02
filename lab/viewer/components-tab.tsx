@@ -6,7 +6,7 @@ import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
-import { BotsDemo, GridCellDemo, LeaderboardRowDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
+import { BotsDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -795,8 +795,14 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "LeaderboardRow",
-    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
+    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state, model and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
     demo: () => <LeaderboardRowDemo />,
+  },
+  {
+    category: "data",
+    title: "ModelName",
+    rule: "The model of a Run in small muted text, with a round dot of 8 px and a black border: blue for DeepSeek, orange for Claude, light grey for GPT. A model of another family has no dot, because grey means GPT. Short: the id with no prefix. A text that is too long is cut, and the dot stays. No id: nothing.",
+    demo: () => <ModelNameDemo />,
   },
   { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
   {

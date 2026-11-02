@@ -229,10 +229,11 @@ export function RacePage() {
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
-        ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces."],
+        ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces. The model does not change it either: a dot shows the model."],
+        ["Dot of the model", "a round dot of 8 px, the same size at every zoom, above the number or in its place when the number does not show: blue for DeepSeek, orange for Claude, light grey for GPT. It comes from the model id alone. A Ghost that ended keeps its dot. A Ghost of another model has no dot, and a group and a count at a door have none, because they can mix models."],
         ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in. Viridian Forest, the Safari Zone and the three floors of Mt Moon are islands on the map: the Ghosts walk on them, with no count at a door."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
-        ["Hover on Ghosts", "the Run id, its state, its names and its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
+        ["Hover on Ghosts", "the Run id, its state, the dot and the full id of its model, its names and its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
         ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],
         ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],
         ["Keyboard", "it does not play in this tab. The Race draws only while its tab shows."],
@@ -254,6 +255,7 @@ export function RacePage() {
           <Terms
             rows={[
               ["Sprite", "its own face, from its Run id, with the number of its Run"],
+              ["Dot", "the colour of its model, above its number or in its place"],
               ["Crown", "on the leader of the Race"],
               ["Battle", "an icon next to its number while it fights"],
               ["End", "see-through, with an icon of its result next to its number"],
@@ -267,7 +269,7 @@ export function RacePage() {
           <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
           <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "a click on a row follows one Ghost, and a second click ends it", "the button “Frame the Ghosts” gives it back"]} />
           <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
-          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, cost or tokens, team and badges of each Run"]} />
+          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, model with no prefix, cost or tokens, team and badges of each Run"]} />
           <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>

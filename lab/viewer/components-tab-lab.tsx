@@ -5,7 +5,7 @@ import type { PartyMon, PartyMove } from "../src/party";
 import type { BotInfo, ClientMessage, ProviderStatus, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
-import { LeaderboardRow, MonIcon } from "./components-race";
+import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
 import { type GridActions, GridCellView } from "./grid";
 import type { GridCell } from "./grid-cells";
@@ -517,22 +517,37 @@ export function MonIconDemo() {
   );
 }
 
+export function ModelNameDemo() {
+  return (
+    <div class="flex flex-col gap-2">
+      <ModelName id="deepseek/deepseek-v4.1-flash" />
+      <ModelName id="deepseek/deepseek-v4.1-flash" short />
+      <ModelName id="haiku" />
+      <ModelName id="gpt-6.1-terra" />
+      <ModelName id="mistralai/mistral-large" />
+      <div class="w-24">
+        <ModelName id="deepseek/deepseek-v4.1-flash" short />
+      </div>
+    </div>
+  );
+}
+
 export function LeaderboardRowDemo() {
   const [selected, setSelected] = useState(0);
   const team = (size: number) => Array.from({ length: size }, (_, i) => <MonIcon key={i} src={DEMO_ICON} species="SQUIRTLE" level={5 + i * 19} />);
   const badges = (got: number) => <Badges got={Array.from({ length: 8 }, (_, i) => i < got)} />;
   const inBattle = { frame: 0, kind: "battle", trainer: null, player: null, foe: null } as const;
   const rows = [
-    { rank: 1, id: "00017", ghost: { result: null, battle: null }, cost: "1.24 $", size: 6, got: 8, faded: false },
-    { rank: 2, id: "00003", ghost: { result: null, battle: inBattle }, cost: "12.08 $", size: 3, got: 2, faded: false },
-    { rank: 3, id: "00041", ghost: { result: null, battle: null }, cost: "0.00 $", size: 0, got: 0, faded: false },
-    { rank: 4, id: "00052", ghost: { result: null, battle: null }, cost: "412.0k tok", size: 2, got: 0, faded: false },
-    { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, cost: "0.31 $", size: 3, got: 1, faded: true },
+    { rank: 1, id: "00017", ghost: { result: null, battle: null }, model: "deepseek/deepseek-v4.1-flash", cost: "1.24 $", size: 6, got: 8, faded: false },
+    { rank: 2, id: "00003", ghost: { result: null, battle: inBattle }, model: "gpt-6.1-terra", cost: "12.08 $", size: 3, got: 2, faded: false },
+    { rank: 3, id: "00041", ghost: { result: null, battle: null }, model: "mistralai/mistral-large", cost: "0.00 $", size: 0, got: 0, faded: false },
+    { rank: 4, id: "00052", ghost: { result: null, battle: null }, model: "haiku", cost: "412.0k tok", size: 2, got: 0, faded: false },
+    { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, model: "deepseek/deepseek-v4-flash", cost: "0.31 $", size: 3, got: 1, faded: true },
   ] as const;
   return (
     <div class="flex w-[380px] max-w-full flex-col">
-      {rows.map(({ rank, id, ghost, cost, size, got, faded }, i) => (
-        <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
+      {rows.map(({ rank, id, ghost, model, cost, size, got, faded }, i) => (
+        <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} model={model} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
       ))}
     </div>
   );

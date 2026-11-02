@@ -89,6 +89,7 @@
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 
   --color-white: #fff;
+  --color-black: #000;
   --color-bg: #0a0e1a;
   --color-surface: rgb(255 255 255 / 0.035);
   --color-raised: rgb(255 255 255 / 0.06);
@@ -108,6 +109,10 @@
   --color-warn: #f2c46b;
   --color-bad: #f27393;
   --color-info: #6cc8f0;
+
+  --color-model-deepseek: #3d6bff;
+  --color-model-claude: #f0793a;
+  --color-model-gpt: #dfe3ee;
 
   --color-type-normal: #a8a878;
   --color-type-fight: #c03028;

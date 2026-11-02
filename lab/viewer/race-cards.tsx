@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { type BattleSide, runIdText } from "../src/protocol";
 import { Pill, StatTile } from "./components";
-import { MonIcon } from "./components-race";
+import { ModelName, MonIcon } from "./components-race";
 import { HpBar, Name, StatusPill } from "./pokemon";
 import type { GhostNow } from "./race-ghosts";
 import { RESULT_LOOK } from "./race-marks";
@@ -92,6 +92,7 @@ export function GhostCard({ view, ghost, children }: { view: RaceView; ghost: Gh
           <GhostState ghost={ghost} />
         </span>
       </div>
+      <ModelName id={ghost.model} />
       <span class="text-xs">{ghost.character}</span>
       <span class="truncate text-xs text-muted">{view.titleOf(ghost.map)}</span>
       <BattleLines view={view} ghost={ghost} />
