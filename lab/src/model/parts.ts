@@ -47,46 +47,51 @@ function partOf(map: AtlasMap, view: MapCells, from: Cell): Part {
   return { map, from, cells, keys, exits: map.warps.filter(touches), touches, view };
 }
 
-function opensOnUnseen(map: AtlasMap, view: MapCells, c: Cell, direction: Direction): boolean {
+function unseenPast(map: AtlasMap, view: MapCells, c: Cell, direction: Direction): Cell | null {
   const seen = seenIn(map);
   const [dx, dy] = DIRECTION_STEP[direction];
   const next = { x: c.x + dx, y: c.y + dy };
   const far = seen(next) && kindAt(view, next) === LEDGE[direction] ? { x: next.x + dx, y: next.y + dy } : next;
-  return !isStepExit(map, c) && inside(view, far) && !seen(far) && kindAt(view, c) !== WALL[direction];
+  return !isStepExit(map, c) && inside(view, far) && !seen(far) && kindAt(view, c) !== WALL[direction] ? far : null;
+}
+
+function unseenFronts(map: AtlasMap): { cell: Cell; far: Cell }[] {
+  const view = atlasCells(map);
+  const seen = seenIn(map);
+  const cells = Array.from({ length: map.width * map.height }, (_, i) => ({ x: i % map.width, y: Math.floor(i / map.width) })).filter((c) => seen(c) && walkable(view, c));
+  return cells.flatMap((cell) => DIRECTION_STEPS.flatMap(([direction]) => {
+    const far = unseenPast(map, view, cell, direction);
+    return far ? [{ cell, far }] : [];
+  }));
 }
 
 export function unseenSides({ map, cells, view }: Part): { direction: Direction; cell: Cell }[] {
   return DIRECTION_STEPS.flatMap(([direction]) => {
-    const cell = cells.find((c) => opensOnUnseen(map, view, c, direction));
+    const cell = cells.find((c) => unseenPast(map, view, c, direction));
     return cell ? [{ direction, cell }] : [];
   });
 }
 
-/** The groups of touching open cells of a map that open on unseen cells. Corners count as touching, so that one bend of a wall is one area. */
-export function unseenAreas(map: AtlasMap): number {
-  const view = atlasCells(map);
-  const seen = seenIn(map);
-  const left = new Map<string, Cell>();
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      const c = { x, y };
-      if (seen(c) && walkable(view, c) && DIRECTION_STEPS.some(([direction]) => opensOnUnseen(map, view, c, direction))) left.set(cellKey(c), c);
-    }
-  }
-  let areas = 0;
+/** The groups of touching open cells of a map that open on unseen cells. Corners count as touching, so that one bend of a wall is one group. */
+export function unseenGroups(map: AtlasMap): number {
+  const left = new Map(unseenFronts(map).map(({ cell }) => [cellKey(cell), cell]));
+  let groups = 0;
   for (const start of left.values()) {
-    areas++;
-    const area = [start];
-    for (const { x, y } of area) {
+    groups++;
+    left.delete(cellKey(start));
+    const group = [start];
+    for (const { x, y } of group) {
       for (const dy of [-1, 0, 1]) {
         for (const dx of [-1, 0, 1]) {
           const next = left.get(cellKey({ x: x + dx, y: y + dy }));
-          if (next && left.delete(cellKey(next))) area.push(next);
+          if (!next) continue;
+          left.delete(cellKey(next));
+          group.push(next);
         }
       }
     }
   }
-  return areas;
+  return groups;
 }
 
 function leadsOf(part: Part, away: number): Lead[] {
@@ -98,6 +103,10 @@ function leadsOf(part: Part, away: number): Lead[] {
     if (cell) leads.push({ kind: "exit", map: part.map, away, cell, warp });
   }
   return leads;
+}
+
+export function explorableCells(map: AtlasMap): Set<string> {
+  return new Set(unseenFronts(map).map(({ far }) => cellKey(far)));
 }
 
 export function atlasCells(map: AtlasMap): MapCells {

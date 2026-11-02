@@ -127,10 +127,9 @@ type WarpHow = { how: "step"; from?: { x: number; y: number } } | { how: "press"
 
 export type WarpExit = { x: number; y: number; to: string; warpId: number } & WarpHow;
 
-/** What a player sees of an exit, before it takes the exit. */
-export type ExitPlace = "center" | "mart" | "departmentStore" | "gym" | "house" | "gate" | "cave" | "path" | "harbor" | "building" | "outside";
+export type MapKind = "outdoor" | "underground" | "indoor";
 
-export type Warp = WarpExit & { group: number; num: number; behavior: string; place: ExitPlace | null };
+export type Warp = WarpExit & { group: number; num: number; behavior: string; toKind: MapKind };
 
 export type GameInterruption = "trigger" | "trainer" | "script" | "battle";
 
@@ -172,7 +171,9 @@ const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
   PUSHABLE_BOULDER: { name: "PUSHABLE BOULDER", move: "STRENGTH" },
 };
 
-export type Obstacle = { x: number; y: number; name: string; move: string };
+export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
+
+export type Obstacle = { x: number; y: number; name: string; move: FieldMove };
 
 export type MapActors = {
   player: { x: number; y: number; facing: number } | null;
@@ -232,15 +233,11 @@ type MapArea = { area: string; place: string | null };
 export type Areas = Readonly<Record<string, MapArea>>;
 
 const OUTSIDE_MAP_TYPES = new Set(["MAP_TYPE_TOWN", "MAP_TYPE_CITY", "MAP_TYPE_ROUTE", "MAP_TYPE_OCEAN_ROUTE"]);
-const BUILDING_PLACES: [RegExp, ExitPlace][] = [
-  [/PokemonCenter/, "center"],
-  [/_Mart$/, "mart"],
-  [/DepartmentStore/, "departmentStore"],
-  [/_Gym$/, "gym"],
-  [/_Harbor$|^SSAnne/, "harbor"],
-  [/^Route\d+_(.*Entrance|EastBuilding)|^UndergroundPath_|SafariZone_Entrance/, "gate"],
-  [/House|Cottage/, "house"],
-];
+
+function mapKindOf(type: string): MapKind {
+  if (OUTSIDE_MAP_TYPES.has(type)) return "outdoor";
+  return type === "MAP_TYPE_UNDERGROUND" ? "underground" : "indoor";
+}
 
 export async function readAreas(): Promise<Areas> {
   const { map_sections } = (await Bun.file(join(REPO_DIR, "src/data/region_map/region_map_sections.json")).json()) as { map_sections: { id: string; name?: string }[] };
@@ -285,8 +282,7 @@ export class Game {
   private readonly prompts: Prompts;
   private readonly behaviorNames: Map<number, string>;
   private readonly graphicsNames: Map<number, string>;
-  private readonly outsideTypes: Set<number>;
-  private readonly undergroundType: number;
+  private readonly mapKinds: Map<number, MapKind>;
   private readonly mapNames: string[][];
   private readonly itemBallFlags: number[];
   private readonly attributeCache = new Map<number, Uint32Array>();
@@ -295,14 +291,13 @@ export class Game {
 
   private constructor(
     readonly mem: Memory,
-    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; outsideTypes: Set<number>; undergroundType: number; mapNames: string[][]; itemBallFlags: number[] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; mapKinds: Map<number, MapKind>; mapNames: string[][]; itemBallFlags: number[] },
   ) {
     this.decode = tables.decode;
     this.prompts = new Prompts(mem, tables.decode);
     this.behaviorNames = tables.behaviorNames;
     this.graphicsNames = tables.graphicsNames;
-    this.outsideTypes = tables.outsideTypes;
-    this.undergroundType = tables.undergroundType;
+    this.mapKinds = tables.mapKinds;
     this.mapNames = tables.mapNames;
     this.itemBallFlags = tables.itemBallFlags;
   }
@@ -320,10 +315,9 @@ export class Game {
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
     const graphicsNames = new Map<number, string>();
     for (const m of graphicsText.matchAll(/^#define OBJ_EVENT_GFX_(\w+)\s+(\d+)\s*$/gm)) graphicsNames.set(Number(m[2]), m[1]);
-    const outsideTypes = new Set([...mapTypesText.matchAll(/^#define (MAP_TYPE_\w+)\s+(\d+)/gm)].flatMap((m) => (OUTSIDE_MAP_TYPES.has(m[1]) ? [Number(m[2])] : [])));
-    const undergroundType = Number(/^#define MAP_TYPE_UNDERGROUND\s+(\d+)/m.exec(mapTypesText)?.[1]);
+    const mapKinds = new Map([...mapTypesText.matchAll(/^#define (MAP_TYPE_\w+)\s+(\d+)/gm)].map((m): [number, MapKind] => [Number(m[2]), mapKindOf(m[1])]));
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, outsideTypes, undergroundType, mapNames, itemBallFlags });
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, mapKinds, mapNames, itemBallFlags });
   }
 
   private get saveBlock1(): Ref {
@@ -752,9 +746,9 @@ export class Game {
   }
 
   private mapKind(group: number, num: number): MapKind {
-    if (!this.mapNames[group]?.[num]) return "indoor";
-    const type = this.mapHeader(group, num).field("mapType").int();
-    return this.outsideTypes.has(type) ? "outdoor" : type === this.undergroundType ? "underground" : "indoor";
+    // A warp can aim at a map that is not in the table of names, and such a map has no header to read.
+    const kind = this.mapNames[group]?.[num] ? this.mapKinds.get(this.mapHeader(group, num).field("mapType").int()) : undefined;
+    return kind ?? "indoor";
   }
 
   private mapName(group: number, num: number): string {
@@ -876,7 +870,6 @@ export class Game {
       }
     }
 
-    const outside = this.outsideTypes.has(header.field("mapType").int());
     return {
       key: `${group}.${num}`,
       group,
@@ -888,7 +881,7 @@ export class Game {
       height,
       mapWidth: layout.field("width").int(),
       mapHeight: layout.field("height").int(),
-      outside,
+      outside: this.mapKind(group, num) === "outdoor",
       kinds,
       blocks,
       behaviors,
@@ -902,8 +895,7 @@ export class Game {
         const behavior = inside ? behaviorNames[behaviors[gy * width + gx]] : "?";
         const toGroup = w.field("mapGroup").int();
         const toNum = w.field("mapNum").int();
-        const to = this.mapName(toGroup, toNum);
-        const warp = { x, y, to, group: toGroup, num: toNum, warpId: w.field("warpId").int(), behavior, place: exitPlaceOf(outside, behavior, to, this.mapKind(toGroup, toNum)) };
+        const warp = { x, y, to: this.mapName(toGroup, toNum), group: toGroup, num: toNum, warpId: w.field("warpId").int(), behavior, toKind: this.mapKind(toGroup, toNum) };
         return { ...warp, ...warpHow(x, y, behavior) };
       }),
       connections,
@@ -1030,16 +1022,6 @@ export class Game {
 
 function badgeFlag(badge: number): number {
   return FLAG_BADGE01_GET + badge - 1;
-}
-
-type MapKind = "outdoor" | "underground" | "indoor";
-
-/** From outside, a player sees what a building is by its look. The cell does not tell it: a gate or a museum can have a cave door. */
-export function exitPlaceOf(fromOutside: boolean, behavior: string, to: string, toKind: MapKind): ExitPlace | null {
-  if (!fromOutside) return behavior !== "MB_CAVE_DOOR" || toKind === "indoor" ? null : toKind === "outdoor" ? "outside" : "cave";
-  if (toKind === "outdoor") return "path";
-  if (toKind === "underground") return "cave";
-  return BUILDING_PLACES.find(([pattern]) => pattern.test(to))?.[1] ?? "building";
 }
 
 function warpHow(x: number, y: number, behavior: string): WarpHow {

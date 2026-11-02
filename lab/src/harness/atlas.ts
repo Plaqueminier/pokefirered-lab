@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, type Direction, type ExitPlace, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -8,6 +8,9 @@ const SCREEN_RIGHT = 7;
 const SCREEN_UP = 5;
 const SCREEN_DOWN = 4;
 const RIVAL_GRAPHICS = "BLUE";
+
+/** What a player sees of an exit, before it takes the exit. */
+export type ExitPlace = "center" | "mart" | "departmentStore" | "gym" | "house" | "gate" | "cave" | "path" | "harbor" | "building" | "outside";
 
 export type AtlasWarp = { x: number; y: number; behavior: string; place: ExitPlace | null; to: string | null; arrival: Cell | null };
 
@@ -43,7 +46,9 @@ export type Atlas = { maps: AtlasMap[]; lastTalk: { map: string; localId: number
 
 export const UNSEEN = "?";
 
-const BLOCK_REASONS: Record<EdgeBlock, string> = { water: "is water. Only a Pokémon that knows SURF can cross water, and you have none" };
+export const WATER_RULE = "Only a Pokémon that knows SURF can cross water";
+
+const BLOCK_REASONS: Record<EdgeBlock, string> = { water: `is water. ${WATER_RULE}` };
 
 export function blockedText(map: string, side: Direction, block: EdgeBlock): string {
   return `you cannot go there now: the ${side} edge of ${map} ${BLOCK_REASONS[block]}`;
@@ -310,17 +315,39 @@ function exitCells(warps: Warp[]): Warp[][] {
   return exits;
 }
 
-export function atlasWarps(warps: Warp[], taken: ReadonlyMap<string, TakenWarp>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
+const BUILDING_PLACES: [RegExp, ExitPlace][] = [
+  [/PokemonCenter/, "center"],
+  [/_Mart$/, "mart"],
+  [/DepartmentStore/, "departmentStore"],
+  [/_Gym$/, "gym"],
+  [/_Harbor$|^SSAnne/, "harbor"],
+  [/^Route\d+_(.*Entrance|EastBuilding)|^UndergroundPath_|SafariZone_Entrance/, "gate"],
+  [/House|Cottage/, "house"],
+];
+
+/** From outside, a player sees what a building is by its look. The cell does not tell it: a gate or a museum can have a cave door. */
+export function placeFromOutside({ to, toKind }: Pick<Warp, "to" | "toKind">): ExitPlace {
+  if (toKind === "outdoor") return "path";
+  if (toKind === "underground") return "cave";
+  return BUILDING_PLACES.find(([pattern]) => pattern.test(to))?.[1] ?? "building";
+}
+
+export function placeFromInside({ behavior, toKind }: Pick<Warp, "behavior" | "toKind">): ExitPlace | null {
+  if (behavior !== "MB_CAVE_DOOR" || toKind === "indoor") return null;
+  return toKind === "outdoor" ? "outside" : "cave";
+}
+
+export function atlasWarps({ warps, outside }: Pick<MapGrid, "warps" | "outside">, taken: ReadonlyMap<string, TakenWarp>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
   return exitCells(warps.filter((w) => w.how !== "none")).flatMap((cells) => {
     const shown = cells.find((w) => taken.has(cellKey(w))) ?? cells.find(isSeen);
     if (!shown) return [];
     const { to = null, arrival = null } = taken.get(cellKey(shown)) ?? {};
-    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, place: shown.place, to, arrival }];
+    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, place: outside ? placeFromOutside(shown) : placeFromInside(shown), to, arrival }];
   });
 }
 
 function seenWarps(visit: Visit): AtlasWarp[] {
-  return atlasWarps(visit.grid.warps, visit.warpsTaken, seenOn(visit));
+  return atlasWarps(visit.grid, visit.warpsTaken, seenOn(visit));
 }
 
 function seenEdges(visit: Visit): Edge[] {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MapActors, MapGrid, Warp } from "../src/game";
 import { exitList, stopList } from "./map-lists";
 
-const warp = (x: number, y: number, to: string, num: number): Warp => ({ x, y, to, warpId: 0, group: 1, num, behavior: "MB_NORMAL", place: null, how: "step" });
+const warp = (x: number, y: number, to: string, num: number): Warp => ({ x, y, to, warpId: 0, group: 1, num, behavior: "MB_NORMAL", toKind: "indoor", how: "step" });
 const trigger = (x: number, y: number) => ({ x, y, variable: 0x4050, value: 1, weather: false });
 
 const grid = {

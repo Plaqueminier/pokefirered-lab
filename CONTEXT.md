@@ -101,7 +101,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
@@ -117,12 +117,16 @@ An open cell with a wall on one side: the player cannot step across that side, i
 _Avoid_: one-way wall, directional collision
 
 **Known world**:
-A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of unseen areas next to open cells and the **Fixed obstacles**. The code makes it from the **Atlas** only, so it shows only what the player saw.
+A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows. The code makes it from the **Atlas** only, so it shows only what the player saw.
 _Avoid_: world map, overview, Town Map (an item of the game)
 
 **Fixed obstacle**:
-An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it.
+An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it. A walk prompt shows it as a blocked cell with no text until the Bag has its HM or a Pokémon knows its move; the **Atlas** keeps it all the time.
 _Avoid_: person, tree (a tree of the map is a blocked metatile)
+
+**Field move**:
+CUT, ROCK SMASH, STRENGTH or SURF: a move that removes a **Fixed obstacle** or crosses water. A walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move.
+_Avoid_: HM move (FLY and FLASH are HM moves too)
 
 **Area**:
 A town, a route or another place of the Town Map, with all its maps: the game gives each map one map section. For example, Viridian City has its streets, its Poké Mart and its Pokémon Center.

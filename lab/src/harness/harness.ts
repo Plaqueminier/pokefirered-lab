@@ -23,7 +23,7 @@ import { isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
-import { type Atlas, AtlasWatch, blockedText, cellAt, seenIn, type Sight } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, cellAt, seenIn, type Sight, WATER_RULE } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
@@ -905,7 +905,9 @@ function noRouteReason(here: Place, destination: Destination, asked: Place, maps
   const obstacle = obstacleOnRoute(here, destination, maps);
   if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}`;
   const map = known.find((m) => m.name === asked.map);
-  if (map && seenIn(map)(asked) && cellAt(map, asked) === KIND.blocked) return `(${asked.x}, ${asked.y}) is a # cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
+  const kind = map && seenIn(map)(asked) ? cellAt(map, asked) : null;
+  if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${WATER_RULE}`;
+  if (kind === KIND.blocked) return `(${asked.x}, ${asked.y}) is a blocked cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
   return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
 }
 
