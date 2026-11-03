@@ -19,7 +19,7 @@ import {
   type PlayerPosition,
   type WaitingFor,
 } from "../game";
-import { isHmMove, type PartyMon, sendableSlots } from "../party";
+import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
@@ -64,6 +64,7 @@ const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   partyPick: ["send"],
   shopMenu: ["buy", "sell", "leave"],
   itemPc: ["withdraw", "deposit", "leave"],
+  pokemonPc: ["depositPokemon", "withdrawPokemon", "leave"],
   naming: ["name"],
   learnMove: ["forget", "keep"],
   busy: ["readText"],
@@ -82,7 +83,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -116,6 +117,8 @@ export type MacroAction =
   | { name: "buy"; item: string; quantity: number }
   | { name: "sell"; item: string; quantity: number }
   | { name: "withdraw" | "deposit"; item: string; quantity: number }
+  | { name: "depositPokemon"; slot: number }
+  | { name: "withdrawPokemon"; box: number; position: number }
   | { name: "leave" }
   | { name: "name"; text: string }
   | { name: "forget"; move: string }
@@ -469,7 +472,7 @@ export class Harness {
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, trainer }): Person => ({ localId, x, y, graphics, loaded, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), player, grid, people };
+    return { ...base, mode: "overworld", map: game.map(), player, grid, people, boxes: game.boxMons() };
   }
 
   availableActions(): AvailableAction[] {
@@ -513,6 +516,10 @@ export class Harness {
           return waiting.kind === "itemPc" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
         case "deposit":
           return depositableItems(game.bag()).map((item) => ({ name, item: item.name }));
+        case "depositPokemon":
+          return game.party().map((_, slot) => ({ name, slot }));
+        case "withdrawPokemon":
+          return game.boxMons().map(({ box, position }) => ({ name, box, position }));
       }
     });
   }
@@ -611,6 +618,14 @@ export class Harness {
     return this.act({ name: "deposit", item, quantity }, () => this.#menus.deposit(item, quantity));
   }
 
+  async depositPokemon(slot: number): Promise<ActionResult> {
+    return this.act({ name: "depositPokemon", slot }, () => this.#menus.depositPokemon(slot));
+  }
+
+  async withdrawPokemon(box: number, position: number): Promise<ActionResult> {
+    return this.act({ name: "withdrawPokemon", box, position }, () => this.#menus.withdrawPokemon(box, position));
+  }
+
   async leave(): Promise<TextResult> {
     return this.act<Texts>({ name: "leave" }, () => this.#menus.leave(), { text: [] });
   }
@@ -670,6 +685,10 @@ export class Harness {
         return this.withdraw(action.item, action.quantity);
       case "deposit":
         return this.deposit(action.item, action.quantity);
+      case "depositPokemon":
+        return this.depositPokemon(action.slot);
+      case "withdrawPokemon":
+        return this.withdrawPokemon(action.box, action.position);
       case "leave":
         return this.leave();
       case "name":

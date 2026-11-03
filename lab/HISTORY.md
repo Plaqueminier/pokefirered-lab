@@ -222,3 +222,13 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     A Reflection turn now comes only at a walk. In Run 00044, 17 of 34 Reflection turns came at a battle action, with no Atlas, and the lesson was often only to run from one Pokémon.
 
     When this change was made, no Run had played version 20. The first checks are `--continue` on Runs 00042 and 00043, whether the model stops to catch at 6 Pokémon, and whether a model leaves Pewter City sooner.
+
+## 18. The Pokémon in the boxes (2026-11-03)
+
+63. The model bot goes to version 21, for issue #80. In Runs 00042 and 00043, the party had 6 Pokémon before Mt. Moon with one or two trained, and the model could not change this. A Pokémon of a box was lost for the team.
+
+    The first option of the menu of a PC now opens a new Decision point, the Pokémon PC. The model chooses `deposit <Pokémon>` or `withdraw <Pokémon>`, and each action is one Model call. The Harness plays the screen of the boxes with the keys, as a player does. The prompt shows the list of the boxes at the Pokémon PC, and one line at each walk when the boxes have a Pokémon, so the model can decide to walk to a PC. Version 21 removes the rule of version 20 that said not to catch with 6 Pokémon, and adds a rule that tells the model to use the boxes.
+
+    The Harness has a fixed rule for the box of a deposit: the current box, then the next box with a free place. The Harness does not move a Pokémon between boxes, so a choice of box gives the model nothing. A refusal comes before the screen opens: 6 Pokémon at a withdraw, 1 Pokémon at a deposit, the last Pokémon that can fight, or all the boxes full. If the game still refuses a deposit on its screen, the action is impossible and the Harness closes the screen.
+
+    When this change was made, no Run had played version 21, so the effect on the model was not known. The first checks are whether the model goes to a PC, whether it trains the Pokémon that it takes from a box, and how many Model calls it spends at the PC. A deposit restores the PP, and a withdraw restores the HP, so a PC can heal a Pokémon at no cost. The Nurse of the Pokémon Center also heals at no cost next to this PC, so this changes nothing yet.

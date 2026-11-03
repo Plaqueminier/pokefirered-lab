@@ -6,7 +6,7 @@ import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
-import { isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
+import { type BoxMon, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
@@ -30,6 +30,7 @@ const WAITS: Record<AskedKind, string> = {
   partyPick: "a Pokémon in the party menu of the battle",
   shopMenu: "the shop menu of a Poké Mart",
   itemPc: "the item storage of a PC",
+  pokemonPc: "the boxes of a PC",
   naming: "a name on the naming screen",
   learnMove: "a move to forget",
 };
@@ -54,6 +55,7 @@ const TRANSFERS = [
   ["withdraw", "take items from the PC and put them in your Bag", "withdraw POTION 2"],
   ["deposit", "put items of your Bag into the PC", "deposit POTION 1"],
 ] as const;
+const LEAVE_PC = "- leave: go back to the menu of the PC, where you can turn the PC off.";
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
 
@@ -81,7 +83,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -117,7 +119,7 @@ Advice of a good player:
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
 - Buy Poké Balls and Potions at a Poké Mart.
-- Each Pokémon Center has a PC. It keeps your items, and the Pokémon that you catch when your party has 6 Pokémon. You cannot take a Pokémon from the PC yet, so a Pokémon that goes to the PC is lost for your team: do not catch more Pokémon when your party has 6 Pokémon.
+- Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
 - ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
@@ -195,6 +197,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party),
+    ...(asked.kind === "walk" && asked.overworld.boxes.length > 0 ? [boxesLine(asked.overworld.boxes)] : []),
     "",
     ...context(asked),
     ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
@@ -369,12 +372,23 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
   }
 }
 
+function monName({ nickname, species }: Pick<PartyMon, "nickname" | "species">): string {
+  return nickname === species ? species : `${nickname} (${species})`;
+}
+
+function boxMonText(mon: BoxMon): string {
+  return `${monName(mon)} level ${mon.level}, ${mon.boxName}`;
+}
+
+function boxesLine(boxes: BoxMon[]): string {
+  return `In the boxes: ${boxes.map(boxMonText).join("; ")}.`;
+}
+
 function partyText(party: PartyMon[]): string {
   if (party.length === 0) return "Party: none.";
   const mon = (m: PartyMon, slot: number) => {
-    const name = m.nickname === m.species ? m.species : `${m.nickname} (${m.species})`;
     const about = [
-      `${slot + 1}. ${name}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
+      `${slot + 1}. ${monName(m)}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
       `Type ${m.types.join(", ")}`,
       `Ability ${m.ability.name}: ${m.ability.description.replace(/\.$/, "")}`,
       `Held item ${m.heldItem ?? "none"}`,
@@ -419,6 +433,8 @@ function context(asked: Asked): string[] {
       const bag = asked.depositable.length === 0 ? ["The ITEMS pocket of your Bag is empty."] : ["The items of the ITEMS pocket of your Bag (only these go into the PC):", ...asked.depositable.map((item) => `- ${item.name} ×${item.quantity}`)];
       return [...stored, "", ...bag];
     }
+    case "pokemonPc":
+      return asked.boxes.length === 0 ? ["The boxes are empty."] : ["The Pokémon in the boxes:", ...asked.boxes.map((mon, row) => `${row + 1}. ${boxMonText(mon)}`)];
     case "naming":
       return [`The naming screen asks for ${asked.subject}, ${asked.maxLength} characters at most.`];
     case "learnMove": {
@@ -437,7 +453,7 @@ function context(asked: Asked): string[] {
 }
 
 function pcLine(storage: string): string {
-  return `This is a PC: the PC with your name has ITEM STORAGE, which keeps your items. ${storage} is the Pokémon storage: it is not possible yet.`;
+  return `This is a PC: the PC with your name has ITEM STORAGE, which keeps your items. ${storage} opens the boxes, which keep your Pokémon.`;
 }
 
 function actionLines(asked: Asked): string[] {
@@ -475,7 +491,13 @@ function actionLines(asked: Asked): string[] {
     case "itemPc":
       return [
         ...TRANSFERS.filter(([name]) => actionsOf(asked).includes(name)).map(([name, help, example]) => `- ${name} <item> [quantity]: ${help}, for example ${example}. The quantity is 1 when you do not give it.`),
-        "- leave: go back to the menu of the PC, where you can turn the PC off.",
+        LEAVE_PC,
+      ];
+    case "pokemonPc":
+      return [
+        `- deposit <Pokémon>: put a Pokémon of your party in a box.${pokemonHelp(asked.party)}`,
+        ...(actionsOf(asked).includes("withdraw") ? [`- withdraw <Pokémon>: take a Pokémon from a box and put it in your party. Write its number in the list of the boxes, its name, or both, for example 1 ${asked.boxes[0].nickname}.`] : []),
+        LEAVE_PC,
       ];
     case "naming":
       return [

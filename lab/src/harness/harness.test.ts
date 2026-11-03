@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { modelSettings } from "../model/providers";
 import { CACHE_DIR } from "../core";
 import { Memory } from "../memory";
+import type { BoxMon } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
@@ -123,7 +124,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "20", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "21", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -256,6 +257,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       types: ["WATER"],
       ability: { name: "TORRENT", description: "Ups WATER moves in a pinch." },
       heldItem: null,
+      isEgg: false,
       // Medium Slow growth: 135 EXP at level 5, 179 at level 6.
       exp: 135,
       levelExp: 135,
@@ -570,8 +572,11 @@ function fillParty(run: Run, mem: Memory): void {
   for (let slot = 1; slot < 6; slot++) {
     for (let at = 0; at < first.length; at += 2) run.core.patch16(party.at(slot).addr + at, first[at] | (first[at + 1] << 8));
   }
+  // gPlayerPartyCount is one byte, and a patch writes two bytes at an even address.
   const count = mem.global("gPlayerPartyCount").addr;
-  run.core.patch16(count, 6 | (run.core.read(count + 1, 1)[0] << 8));
+  const even = count & ~1;
+  const [low, high] = run.core.read(even, 2);
+  run.core.patch16(even, count === even ? 6 | (high << 8) : low | (6 << 8));
 }
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the test Starting save with the Bag", () => {
@@ -794,6 +799,72 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     must(await harness.choose("YES"));
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Thank you for waiting. We've restored your POKéMON to full health.", "We hope to see you again!"] });
     expect(harness.waitingFor().kind).toBe("walk");
+  });
+
+  function boxesOf(harness: Harness): BoxMon[] {
+    const observation = harness.observe();
+    if (observation.mode !== "overworld") throw new Error("the Pokémon PC is in the overworld mode");
+    return observation.boxes;
+  }
+
+  async function atPokemonPc(run: Run): Promise<Harness> {
+    const harness = await Harness.open({}, run);
+    must(await harness.goTo(11, 2, "ViridianCity_PokemonCenter_1F"));
+    must(await harness.interact(11, 1));
+    must(await harness.readText());
+    const pc = harness.waitingFor();
+    if (pc.kind !== "choice" || pc.storage === undefined) throw new Error("the PC does not show its menu");
+    must(await harness.choose(pc.options[pc.storage]));
+    must(await harness.readText());
+    expect(harness.waitingFor()).toEqual({ kind: "pokemonPc" });
+    return harness;
+  }
+
+  test("deposit a Pokémon at the Pokémon PC, then withdraw it: the party and the boxes change each time, and leave returns to the menu of the PC", async () => {
+    const run = await Run.open({ startSave: MART_SAVE });
+    const harness = await atPokemonPc(run);
+    fillParty(run, await memoryOf(run));
+    const [{ species, nickname, level }] = harness.observe().party;
+
+    expect(await harness.withdrawPokemon(0, 0)).toMatchObject({ status: "impossible", frames: 0 });
+    must(await harness.depositPokemon(1));
+    expect(harness.waitingFor()).toEqual({ kind: "pokemonPc" });
+    expect(harness.observe().party).toHaveLength(5);
+    expect(boxesOf(harness)).toEqual([{ box: 0, boxName: "BOX1", position: 0, species, nickname, level }]);
+
+    must(await harness.withdrawPokemon(0, 0));
+    expect(harness.waitingFor()).toEqual({ kind: "pokemonPc" });
+    expect(harness.observe().party).toHaveLength(6);
+    expect(boxesOf(harness)).toEqual([]);
+
+    must(await harness.leave());
+    expect(harness.waitingFor()).toMatchObject({ kind: "choice", storage: 0 });
+  });
+
+  test("with a full first box, a deposit goes to the next box, and a withdraw finds the Pokémon there", async () => {
+    const run = await Run.open({ startSave: MART_SAVE });
+    const harness = await atPokemonPc(run);
+    const mem = await memoryOf(run);
+    fillParty(run, mem);
+    const first = mem.global("gPlayerParty").at(0).field("box").bytes();
+    const box = mem.global("gPokemonStoragePtr").deref().field("boxes").at(0);
+    for (let position = 0; position < box.length; position++) {
+      for (let at = 0; at < first.length; at += 2) run.core.patch16(box.at(position).addr + at, first[at] | (first[at + 1] << 8));
+    }
+
+    must(await harness.depositPokemon(5));
+    expect(harness.observe().party).toHaveLength(5);
+    expect(boxesOf(harness).filter((mon) => mon.box === 1)).toMatchObject([{ boxName: "BOX2", position: 0 }]);
+
+    must(await harness.withdrawPokemon(1, 0));
+    expect(harness.observe().party).toHaveLength(6);
+    expect(boxesOf(harness)).toHaveLength(30);
+    expect(boxesOf(harness).at(-1)).toMatchObject({ box: 0, position: 29 });
+
+    must(await harness.depositPokemon(5));
+    must(await harness.withdrawPokemon(0, 29));
+    expect(harness.observe().party).toHaveLength(6);
+    expect(boxesOf(harness).filter((mon) => mon.box === 0).map((mon) => mon.position)).not.toContain(29);
   });
 });
 

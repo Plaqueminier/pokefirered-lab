@@ -26,10 +26,10 @@ function move(name: string, type: string, power: number | null, accuracy: number
 const TACKLE = move("TACKLE", "NORMAL", 35, 95, 35, 35, "A physical attack in which the user charges, full body, into the foe.");
 const STRING_SHOT = move("STRING SHOT", "BUG", null, 95, 40, 40, "The foe is bound with strings shot from the mouth to reduce its SPEED.");
 
-type MonData = Omit<PartyMon, "nickname" | "heldItem" | "status"> & Partial<Pick<PartyMon, "nickname" | "heldItem" | "status">>;
+type MonData = Omit<PartyMon, "nickname" | "heldItem" | "isEgg" | "status"> & Partial<Pick<PartyMon, "nickname" | "heldItem" | "status">>;
 
 function mon(data: MonData): PartyMon {
-  return { nickname: data.species, heldItem: null, status: "none", ...data };
+  return { nickname: data.species, heldItem: null, isEgg: false, status: "none", ...data };
 }
 
 const IVYSAUR = mon({
@@ -242,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "20", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "21", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 

@@ -91,7 +91,7 @@ function pcMenuOptions(mem: Memory, decode: Decode, flag: (id: number) => boolea
   const player = decode(mem.global("gSaveBlock2Ptr").deref().field("playerName").bytes());
   const oak = flag(FLAG_SYS_POKEDEX_GET) || flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_ProfOakSPc")] : [];
   const hallOfFame = flag(FLAG_SYS_GAME_CLEAR) ? [text("gText_HallOfFame_2")] : [];
-  // The first option is the Pokémon storage: SOMEONE'S PC or BILL'S PC.
+  // The first option opens the Pokémon PC: SOMEONE'S PC or BILL'S PC.
   return [text(flag(FLAG_SYS_NOT_SOMEONES_PC) ? "gText_BillSPc" : "gText_SomeoneSPc"), `${player}'s PC`, ...oak, ...hallOfFame, text("gText_LogOff")];
 }
 

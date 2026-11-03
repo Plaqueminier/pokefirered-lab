@@ -37,6 +37,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     mode: "overworld",
     waitingFor: { kind: "walk" },
     party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 }],
+    boxes: [],
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     milestones: [],
@@ -137,7 +138,7 @@ describe("the next Milestone", () => {
 function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
   const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-  const pidgey = { nickname: "PIDGEY", species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hp: 10, maxHp: 10, status: "none", moves: [], ability: { name: "KEEN EYE", description: "" }, heldItem: null, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 };
+  const pidgey = { nickname: "PIDGEY", isEgg: false, species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hp: 10, maxHp: 10, status: "none", moves: [], ability: { name: "KEEN EYE", description: "" }, heldItem: null, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 };
   return {
     mode: "battle",
     waitingFor: { kind: "battleAction" },
@@ -539,9 +540,52 @@ describe("the rules and the character turn", () => {
   });
 });
 
-describe("the PC in the rules", () => {
-  test("a Pokémon that goes to the PC is lost for the team, so the rules tell not to catch more with 6 Pokémon", () => {
-    expect(systemPrompt(SYSTEM, true)).toContain("You cannot take a Pokémon from the PC yet, so a Pokémon that goes to the PC is lost for your team: do not catch more Pokémon when your party has 6 Pokémon.");
+describe("the Pokémon in the boxes of the PC", () => {
+  const boxes = [
+    { box: 0, boxName: "BOX1", position: 0, species: "PIDGEY", nickname: "Sky", level: 5 },
+    { box: 1, boxName: "BOX2", position: 3, species: "GEODUDE", nickname: "GEODUDE", level: 7 },
+  ];
+
+  test("the rules tell to use the PC: put a weak Pokémon in a box, and take a Pokémon from a box", () => {
+    const rules = systemPrompt(SYSTEM, true);
+    expect(rules).toContain("Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.");
+    expect(rules).not.toContain("lost for your team");
+  });
+
+  test("a walk shows one line of the boxes under the party, and no line when the boxes are empty", () => {
+    const walk = { ...route1(22, []), boxes } as Observation;
+    expect(userPrompt(walk, askedOf(walk, false)!, [], NO_TURN)).toContain("In the boxes: Sky (PIDGEY) level 5, BOX1; GEODUDE level 7, BOX2.");
+    const empty = route1(22, []);
+    expect(userPrompt(empty, askedOf(empty, false)!, [], NO_TURN)).not.toContain("In the boxes");
+  });
+
+  test("the menu of a PC tells which option keeps the items and which option keeps the Pokémon", () => {
+    const menu = { ...route1(22, []), waitingFor: { kind: "choice", options: ["BILL'S PC", "RED'S PC", "LOG OFF"], cursor: 0, columns: 1, storage: 0 } } as Observation;
+    const prompt = userPrompt(menu, askedOf(menu, false)!, [], NO_TURN);
+    expect(prompt).toContain("This is a PC: the PC with your name has ITEM STORAGE, which keeps your items. BILL'S PC opens the boxes, which keep your Pokémon.");
+    expect(prompt).not.toContain("not possible");
+  });
+
+  test("the Pokémon PC lists the boxes with a number, and gives deposit, withdraw and leave", () => {
+    const pc = { ...route1(22, []), waitingFor: { kind: "pokemonPc" }, boxes } as Observation;
+    const prompt = userPrompt(pc, askedOf(pc, false)!, [], NO_TURN);
+    expect(prompt).toContain("The game waits for the boxes of a PC.");
+    expect(prompt).toContain(["The Pokémon in the boxes:", "1. Sky (PIDGEY) level 5, BOX1", "2. GEODUDE level 7, BOX2"].join("\n"));
+    expect(prompt).toContain(
+      [
+        "Actions:",
+        "- deposit <Pokémon>: put a Pokémon of your party in a box. <Pokémon> can be 1 SQUIRTLE. Write its place in the party, its name, or both, for example 1 SQUIRTLE.",
+        "- withdraw <Pokémon>: take a Pokémon from a box and put it in your party. Write its number in the list of the boxes, its name, or both, for example 1 Sky.",
+        "- leave: go back to the menu of the PC, where you can turn the PC off.",
+      ].join("\n"),
+    );
+  });
+
+  test("the Pokémon PC with empty boxes tells it, and gives no withdraw", () => {
+    const pc = { ...route1(22, []), waitingFor: { kind: "pokemonPc" } } as Observation;
+    const prompt = userPrompt(pc, askedOf(pc, false)!, [], NO_TURN);
+    expect(prompt).toContain("The boxes are empty.");
+    expect(prompt).not.toContain("- withdraw");
   });
 });
 

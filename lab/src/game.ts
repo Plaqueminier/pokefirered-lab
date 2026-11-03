@@ -23,8 +23,8 @@ import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_F
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
 import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
-import { nameAt, newMove, type PartyMon, type PartyMove, readParty, readPcSpecies } from "./party";
-import { itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, withdrawMenuCursor } from "./pc";
+import { type BoxMon, nameAt, newMove, type PartyMon, type PartyMove, readBoxMons, readParty } from "./party";
+import { currentBox, itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, pokemonPcCursor, storageScreen, type StorageScreen, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
 import { namedSave, type TrainerNames } from "./save-file";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
@@ -111,6 +111,7 @@ export type WaitingFor =
   | { kind: "partyPick" }
   | { kind: "shopMenu"; items: ShopItem[]; screen: "menu" | "buyList" }
   | { kind: "itemPc"; items: PcItem[] }
+  | { kind: "pokemonPc" }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
   | { kind: "learnMove"; slot: number; move: PartyMove }
   | { kind: "busy" };
@@ -371,6 +372,7 @@ export class Game {
     const shop = this.shopMenu();
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
     if (itemStorageCursor(this.mem) !== null) return { kind: "itemPc", items: this.pcItems() };
+    if (pokemonPcCursor(this.mem) !== null) return { kind: "pokemonPc" };
     const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? pcMenu(this.mem, this.decode, (id) => this.flag(id)) ?? multichoice(this.mem, this.decode);
     if (menu) return { kind: "choice", ...menu, columns: 1 };
     const grid = multichoiceGrid(this.mem, this.decode);
@@ -502,7 +504,23 @@ export class Game {
 
   inventory(): Inventory {
     const bag = this.bag().map(({ pocket, items }) => ({ pocket, items: items.map(({ name, quantity, description }) => ({ name, quantity, description })) }));
-    return { bag, pc: { items: this.pcItems(), pokemon: readPcSpecies(this.mem, this.decode) } };
+    return { bag, pc: { items: this.pcItems(), pokemon: this.boxMons().map((mon) => mon.species) } };
+  }
+
+  boxMons(): BoxMon[] {
+    return readBoxMons(this.mem, this.decode);
+  }
+
+  currentBox(): number {
+    return currentBox(this.mem);
+  }
+
+  pokemonPcCursor(): number | null {
+    return pokemonPcCursor(this.mem);
+  }
+
+  storageScreen(): StorageScreen | null {
+    return storageScreen(this.mem);
   }
 
   itemStorageCursor(): number | null {
@@ -682,7 +700,7 @@ export class Game {
 
   /** The number of Pokémon of a species in the boxes of the PC. */
   pcCount(species: string): number {
-    return readPcSpecies(this.mem, this.decode).filter((name) => name === species).length;
+    return this.boxMons().filter((mon) => mon.species === species).length;
   }
 
   /** The party in the order of the screen: the party menu of a battle lists the Pokémon in the battle order. */

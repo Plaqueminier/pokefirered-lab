@@ -1,4 +1,5 @@
 import type { Memory, Ref } from "./memory";
+import { IN_BOX_COUNT } from "./pc";
 import { type Decode, oneLine } from "./prompts";
 
 // SUBSTRUCT_CASE rows of GetSubstruct (pokemon.c): growth, attacks, EVs, misc positions per personality % 24.
@@ -11,11 +12,13 @@ const GROWTH_HELD_ITEM = 2;
 const GROWTH_EXPERIENCE = 4;
 const GROWTH_PP_BONUSES = 8;
 const ATTACKS_PP = 8;
-// PokemonSubstruct3 (pokemon.h): abilityNum is bit 31 of the u32 that holds the IVs.
+// PokemonSubstruct3 (pokemon.h): isEgg is bit 30 and abilityNum is bit 31 of the u32 that holds the IVs.
 const MISC_IV_WORD = 4;
+const IS_EGG_BIT = 30;
 const ABILITY_NUM_BIT = 31;
 const NUM_NATURES = 25;
 const MAX_LEVEL = 100;
+const EXP_SIZE = 4;
 const ITEM_NONE = 0;
 export const SPECIES_NONE = 0;
 // The Summary screen shows "---" for a power below 2 and for an accuracy of 0 (pokemon_summary_screen.c).
@@ -53,6 +56,7 @@ export type PartyMon = {
   types: string[];
   ability: { name: string; description: string };
   heldItem: string | null;
+  isEgg: boolean;
   nature: string;
   level: number;
   exp: number;
@@ -89,6 +93,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       types: speciesTypes(mem, species, decode),
       ability: { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) },
       heldItem: item === ITEM_NONE ? null : decode(mem.global("gItems").at(item).field("name").bytes()),
+      isEgg: ((substructs.getUint32(misc + MISC_IV_WORD, true) >>> IS_EGG_BIT) & 1) === 1,
       nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
       level,
       exp,
@@ -102,6 +107,8 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     };
   });
 }
+
+export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number };
 
 export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
@@ -138,22 +145,46 @@ function checksum(substructs: DataView): number {
   return sum & 0xffff;
 }
 
-export function readPcSpecies(mem: Memory, decode: Decode): string[] {
-  const boxes = mem.global("gPokemonStoragePtr").deref().field("boxes");
+export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
+  const storage = mem.global("gPokemonStoragePtr").deref();
+  const boxes = storage.field("boxes");
   const first = boxes.at(0).at(0);
   const offset = (name: string) => first.field(name).addr - first.addr;
-  const [personalityAt, otIdAt, secureAt] = [offset("personality"), offset("otId"), offset("secure")];
-  // One read of all the boxes: 420 separate reads are slow.
+  const [personalityAt, otIdAt, secureAt, nicknameAt] = [offset("personality"), offset("otId"), offset("secure"), offset("nickname")];
+  const nicknameSize = first.field("nickname").size;
+  const boxNames = storage.field("boxNames");
+  const expTables = mem.global("gExperienceTables");
+  const expRowSize = expTables.at(0).size;
+  // One read of all the boxes and of all the experience tables: 420 separate reads are slow.
   const raw = boxes.bytes();
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-  const species: string[] = [];
+  const expRaw = expTables.bytes();
+  const expView = new DataView(expRaw.buffer, expRaw.byteOffset, expRaw.byteLength);
+  const mons: BoxMon[] = [];
   for (let mon = 0; mon < raw.byteLength; mon += first.size) {
     const personality = view.getUint32(mon + personalityAt, true);
     const { substructs, growth } = decryptMon(personality, view.getUint32(mon + otIdAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
-    const id = substructs.getUint16(growth, true);
-    if (id !== SPECIES_NONE) species.push(nameAt(mem, "gSpeciesNames", id, decode));
+    const species = substructs.getUint16(growth, true);
+    if (species === SPECIES_NONE) continue;
+    const index = mon / first.size;
+    const box = Math.floor(index / IN_BOX_COUNT);
+    mons.push({
+      box,
+      boxName: decode(boxNames.at(box).bytes()),
+      position: index % IN_BOX_COUNT,
+      species: nameAt(mem, "gSpeciesNames", species, decode),
+      nickname: decode(raw.slice(mon + nicknameAt, mon + nicknameAt + nicknameSize)),
+      level: levelFromExp(expView, mem.global("gSpeciesInfo").at(species).field("growthRate").int() * expRowSize, substructs.getUint32(growth + GROWTH_EXPERIENCE, true)),
+    });
   }
-  return species;
+  return mons;
+}
+
+// A box Pokémon keeps no level: see GetLevelFromBoxMonExp in the decomp.
+function levelFromExp(expTables: DataView, table: number, exp: number): number {
+  let level = 1;
+  while (level < MAX_LEVEL && expTables.getUint32(table + (level + 1) * EXP_SIZE, true) <= exp) level++;
+  return level;
 }
 
 export function statLabel(stat: string): string {

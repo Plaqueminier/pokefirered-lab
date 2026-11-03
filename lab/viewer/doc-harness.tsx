@@ -13,6 +13,7 @@ const MACRO_SCREENS = [
   { id: "battle", title: "⚔️ Battle" },
   { id: "mart", title: "🛒 Poké Mart" },
   { id: "pc", title: "💾 Item PC" },
+  { id: "boxes", title: "📦 Pokémon PC" },
   { id: "naming", title: "✏️ Naming screen" },
   { id: "learn", title: "📖 Learn a move" },
 ] as const;
@@ -33,7 +34,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   {
     form: "choose(option)",
     when: "yes/no, nickname after a catch, script menu, grid menu of the school blackboard, menus of the PC",
-    effect: "Moves the cursor to the option and presses A. Impossible for SOMEONE'S PC or BILL'S PC: the Pokémon storage is not covered.",
+    effect: "Moves the cursor to the option and presses A. SOMEONE'S PC or BILL'S PC opens the Pokémon PC.",
     cards: { choice: "yes/no, a script menu, the menus of the PC" },
   },
   { form: "fight(move)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE. Under an ENCORE, FIGHT plays the encored move, and another move is impossible.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
@@ -63,10 +64,22 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   },
   { form: "deposit(item, quantity)", when: "item PC", effect: "Puts items of the ITEMS pocket of the Bag into the PC, then returns to the item PC.", cards: { pc: "Bag → PC" } },
   {
+    form: "depositPokemon(slot)",
+    when: "Pokémon PC",
+    effect: "Puts a Pokémon of the party in the current box, or in the next box with a free place, then returns to the Pokémon PC. Impossible with 1 Pokémon in the party, for the last Pokémon that can fight, and when all the boxes are full. If the game refuses on its screen, the result is impossible, and the Harness closes the screen and returns to the Pokémon PC.",
+    cards: { boxes: "party → box" },
+  },
+  {
+    form: "withdrawPokemon(box, position)",
+    when: "Pokémon PC",
+    effect: "Puts the Pokémon at this place of the boxes in the party, then returns to the Pokémon PC. Impossible with 6 Pokémon in the party, and for an empty place.",
+    cards: { boxes: "box → party" },
+  },
+  {
     form: "leave()",
-    when: "shop menu of a Poké Mart, item PC",
-    effect: "At the shop menu: selects SEE YA! and reads the texts of the clerk until the walk. At the item PC: presses B and returns to the menu of the PC.",
-    cards: { mart: "SEE YA!, then the walk", pc: "back to the menu of the PC" },
+    when: "shop menu of a Poké Mart, item PC, Pokémon PC",
+    effect: "At the shop menu: selects SEE YA! and reads the texts of the clerk until the walk. At the item PC and at the Pokémon PC: presses B and returns to the menu of the PC.",
+    cards: { mart: "SEE YA!, then the walk", pc: "back to the menu of the PC", boxes: "back to the menu of the PC" },
   },
   {
     form: "name(text)",
@@ -102,7 +115,7 @@ export function MacroPage() {
         ["Results", RESULT_ROWS.map(([status, { text }]) => `\`${status}\` ${text}`).join(" · ")],
         [
           "`observe()`",
-          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the grid, the people and the fixed obstacles. The Atlas gives the rival with its name from the save.",
+          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the grid, the people, the fixed obstacles and the Pokémon in the boxes (species, nickname, level, box and place). The Atlas gives the rival with its name from the save.",
         ],
         [
           "Battle facts",
@@ -137,7 +150,7 @@ export function MacroPage() {
       </div>
       <Block label="👁️ observe()" sub="What the game waits for, and the state of the game.">
         <div class={GRID3}>
-          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the grid, the people, the fixed obstacles"]} />
+          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes"]} />
           <DocCard title="Party and Bag" lines={["the party as the Summary screen shows it", "the Bag (quantity, effect, price) and the money"]} />
           <DocCard title="Battle" lines={["the enemy as the player sees it, with its types and states", "each move: effect, STAB, damage estimate"]} />
         </div>
@@ -292,12 +305,12 @@ export function NotYetPage() {
     <Page
       lead="Here the Harness sees a busy game: no Decision point, no action."
       details={[
-        ["Menus", "the Pokémon storage and the mailbox of the PC, the Bag outside use, sell and deposit: the Harness sees a busy game."],
+        ["Menus", "the mailbox of the PC, the Bag outside use, sell and deposit: the Harness sees a busy game. At the Pokémon PC, the Harness does not move a Pokémon between boxes or release a Pokémon."],
         ["Learn a move", "a level up outside a battle (Rare Candy), a TM and a move tutor: the question to learn a move is not a Decision point there."],
       ]}
     >
       <div class={GRID2}>
-        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the Pokémon storage and the mailbox of the PC", "the Bag outside use, sell and deposit"]} />
+        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the mailbox of the PC", "the Bag outside use, sell and deposit", "a move between boxes or a release at the Pokémon PC"]} />
         <DocCard icon={TriangleAlert} tone="warn" title="Learn a move" lines={["a level up outside a battle (Rare Candy)", "a TM and a move tutor"]} />
       </div>
     </Page>

@@ -156,7 +156,7 @@ const PROMPT_PARTS = [
   ["Rules", "the goal, the rules, a short generic Guide"],
   ["Milestones", "the ones reached, and the next one: a name and a place"],
   ["Memory tree", "the top nodes; `zoom` opens a node"],
-  ["Bag, money, party", "as the Summary screen and the Bag show them"],
+  ["Bag, money, party", "as the Summary screen and the Bag show them; at a walk, the Pokémon in the boxes when there are some"],
   ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
   ["Mission", "the story step, kept until it is reached"],
@@ -190,6 +190,7 @@ const SCREENS = [
   { title: "🔁 Party menu", adds: ["the Pokémon that can go into the battle, with their places", "for example after a faint"], actions: ["send", "zoom", "press"] },
   { title: "🛒 Poké Mart", adds: ["the items for sale with their prices", "the items of the Bag that the Mart buys, the money"], actions: ["buy", "sell", "leave", "zoom"] },
   { title: "💾 Item PC", adds: ["the items in the PC and in the ITEMS pocket, with quantities", "1 with no quantity; `leave` returns to the menu of the PC"], actions: ["withdraw", "deposit", "leave", "zoom"] },
+  { title: "📦 Pokémon PC", adds: ["the Pokémon in the boxes, with a number: species, nickname, level, box", "`deposit` names a Pokémon of the party, `withdraw` a number or a name of the list; no `withdraw` with empty boxes"], actions: ["deposit", "withdraw", "leave", "zoom"] },
   { title: "✏️ Naming screen", adds: ["what the screen names, and the maximum length", "for a nickname, the text must be new; for another name, `name` alone keeps the name"], actions: ["name", "zoom"] },
   { title: "📖 Learn a move", adds: ["the new move and the 4 moves: type, power, accuracy, PP", "an important choice: count the damage moves and compare their PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
 ];
@@ -217,12 +218,12 @@ export function PromptPage() {
     <Page
       lead="At each Decision point, the model bot sends one prompt to its AI model and reads one action in the answer."
       details={[
-        ["Model call", "at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC, at the naming screen and when a Pokémon must forget a move to learn a new one."],
+        ["Model call", "at each walk, choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC, at the Pokémon PC, at the naming screen and when a Pokémon must forget a move to learn a new one."],
         ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003)."],
         ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
           "Each prompt",
-          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, and the part of the Decision point (at a walk, the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
+          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some, and the part of the Decision point (at a walk, the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
         ],
         [
           "Known world",
@@ -235,12 +236,12 @@ export function PromptPage() {
         ],
         [
           "Guide",
-          "short generic advice in the rules, with no facts about the maps or the story. Read the signs and talk to the people. Write guesses in the notes and check them. Keep the POTIONS for when they are necessary. Use more than one Pokémon and make a balanced team. `run` from a wild battle that goes badly. Compare the levels before a trainer, and train when the trainers ahead are stronger. To train a weak Pokémon, put it first with `swap`, then `switch` to a strong one when the battle is difficult. Each Pokémon Center has a PC: it keeps the items, and the Pokémon caught with 6 Pokémon in the party; the model cannot take a Pokémon from it yet, so a Pokémon that goes there is lost for the team, and the model must not catch more with 6 Pokémon. Give a nickname to each Pokémon, in the style of the character and different from the species: it costs nothing, and it tells two Pokémon of the same species apart.",
+          "short generic advice in the rules, with no facts about the maps or the story. Read the signs and talk to the people. Write guesses in the notes and check them. Keep the POTIONS for when they are necessary. Use more than one Pokémon and make a balanced team. `run` from a wild battle that goes badly. Compare the levels before a trainer, and train when the trainers ahead are stronger. To train a weak Pokémon, put it first with `swap`, then `switch` to a strong one when the battle is difficult. Each Pokémon Center has a PC: it keeps the items and the Pokémon, and a Pokémon caught with 6 Pokémon in the party goes to a box. At the PC, put a weak Pokémon in a box to make a place before a catch, and take a Pokémon from a box when it suits the next battle. Give a nickname to each Pokémon, in the style of the character and different from the species: it costs nothing, and it tells two Pokémon of the same species apart.",
         ],
         ["`viewAtlas`", "the full Atlas, one time at most at each Decision point. No frames run."],
         [
           "Choice",
-          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, also in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the Pokémon storage is not possible yet.",
+          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, also in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the first option (SOMEONE'S PC or BILL'S PC) opens the boxes, which keep the Pokémon.",
         ],
         ["Battle: own", "in a wild battle, one line after the foe tells how many Pokémon of its species the player owns, in the party and in the PC: `You own 2 PIDGEY: 1 in the party, 1 in the PC.` or `You own no PIDGEY.`"],
         [
@@ -266,6 +267,10 @@ export function PromptPage() {
           "Item PC",
           "the items in the PC and the items of the ITEMS pocket of the Bag, with their quantities. The actions are `withdraw <item> [quantity]`, `deposit <item> [quantity]` (1 with no quantity) and `leave` (back to the menu of the PC). The code does the lists and the quantity.",
         ],
+        [
+          "Pokémon PC",
+          "the party, and the list of the Pokémon in the boxes, with a number, the species, the nickname, the level and the box. The actions are `deposit <Pokémon>` (a place or a name of the party), `withdraw <Pokémon>` (a number or a name of the list, and there is no `withdraw` with empty boxes) and `leave` (back to the menu of the PC). A name that two Pokémon have needs the number. A fixed rule of the Harness gives the box of a deposit, and the Harness does the screen of the boxes.",
+        ],
         ["Naming screen", "what the screen names and the maximum length. The action is `name <text>`. For a nickname, the text must be new and different from the species. For another name, `name` alone keeps the name."],
         [
           "Learn a move",
@@ -273,7 +278,7 @@ export function PromptPage() {
         ],
         [
           "`press`",
-          "only at a walk, at the move menu of a battle and in the party menu, never at a battle action, a choice, the shop menu, the item PC, the naming screen or a move to forget. It has no Start: the model bot does not know the Start menu. The reason of a `press Start` answer tells to `use <item>`, with the items that work now, or that the Bag is empty.",
+          "only at a walk, at the move menu of a battle and in the party menu, never at a battle action, a choice, the shop menu, the item PC, the Pokémon PC, the naming screen or a move to forget. It has no Start: the model bot does not know the Start menu. The reason of a `press Start` answer tells to `use <item>`, with the items that work now, or that the Bag is empty.",
         ],
         ["Forms of an action", "a call is read too: `press(Up)` is `press Up`, `use(POTION, SQUIRTLE)` is `use POTION on SQUIRTLE`. A comma between the arguments is a space: `goTo 9, 42` is `goTo 9 42`. The commas of `choose` and `name` stay in the text."],
         ["Impossible action", "the same conversation continues with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example."],

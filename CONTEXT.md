@@ -17,7 +17,7 @@ The program that runs the emulator and gives a **Bot** one interface to the game
 _Avoid_: emulator, AI
 
 **Bot**:
-The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
+The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
 **Agent**:
@@ -45,7 +45,7 @@ A short sentence that a model bot sets itself: what it does now for its **Missio
 _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 
 **Model call**:
-One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
+One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
 **Unusual call**:
@@ -178,6 +178,10 @@ _Avoid_: score, outcome
 **Inventory**:
 The Bag (its five pockets with their items and quantities) and the PC (its items, and the species of the Pokémon in its boxes) of a **Run** at one frame. The **Run record** does not keep it: the **Viewer** keeps a history of the changes of the **Inventory** of the shown **Run**, and its panel "Bag and PC" shows the **Inventory** at the cursor.
 _Avoid_: items (an item is one entry of a pocket), storage
+
+**Pokémon PC**:
+The **Decision point** where a model bot puts a Pokémon of its party in a box of the PC, or takes a Pokémon from a box. It opens with the first option of the menu of a PC, which has the name SOMEONE'S PC or BILL'S PC. One action moves one Pokémon. The **Bot** does not choose the box of a deposit: by a fixed rule, the **Harness** puts the Pokémon in the current box, or in the next box with a free place.
+_Avoid_: storage, boxes screen
 
 **Viewer**:
 The web page that shows the **Runs**. Its **Grid** shows the screens of several **Runs**, and one **Run** at a time is the shown **Run**: the Viewer shows its screen and its state in detail. To focus a **Run** of the **Grid** is to make it the shown **Run**. The shown **Run** is the own **Run** of the Viewer, or a **Run** of a **Bot** that plays at the same time. The keyboard plays its own **Run**, or the buttons of a **Run record** replay it. A replay can jump to a frame, from a **Savestate** that the Viewer keeps at regular frames of the replay (256 at most). It does not emulate. It has five tabs: Lab (the screen and the panels of the shown **Run**), Grid, Race, Doc (what the lab can do) and Components (each component of the design system in all its states). All the panels follow one cursor (a frame of the shown **Run**) and one selection (a range of frames).

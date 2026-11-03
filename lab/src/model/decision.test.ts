@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BagItem } from "../bag";
 import type { BattleState } from "../harness/harness";
-import type { PartyMon } from "../party";
+import type { BoxMon, PartyMon } from "../party";
 import { type Asked, MAX_SENTENCE, readAction, readDecision } from "./decision";
 import type { Overworld, Target } from "./targets";
 
@@ -149,5 +149,36 @@ describe("readAction", () => {
     const mon = (nickname: string) => ({ nickname, hp: 10 }) as PartyMon;
     const twins = [mon("IVYSAUR"), mon("CATERPIE"), mon("CATERPIE")];
     expect(readAction("switch CATERPIE (position 2)", { kind: "battleAction", party: twins, battle, items: [] })).toEqual({ name: "switch", slot: 1 });
+  });
+
+  describe("at the Pokémon PC", () => {
+    const party = [{ nickname: "SQUIRTLE", hp: 10 }, { nickname: "Sky", hp: 10 }] as PartyMon[];
+    const boxMon = (nickname: string, box: number, position: number): BoxMon => ({ box, boxName: `BOX${box + 1}`, position, species: "PIDGEY", nickname, level: 5 });
+    const boxes = [boxMon("Rock", 0, 0), boxMon("Twin", 0, 3), boxMon("Twin", 2, 7)];
+    const pc: Asked = { kind: "pokemonPc", party, boxes };
+
+    test("deposit names a Pokémon of the party by its place or its name", () => {
+      expect(readAction("deposit 2", pc)).toEqual({ name: "depositPokemon", slot: 1 });
+      expect(readAction("deposit Sky", pc)).toEqual({ name: "depositPokemon", slot: 1 });
+      expect(readAction("deposit 1 SQUIRTLE", pc)).toEqual({ name: "depositPokemon", slot: 0 });
+      expect(() => readAction("deposit Rock", pc)).toThrow('"Rock" is not a Pokémon of your party: SQUIRTLE, Sky');
+    });
+
+    test("withdraw names a Pokémon of the boxes by its number in the list or its name, and two Pokémon with one name need the number", () => {
+      expect(readAction("withdraw 3", pc)).toEqual({ name: "withdrawPokemon", box: 2, position: 7 });
+      expect(readAction("withdraw Rock", pc)).toEqual({ name: "withdrawPokemon", box: 0, position: 0 });
+      expect(readAction("withdraw 2 Twin", pc)).toEqual({ name: "withdrawPokemon", box: 0, position: 3 });
+      expect(() => readAction("withdraw Twin", pc)).toThrow("2 Pokémon of your boxes have the name Twin: give the number in the list, 1 to 3");
+      expect(() => readAction("withdraw 9", pc)).toThrow("there is no Pokémon 9: the numbers in the list are 1 to 3");
+    });
+
+    test("with empty boxes there is no withdraw, and a deposit or a withdraw with no Pokémon tells the form", () => {
+      expect(() => readAction("withdraw Rock", { kind: "pokemonPc", party, boxes: [] })).toThrow('"withdraw" is not an action now: use deposit, leave or zoom');
+      expect(() => readAction("deposit", pc)).toThrow('"deposit" is not an action: write deposit <Pokémon>');
+    });
+
+    test("the actions of the item PC keep their quantity at the item PC", () => {
+      expect(readAction("deposit POTION 2", { kind: "itemPc", party, pcItems: [], depositable: [{ name: "POTION" } as BagItem] })).toEqual({ name: "deposit", item: "POTION", quantity: 2 });
+    });
   });
 });

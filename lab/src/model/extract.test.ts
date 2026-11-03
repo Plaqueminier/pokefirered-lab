@@ -33,6 +33,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     waitingFor: { kind: "walk" },
     party: [],
     bag: [],
+    boxes: [],
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },

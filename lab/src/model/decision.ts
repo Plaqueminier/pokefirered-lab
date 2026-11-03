@@ -2,7 +2,7 @@ import { nicknamedSpecies } from "../menus";
 import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange, NodeSentence } from "../harness/record";
-import { type PartyMon, type PartyMove, sendableSlots } from "../party";
+import { type BoxMon, type PartyMon, type PartyMove, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { Keys } from "../protocol";
 import type { ShopItem } from "../shop";
@@ -57,10 +57,14 @@ export function isPlayed(action: ModelAction): action is PlayedAction {
   return action.name !== "viewAtlas" && action.name !== "zoom";
 }
 
-const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ModelAction["name"], 0>;
+type BoxAction = Extract<MacroAction, { name: "depositPokemon" | "withdrawPokemon" }>;
+
+type ActionVerb = Exclude<ModelAction["name"], BoxAction["name"]>;
+
+const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
-export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ModelAction["name"][];
+export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ActionVerb[];
 
 export type Asked = { party: PartyMon[] } & (
   | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[]; bagEmpty?: boolean }
@@ -68,13 +72,14 @@ export type Asked = { party: PartyMon[] } & (
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; bagEmpty?: boolean }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
   | { kind: "itemPc"; pcItems: PcItem[]; depositable: BagItem[] }
+  | { kind: "pokemonPc"; boxes: BoxMon[] }
   | { kind: "naming"; subject: string; maxLength: number; keys: string[] }
   | { kind: "learnMove"; slot: number; move: PartyMove }
 );
 
 export type AskedKind = Asked["kind"];
 
-const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
+const ACTIONS: Record<AskedKind, ActionVerb[]> = {
   walk: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"],
   choice: ["choose", "zoom"],
   battleAction: ["fight", "switch", "run", "use", "zoom"],
@@ -82,11 +87,12 @@ const ACTIONS: Record<AskedKind, ModelAction["name"][]> = {
   partyPick: ["send", "zoom", "press"],
   shopMenu: ["buy", "sell", "leave", "zoom"],
   itemPc: ["withdraw", "deposit", "leave", "zoom"],
+  pokemonPc: ["deposit", "withdraw", "leave", "zoom"],
   naming: ["name", "zoom"],
   learnMove: ["forget", "keep", "zoom"],
 };
 
-export function actionsOf(asked: Asked): ModelAction["name"][] {
+export function actionsOf(asked: Asked): ActionVerb[] {
   return ACTIONS[asked.kind].filter((name) => {
     switch (name) {
       case "viewAtlas":
@@ -101,9 +107,9 @@ export function actionsOf(asked: Asked): ModelAction["name"][] {
       case "sell":
         return asked.kind === "shopMenu" && asked.sellable.length > 0;
       case "withdraw":
-        return asked.kind === "itemPc" && asked.pcItems.length > 0;
+        return asked.kind === "pokemonPc" ? asked.boxes.length > 0 : asked.kind === "itemPc" && asked.pcItems.length > 0;
       case "deposit":
-        return asked.kind === "itemPc" && asked.depositable.length > 0;
+        return asked.kind === "pokemonPc" || (asked.kind === "itemPc" && asked.depositable.length > 0);
       default:
         return true;
     }
@@ -127,6 +133,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
     if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag), bagEmpty };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     if (waitingFor.kind === "itemPc") return { kind: "itemPc", party, pcItems: waitingFor.items, depositable: depositableItems(observation.bag) };
+    if (waitingFor.kind === "pokemonPc") return { kind: "pokemonPc", party, boxes: observation.boxes };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options, storage: waitingFor.storage } : null;
   }
   const { battle } = observation;
@@ -182,9 +189,11 @@ type Written =
   | { name: "use"; item: string; on?: string }
   | { name: QuantityName; item: string; quantity: number }
   | { name: "forget"; move: string };
-type ParsedAction = Exclude<ModelAction, { name: Written["name"] }> | Written;
+type ParsedAction = Exclude<ModelAction, { name: Written["name"] | BoxAction["name"] }> | Written;
 
 export function readAction(text: string, asked: Asked): ModelAction {
+  const transfer = asked.kind === "pokemonPc" ? readBoxTransfer(text.trim(), asked) : null;
+  if (transfer) return transfer;
   const action = parse(text.trim());
   const accepted = actionsOf(asked);
   if (!action) throw new Error(unreadable(text.trim(), accepted));
@@ -307,7 +316,7 @@ function withSpaces(action: string): string {
   return `${verb} ${written}`.trim();
 }
 
-const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
+const FORMS: Record<ActionVerb, [form: string, example: string]> = {
   go: ["go <letter>", "go B"],
   goTo: ["goTo <x> <y>", "goTo 9 42"],
   swap: ["swap <Pokémon> <Pokémon>", "swap 1 2"],
@@ -330,11 +339,11 @@ const FORMS: Record<ModelAction["name"], [form: string, example: string]> = {
   zoom: ["zoom <a-b>", "zoom 1-8"],
 };
 
-function notNow(name: string, accepted: ModelAction["name"][]): string {
+function notNow(name: string, accepted: ActionVerb[]): string {
   return `"${name}" is not an action now: use ${alternatives(accepted)}`;
 }
 
-function unreadable(text: string, accepted: ModelAction["name"][]): string {
+function unreadable(text: string, accepted: ActionVerb[]): string {
   const verb = text.match(/^\w+/)?.[0].toLowerCase();
   const name = MODEL_ACTION_NAMES.find((n) => n.toLowerCase() === verb);
   if (!name) return `"${quoted(text)}" is not an action`;
@@ -371,19 +380,39 @@ function parse(written: string): ParsedAction | null {
   return pressed ? { name: "press", button: pressed } : null;
 }
 
+const PARTY_LIST = { owner: "your party", place: "place in the party", places: "places in the party" };
+const BOXES_LIST = { owner: "your boxes", place: "number in the list", places: "numbers in the list" };
+
 function partySlot(pokemon: string, party: PartyMon[]): number {
+  return monIndex(pokemon, party, PARTY_LIST);
+}
+
+function monIndex(pokemon: string, mons: readonly { nickname: string }[], { owner, place, places }: typeof PARTY_LIST): number {
   const placed = placeOf(pokemon);
-  const slots = party.flatMap((mon, slot) => (mon.nickname.toLowerCase() === pokemon.toLowerCase() ? [slot] : []));
+  const named = mons.flatMap((mon, index) => (mon.nickname.toLowerCase() === pokemon.toLowerCase() ? [index] : []));
   // A nickname that is the whole text wins over a place in the text, as in "Pidgey 2".
-  if (placed && !(placed.name !== undefined && slots.length === 1)) {
-    const mon = party[placed.place - 1];
-    if (!mon) throw new Error(`there is no Pokémon ${placed.place}: the places in the party are 1 to ${party.length}`);
-    if (placed.name !== undefined && mon.nickname.toLowerCase() !== placed.name.toLowerCase()) throw new Error(`the Pokémon ${placed.place} of your party is ${mon.nickname}, not ${quoted(placed.name)}`);
+  if (placed && !(placed.name !== undefined && named.length === 1)) {
+    const mon = mons[placed.place - 1];
+    if (!mon) throw new Error(`there is no Pokémon ${placed.place}: the ${places} are 1 to ${mons.length}`);
+    if (placed.name !== undefined && mon.nickname.toLowerCase() !== placed.name.toLowerCase()) throw new Error(`the Pokémon ${placed.place} of ${owner} is ${mon.nickname}, not ${quoted(placed.name)}`);
     return placed.place - 1;
   }
-  if (slots.length === 1) return slots[0];
-  if (slots.length === 0) throw new Error(`"${quoted(pokemon)}" is not a Pokémon of your party: ${party.map((mon) => mon.nickname).join(", ")}`);
-  throw new Error(`${slots.length} Pokémon of your party have the name ${pokemon}: give the place in the party, 1 to ${party.length}`);
+  if (named.length === 1) return named[0];
+  if (named.length === 0) throw new Error(`"${quoted(pokemon)}" is not a Pokémon of ${owner}: ${mons.map((mon) => mon.nickname).join(", ")}`);
+  throw new Error(`${named.length} Pokémon of ${owner} have the name ${pokemon}: give the ${place}, 1 to ${mons.length}`);
+}
+
+function readBoxTransfer(written: string, asked: Asked & { kind: "pokemonPc" }): BoxAction | null {
+  const transfer = withSpaces(written).match(/^(deposit|withdraw)(?:\s+(.+))?$/i);
+  if (!transfer) return null;
+  const verb = transfer[1].toLowerCase() as "deposit" | "withdraw";
+  const accepted = actionsOf(asked);
+  if (!accepted.includes(verb)) throw new Error(notNow(verb, accepted));
+  const pokemon = transfer[2];
+  if (pokemon === undefined) throw new Error(`"${verb}" is not an action: write ${verb} <Pokémon>, for example ${verb} 1`);
+  if (verb === "deposit") return { name: "depositPokemon", slot: partySlot(pokemon, asked.party) };
+  const { box, position } = asked.boxes[monIndex(pokemon, asked.boxes, BOXES_LIST)];
+  return { name: "withdrawPokemon", box, position };
 }
 
 /** The place in the text: "2", "Pidgey 2", "Pidgey (2)", "Pidgey (place 2)" or "2 Pidgey". Null when the text has no place. */

@@ -2,7 +2,8 @@ import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRef
 import { type BattleMenu, struggles } from "../battle";
 import type { Game } from "../game";
 import type { NamingScreen, WordScreen } from "../menus";
-import { isHmMove } from "../party";
+import { isHmMove, PARTY_SIZE } from "../party";
+import { freeBox, IN_BOX_COLUMNS, type StorageScreen } from "../pc";
 import { type Messages, oneLine } from "../prompts";
 import { Keys } from "../protocol";
 import type { Interruption } from "./harness";
@@ -19,6 +20,8 @@ const MAX_TRADE = 99;
 const PC_WITHDRAW = 0;
 const PC_DEPOSIT = 1;
 const WITHDRAW_MENU_WITHDRAW = 0;
+// The longest way out: the message of a full box, the box choice, the main screen and the question to close.
+const MAX_CLOSE_PRESSES = 4;
 const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
@@ -186,7 +189,6 @@ export class MenuDriver {
     if (choice.kind !== "choice") throw new Error("choose is available only at a choice");
     const target = choice.options.indexOf(option);
     if (target < 0) return impossible(`no option "${option}" in ${choice.options.join(", ")}`);
-    if (target === choice.storage) return impossible(`${option} opens the Pokémon storage (the boxes), and the program does not cover it: choose another option`);
     const cursor = () => {
       const now = game.waitingFor();
       return now.kind === "choice" ? now.cursor : null;
@@ -298,8 +300,39 @@ export class MenuDriver {
     return this.backToMenu(this.transfer(item, quantity, "the PC"), () => this.toItemStorage());
   }
 
+  depositPokemon(slot: number): Outcome {
+    const { game } = this;
+    const party = game.party();
+    const missing = this.missingPokemon(slot);
+    if (missing) return missing;
+    if (party.length === 1) return impossible("your party has only 1 Pokémon: a Pokémon must stay with you");
+    if (!party.some((mon, other) => other !== slot && mon.hp > 0 && !mon.isEgg)) return impossible(`${party[slot].nickname} is the last Pokémon of your party that can fight`);
+    const box = freeBox(game.boxMons(), game.currentBox());
+    if (box === null) return impossible("all the boxes are full");
+    return this.inBoxes(PC_DEPOSIT, [
+      () => this.moveMenuCursor(slot, () => this.boxesIn("party")?.position ?? null),
+      () => this.menuInput(Keys.A, () => this.onStorage("monMenu")),
+      () => this.toBoxChoice(),
+      () => this.moveMenuCursor(box, () => this.boxChoice(), toward(box, Keys.Right, Keys.Left)),
+      () => this.menuInput(Keys.A, () => this.boxesMain() !== null),
+    ]);
+  }
+
+  withdrawPokemon(box: number, position: number): Outcome {
+    const { game } = this;
+    if (game.party().length === PARTY_SIZE) return impossible(`your party has ${PARTY_SIZE} Pokémon: deposit one first`);
+    if (!game.boxMons().some((mon) => mon.box === box && mon.position === position)) return impossible("there is no Pokémon at this place of the boxes");
+    return this.inBoxes(PC_WITHDRAW, [
+      () => this.toBox(box),
+      () => this.moveMenuCursor(position, () => this.boxesIn("box")?.position ?? null, choiceKey(position, IN_BOX_COLUMNS)),
+      () => this.menuInput(Keys.A, () => this.onStorage("monMenu")),
+      () => this.menuInput(Keys.A, () => this.boxesMain() !== null),
+    ]);
+  }
+
   leave(): Outcome & Texts {
-    if (this.game.waitingFor().kind === "itemPc") return withText(this.input(Keys.B));
+    const { kind } = this.game.waitingFor();
+    if (kind === "itemPc" || kind === "pokemonPc") return withText(this.input(Keys.B));
     const menu = this.toShopMenu();
     if (menu.status !== "done") return withText(menu);
     const left = this.shopOption(SHOP_QUIT, () => this.game.shopMenu() === null, "the end of the shop");
@@ -596,6 +629,65 @@ export class MenuDriver {
   private toItemStorage(): Outcome {
     const { game } = this;
     return game.itemStorageCursor() !== null ? DONE : this.menuInput(Keys.B, () => game.itemStorageCursor() !== null);
+  }
+
+  private boxesMain() {
+    const screen = this.game.storageScreen();
+    return screen?.screen === "main" ? screen : null;
+  }
+
+  private boxesIn(area: (StorageScreen & { screen: "main" })["area"]) {
+    const main = this.boxesMain();
+    return main?.area === area ? main : null;
+  }
+
+  private onStorage(screen: StorageScreen["screen"]): boolean {
+    return this.game.storageScreen()?.screen === screen;
+  }
+
+  private boxChoice(): number | null {
+    const screen = this.game.storageScreen();
+    return screen?.screen === "boxChoice" ? screen.box : null;
+  }
+
+  /** Opens the boxes, plays the steps, and closes the boxes also after a step that fails: the boxes are not a Decision point. */
+  private inBoxes(option: number, steps: (() => Outcome)[]): Outcome {
+    const moved = this.moveMenuCursor(option, () => this.game.pokemonPcCursor());
+    if (moved.status !== "done") return moved;
+    const opened = this.menuInput(Keys.A, () => this.boxesMain() !== null);
+    if (opened.status !== "done") return opened;
+    for (const step of steps) {
+      const outcome = step();
+      if (outcome.status !== "done") return this.backToMenu(outcome, () => this.closeBoxes());
+    }
+    return this.closeBoxes();
+  }
+
+  private toBoxChoice(): Outcome {
+    const shown = this.menuInput(Keys.A, () => this.boxChoice() !== null || this.onStorage("monRefusal"));
+    return shown.status === "done" && this.onStorage("monRefusal") ? impossible("the game refuses this deposit") : shown;
+  }
+
+  private toBox(box: number): Outcome {
+    if (this.boxesMain()?.box === box) return DONE;
+    const onTitle = this.menuInput(Keys.Up, () => this.boxesIn("title") !== null);
+    if (onTitle.status !== "done") return onTitle;
+    const shown = this.moveMenuCursor(box, () => this.boxesIn("title")?.box ?? null, toward(box, Keys.Right, Keys.Left));
+    return shown.status === "done" ? this.menuInput(Keys.Down, () => this.boxesIn("box") !== null) : shown;
+  }
+
+  // Task_OnBPressed: at the main screen, B asks to continue, and a second B answers NO.
+  private closeBoxes(): Outcome {
+    const { game } = this;
+    for (let presses = 0; presses < MAX_CLOSE_PRESSES && game.pokemonPcCursor() === null; presses++) {
+      const before = game.storageScreen()?.screen;
+      const changed = this.menuInput(Keys.B, () => {
+        const now = game.storageScreen()?.screen;
+        return game.pokemonPcCursor() !== null || (now !== undefined && now !== before);
+      });
+      if (changed.status !== "done") return changed;
+    }
+    return game.pokemonPcCursor() === null ? impossible("the boxes do not close") : DONE;
   }
 
   private transfer(item: string, quantity: number, place: string): Outcome {
