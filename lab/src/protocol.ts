@@ -31,7 +31,7 @@ export function obstacleRemedy(move: string): string {
   return `Only a Pokémon that knows ${move} can remove it`;
 }
 
-export const MODEL_PROVIDERS = ["openrouter", "claude-code", "codex"] as const;
+export const MODEL_PROVIDERS = ["openrouter", "claude-code", "codex", "grok"] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
@@ -43,10 +43,15 @@ export function isPlanProvider(provider: ModelProvider): provider is PlanProvide
   return provider !== "openrouter";
 }
 
+/** The tool of this provider has no reasoning level `off`, so `off` plays as `low`. */
+export function hasNoReasoningOff(provider: ModelProvider): boolean {
+  return provider === "claude-code" || provider === "grok";
+}
+
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 
-export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "haiku", codex: "gpt-5.6-luna" };
+export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "haiku", codex: "gpt-5.6-luna", grok: "grok-4.7-build-fast" };
 
 export const MILLION = 1_000_000;
 

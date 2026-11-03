@@ -89,7 +89,7 @@ The service that answers the **Model calls** and the **Summary calls** of a **Ru
 _Avoid_: backend, mode, API
 
 **Plan provider**:
-A **Model provider** that a person's subscription pays for: `claude-code` or `codex`. The calls of a **Run** on a Plan provider use the quota of the subscription and cost no money, so the cost of this **Run** is 0 and a **Token limit** replaces its cost limit.
+A **Model provider** that a person's subscription pays for: `claude-code`, `codex` or `grok`. The calls of a **Run** on a Plan provider use the quota of the subscription and cost no money, so the cost of this **Run** is 0 and a **Token limit** replaces its cost limit.
 _Avoid_: free provider, subscription mode
 
 **Token limit**:

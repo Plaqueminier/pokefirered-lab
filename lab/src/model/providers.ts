@@ -1,9 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../harness/harness";
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
+import { DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
 import { type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply, NO_OPENROUTER_KEY, openRouter } from "./openrouter";
 
 const DEFAULT_COST_LIMIT = 0.5;
@@ -13,7 +13,7 @@ const STATUS_TIMEOUT_MS = 15_000;
 const EXIT_DRAIN_MS = 1000;
 const KILL_GRACE_MS = 2000;
 // Each tool bills an API key when it finds one, so the subscription pays only with no key in its environment.
-const API_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY", "OPENROUTER_API_KEY"];
+const API_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY"];
 const CODEX = join(import.meta.dir, "../../node_modules/.bin/codex");
 // The docs of the tools give no format for a quota error, so only its text can tell it.
 const QUOTA_ERROR = /(usage|session|weekly|hourly|5-hour|plan)[ _-]?limit|hit your .*limit|quota/i;
@@ -24,6 +24,17 @@ const CODEX_QUIET = [
   ...["multi_agent", "shell_tool", "apps", "plugins", "sleep_tool", "tool_suggest", "goals", "image_generation", "view_image", "hooks"].flatMap((feature) => ["--disable", feature]),
 ];
 const CODEX_NOT_TOOLS = ["agent_message", "reasoning", "error"];
+// The own login of the lab, so a call does not read the config and the skills of ~/.grok, and a token refresh does not touch its login (ADR 0007).
+const GROK_HOME = join(homedir(), ".grok-lab");
+const GROK_OFF = { GROK_MEMORY: "0", GROK_WORKFLOWS: "0", GROK_GOAL: "0", GROK_SUBAGENTS: "0", GROK_DISABLE_AUTOUPDATER: "1" };
+const GROK_PROMPT_FILE = "prompt.txt";
+// Grok has no option for "no tools": a --tools entry that names no tool leaves all the tools. A new tool of a later version asks for a permission that dontAsk refuses.
+const GROK_NO_TOOLS = [
+  "run_terminal_command", "read_file", "search_replace", "list_dir", "grep", "write", "todo_write",
+  "kill_command_or_subagent", "get_command_or_subagent_output", "wait_commands_or_subagents", "spawn_subagent",
+  "scheduler_create", "scheduler_delete", "scheduler_list", "monitor", "search_tool", "use_tool", "update_goal", "enter_plan_mode", "exit_plan_mode", "ask_user_question", "send_feedback",
+  "image_gen", "image_edit", "image_to_video", "reference_to_video", "web_search", "web_fetch",
+].join(",");
 
 function levelOf(name: string, given: string | undefined, fallback: ReasoningLevel): ReasoningLevel {
   const level = REASONING.find((known) => known === (given ?? fallback));
@@ -34,7 +45,7 @@ function levelOf(name: string, given: string | undefined, fallback: ReasoningLev
 export function modelSettings(given: ModelOptions, env: Record<string, string | undefined> = process.env): ModelSettings {
   const provider = MODEL_PROVIDERS.find((known) => known === (given.provider ?? DEFAULT_PROVIDER));
   if (!provider) throw new Error(`the provider must be ${MODEL_PROVIDERS.join(", ")}, not "${given.provider}"`);
-  const levelFor = (level: ReasoningLevel) => (provider === "claude-code" && level === "off" ? "low" : level);
+  const levelFor = (level: ReasoningLevel) => (hasNoReasoningOff(provider) && level === "off" ? "low" : level);
   const reasoning = levelFor(levelOf("reasoning", given.reasoning, DEFAULT_REASONING));
   const thinking = levelFor(levelOf("thinking", given.thinking, DEFAULT_THINKING));
   const temperature = given.temperature ?? null;
@@ -63,15 +74,15 @@ function failure(text: string): Error {
   return QUOTA_ERROR.test(text) ? new PlanLimitError(text) : new Error(text);
 }
 
-function toolEnv(): Record<string, string | undefined> {
-  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !API_KEYS.includes(name)));
+function toolEnv(added: Record<string, string>): Record<string, string | undefined> {
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !API_KEYS.includes(name))), ...added };
 }
 
 type ToolRun = { exitCode: number; stdout: string; stderr: string };
 
-async function runTool(command: string[], { stdin = "", cwd, signal, onLine }: { stdin?: string; cwd: string; signal: AbortSignal; onLine?: (line: string) => void }): Promise<ToolRun> {
+async function runTool(command: string[], { stdin = "", cwd, env = {}, signal, onLine }: { stdin?: string; cwd: string; env?: Record<string, string>; signal: AbortSignal; onLine?: (line: string) => void }): Promise<ToolRun> {
   signal.throwIfAborted();
-  const tool = Bun.spawn(command, { cwd, env: toolEnv(), stdin: new TextEncoder().encode(stdin), stdout: "pipe", stderr: "pipe" });
+  const tool = Bun.spawn(command, { cwd, env: toolEnv(env), stdin: new TextEncoder().encode(stdin), stdout: "pipe", stderr: "pipe" });
   const read = async (): Promise<ToolRun> => {
     const stderr = new Response(tool.stderr).text();
     let stdout = "";
@@ -205,10 +216,51 @@ function codex(settings: ModelSettings): ModelClient {
     });
 }
 
+type GrokResult = {
+  message?: string;
+  text?: string;
+  structuredOutput?: unknown;
+  usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; output_tokens?: number; reasoning_tokens?: number };
+};
+
+function grokReply({ exitCode, stdout, stderr }: ToolRun): ModelReply {
+  let result: GrokResult;
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    throw failure(stderr.trim() || stdout.trim() || `Grok ended with the code ${exitCode}`);
+  }
+  if (exitCode !== 0 || !result.usage) throw failure(result.message || stderr.trim() || `Grok ended with the code ${exitCode}`);
+  const { input_tokens = 0, cache_read_input_tokens = 0, cache_creation_input_tokens = 0, output_tokens = 0, reasoning_tokens = 0 } = result.usage;
+  return {
+    content: result.structuredOutput === undefined ? (result.text ?? "") : JSON.stringify(result.structuredOutput),
+    usage: { promptTokens: input_tokens + cache_read_input_tokens + cache_creation_input_tokens, cachedTokens: cache_read_input_tokens, completionTokens: output_tokens, reasoningTokens: reasoning_tokens, cost: 0 },
+  };
+}
+
+// Grok reads ~/.claude also with its compat settings off, so HOME is the empty directory of the call.
+function grokEnv(cwd: string): Record<string, string> {
+  return { ...GROK_OFF, GROK_HOME, HOME: cwd };
+}
+
+function grok(settings: ModelSettings): ModelClient {
+  return ({ system, ...prompt }, { format = DECISION_FORMAT, reasoning = settings.reasoning, signal }: AskOptions = {}) =>
+    inEmptyDirectory(async (cwd) => {
+      await writeFile(join(cwd, GROK_PROMPT_FILE), oneMessage({ system, ...prompt }));
+      const command = ["grok", "--prompt-file", GROK_PROMPT_FILE, "--verbatim", "-m", settings.id, "--effort", reasoning, "--output-format", "json", "--max-turns", "1", "--permission-mode", "dontAsk", "--disallowed-tools", GROK_NO_TOOLS, "--no-subagents", "--no-plan", "--disable-web-search", "--no-auto-update", "--system-prompt-override", system, "--json-schema", JSON.stringify(format.schema)];
+      try {
+        return grokReply(await runTool(command, { cwd, env: grokEnv(cwd), signal: callSignal(signal) }));
+      } finally {
+        // Grok has no option to keep no session, and each call writes one for its directory.
+        await rm(join(GROK_HOME, "sessions", encodeURIComponent(await realpath(cwd))), { recursive: true, force: true });
+      }
+    });
+}
+
+const PLAN_CLIENTS: Record<PlanProvider, (settings: ModelSettings) => ModelClient> = { "claude-code": claudeCode, codex, grok };
+
 export function modelClient(settings: ModelSettings): ModelClient {
-  if (settings.provider === "claude-code") return claudeCode(settings);
-  if (settings.provider === "codex") return codex(settings);
-  return openRouter(settings);
+  return settings.provider === undefined || settings.provider === "openrouter" ? openRouter(settings) : PLAN_CLIENTS[settings.provider](settings);
 }
 
 async function claudeProblem(cwd: string, signal: AbortSignal): Promise<string | null> {
@@ -224,11 +276,18 @@ async function codexProblem(cwd: string, signal: AbortSignal): Promise<string | 
   return /chatgpt/i.test(stdout + stderr) ? null : `Codex is not logged in with a subscription: run ${CODEX} login`;
 }
 
+async function grokProblem(cwd: string, signal: AbortSignal): Promise<string | null> {
+  if (!Bun.which("grok")) return "the command grok is not found: install Grok Build";
+  const { stdout } = await runTool(["grok", "models"], { cwd, env: grokEnv(cwd), signal });
+  return /logged in with grok\.com/i.test(stdout) ? null : `Grok is not logged in for the lab: run GROK_HOME=${GROK_HOME} grok login`;
+}
+
+const PLAN_PROBLEMS: Record<PlanProvider, (cwd: string, signal: AbortSignal) => Promise<string | null>> = { "claude-code": claudeProblem, codex: codexProblem, grok: grokProblem };
+
 export async function providerProblem(provider: ModelProvider): Promise<string | null> {
   if (provider === "openrouter") return process.env.OPENROUTER_API_KEY ? null : NO_OPENROUTER_KEY;
-  const check = provider === "claude-code" ? claudeProblem : codexProblem;
   try {
-    return await inEmptyDirectory((cwd) => check(cwd, AbortSignal.timeout(STATUS_TIMEOUT_MS)));
+    return await inEmptyDirectory((cwd) => PLAN_PROBLEMS[provider](cwd, AbortSignal.timeout(STATUS_TIMEOUT_MS)));
   } catch (error) {
     return `the check of ${provider} failed: ${errorText(error)}`;
   }

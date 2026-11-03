@@ -1,7 +1,7 @@
 import { Play, Square } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
 import type { SpendLimit } from "../src/harness/record";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
@@ -204,7 +204,7 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
           <Select options={names.map((name) => ({ value: name, label: name }))} value={chosenBot} placeholder="no Bot" onChange={setBot} />
         </Field>
         {startFrom}
-        <Field label="Provider" hint="openrouter bills each call. claude-code and codex use your subscription." error={problem ?? undefined}>
+        <Field label="Provider" hint="openrouter bills each call. claude-code, codex and grok use your subscription." error={problem ?? undefined}>
           <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemIn(providers, name) ?? undefined }))} value={provider} onChange={setProvider} />
         </Field>
         {plan ? (
@@ -215,7 +215,7 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
         <Field label="Model" hint="Empty: the default model.">
           <Input value={model} placeholder={DEFAULT_MODELS[provider]} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
         </Field>
-        <Field label="Reasoning" hint={provider === "claude-code" ? "For the usual decisions. Claude Code has no off: off plays as low." : "For the usual decisions. off is cheaper, but the model makes more mistakes."}>
+        <Field label="Reasoning" hint={hasNoReasoningOff(provider) ? `For the usual decisions. ${provider} has no off: off plays as low.` : "For the usual decisions. off is cheaper, but the model makes more mistakes."}>
           <Select options={LEVEL_OPTIONS} value={reasoning} onChange={setReasoning} />
         </Field>
         <Field label="Thinking" hint="For the Character, Reflection and Review turns.">

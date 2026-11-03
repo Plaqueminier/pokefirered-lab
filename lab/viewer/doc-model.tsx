@@ -63,21 +63,23 @@ export function BotsPage() {
 export function ProvidersPage() {
   return (
     <Page
-      lead="A Run can use a subscription in place of OpenRouter: Claude Code or Codex then answer each Model call, and a Token limit replaces the cost limit."
+      lead="A Run can use a subscription in place of OpenRouter: Claude Code, Codex or Grok then answer each Model call, and a Token limit replaces the cost limit."
       details={[
         ["Why", "OpenRouter bills each Model call, and the user already pays for the subscriptions (ADR 0005). OpenRouter stays the default: it has the widest choice of models and it gives a real cost."],
         ["Rules of the subscriptions", "the help of Claude tells that `claude -p`, with a login on a plan, uses the limits of the subscription (read in 2026-11). The docs of Codex tell that `codex exec` reuses the saved login, and they recommend an API key for automation. These rules changed during 2026: read them again before many Runs."],
         ["One Run, one provider", "all the Model calls and Summary calls of a Run use the same provider and the same model. A Continued Run can use another provider and another model, and it is a new Run. An Extended Run keeps its provider, its model and its id."],
-        ["Each call", "one new process of `claude -p` or `codex exec`, in a new temporary directory, with no shared context. The Bot still calls the Harness, and the AI model never does (ADR 0003)."],
-        ["No API key", "the tool does not get `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY` or `OPENROUTER_API_KEY`, because each tool bills a key when it finds one. A login with an API key is not accepted: the provider stays disabled."],
+        ["Each call", "one new process of `claude -p`, `codex exec` or `grok --prompt-file`, in a new temporary directory, with no shared context. The Bot still calls the Harness, and the AI model never does (ADR 0003)."],
+        ["No API key", "the tool does not get `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OPENROUTER_API_KEY` or `XAI_API_KEY`, because each tool bills a key when it finds one. A login with an API key is not accepted: the provider stays disabled."],
         ["No settings", "the tools do not read your settings or your MCP servers, and they keep no session."],
+        ["Grok home", "Grok reads `~/.claude` also with its compat settings off. So each call has an empty `HOME`, and the lab has its own `GROK_HOME`, `~/.grok-lab`, with its own login. Each call removes its session (ADR 0007)."],
         ["One message", "a conversation of a Decision point (the answer of the program after an impossible action) goes in one user message, so each try is a new request."],
-        ["Reasoning", "Claude Code has no level `off`: `off` plays as `low`, and the Run record keeps `low`. Codex plays `off` as `none`."],
+        ["Reasoning", "Claude Code and Grok have no level `off`: `off` plays as `low`, and the Run record keeps `low`. Codex plays `off` as `none`."],
         ["Temperature", "a Plan provider refuses `--temperature`, because the tools do not take one."],
         ["Codex tools", "three tools stay in Codex. A call that uses a tool stops at once and counts as a failed request. The Bot asks again, and 3 errors in a row end the Run."],
+        ["Grok tools", "a Grok call has no tools, one turn, and a permission mode that refuses a tool."],
         ["Time limit", "a call with no answer ends with an error after 5 minutes (10 minutes on OpenRouter)."],
         ["User stop", "a user stop ends the process of the tool at once."],
-        ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code is the global `claude` command, so it can change when you update it."],
+        ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code and Grok are the global `claude` and `grok` commands, so they can change when you update them."],
         ["Token limit", "you give it in millions of tokens, and the Run record keeps a number of tokens. It counts the prompt tokens (with the cached tokens) and the completion tokens of all the calls of the Run, also the Summary calls. The Run ends after the call that goes above the limit, so it can use one call more than the limit."],
         ["Quota", "the amount of the quota is not published, and your own work uses the same quota. The Token limit is not a part of this quota: it only stops the Run."],
         ["Measure of the overhead", "one recorded prompt of 5,112 input tokens on OpenRouter took 8,241 through Claude Code and 7,306 through Codex, about 4 s for each call."],
@@ -87,12 +89,14 @@ export function ProvidersPage() {
         <DocCard title="openrouter" lines={["the default model: `deepseek/deepseek-v4.1-flash`", "bills each call", "limit: a cost in dollars"]} />
         <DocCard title="claude-code" lines={["the default model: `haiku`", "uses your Claude subscription", "limit: a number of tokens"]} />
         <DocCard title="codex" lines={["the default model: `gpt-5.6-luna`", "uses your ChatGPT subscription", "limit: a number of tokens"]} />
+        <DocCard title="grok" lines={["the default model: `grok-4.7-build-fast`", "uses your grok.com login", "limit: a number of tokens"]} />
       </div>
       <Block label="🔑 1. Log in" sub="In `lab/`. You do this one time. You do not need a global install of Codex.">
         <Terms
           rows={[
             ["Claude Code", "`claude auth login`. To check: `claude auth status` must give `\"authMethod\": \"claude.ai\"`."],
             ["Codex", "`bun install`, then `node_modules/.bin/codex login`. To check: `node_modules/.bin/codex login status` must give `Logged in using ChatGPT`."],
+            ["Grok", "`GROK_HOME=~/.grok-lab grok login`. This login is for the lab only. To check: `GROK_HOME=~/.grok-lab grok models` must give `You are logged in with grok.com`."],
           ]}
         />
       </Block>
@@ -143,6 +147,8 @@ export function ProvidersPage() {
             ["`zsh: command not found: codex`", "normal: Codex is in `lab/node_modules/.bin/`. Use the full path of step 1."],
             ["`the command codex is not found`", "run `bun install` in `lab/`"],
             ["`the command claude is not found`", "install Claude Code"],
+            ["`the command grok is not found`", "install Grok Build"],
+            ["`Grok is not logged in for the lab`", "do step 1. Your usual Grok login is not used here."],
             ["`not logged in with a subscription`", "do step 1. The form reads the login at each new connection, so reload the page after you log in."],
             ["`has a token limit, not a cost limit`", "a Plan provider refuses `--cost-limit`; `openrouter` refuses `--token-limit`"],
           ]}

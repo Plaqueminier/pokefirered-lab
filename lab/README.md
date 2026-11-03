@@ -24,20 +24,21 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 22, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005).
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 22, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007).
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
    - `claude-code`: install Claude Code, and log in with your subscription (`claude auth login`).
    - `codex`: `bun install` in `lab/` gives Codex at a fixed version. Log in with your ChatGPT subscription (`node_modules/.bin/codex login`).
+   - `grok`: install Grok Build, and log in one time for the lab, in its own folder (`GROK_HOME=~/.grok-lab grok login`).
 2. In `lab/`:
 
 ```
-bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|codex] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning off|low|medium|high]
+bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|codex|grok] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning off|low|medium|high]
   [--thinking off|low|medium|high] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
 ```
 
-The default models are `deepseek/deepseek-v4.1-flash`, `haiku` and `gpt-5.6-luna`. A **Plan provider** (`claude-code`, `codex`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
+The default models are `deepseek/deepseek-v4.1-flash`, `haiku`, `gpt-5.6-luna` and `grok-4.7-build-fast`. A **Plan provider** (`claude-code`, `codex`, `grok`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, keep the same **Run** (the checkbox "Keep the same Run": an **Extended Run** replaces the file of its **Run record**, with the same name, so the version in the name can be older than the version in the header), and replay a **Run record** (the Select of the top bar).
 
