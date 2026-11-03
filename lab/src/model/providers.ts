@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../harness/harness";
@@ -28,6 +28,9 @@ const CODEX_NOT_TOOLS = ["agent_message", "reasoning", "error"];
 const GROK_HOME = join(homedir(), ".grok-lab");
 const GROK_OFF = { GROK_MEMORY: "0", GROK_WORKFLOWS: "0", GROK_GOAL: "0", GROK_SUBAGENTS: "0", GROK_DISABLE_AUTOUPDATER: "1" };
 const GROK_PROMPT_FILE = "prompt.txt";
+// Grok 1.0.70 ignores --system-prompt-override, and an agent file adds its text after the base prompt of Grok. Grok reads AGENT.md as project instructions, so this file has another name.
+const GROK_AGENT_FILE = "player.txt";
+const GROK_AGENT_HEAD = "---\nname: lab-player\ndescription: The player of the lab\nagents_md: false\n---\n\n";
 // Grok has no option for "no tools": a --tools entry that names no tool leaves all the tools. A new tool of a later version asks for a permission that dontAsk refuses.
 const GROK_NO_TOOLS = [
   "run_terminal_command", "read_file", "search_replace", "list_dir", "grep", "write", "todo_write",
@@ -247,7 +250,8 @@ function grok(settings: ModelSettings): ModelClient {
   return ({ system, ...prompt }, { format = DECISION_FORMAT, reasoning = settings.reasoning, signal }: AskOptions = {}) =>
     inEmptyDirectory(async (cwd) => {
       await writeFile(join(cwd, GROK_PROMPT_FILE), oneMessage({ system, ...prompt }));
-      const command = ["grok", "--prompt-file", GROK_PROMPT_FILE, "--verbatim", "-m", settings.id, "--effort", reasoning, "--output-format", "json", "--max-turns", "1", "--permission-mode", "dontAsk", "--disallowed-tools", GROK_NO_TOOLS, "--no-subagents", "--no-plan", "--disable-web-search", "--no-auto-update", "--system-prompt-override", system, "--json-schema", JSON.stringify(format.schema)];
+      await writeFile(join(cwd, GROK_AGENT_FILE), GROK_AGENT_HEAD + system);
+      const command = ["grok", "--prompt-file", GROK_PROMPT_FILE, "--agent", GROK_AGENT_FILE, "--verbatim", "-m", settings.id, "--effort", reasoning, "--output-format", "json", "--max-turns", "1", "--permission-mode", "dontAsk", "--disallowed-tools", GROK_NO_TOOLS, "--no-subagents", "--no-plan", "--disable-web-search", "--no-auto-update", "--json-schema", JSON.stringify(format.schema)];
       try {
         return grokReply(await runTool(command, { cwd, env: grokEnv(cwd), signal: callSignal(signal) }));
       } finally {
@@ -276,9 +280,17 @@ async function codexProblem(cwd: string, signal: AbortSignal): Promise<string | 
   return /chatgpt/i.test(stdout + stderr) ? null : `Codex is not logged in with a subscription: run ${CODEX} login`;
 }
 
+// The list of the bundled skills adds about 2,100 tokens to each call, and only the config file can hide it.
+async function ignoreGrokSkills(): Promise<void> {
+  const config = join(GROK_HOME, "config.toml");
+  const text = await Bun.file(config).text().catch(() => "");
+  if (!text.includes("[skills]")) await appendFile(config, `\n[skills]\nignore = ["${join(GROK_HOME, "bundled/skills")}"]\n`);
+}
+
 async function grokProblem(cwd: string, signal: AbortSignal): Promise<string | null> {
   if (!Bun.which("grok")) return "the command grok is not found: install Grok Build";
   const { stdout } = await runTool(["grok", "models"], { cwd, env: grokEnv(cwd), signal });
+  await ignoreGrokSkills();
   return /logged in with grok\.com/i.test(stdout) ? null : `Grok is not logged in for the lab: run GROK_HOME=${GROK_HOME} grok login`;
 }
 

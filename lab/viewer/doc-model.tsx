@@ -71,7 +71,8 @@ export function ProvidersPage() {
         ["Each call", "one new process of `claude -p`, `codex exec` or `grok --prompt-file`, in a new temporary directory, with no shared context. The Bot still calls the Harness, and the AI model never does (ADR 0003)."],
         ["No API key", "the tool does not get `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OPENROUTER_API_KEY` or `XAI_API_KEY`, because each tool bills a key when it finds one. A login with an API key is not accepted: the provider stays disabled."],
         ["No settings", "the tools do not read your settings or your MCP servers, and they keep no session."],
-        ["Grok home", "Grok reads `~/.claude` also with its compat settings off. So each call has an empty `HOME`, and the lab has its own `GROK_HOME`, `~/.grok-lab`, with its own login. Each call removes its session (ADR 0007)."],
+        ["Grok home", "Grok reads `~/.claude` also with its compat settings off. So each call has an empty `HOME`, and the lab has its own `GROK_HOME`, `~/.grok-lab`, with its own login and with no bundled skills. Each call removes its session (ADR 0007)."],
+        ["Grok base prompt", "Grok 1.0.70 ignores `--system-prompt-override`. So the system prompt of the Bot goes in an agent file, and the model reads it after a base prompt of Grok of 3,456 characters for software engineering. A difference from a Run on another provider can come from this text."],
         ["One message", "a conversation of a Decision point (the answer of the program after an impossible action) goes in one user message, so each try is a new request."],
         ["Reasoning", "Claude Code and Grok have no level `off`: `off` plays as `low`, and the Run record keeps `low`. Codex plays `off` as `none`."],
         ["Temperature", "a Plan provider refuses `--temperature`, because the tools do not take one."],
@@ -82,7 +83,7 @@ export function ProvidersPage() {
         ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code and Grok are the global `claude` and `grok` commands, so they can change when you update them."],
         ["Token limit", "you give it in millions of tokens, and the Run record keeps a number of tokens. It counts the prompt tokens (with the cached tokens) and the completion tokens of all the calls of the Run, also the Summary calls. The Run ends after the call that goes above the limit, so it can use one call more than the limit."],
         ["Quota", "the amount of the quota is not published, and your own work uses the same quota. The Token limit is not a part of this quota: it only stops the Run."],
-        ["Measure of the overhead", "one recorded prompt of 5,112 input tokens on OpenRouter took 8,241 through Claude Code and 7,306 through Codex, about 4 s for each call."],
+        ["Measure of the overhead", "one recorded prompt of 5,112 input tokens on OpenRouter took 8,241 through Claude Code and 7,306 through Codex, about 4 s for each call. On Grok, we measured a very small prompt with the schema of a decision: 3,536 input tokens, about 4 s for each call."],
       ]}
     >
       <div class={GRID3}>

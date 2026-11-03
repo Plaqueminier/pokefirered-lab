@@ -12,7 +12,7 @@ if [ -n "$FAKE_GROK_FAILS" ]; then
   echo '{"type":"error","message":"'"$FAKE_GROK_FAILS"'"}'
   exit 1
 fi
-{ printf 'HOME=%s GROK_HOME=%s XAI=%s MEMORY=%s PROMPT=%s ARGS=' "$HOME" "$GROK_HOME" "$XAI_API_KEY" "$GROK_MEMORY" "$(cat prompt.txt)"; printf '%s ' "$@"; } > "$FAKE_GROK_LOG"
+{ printf 'HOME=%s GROK_HOME=%s XAI=%s MEMORY=%s PROMPT=%s ARGS=' "$HOME" "$GROK_HOME" "$XAI_API_KEY" "$GROK_MEMORY" "$(cat prompt.txt)"; printf '%s ' "$@"; printf '\\nAGENT:\\n'; cat player.txt; } > "$FAKE_GROK_LOG"
 echo '{"text":"{ \\"action\\": \\"go\\" }","structuredOutput":{"action":"go"},"usage":{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":3,"output_tokens":7,"reasoning_tokens":5}}'
 `;
 
@@ -56,7 +56,14 @@ describe("the client of grok", () => {
     expect(log).toMatch(/^HOME=\S*lab-model-call-\S+ GROK_HOME=\S*\.grok-lab XAI= MEMORY=0 PROMPT=now ARGS=/);
     expect(log).toContain("-m grok-x --effort medium");
     expect(log).toContain("--max-turns 1 --permission-mode dontAsk --disallowed-tools run_terminal_command,");
-    expect(log).toContain("--system-prompt-override rules");
+  });
+
+  test("the system prompt goes in the agent file, because Grok ignores --system-prompt-override", async () => {
+    await ask();
+    const log = await Bun.file(join(bin, "log")).text();
+    expect(log).toContain("--agent player.txt");
+    expect(log).not.toContain("--system-prompt-override");
+    expect(log).toEndWith("agents_md: false\n---\n\nrules");
   });
 
   test("the prompt tokens count the cached tokens, and the cost is 0", async () => {
