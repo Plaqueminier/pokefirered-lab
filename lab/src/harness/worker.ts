@@ -3,7 +3,7 @@ import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
 import { Harness, loadBot } from "./harness";
 import type { WorkerMessage, WorkerStart } from "./pool";
-import { parentRecord, type RunEvent } from "./record";
+import { extendedRecord, parentRecord, type RunEvent, type RunRecord } from "./record";
 
 declare const self: Worker;
 
@@ -61,11 +61,12 @@ class ViewPoster {
 
 self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => {
   let opened: { harness: Harness; poster: ViewPoster } | null = null;
+  let earlier: { record: RunRecord; events: number } | null = null;
   let error: string | null = null;
   try {
-    const { bot: name, model, parent: parentName, ...options } = spec;
+    const { bot: name, model, from, ...options } = spec;
     const bot = await loadBot(name, model);
-    const parent = parentName === undefined ? undefined : await parentRecord(parentName);
+    const parent = from && (await parentRecord(from.record));
     const run = await Run.open({ names: parent?.record.header.names });
     const poster = new ViewPoster(run);
     const harness = await Harness.open(
@@ -85,6 +86,7 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
       run,
     );
     opened = { harness, poster };
+    if (parent && from?.kind === "extended") earlier = { record: parent.record, events: harness.events.length };
     // The replay of a parent Run runs no Macro-action: post its events and its last screen now.
     poster.postNow(harness);
     poster.onEvents(harness.events);
@@ -93,7 +95,8 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
     error = String(e);
   }
   opened?.poster.postFinal(opened.harness);
-  post({ type: "end", record: opened?.harness.record() ?? null, error });
+  const played = opened?.harness.record() ?? null;
+  post({ type: "end", record: played && earlier ? extendedRecord(played, earlier.record, earlier.events) : played, error });
   opened?.harness.close();
   process.exit(0);
 };

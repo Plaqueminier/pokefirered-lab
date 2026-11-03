@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { BotInfo, ClientMessage, ProviderStatus, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
+import type { BotInfo, ClientMessage, ProviderStatus, RecordFacts, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
@@ -187,7 +187,7 @@ const DEMO_RUNS: RunSummary[] = [
     stopAsked: false,
     endReason: null,
     error: null,
-    parent: null,
+    from: null,
     continued: null,
     model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 }, callsStarted: 120 },
     frame: 52_000,
@@ -204,7 +204,7 @@ const DEMO_RUNS: RunSummary[] = [
     stopAsked: false,
     endReason: "cost limit",
     error: null,
-    parent: RECORD,
+    from: { record: RECORD, kind: "continued" },
     continued: null,
     model: null,
     frame: 81_000,
@@ -246,20 +246,41 @@ const DEMO_BOTS: BotInfo[] = [
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
+type BotsState = { label: string; shown: ShownRun; bots: BotInfo[]; places: { free: number; limit: number }; runs?: RunSummary[]; initial?: { from: string; sameRun: boolean } };
+
 const BOTS_STATES = {
-  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: DEMO_BOTS, places: { free: 6, limit: 9 } },
-  full: { label: "No free place", shown: { kind: "bot", run: DEMO_RUNS[0] } as ShownRun, bots: DEMO_BOTS, places: { free: 0, limit: 9 } },
-  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null } as ShownRun, bots: [], places: { free: 9, limit: 9 } },
+  plays: { label: "A Run of a Bot plays", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 6, limit: 9 } },
+  full: { label: "No free place", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 0, limit: 9 } },
+  none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null }, bots: [], places: { free: 9, limit: 9 } },
+  same: { label: "Keep the same Run", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: RECORD, sameRun: true } },
+  busy: { label: "A Run plays from the record", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, runs: [{ ...DEMO_RUNS[0], from: { record: RECORD, kind: "continued" } }], initial: { from: RECORD, sameRun: false } },
+} satisfies Record<string, BotsState>;
+
+const CONTINUED_RECORD = "00016-model-9-2026-10-27T08-40-44.237Z.json";
+
+const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
+  [RECORD]: {
+    bot: "model",
+    version: "10",
+    model: { id: "gpt-6.1-terra", provider: "codex", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, stopAtWhiteout: true },
+    continued: false,
+  },
+  [CONTINUED_RECORD]: {
+    bot: "model",
+    version: "9",
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "dollars", amount: 1 }, stopAtWhiteout: true },
+    continued: true,
+  },
 };
 
 export function BotsDemo() {
   const [state, setState] = useState<keyof typeof BOTS_STATES>("plays");
-  const { shown, bots, places } = BOTS_STATES[state];
+  const { shown, bots, places, runs, initial }: BotsState = BOTS_STATES[state];
   return (
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
       <PopoverBody>
-        <BotsPanel shown={shown} bots={bots} providers={DEMO_PROVIDERS} records={[RECORD]} places={places} send={() => {}} />
+        <BotsPanel key={state} shown={shown} runs={runs ?? []} bots={bots} providers={DEMO_PROVIDERS} records={[RECORD, CONTINUED_RECORD]} recordFacts={DEMO_RECORD_FACTS} places={places} initial={initial} send={() => {}} />
       </PopoverBody>
     </div>
   );

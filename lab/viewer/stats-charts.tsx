@@ -278,7 +278,7 @@ function spentText(view: StatsView, amount: number): string {
 function costNote({ view, limit: spendLimit }: Graph): string | null {
   const own = view.spent - (view.parentEnd?.spent ?? 0);
   const limit = spendLimit === null ? null : `limit ${spentText(view, spendLimit)} · ${Math.round((100 * own) / spendLimit)} % used`;
-  const continued = view.parentEnd ? `continued at ${clock(view.parentEnd.frame)}` : null;
+  const continued = view.parentEnd ? `counted from ${clock(view.parentEnd.frame)}` : null;
   return [limit, continued].filter(Boolean).join(" · ") || null;
 }
 

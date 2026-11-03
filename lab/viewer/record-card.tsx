@@ -26,7 +26,7 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
           { label: SPEND_WORDS[model.limit.unit].limit, value: spendText(model.limit) },
         ]
       : [{ label: "Model", value: "none (a scripted Bot)" }]),
-    ...(continued ? [{ label: "Continues", value: `from ${clock(continued.frame)}`, detail: `${continued.events} events` }] : []),
+    ...(continued ? [{ label: "Limit counts", value: `from ${clock(continued.frame)}`, detail: `${continued.events} events` }] : []),
     replay.gameEvents === null ? { label: "Game events", value: NO_GAME_EVENTS, detail: "only maps, battles and Milestones" } : { label: "Game events", value: String(replay.gameEvents) },
   ];
   return (

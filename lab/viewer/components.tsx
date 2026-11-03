@@ -59,13 +59,15 @@ export function Input({ invalid, icon, unit, ...rest }: InputProps) {
   );
 }
 
+const FIELD_NOTE = "mt-1.5 block text-xs";
+
 export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ComponentChildren }) {
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: the control comes in the children.
     <label class="block">
       <span class="mb-1.5 block text-xs font-semibold text-muted">{label}</span>
       {children}
-      {(error ?? hint) && <span class={`mt-1.5 block text-xs ${error ? "text-bad" : "text-faint"}`}>{error ?? hint}</span>}
+      {(error ?? hint) && <span class={`${FIELD_NOTE} ${error ? "text-bad" : "text-faint"}`}>{error ?? hint}</span>}
     </label>
   );
 }
@@ -82,10 +84,11 @@ export function Switch({ on, onChange, children }: { on: boolean; onChange: (on:
   );
 }
 
-export function Checkbox({ on, onChange, children }: { on: boolean; onChange: (on: boolean) => void; children: ComponentChildren }) {
-  return (
-    <label class="inline-flex cursor-pointer items-center gap-2 text-sm select-none">
-      <input type="checkbox" class="peer sr-only" checked={on} onChange={(e) => onChange(e.currentTarget.checked)} />
+export function Checkbox({ on, disabledReason, onChange, children }: { on: boolean; disabledReason?: string; onChange: (on: boolean) => void; children: ComponentChildren }) {
+  const disabled = disabledReason !== undefined;
+  const box = (
+    <label class={`inline-flex items-center gap-2 text-sm select-none ${disabled ? "pointer-events-none opacity-40" : "cursor-pointer"}`}>
+      <input type="checkbox" class="peer sr-only" checked={on} disabled={disabled} onChange={(e) => onChange(e.currentTarget.checked)} />
       <span class="grid size-4 place-items-center rounded-sm border border-line-strong transition-colors peer-checked:border-accent peer-checked:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-accent/35 peer-checked:[&_path]:[stroke-dashoffset:0]">
         <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="var(--color-accent-fg)" stroke-width="2" aria-hidden="true">
           <path d="M2.5 6.2 5 8.5l4.5-5" stroke-dasharray="12" stroke-dashoffset="12" class="transition-[stroke-dashoffset] duration-200 ease-out" />
@@ -93,6 +96,13 @@ export function Checkbox({ on, onChange, children }: { on: boolean; onChange: (o
       </span>
       {children}
     </label>
+  );
+  if (!disabled) return box;
+  return (
+    <div>
+      {box}
+      <span class={`${FIELD_NOTE} text-faint`}>{disabledReason}</span>
+    </div>
   );
 }
 

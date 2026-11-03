@@ -4,7 +4,7 @@ import type { Sight } from "./harness/atlas";
 import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
-import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent } from "./harness/record";
+import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
 
 /** GBA key bits, as setKeys expects them. */
@@ -131,7 +131,20 @@ type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; limit: Spend };
+export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; limit: Spend };
+
+/** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
+export type RunFrom = { record: string; kind: "continued" | "extended" };
+
+export type RecordFacts = { bot: string; version: string; model: (ModelFacts & { stopAtWhiteout: boolean }) | null; continued: boolean };
+
+// A Continued Run finds its start from the end of its parent, so a parent must not grow.
+export function extendProblem(facts: RecordFacts | undefined, playing: boolean): string | null {
+  if (!facts) return "This file has no header of a Run record.";
+  if (facts.continued) return "Another Run record continues this one, and it needs this one as it is.";
+  if (playing) return "A Run plays from this Run record now.";
+  return null;
+}
 
 export type ReplayModel = ModelFacts & { calls: number; spent: Spend; totalCalls: number; totalSpent: Spend };
 
@@ -162,8 +175,7 @@ export type RunSummary = {
   stopAsked: boolean;
   endReason: EndReason | null;
   error: string | null;
-  /** The Run record that the Run continues. */
-  parent: string | null;
+  from: RunFrom | null;
   continued: Continuation | null;
   /** A Model call runs while `callsStarted` is more than the model events of the Run. */
   model: (ModelFacts & { spent: Spend; ownSpent: Spend; callsStarted: number }) | null;
@@ -212,7 +224,7 @@ export type ServerMessage =
   /** With each screen, while the screen overlay is on. */
   | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string }
-  | { type: "records"; names: string[] }
+  | { type: "records"; names: string[]; facts: Record<string, RecordFacts> }
   | { type: "bots"; bots: BotInfo[]; providers: ProviderStatus[] }
   | { type: "areas"; areas: Areas }
   | { type: "replay-events"; name: string; events: GameEvent[] }
@@ -238,6 +250,7 @@ export type ClientMessage =
   | { type: "seek"; frame: number }
   /** `parent`: continue this Run record of lab/runs/, not a Run from the Starting save. */
   | { type: "start-bot"; name: string; model: ModelOptions; parent?: string; count: number }
+  | { type: "extend-run"; record: string; limit: SpendLimit }
   | { type: "stop-run"; runId: number }
   | { type: "show"; runId: number | null }
   /** The server also sends the screens of the shown Run. */

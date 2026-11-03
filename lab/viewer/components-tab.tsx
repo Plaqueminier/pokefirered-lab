@@ -146,6 +146,12 @@ function FieldDemo() {
         <Checkbox on={sound} onChange={setSound}>
           Sound
         </Checkbox>
+        <Checkbox on={false} disabledReason="Disabled, with its reason." onChange={() => {}}>
+          Off
+        </Checkbox>
+        <Checkbox on disabledReason="Disabled, with its reason." onChange={() => {}}>
+          On
+        </Checkbox>
       </div>
     </div>
   );
@@ -880,7 +886,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Bots",
-    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with its Model provider and the maximum total cost or tokens, and it stops the shown Run. A provider that is not ready is disabled, with its reason.",
+    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with its Model provider and the maximum total cost or tokens, and it stops the shown Run. “Keep the same Run” shows the settings of the record as locked fields, with only the limit to change; it is disabled, with its reason, when a Run plays from the record or another record continues it. A provider that is not ready is disabled, with its reason.",
     demo: () => <BotsDemo />,
   },
   {

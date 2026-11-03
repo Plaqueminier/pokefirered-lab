@@ -1,12 +1,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
 import { ROM_FILE, Run, START_SAVE, screenHash } from "../run";
 import { Harness, type HarnessOptions } from "./harness";
 import { RunPool } from "./pool";
-import { RecordPlayer, type RunRecord } from "./record";
+import { RecordPlayer, type RunRecord, RUNS_DIR } from "./record";
 
 const STARTER = join(import.meta.dir, "scripted-bot.ts");
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -90,6 +91,28 @@ export const modelBot = (options) => real(options, () => (_prompt, { signal }) =
     expect(run.view.frame).toBe(new RecordPlayer(alone.record).frames);
     expect(run.view.screen && screenHash(run.view.screen)).toBe(alone.screen);
     expect(run.view.state).toMatchObject({ map: { name: alone.record.events.findLast((e) => e.type === "map")?.map } });
+  });
+
+  test("a Run in a worker that plays on in the same Run gives a Run record with its parts, the old events and no parent; a Run that continues names its parent", async () => {
+    const name = `00000-pool-test-${process.pid}.json`;
+    const path = join(RUNS_DIR, name);
+    const presser = join(mkdtempSync(join(tmpdir(), "bot-")), "presser.ts");
+    await Bun.write(presser, 'export default { name: "presser", version: "2", play: async (h) => void (await h.press("B")) };');
+    const first = await new RunPool().start({ bot: presser }).done;
+    const old = first.record as RunRecord;
+    await Bun.write(path, JSON.stringify(old));
+    try {
+      const { record, error } = await new RunPool().start({ bot: presser, from: { record: name, kind: "extended" } }).done;
+      expect(error).toBeNull();
+      expect(record?.header.parent).toBeUndefined();
+      expect(record?.header.parts).toEqual([{ frame: new RecordPlayer(old).frames, events: old.events.length, bot: old.header.bot, result: old.result }]);
+      expect(record?.events.slice(0, old.events.length)).toEqual(old.events);
+      const continued = await new RunPool().start({ bot: presser, from: { record: name, kind: "continued" } }).done;
+      expect(continued.record?.header.parent).toBe(name);
+      expect(continued.record?.header.parts).toBeUndefined();
+    } finally {
+      await rm(path);
+    }
   });
 
   test("a Grid replay of a Run with names boots with these names: it reaches the last screen of the Run, then goes back", async () => {

@@ -1,6 +1,8 @@
 import { Play, Square } from "lucide-preact";
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import type { SpendLimit } from "../src/harness/record";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
 
@@ -54,7 +56,8 @@ function runState(run: RunSummary): string {
 }
 
 function runLabel(run: RunSummary): string {
-  return `Run ${run.id} · ${run.bot}${run.parent ? ` (continues ${run.parent})` : ""} · ${runState(run)}`;
+  const source = run.from ? ` (${run.from.kind === "extended" ? "same Run as" : "continues"} ${run.from.record})` : "";
+  return `Run ${run.id} · ${run.bot}${source} · ${runState(run)}`;
 }
 
 // A scripted Bot refuses any model option: a default value goes as no option.
@@ -103,7 +106,7 @@ function shownModel(run: RunSummary | null): string {
   return `Run ${run.id}: model ${id} on ${provider}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, used ${spendText(ownSpent)} of ${spendText(limit)}`;
 }
 
-export type Places = { free: number; limit: number };
+type Places = { free: number; limit: number };
 
 function countError(countOk: boolean, { free, limit }: Places): string | undefined {
   if (free === 0) return `No free place: the Runs of the Bots and the Grid replays use the ${limit} places.`;
@@ -120,7 +123,44 @@ function totalLimit(count: number, given: string, byDefault: number | null, unit
 
 const LEVEL_OPTIONS = REASONING.map((level) => ({ value: level, label: level }));
 
-export function BotsPanel({ shown, bots, providers, records, places, send }: { shown: ShownRun | null; bots: readonly BotInfo[]; providers: readonly ProviderStatus[]; records: readonly string[]; places: Places; send: Send }) {
+function LockedField({ label, value, hint, error }: { label: string; value: string; hint?: string; error?: string }) {
+  return (
+    <Field label={label} hint={hint} error={error}>
+      <Select options={[{ value, label: value }]} value={value} onChange={() => {}} disabled />
+    </Field>
+  );
+}
+
+function LimitField({ unit, value, onInput, placeholder, hint }: { unit: SpendUnit; value: string; onInput: (value: string) => void; placeholder: string; hint: string }) {
+  const tokens = unit === "tokens";
+  return (
+    <Field label={tokens ? "Token limit" : "Cost limit"} hint={hint}>
+      <Input type="number" min={tokens ? "0" : "0.01"} step={tokens ? "0.1" : "0.05"} unit={tokens ? "M" : "$"} placeholder={placeholder} value={value} onInput={(event) => onInput(event.currentTarget.value)} />
+    </Field>
+  );
+}
+
+function limitOption(unit: SpendUnit, text: string): SpendLimit {
+  const given = text.trim();
+  if (!given) return {};
+  return unit === "tokens" ? { tokenLimit: tokensFromMillions(Number(given)) } : { costLimit: Number(given) };
+}
+
+function problemIn(providers: readonly ProviderStatus[], name: ModelProvider): string | null {
+  return providers.find((status) => status.provider === name)?.problem ?? null;
+}
+
+function versionHint(bots: readonly BotInfo[], { bot, version }: RecordFacts): string | undefined {
+  const info = bots.find(({ name }) => name === bot);
+  if (!info || !("version" in info) || info.version === version) return undefined;
+  return `The Run record has version ${version}. The new play uses version ${info.version}, and the header takes it.`;
+}
+
+type FormSlots = { startFrom: ComponentChildren; keepSameRun: ComponentChildren; stop: ComponentChildren };
+
+type FormProps = FormSlots & { bots: readonly BotInfo[]; providers: readonly ProviderStatus[]; places: Places; send: Send };
+
+function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSameRun, stop }: FormProps & { parent: string | undefined }) {
   const freePlaces = places.free;
   const names = bots.map((info) => info.name);
   const [bot, setBot] = useState("");
@@ -132,59 +172,45 @@ export function BotsPanel({ shown, bots, providers, records, places, send }: { s
   const [thinking, setThinking] = useState<ReasoningLevel>(DEFAULT_THINKING);
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
   const [stopAtWhiteout, setStopAtWhiteout] = useState(true);
-  const [from, setFrom] = useState(FROM_START);
   const [countText, setCountText] = useState("1");
   const count = Number(countText);
   const countOk = Number.isInteger(count) && count >= 1 && count <= freePlaces;
   const chosenBot = names.includes(bot) ? bot : (names[0] ?? "");
   const chosenInfo = bots.find((info) => info.name === chosenBot);
-  const plan = isPlanProvider(provider);
-  const problemOf = (name: ModelProvider) => providers.find((status) => status.provider === name)?.problem ?? null;
-  const problem = problemOf(provider);
-  const words = SPEND_WORDS[plan ? "tokens" : "dollars"];
+  const unit: SpendUnit = isPlanProvider(provider) ? "tokens" : "dollars";
+  const plan = unit === "tokens";
+  const problem = problemIn(providers, provider);
+  const words = SPEND_WORDS[unit];
   const defaultLimit = plan ? DEFAULT_TOKEN_LIMIT : chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
-  const chosenFrom = records.includes(from) ? from : FROM_START;
-  const run = shown?.kind === "bot" ? shown.run : null;
+  const limit = plan ? tokenLimit : costLimit;
+  const canStart = chosenBot !== "" && countOk && problem === null;
   const start = () => {
-    if (!chosenBot || !countOk || problem) return;
-    const cost = costLimit.trim();
-    const limit = tokenLimit.trim();
+    if (!canStart) return;
     const options = {
       id: model.trim() || undefined,
       provider: option(provider, DEFAULT_PROVIDER),
-      costLimit: !plan && cost ? Number(cost) : undefined,
-      tokenLimit: plan && limit ? tokensFromMillions(Number(limit)) : undefined,
+      ...limitOption(unit, limit),
       reasoning: option(reasoning, DEFAULT_REASONING),
       thinking: option(thinking, DEFAULT_THINKING),
       starter: option(starter, DEFAULT_STARTER),
       stopAtWhiteout,
     };
-    send({ type: "start-bot", name: chosenBot, model: options, count, ...(chosenFrom === FROM_START ? {} : { parent: chosenFrom }) });
+    send({ type: "start-bot", name: chosenBot, model: options, count, ...(parent === undefined ? {} : { parent }) });
   };
   return (
-    <div class="flex w-[560px] max-w-full flex-col gap-4">
+    <>
       <div class="grid grid-cols-2 gap-3">
         <Field label="Bot">
           <Select options={names.map((name) => ({ value: name, label: name }))} value={chosenBot} placeholder="no Bot" onChange={setBot} />
         </Field>
-        <Field label="Start from">
-          <Select
-            options={[{ value: FROM_START, label: "the Starting save" }, ...records.map((name) => ({ value: name, label: `continue ${name}` }))]}
-            value={chosenFrom}
-            onChange={setFrom}
-          />
-        </Field>
+        {startFrom}
         <Field label="Provider" hint="openrouter bills each call. claude-code and codex use your subscription." error={problem ?? undefined}>
-          <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemOf(name) ?? undefined }))} value={provider} onChange={setProvider} />
+          <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemIn(providers, name) ?? undefined }))} value={provider} onChange={setProvider} />
         </Field>
         {plan ? (
-          <Field label="Token limit" hint={`In millions of tokens. Empty: ${DEFAULT_TOKEN_LIMIT / MILLION}. All the input and output tokens of this Run.`}>
-            <Input type="number" min="0" step="0.1" unit="M" placeholder={String(DEFAULT_TOKEN_LIMIT / MILLION)} value={tokenLimit} onInput={(event) => setTokenLimit(event.currentTarget.value)} />
-          </Field>
+          <LimitField unit={unit} value={tokenLimit} onInput={setTokenLimit} placeholder={String(DEFAULT_TOKEN_LIMIT / MILLION)} hint={`In millions of tokens. Empty: ${DEFAULT_TOKEN_LIMIT / MILLION}. All the input and output tokens of this Run.`} />
         ) : (
-          <Field label="Cost limit" hint="Empty: LAB_COST_LIMIT, or 0.50 $.">
-            <Input type="number" min="0.01" step="0.05" unit="$" placeholder="0.50" value={costLimit} onInput={(event) => setCostLimit(event.currentTarget.value)} />
-          </Field>
+          <LimitField unit={unit} value={costLimit} onInput={setCostLimit} placeholder="0.50" hint="Empty: LAB_COST_LIMIT, or 0.50 $." />
         )}
         <Field label="Model" hint="Empty: the default model.">
           <Input value={model} placeholder={DEFAULT_MODELS[provider]} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
@@ -202,32 +228,123 @@ export function BotsPanel({ shown, bots, providers, records, places, send }: { s
           <Input type="number" min="1" max={String(freePlaces)} step="1" invalid={!countOk} value={countText} onInput={(event) => setCountText(event.currentTarget.value)} />
         </Field>
         <Field label={`Maximum total ${words.name.toLowerCase()}`} hint={`Each Run keeps its own ${words.limit.toLowerCase()}.`}>
-          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalLimit(countOk ? count : 1, plan ? tokenLimit : costLimit, defaultLimit, plan ? "tokens" : "dollars")}</p>
+          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalLimit(countOk ? count : 1, limit, defaultLimit, unit)}</p>
         </Field>
       </div>
+      {keepSameRun}
       <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
         Stop at a whiteout: the Run ends when all the Pokémon of the party faint
       </Checkbox>
       <div class="flex items-center gap-2">
-        <Button variant="primary" disabled={!chosenBot || !countOk || problem !== null} onClick={start}>
+        <Button variant="primary" disabled={!canStart} onClick={start}>
           <Play size={14} />
           {countOk && count > 1 ? `Start ${count} Runs` : "Start the Bot"}
         </Button>
-        <Button
-          variant="danger"
-          disabled={!run?.playing || run.stopAsked}
-          title="Stops the shown Run after the action that plays, or at once in a Model call, and writes its Run record"
-          onClick={() => run && send({ type: "stop-run", runId: run.id })}
-        >
-          <Square size={14} />
-          Stop the shown Run
-        </Button>
+        {stop}
       </div>
+    </>
+  );
+}
+
+function ExtendedRunForm({ facts, onStart, bots, providers, places, startFrom, keepSameRun, stop }: Omit<FormProps, "send"> & { facts: RecordFacts; onStart: (limit: SpendLimit) => void }) {
+  const [limit, setLimit] = useState("");
+  const { model } = facts;
+  const problem = model && problemIn(providers, model.provider);
+  const noPlace = places.free < 1 ? countError(false, places) : undefined;
+  const canStart = !noPlace && !problem;
+  const start = () => {
+    if (canStart) onStart(model ? limitOption(model.limit.unit, limit) : {});
+  };
+  return (
+    <>
+      <div class="grid grid-cols-2 gap-3">
+        <LockedField label="Bot" value={facts.bot} hint={versionHint(bots, facts)} />
+        {startFrom}
+        {model && (
+          <>
+            <LockedField label="Provider" value={model.provider} error={problem ?? undefined} />
+            {model.limit.unit === "tokens" ? (
+              <LimitField unit="tokens" value={limit} onInput={setLimit} placeholder={String(model.limit.amount / MILLION)} hint={`In millions of tokens. Empty: ${model.limit.amount / MILLION}, the limit of the Run record. It counts the new calls only.`} />
+            ) : (
+              <LimitField unit="dollars" value={limit} onInput={setLimit} placeholder={String(model.limit.amount)} hint={`Empty: ${model.limit.amount} $, the limit of the Run record. It counts the new calls only.`} />
+            )}
+            <LockedField label="Model" value={model.id} />
+            <LockedField label="Reasoning" value={model.reasoning} />
+            <LockedField label="Thinking" value={model.thinking} />
+            <LockedField label="Starter" value={model.starter} />
+            <LockedField label="Stop at a whiteout" value={model.stopAtWhiteout ? "yes" : "no"} />
+          </>
+        )}
+      </div>
+      {keepSameRun}
+      <div class="flex items-center gap-2">
+        <Button variant="primary" disabled={!canStart} title={noPlace} onClick={start}>
+          <Play size={14} />
+          Continue the Run
+        </Button>
+        {stop}
+      </div>
+    </>
+  );
+}
+
+type BotsPanelProps = {
+  shown: ShownRun | null;
+  runs: readonly RunSummary[];
+  bots: readonly BotInfo[];
+  providers: readonly ProviderStatus[];
+  records: readonly string[];
+  recordFacts: Readonly<Record<string, RecordFacts>>;
+  places: Places;
+  initial?: { from: string; sameRun: boolean };
+  send: Send;
+};
+
+export function BotsPanel({ shown, runs, bots, providers, records, recordFacts, places, initial, send }: BotsPanelProps) {
+  const [from, setFrom] = useState(initial?.from ?? FROM_START);
+  const [sameRunRecord, setSameRunRecord] = useState(initial?.sameRun ? initial.from : null);
+  const chosenFrom = records.includes(from) ? from : FROM_START;
+  const fromRecord = chosenFrom !== FROM_START;
+  const facts = fromRecord ? recordFacts[chosenFrom] : undefined;
+  const reason = fromRecord ? extendProblem(facts, runs.some((r) => r.playing && r.from?.record === chosenFrom)) : null;
+  const extended = sameRunRecord === chosenFrom && reason === null ? facts : undefined;
+  const extend = (limit: SpendLimit) => {
+    send({ type: "extend-run", record: chosenFrom, limit });
+    setSameRunRecord(null);
+  };
+  const run = shown?.kind === "bot" ? shown.run : null;
+  const slots: FormSlots = {
+    startFrom: (
+      <Field label="Start from">
+        <Select options={[{ value: FROM_START, label: "the Starting save" }, ...records.map((name) => ({ value: name, label: `continue ${name}` }))]} value={chosenFrom} onChange={setFrom} />
+      </Field>
+    ),
+    keepSameRun: fromRecord && (
+      <Checkbox on={extended !== undefined} disabledReason={reason ?? undefined} onChange={(on) => setSameRunRecord(on ? chosenFrom : null)}>
+        Keep the same Run: the same id and model, and the new record replaces this file
+      </Checkbox>
+    ),
+    stop: (
+      <Button
+        variant="danger"
+        disabled={!run?.playing || run.stopAsked}
+        title="Stops the shown Run after the action that plays, or at once in a Model call, and writes its Run record"
+        onClick={() => run && send({ type: "stop-run", runId: run.id })}
+      >
+        <Square size={14} />
+        Stop the shown Run
+      </Button>
+    ),
+  };
+  const form = { bots, providers, places, ...slots };
+  return (
+    <div class="flex w-[560px] max-w-full flex-col gap-4">
+      {extended ? <ExtendedRunForm key={chosenFrom} facts={extended} onStart={extend} {...form} /> : <NewRunForm parent={fromRecord ? chosenFrom : undefined} send={send} {...form} />}
       {run?.model && <p class="font-mono text-xs text-muted">{shownModel(run)}</p>}
       <p class="text-xs leading-relaxed text-faint">
         The Runs of the Bots play at the same time, at full speed, with no sound. They share {places.limit} places with the replays of the Grid. To show another Run does not stop them. "Stop the shown Run" ends it with
         user stop and writes its Run record. "continue" starts the Bot from the end of a Run record, with its Memory tree, its Mission and its Atlas: its limit
-        counts the new Model calls only, and its model and its provider can be other ones.
+        counts the new Model calls only, and its model and its provider can be other ones. "Keep the same Run" also plays on from the end of the record, with its model and its provider: no other file, and the id stays.
       </p>
     </div>
   );

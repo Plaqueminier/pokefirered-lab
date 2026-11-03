@@ -4,12 +4,12 @@ import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
-import { TRACK_POINT } from "../protocol";
+import { extendProblem, TRACK_POINT } from "../protocol";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
 import { withoutFormat } from "./game-events";
 import { migrate } from "./migrate";
-import { isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, RECORD_FORMAT, RecordPlayer, replay, type RunRecord, writeRecord } from "./record";
+import { extendedOptions, extendedRecord, isGameEvent, isRunRecord, type ModelAnswer, type ModelEvent, type ModelSettings, RECORD_FORMAT, RecordPlayer, recordFacts, replaceRecord, replay, replayStart, type RunRecord, writeRecord } from "./record";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -70,6 +70,82 @@ test("a Run record file starts with the next Run id on 5 digits: two records wri
   await Promise.all([writeRecord(record, dir), writeRecord(record, dir)]);
   const names = (await readdir(dir)).sort();
   expect(names.map((name) => name.slice(0, 13))).toEqual(["00007-model-3", "00008-test-1-", "00009-test-1-"]);
+});
+
+test("an Extended Run replaces its Run record under the same name: no other file stays, and the next Run takes the next id", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "runs-"));
+  const name = "00007-test-1-2026-10-26T07-41-35.302Z.json";
+  await Bun.write(join(dir, name), JSON.stringify({ header, buttons: [[0, 6]], events: [], result }));
+  const longer: RunRecord = { header, buttons: [[0, 9]], events: [], result: { ...result, frames: 9 } };
+  expect(await replaceRecord(name, longer, dir)).toBe(join(dir, name));
+  expect(await readdir(dir)).toEqual([name]);
+  expect(await Bun.file(join(dir, name)).json()).toEqual(longer);
+  await writeRecord(longer, dir);
+  expect((await readdir(dir)).sort().map((file) => file.slice(0, 5))).toEqual(["00007", "00008"]);
+});
+
+describe("recordFacts", () => {
+  const model = { id: "gpt-x", reasoning: "low", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: false, provider: "codex", tokenLimit: 30_000_000 } as const;
+  const write = (dir: string, name: string, recordHeader: RunRecord["header"]) => Bun.write(join(dir, name), JSON.stringify({ format: 3, header: recordHeader, buttons: [[0, 6]], events: [], result }));
+
+  test("it gives the Bot and the model of each Run record, and if another Run record continues it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runs-"));
+    await write(dir, "00001-test-1-a.json", header);
+    await write(dir, "00002-model-20-b.json", { ...header, bot: { name: "model", version: "20", model } });
+    await write(dir, "00003-test-1-c.json", { ...header, parent: "00001-test-1-a.json" });
+    const facts = await recordFacts(["00001-test-1-a.json", "00002-model-20-b.json", "00003-test-1-c.json"], dir);
+    expect(facts["00001-test-1-a.json"]).toEqual({ bot: "test", version: "1", model: null, continued: true });
+    expect(facts["00002-model-20-b.json"]).toEqual({
+      bot: "model",
+      version: "20",
+      model: { id: "gpt-x", provider: "codex", reasoning: "low", thinking: "medium", starter: "free", stopAtWhiteout: false, limit: { unit: "tokens", amount: 30_000_000 } },
+      continued: false,
+    });
+    expect(facts["00003-test-1-c.json"].continued).toBe(false);
+  });
+
+  test("it reads a file with the header after the buttons as a whole, and it has no facts for a file that is not a Run record", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runs-"));
+    await Bun.write(join(dir, "00001-old.json"), JSON.stringify({ buttons: [[0, 6]], events: [], result, header }));
+    await Bun.write(join(dir, "00002-old.json"), JSON.stringify({ result, buttons: [[0, 6]], events: [], header }));
+    await Bun.write(join(dir, "00003-bad.json"), "{}");
+    await Bun.write(join(dir, "00004-bad.json"), JSON.stringify({ header: { bot: {} }, buttons: [] }));
+    const facts = await recordFacts(["00001-old.json", "00002-old.json", "00003-bad.json", "00004-bad.json"], dir);
+    expect(facts["00001-old.json"].bot).toBe("test");
+    expect(facts["00002-old.json"].bot).toBe("test");
+    expect(facts["00003-bad.json"]).toBeUndefined();
+    expect(facts["00004-bad.json"]).toBeUndefined();
+  });
+});
+
+test("an Extended Run takes the settings of its Run record, and a limit only when a person gives one; an old record gets the levels that it played with", () => {
+  const settings = { id: "gpt-x", reasoning: "low", thinking: "high", temperature: null, starter: "free", stopAtWhiteout: false, provider: "codex", tokenLimit: 30_000_000 } as const;
+  expect(extendedOptions(settings, {})).toEqual(settings);
+  expect(extendedOptions(settings, { tokenLimit: 5_000_000 })).toEqual({ ...settings, tokenLimit: 5_000_000 });
+  expect(extendedOptions(undefined, {})).toEqual({});
+  const old = { id: "a/b", reasoning: "off", costLimit: 1 } as unknown as ModelSettings;
+  expect(extendedOptions(old, {})).toMatchObject({ reasoning: "off", thinking: "off", starter: "free" });
+});
+
+test("the part of an Extended Run counts the events of the old record that the new one holds: a replay of a record from before format 1 adds state events", () => {
+  const old: RunRecord = { header, buttons: [[0, 6]], events: [], result };
+  const played: RunRecord = { ...old, header: { ...header, parent: "old.json" }, buttons: [[0, 9]], result: { ...result, frames: 9 } };
+  expect(extendedRecord(played, old, 5).header.parts).toEqual([{ frame: 6, events: 5, bot: header.bot, result }]);
+  expect(extendedRecord(played, old, 5).header.parent).toBeUndefined();
+});
+
+test("a replay of an Extended Run starts its limit at its last earlier part; a Run record with no parts and no parent has no such start", async () => {
+  const earlier = { bot: { name: "test", version: "1" }, result };
+  expect(await replayStart({ ...header, parts: [{ frame: 6, events: 1, ...earlier }, { frame: 9, events: 4, ...earlier }] })).toEqual({ frame: 9, events: 4 });
+  expect(await replayStart(header)).toBeNull();
+});
+
+test("a Run record cannot play on in the same Run with no header, with a Run record that continues it, or while a Run plays from it", () => {
+  const facts = { bot: "model", version: "20", model: null, continued: false };
+  expect(extendProblem(facts, false)).toBeNull();
+  expect(extendProblem(undefined, false)).toContain("no header");
+  expect(extendProblem({ ...facts, continued: true }, false)).toContain("continues this one");
+  expect(extendProblem(facts, true)).toContain("plays from");
 });
 
 describe("isRunRecord", () => {
@@ -272,6 +348,36 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     const presser: Bot = { name: "presser", version: "1", play: async (h) => void (await h.press("B")) };
     expect(await harness.play(presser)).toEqual({ endReason: "bot stopped", frames: record.result.frames + harness.frame - parentFrame, milestones: [], rawInputs: 1 });
     expect(harness.record().header.parent).toBe("talker.json");
+  });
+
+  test("a Run that plays on in the same Run names no new parent, and its parts keep the Bot and the result of each earlier part", async () => {
+    const presser = (version: string): Bot => ({ name: "presser", version, play: async (h) => void (await h.press("B")) });
+    const first = await Harness.open();
+    await first.play(presser("1"));
+    const firstRecord = first.record();
+    first.close();
+    const firstEnd = new RecordPlayer(firstRecord).frames;
+
+    const second = await Harness.open({ parent: { name: "00007-presser-1-old.json", record: firstRecord } });
+    await second.play(presser("2"));
+    const secondRecord = extendedRecord(second.record(), firstRecord, firstRecord.events.length);
+    second.close();
+    expect(secondRecord.header.parent).toBeUndefined();
+    expect(secondRecord.header.bot.version).toBe("2");
+    expect(secondRecord.header.parts).toEqual([{ frame: firstEnd, events: firstRecord.events.length, bot: { name: "presser", version: "1" }, result: firstRecord.result }]);
+    expect(secondRecord.events.slice(0, firstRecord.events.length)).toEqual(firstRecord.events);
+    expect(secondRecord.result.rawInputs).toBe(2);
+
+    const withParent = { ...secondRecord, header: { ...secondRecord.header, parent: "00006-presser-1-old.json" } };
+    const third = await Harness.open({ parent: { name: "00007-presser-1-old.json", record: withParent } });
+    await third.play(presser("2"));
+    const thirdRecord = extendedRecord(third.record(), withParent, withParent.events.length);
+    third.close();
+    expect(thirdRecord.header.parent).toBe("00006-presser-1-old.json");
+    expect(thirdRecord.header.parts?.map((part) => part.bot.version)).toEqual(["1", "2"]);
+    expect(thirdRecord.header.parts?.[1].events).toBe(secondRecord.events.length);
+    const replayed = await replay(thirdRecord);
+    expect(replayed.frame).toBe(new RecordPlayer(thirdRecord).frames);
   });
 
   test("the frame budget ends the Run at its last frame, also in a Macro-action, and the Run record has the buttons to that frame", async () => {

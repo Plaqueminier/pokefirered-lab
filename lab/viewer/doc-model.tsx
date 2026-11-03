@@ -67,7 +67,7 @@ export function ProvidersPage() {
       details={[
         ["Why", "OpenRouter bills each Model call, and the user already pays for the subscriptions (ADR 0005). OpenRouter stays the default: it has the widest choice of models and it gives a real cost."],
         ["Rules of the subscriptions", "the help of Claude tells that `claude -p`, with a login on a plan, uses the limits of the subscription (read in 2026-11). The docs of Codex tell that `codex exec` reuses the saved login, and they recommend an API key for automation. These rules changed during 2026: read them again before many Runs."],
-        ["One Run, one provider", "all the Model calls and Summary calls of a Run use the same provider and the same model. A Continued Run can use another provider and another model."],
+        ["One Run, one provider", "all the Model calls and Summary calls of a Run use the same provider and the same model. A Continued Run can use another provider and another model, and it is a new Run. An Extended Run keeps its provider, its model and its id."],
         ["Each call", "one new process of `claude -p` or `codex exec`, in a new temporary directory, with no shared context. The Bot still calls the Harness, and the AI model never does (ADR 0003)."],
         ["No API key", "the tool does not get `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY` or `OPENROUTER_API_KEY`, because each tool bills a key when it finds one. A login with an API key is not accepted: the provider stays disabled."],
         ["No settings", "the tools do not read your settings or your MCP servers, and they keep no session."],

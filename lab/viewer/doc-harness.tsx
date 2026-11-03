@@ -195,7 +195,7 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
   "user stop": { icon: Hand, lines: ["“Stop the Run”, after the current action", "at once in a Model call"], detail: "“Stop the Run”, after the current action, or at once in a Model call." },
   "cost limit": { icon: Coins, tone: "warn", lines: ["the Model calls cost more than the limit"], detail: "the Model calls cost more than the cost limit (model bot on OpenRouter)." },
   "token limit": { icon: Coins, tone: "warn", lines: ["the Model calls used more tokens than the limit"], detail: "the Model calls used more tokens than the Token limit (model bot on a Plan provider)." },
-  "plan limit": { icon: Coins, tone: "warn", lines: ["the subscription has no more quota", "a Continued Run can play on later"], detail: "the Plan provider refused a call because the quota of the subscription is used. The result keeps its text, and a Continued Run can play on later: the Run does not wait or start again by itself." },
+  "plan limit": { icon: Coins, tone: "warn", lines: ["the subscription has no more quota", "a Continued Run or an Extended Run can play on later"], detail: "the Plan provider refused a call because the quota of the subscription is used. The result keeps its text, and a Continued Run or an Extended Run can play on later: the Run does not wait or start again by itself." },
   "frame budget": {
     icon: Timer,
     lines: ["no more frames, when a budget is given", "the scripted test bot: 30 000"],
@@ -263,6 +263,10 @@ export function RecordPage() {
           "Continue",
           "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones.",
         ],
+        [
+          "Keep the same Run",
+          "the checkbox of the form “Bots” after “continue”: an Extended Run plays on with the model and the Model provider of the record, and the Bot version of now. It keeps the id, and its new record replaces the file under the same name, so it has no new parent. The header lists each earlier part with its Bot, its result and its end. The limit counts from 0. The checkbox is disabled when another record names this one as its parent, or when a Run plays from it.",
+        ],
         ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
         ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit."],
       ]}
@@ -274,7 +278,8 @@ export function RecordPage() {
             rows={[
               ["Format version", "a record before format 1 has only map, battle and Milestone events; a record before format 2 has no track; a record before format 3 has no State track"],
               ["Origin", "ROM, seed, save, and the names that the Run wrote in its copy of the save"],
-              ["Bot", "its name and version"],
+              ["Bot", "its name and version; for an Extended Run, those of the last part"],
+              ["Parts", "only for an Extended Run: the Bot, the result and the end of each earlier part"],
               ["Keys", "the buttons at each frame"],
               ["Events", "the Game events, the Model calls"],
               ["Track", "the place of the player at each change of cell, map or facing"],

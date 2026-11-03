@@ -1,5 +1,6 @@
 // A Macro-action runs its frames in one synchronous block: each Run plays in a worker, so the Viewer loop never stops.
 import type { InventoryAt } from "../inventory";
+import type { RunFrom } from "../protocol";
 import type { RunState } from "../run";
 import type { Sight } from "./atlas";
 import type { HarnessOptions } from "./harness";
@@ -8,8 +9,7 @@ import type { Continuation, ModelSettings, Replay, RunEvent, RunRecord } from ".
 // A choice: the machine plays about 12 Runs at full speed. 10 is the Viewer Run and a Grid of 9 (#72).
 export const MAX_RUNS = 10;
 
-/** `parent`: the Run record in lab/runs/ that the Run continues. */
-export type RunSpec = { bot: string; model?: ModelSettings; parent?: string } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
+export type RunSpec = { bot: string; model?: ModelSettings; from?: RunFrom } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
 
 export type RunEnd = { record: RunRecord | null; error: string | null };
 

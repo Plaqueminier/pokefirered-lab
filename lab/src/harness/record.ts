@@ -1,8 +1,8 @@
 // From the same origin, the buttons alone replay a Run: the game reads no input while it is frozen (ADR 0002).
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, open, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import { DEFAULT_PROVIDER, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import type { TrainerNames } from "../save-file";
 import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
@@ -52,6 +52,8 @@ export function limitOf(settings: ModelLimit): Spend {
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
 export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
+
+export type SpendLimit = Pick<ModelOptions, "costLimit" | "tokenLimit">;
 
 export type Prompt = { system: string; user: string; turns?: Turn[] };
 
@@ -135,8 +137,12 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
   return totals;
 }
 
+type RunBot = Pick<Bot, "name" | "version" | "model">;
+
+type RunPart = Continuation & { bot: RunBot; result: RunResult };
+
 /** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
-export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: Pick<Bot, "name" | "version" | "model">; parent?: string };
+export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; parts?: RunPart[] };
 
 export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; state?: StateEntry[]; result: RunResult };
 
@@ -391,6 +397,70 @@ export function continuationOf(parent: RunRecord): Continuation {
   return { frame: new RecordPlayer(parent).frames, events: parent.events.length };
 }
 
+/** `earlierEvents`: the events of `old` in `played`. The replay of a record from before format 1 adds to them. */
+export function extendedRecord(played: RunRecord, old: RunRecord, earlierEvents: number): RunRecord {
+  const part: RunPart = { frame: new RecordPlayer(old).frames, events: earlierEvents, bot: old.header.bot, result: old.result };
+  return { ...played, header: { ...played.header, parent: old.header.parent, parts: [...(old.header.parts ?? []), part] } };
+}
+
+// Before the starter option, the model chose freely; before the thinking option, all the Model calls had one level.
+function currentSettings(settings: ModelSettings): ModelSettings {
+  return { ...settings, starter: settings.starter ?? DEFAULT_STARTER, thinking: settings.thinking ?? settings.reasoning, stopAtWhiteout: settings.stopAtWhiteout ?? true };
+}
+
+export function extendedOptions(settings: ModelSettings | undefined, limit: SpendLimit): ModelOptions {
+  return settings ? { ...currentSettings(settings), ...limit } : {};
+}
+
+export async function replayStart(header: RunHeader): Promise<Continuation | null> {
+  const last = header.parts?.at(-1);
+  if (last) return { frame: last.frame, events: last.events };
+  const parent = header.parent === undefined ? null : await readRunRecord(header.parent);
+  return parent && continuationOf(parent);
+}
+
+export function modelFacts(given: ModelSettings): ModelFacts {
+  const settings = currentSettings(given);
+  const { id, reasoning, thinking, starter } = settings;
+  return { id, provider: providerOf(settings), reasoning, thinking, starter, limit: limitOf(settings) };
+}
+
+const HEADER_BYTES = 64 * 1024;
+
+function parsedJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// A Run record has tens of MB, and the form asks for all the headers at once.
+export async function readRunHeader(name: string, dir = RUNS_DIR): Promise<RunHeader | null> {
+  const file = Bun.file(join(dir, name));
+  const start = await file.slice(0, HEADER_BYTES).text().catch(() => "");
+  const end = start.indexOf(',"buttons":');
+  const head = end < 0 ? null : parsedJson(`${start.slice(0, end)}}`);
+  if (isObject(head) && isRunHeader(head.header)) return head.header;
+  const whole: unknown = await file.json().catch(() => null);
+  return isObject(whole) && isRunHeader(whole.header) ? whole.header : null;
+}
+
+function isRunHeader(value: unknown): value is RunHeader {
+  return isObject(value) && isObject(value.bot) && typeof value.bot.name === "string" && typeof value.bot.version === "string";
+}
+
+export async function recordFacts(names: readonly string[], dir = RUNS_DIR): Promise<Record<string, RecordFacts>> {
+  const headers = await Promise.all(names.map(async (name) => ({ name, header: await readRunHeader(name, dir) })));
+  const continued = new Set(headers.map(({ header }) => header?.parent));
+  const facts = headers.flatMap(({ name, header }): [string, RecordFacts][] => {
+    if (!header) return [];
+    const { model } = header.bot;
+    return [[name, { bot: header.bot.name, version: header.bot.version, model: model ? { ...modelFacts(model), stopAtWhiteout: currentSettings(model).stopAtWhiteout } : null, continued: continued.has(name) }]];
+  });
+  return Object.fromEntries(facts);
+}
+
 async function nextRunId(dir: string): Promise<string> {
   const ids = (await readdir(dir)).map((file) => parseRunId(file) ?? 0);
   return runIdText(Math.max(0, ...ids) + 1);
@@ -411,4 +481,18 @@ export function writeRecord(record: RunRecord, dir = RUNS_DIR): Promise<string> 
       return path;
     });
   return writing;
+}
+
+// The old file is the only copy of the Run: a crash in the write must leave it whole.
+export async function replaceRecord(name: string, record: RunRecord, dir = RUNS_DIR): Promise<string> {
+  const path = join(dir, name);
+  const file = await open(`${path}.tmp`, "w");
+  try {
+    await file.writeFile(JSON.stringify(record));
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  await rename(`${path}.tmp`, path);
+  return path;
 }

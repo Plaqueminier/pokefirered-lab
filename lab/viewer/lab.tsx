@@ -4,7 +4,7 @@ import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/h
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import type { InventoryAt } from "../src/inventory";
-import { type BotInfo, type ClientMessage, type ProviderStatus, replayOf, type ServerMessage, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spentIn } from "../src/protocol";
+import { type BotInfo, type ClientMessage, type ProviderStatus, type RecordFacts, replayOf, type ServerMessage, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spentIn } from "../src/protocol";
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
 import { callAt, type Readable, type SharedCursor, Store, useStore } from "./cursor";
@@ -38,6 +38,7 @@ type LabData = {
   bots: readonly BotInfo[];
   providers: readonly ProviderStatus[];
   records: readonly string[];
+  recordFacts: Readonly<Record<string, RecordFacts>>;
   areas: Areas;
   record: { name: string; events: readonly GameEvent[] } | null;
   inventory: readonly InventoryAt[];
@@ -283,7 +284,7 @@ function useCursorCall() {
 
 function TopBar() {
   const { send } = useLab();
-  const { status, state, events, cursor, calls, index, call, bots, providers, records } = useCursorCall();
+  const { status, state, events, cursor, calls, index, call, bots, providers, records, recordFacts } = useCursorCall();
   const shown = status?.shown ?? null;
   const model = shown && modelOf(shown);
   const jump = replayOf(shown)?.seeking;
@@ -305,7 +306,7 @@ function TopBar() {
         </span>
         <span class="shrink-0">
           <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
-            <BotsPanel shown={shown} bots={bots} providers={providers} records={records} places={status?.places ?? { free: 0, limit: 0 }} send={send} />
+            <BotsPanel shown={shown} runs={status?.runs ?? []} bots={bots} providers={providers} records={records} recordFacts={recordFacts} places={status?.places ?? { free: 0, limit: 0 }} send={send} />
           </Popover>
         </span>
       </span>
@@ -515,7 +516,7 @@ export class LabTab {
   #toastId = 0;
 
   constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
-    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], providers: [], records: [], areas: {}, record: null, inventory: [] });
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], providers: [], records: [], recordFacts: {}, areas: {}, record: null, inventory: [] });
     render(
       <LabContext.Provider value={{ ...lab, data: this.#data }}>
         <SpendUnitScope>
@@ -543,8 +544,8 @@ export class LabTab {
     this.#patch({ bots, providers });
   }
 
-  onRecords(records: readonly string[]): void {
-    this.#patch({ records });
+  onRecords(records: readonly string[], recordFacts: Readonly<Record<string, RecordFacts>>): void {
+    this.#patch({ records, recordFacts });
   }
 
   #patch(next: Partial<LabData>): void {

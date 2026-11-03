@@ -173,7 +173,7 @@ function onMessage(message: ServerMessage): void {
       lab.notice(message.text);
       break;
     case "records":
-      lab.onRecords(message.names);
+      lab.onRecords(message.names, message.facts);
       gridTab.onRecords(message.names);
       break;
     case "bots":

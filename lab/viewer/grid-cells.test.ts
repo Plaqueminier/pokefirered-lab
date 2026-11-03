@@ -10,7 +10,7 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     stopAsked: false,
     endReason: null,
     error: null,
-    parent: null,
+    from: null,
     continued: null,
     model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 }, callsStarted: 3 },
     frame: 1000 * id,
