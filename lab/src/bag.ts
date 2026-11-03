@@ -21,6 +21,8 @@ export type ItemUse = "pokemon" | "alone";
 
 export type BagItem = { name: string; quantity: number; description: string; price: number; battle: ItemUse | null; walk: ItemUse | null };
 
+export type ItemFacts = Pick<BagItem, "name" | "description" | "price">;
+
 export type BagPocket = { pocket: PocketName; items: BagItem[] };
 
 export type BagPlace = { item: number; pocket: number; row: number; price: number } & Pick<BagItem, "battle" | "walk">;
@@ -29,7 +31,7 @@ export type BagMenu = { screen: "list" | "context"; pocket: number; row: number;
 
 export function readBag(mem: Memory, decode: Decode): BagPocket[] {
   return pocketSlots(mem).flatMap((slots, pocket) => {
-    const items = slots.map(({ item, quantity }): BagItem => ({ ...itemInfo(mem, item, decode), quantity }));
+    const items = slots.map(({ item, quantity }): BagItem => ({ ...itemWithUses(mem, item, decode), quantity }));
     return items.length === 0 ? [] : [{ pocket: POCKET_NAMES[pocket], items }];
   });
 }
@@ -117,8 +119,11 @@ function itemName(mem: Memory, item: number, decode: Decode): string {
   return decode(mem.global("gItems").at(item).field("name").bytes());
 }
 
-function itemInfo(mem: Memory, item: number, decode: Decode): Omit<BagItem, "quantity"> {
+export function itemFacts(mem: Memory, item: number, decode: Decode): ItemFacts {
   const data = mem.global("gItems").at(item);
-  const description = oneLine(decode(mem.bus.read(data.field("description").pointer(), MAX_STRING)));
-  return { name: itemName(mem, item, decode), description, price: data.field("price").int(), ...itemUses(mem, data) };
+  return { name: itemName(mem, item, decode), description: oneLine(decode(mem.bus.read(data.field("description").pointer(), MAX_STRING))), price: data.field("price").int() };
+}
+
+function itemWithUses(mem: Memory, item: number, decode: Decode): Omit<BagItem, "quantity"> {
+  return { ...itemFacts(mem, item, decode), ...itemUses(mem, mem.global("gItems").at(item)) };
 }

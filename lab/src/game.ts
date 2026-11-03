@@ -74,6 +74,7 @@ const OBJ_KIND_NORMAL = 0;
 const TRAINER_TYPE_NORMAL = 1;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
+const VAR_REPEL_STEP_COUNT = 0x4020;
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
 // BG_EVENT_PLAYER_FACING_NORTH, _SOUTH, _EAST and _WEST.
 const SIGN_PLAYER_FACING: Record<number, Direction> = { 1: "north", 2: "south", 3: "east", 4: "west" };
@@ -941,6 +942,10 @@ export class Game {
         weather: e.field("script").pointer() === 0,
       })),
     };
+  }
+
+  repelActive(): boolean {
+    return this.varGet(VAR_REPEL_STEP_COUNT) !== 0;
   }
 
   /** Value of a script variable, as VarGet() returns it. Null for special variables. */

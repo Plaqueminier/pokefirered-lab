@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { modelSettings } from "../model/providers";
 import { CACHE_DIR } from "../core";
+import { isDecisionPoint } from "../game";
 import { Memory } from "../memory";
 import type { BoxMon } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
@@ -14,6 +15,7 @@ import { findRoute } from "./path";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
+const REPEL_STEP_COUNT_VAR_INDEX = 0x20;
 
 async function play(bot: Bot) {
   const harness = await Harness.open();
@@ -124,7 +126,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "21", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "22", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -355,6 +357,20 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(await harness.run()).toMatchObject({ status: "done", text: [] });
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Got away safely!"] });
     expect(harness.observe()).toMatchObject({ mode: "overworld", waitingFor: { kind: "walk" }, map: { name: "Route1" } });
+  });
+
+  test("observe() tells that a REPEL is active; when it wears off in a walk, goTo stops at a script and readText gives its text", async () => {
+    const run = await Run.open();
+    const harness = await Harness.open({}, run);
+    await starter.play(harness);
+    expect(harness.observe()).toMatchObject({ mode: "overworld", repelActive: false });
+    const mem = await memoryOf(run);
+    run.core.patch16(mem.global("gSaveBlock1Ptr").deref().field("vars").at(REPEL_STEP_COUNT_VAR_INDEX).addr, 2);
+    expect(harness.observe()).toMatchObject({ mode: "overworld", repelActive: true });
+    expect(await harness.goTo(12, 0, "Route1")).toMatchObject({ status: "interrupted", reason: "script" });
+    expect(isDecisionPoint(harness.waitingFor())).toBe(false);
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["REPEL's effect wore off…"] });
+    expect(harness.observe()).toMatchObject({ mode: "overworld", waitingFor: { kind: "walk" }, repelActive: false });
   });
 
   test("the moves seen of the enemy do not keep a move from the previous battle", async () => {
@@ -760,7 +776,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
         kind: "shopMenu",
         items: [
           { name: "POKé BALL", price: 200 },
-          { name: "POTION", price: 300 },
+          { name: "POTION", price: 300, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points." },
           { name: "ANTIDOTE", price: 100 },
           { name: "PARLYZ HEAL", price: 200 },
         ],

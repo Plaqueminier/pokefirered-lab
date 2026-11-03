@@ -1,3 +1,4 @@
+import { itemFacts, type ItemFacts } from "./bag";
 import type { Memory } from "./memory";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
@@ -5,7 +6,7 @@ import { functionName } from "./symbols";
 const BUY_QUANTITY = 1;
 const SELL_QUANTITY = 8;
 
-export type ShopItem = { name: string; price: number };
+export type ShopItem = ItemFacts;
 
 export type ShopMenu = { items: ShopItem[]; cursor: number };
 
@@ -26,10 +27,7 @@ export function buyList(mem: Memory, decode: Decode): BuyList | null {
 function itemsForSale(mem: Memory, decode: Decode): ShopItem[] {
   const shop = mem.global("sShopData");
   const list = shop.field("itemList").pointer();
-  return Array.from({ length: shop.field("itemCount").int() }, (_, i) => {
-    const data = mem.global("gItems").at(mem.u16(list + 2 * i));
-    return { name: decode(data.field("name").bytes()), price: data.field("price").int() };
-  });
+  return Array.from({ length: shop.field("itemCount").int() }, (_, i) => itemFacts(mem, mem.u16(list + 2 * i), decode));
 }
 
 export function tradeQuantity(mem: Memory): number | null {

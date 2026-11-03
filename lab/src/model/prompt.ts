@@ -13,7 +13,7 @@ import { characterTurn, runCharacter } from "./character";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable } from "./decision";
 import { fullAtlas, knownWorld, localView } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
-import { isExit, targetLines } from "./targets";
+import { isExit, type Overworld, targetLines } from "./targets";
 
 export const B_PRESSES = 3;
 const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat the Elite Four.";
@@ -83,7 +83,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -118,7 +118,9 @@ Advice of a good player:
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
-- Buy Poké Balls and Potions at a Poké Mart.
+- Buy Poké Balls, Potions and REPELS at a Poké Mart.
+- A REPEL stops wild Pokémon with a level below your first healthy Pokémon for 100 steps. Use it to cross a cave when your team is ready: a battle that you avoid gives no experience.
+- Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
 - Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
 - ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
@@ -197,7 +199,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party),
-    ...(asked.kind === "walk" && asked.overworld.boxes.length > 0 ? [boxesLine(asked.overworld.boxes)] : []),
+    ...(asked.kind === "walk" ? walkFacts(asked.overworld) : []),
     "",
     ...context(asked),
     ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
@@ -380,8 +382,8 @@ function boxMonText(mon: BoxMon): string {
   return `${monName(mon)} level ${mon.level}, ${mon.boxName}`;
 }
 
-function boxesLine(boxes: BoxMon[]): string {
-  return `In the boxes: ${boxes.map(boxMonText).join("; ")}.`;
+function walkFacts({ boxes, repelActive }: Overworld): string[] {
+  return [...(boxes.length > 0 ? [`In the boxes: ${boxes.map(boxMonText).join("; ")}.`] : []), ...(repelActive ? ["A REPEL is active."] : [])];
 }
 
 function partyText(party: PartyMon[]): string {
@@ -426,7 +428,7 @@ function context(asked: Asked): string[] {
       return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld, [])];
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
-      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}`), "", ...buys];
+      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}. ${item.description}`), "", ...buys];
     }
     case "itemPc": {
       const stored = asked.pcItems.length === 0 ? ["The PC has no items."] : ["The items in the PC:", ...asked.pcItems.map((item) => `- ${item.name} ×${item.quantity}`)];

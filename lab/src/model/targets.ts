@@ -4,6 +4,9 @@ import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
 import { atlasCells, type Beyond, type Lead, type Parts, unseenPlaces } from "./parts";
 
+const ITEM_BALL = "ITEM_BALL";
+const STARTERS_MAP = "PalletTown_ProfessorOaksLab";
+
 export type Overworld = Extract<Observation, { mode: "overworld" }>;
 
 export type Target = { label: string } & (
@@ -147,7 +150,7 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts)
   };
   const person = (p: AtlasPerson): Located => {
     const counter = behindCounter(p);
-    return located(p, own.touches(p) || counter, (w) => personTarget(p, w, counter, present.get(p.localId)?.unbeatenTrainer === true));
+    return located(p, own.touches(p) || counter, (w) => personTarget(p, w, { behindCounter: counter, unbeatenTrainer: present.get(p.localId)?.unbeatenTrainer === true, freeItem: holdsFreeItem(p, here) }));
   };
   const targets = [
     ...here.warps.map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
@@ -185,11 +188,16 @@ function edgeTarget(e: AtlasEdge, where: string): LocalTarget {
   return { kind: "edge", name, label: `${name}, ${where}: ${taken(e.to)}`, side: e.side, to: e.to };
 }
 
-function personTarget(p: AtlasPerson, where: string, behindCounter: boolean, unbeatenTrainer: boolean): LocalTarget {
+function holdsFreeItem(p: AtlasPerson, here: AtlasMap): boolean {
+  return p.graphics === ITEM_BALL && here.name !== STARTERS_MAP;
+}
+
+function personTarget(p: AtlasPerson, where: string, { behindCounter, unbeatenTrainer, freeItem }: { behindCounter: boolean; unbeatenTrainer: boolean; freeItem: boolean }): LocalTarget {
   const counter = behindCounter ? ", behind a counter: go talks across it" : "";
   const trainer = unbeatenTrainer ? ", a trainer that you did not beat yet: a talk starts a battle" : "";
+  const item = freeItem ? ": a free item, go takes it" : "";
   const talked = p.texts.length > 0 ? `: talked, "${p.texts.at(-1)}"` : "";
-  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
+  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${item}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
 }
 
 function signTarget(s: AtlasSign, where: string): LocalTarget {

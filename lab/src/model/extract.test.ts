@@ -34,6 +34,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     party: [],
     bag: [],
     boxes: [],
+    repelActive: false,
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },
@@ -434,6 +435,13 @@ describe("the extract of the Atlas", () => {
     const lass = { localId: 3, graphics: "LASS", x: 3, y: 1, loaded: true };
     const view = atlasExtract(overworld({ ...LAB, people: [{ ...lass, texts: [] }] }, [], { x: 1, y: 2 }, [lass]));
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("LASS"));
+  });
+
+  test("an ITEM BALL says that it is a free item, but the starter balls of Oak's Lab do not", () => {
+    const ball = { localId: 3, graphics: "ITEM_BALL", x: 1, y: 1, loaded: true };
+    const label = (name: string) => atlasExtract(overworld({ ...LAB, name, people: [{ ...ball, texts: [] }] }, [], { x: 1, y: 2 }, [ball])).targets.find((t) => t.kind === "person")?.label;
+    expect(label("Route3")).toBe("ITEM BALL at (1, 1), adjacent north, you face it: a free item, go takes it");
+    expect(label("PalletTown_ProfessorOaksLab")).toBe("ITEM BALL at (1, 1), adjacent north, you face it");
   });
 
   test("a trainer that the player did not beat yet has a mark in its target; a beaten trainer has none", () => {

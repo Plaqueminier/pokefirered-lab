@@ -232,3 +232,24 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     The Harness has a fixed rule for the box of a deposit: the current box, then the next box with a free place. The Harness does not move a Pokémon between boxes, so a choice of box gives the model nothing. A refusal comes before the screen opens: 6 Pokémon at a withdraw, 1 Pokémon at a deposit, the last Pokémon that can fight, or all the boxes full. If the game still refuses a deposit on its screen, the action is impossible and the Harness closes the screen.
 
     When this change was made, no Run had played version 21, so the effect on the model was not known. The first checks are whether the model goes to a PC, whether it trains the Pokémon that it takes from a box, and how many Model calls it spends at the PC. A deposit restores the PP, and a withdraw restores the HP, so a PC can heal a Pokémon at no cost. The Nurse of the Pokémon Center also heals at no cost next to this PC, so this changes nothing yet.
+
+## 19. Repels and item balls (2026-11-03)
+
+64. The model bot goes to version 22, because the prompt did not tell the model what a REPEL does, or that an item ball holds a free item. In the 47 Run records, no Run bought or used a repel. At the Poké Mart, the prompt showed only `- REPEL: 350`.
+
+    Battles take most of the time in Mt. Moon, in game time at 60 frames each second. Each battle time includes 8 or 9 trainers:
+
+    | Run | Time in Mt. Moon | In battle | Wild battles | Money at entry | Lead level (median) |
+    | --- | --- | --- | --- | --- | --- |
+    | 00021 | 124 min | 102 min | 134 | 4,024 | 24 |
+    | 00035 | 41 min | 30 min | 55 | 5,158 | 23 |
+    | 00036 | 54 min | 42 min | 58 | 4,478 | 21 |
+    | 00047 | 44 min | 36 min | 37 | 4,200 | 18 |
+
+    The wild levels of Mt. Moon stop at 12, and a repel stops a wild Pokémon with a level below the first healthy Pokémon, so a lead at level 13 or more stops all of them. On the way to Mt. Moon, only the mart of Pewter City sells REPEL. Now the list of the mart gives the description of each item from the game, a new rule of the prompt tells how a REPEL works and that a battle that you avoid gives no experience, and a walk shows the line `A REPEL is active.` with no step count. `observe()` gives `repelActive`.
+
+    In Run 00047, the model saw 19 item balls, not counting the 3 starter balls in the Lab of Professor Oak, and took 12. Of the 7 that it left, 4 showed `no seen way there yet`, and 3 had a way: `MtMoon_1F` (3, 2), `MtMoon_B2F` (3, 11) and `Route25` (26, 2). This Run ended at a plan limit. Now the target of a ball says `a free item, go takes it`, and a new rule of the prompt tells the model to take each ball that it can reach. The starter balls do not have this text. The model still decides: the Bot does not force a walk to a ball. Hidden items do not change, because they have no sprite, and a human does not see them.
+
+    A test on the real game shows the end of a REPEL in a walk: `goTo` returns `interrupted` with the reason `script`, and this is not a Decision point, so the Bot reads "REPEL's effect wore off…" with `readText`. The next prompt shows this text in the last decisions. No Run has shown this with a model.
+
+    When this change was made, no Run had played version 22, so the effect on the model was not known. No Run has played version 21 either, and version 21 changed the PC, so a change in a Run can have more than one cause. The first checks are whether the model buys and uses a repel and in which map, the wild battles and the battle time in Mt. Moon, the item balls taken and left and whether the left ones had a way, and the level of the team at the exit of Mt. Moon, because fewer battles give less training.

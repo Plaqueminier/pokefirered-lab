@@ -97,7 +97,7 @@ The number of tokens that a **Run** on a **Plan provider** can use: all the inpu
 _Avoid_: quota (the quota is the limit of the subscription, for all its uses)
 
 **Knowledge level**:
-The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more, for example hidden items and exact enemy stats.
+The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more: all the maps of the game and exact enemy stats.
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:

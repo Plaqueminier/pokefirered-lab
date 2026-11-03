@@ -38,6 +38,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     waitingFor: { kind: "walk" },
     party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 }],
     boxes: [],
+    repelActive: false,
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     milestones: [],
@@ -341,11 +342,20 @@ describe("a choice", () => {
   });
 });
 
+describe("a REPEL", () => {
+  test("a walk shows one line when a REPEL is active, and no line when none is active", () => {
+    const walk = route1(22, []);
+    expect(userPrompt(walk, askedOf(walk, false)!, [], NO_TURN)).not.toContain("A REPEL is active.");
+    const repelled = { ...walk, repelActive: true } as Observation;
+    expect(userPrompt(repelled, askedOf(repelled, false)!, [], NO_TURN)).toContain("A REPEL is active.");
+  });
+});
+
 describe("the Poké Mart", () => {
   test("at the shop menu, the prompt shows the items for sale with their prices, the money, the items of the Bag that the Mart buys, and the actions buy, sell and leave, with no press", () => {
     const observation = {
       mode: "overworld",
-      waitingFor: { kind: "shopMenu", items: [{ name: "POKé BALL", price: 200 }, { name: "POTION", price: 300 }] },
+      waitingFor: { kind: "shopMenu", items: [{ name: "POKé BALL", price: 200, description: "A BALL thrown to catch a wild POKéMON." }, { name: "REPEL", price: 350, description: "Prevents weak wild POKéMON from appearing for 100 steps." }] },
       party: [],
       money: 3080,
       bag: [
@@ -358,7 +368,7 @@ describe("the Poké Mart", () => {
     const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain("The game waits for the shop menu of a Poké Mart.");
     expect(prompt).toContain("Money: 3080");
-    expect(prompt).toContain(["The Poké Mart sells (the price of one item):", "- POKé BALL: 200", "- POTION: 300"].join("\n"));
+    expect(prompt).toContain(["The Poké Mart sells (the price of one item):", "- POKé BALL: 200. A BALL thrown to catch a wild POKéMON.", "- REPEL: 350. Prevents weak wild POKéMON from appearing for 100 steps."].join("\n"));
     expect(prompt).toContain(["The Poké Mart buys these items of your Bag (the money for one item):", "- POTION ×5: 150"].join("\n"));
     expect(prompt).toContain(
       [
