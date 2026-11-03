@@ -71,7 +71,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   {
     form: "name(text)",
     when: "naming screen",
-    effect: "Types the text on the pages of the keyboard, selects OK and reads the texts. An empty text keeps the name. Impossible for a character that is not on the keyboard or a text that is too long.",
+    effect: "Types the text on the pages of the keyboard, selects OK and reads the texts, also the message that a Pokémon caught with 6 Pokémon in the party goes to the PC. An empty text keeps the name. Impossible for a character that is not on the keyboard or a text that is too long.",
     cards: { naming: "type, then OK; empty keeps the name" },
   },
   {

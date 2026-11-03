@@ -2,7 +2,7 @@ import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type MapGrid, OPPOSITE
 import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
-import { atlasCells, type Beyond, type Lead, type Parts, unseenSides } from "./parts";
+import { atlasCells, type Beyond, type Lead, type Parts, unseenPlaces } from "./parts";
 
 export type Overworld = Extract<Observation, { mode: "overworld" }>;
 
@@ -152,7 +152,7 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts)
   const targets = [
     ...here.warps.map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
     ...here.edges.filter((e) => !e.blocked).map(edge),
-    ...unseenSides(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}`, cell }))),
+    ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}`, cell }))),
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map(person),
     ...here.signs.map((s) => located(s, own.touches(s), (place) => signTarget(s, place))),
   ];

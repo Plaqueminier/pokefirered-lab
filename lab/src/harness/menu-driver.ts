@@ -406,7 +406,7 @@ export class MenuDriver {
 
   private namingScreen() {
     const screen = this.game.namingScreen();
-    return screen?.ready ? screen : null;
+    return screen?.phase === "input" ? screen : null;
   }
 
   private typeCharacter(char: string): Outcome {

@@ -81,7 +81,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at a walk or a battle action: the request to write a lesson and a new objective, and at a walk the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -117,21 +117,19 @@ Advice of a good player:
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
 - Buy Poké Balls and Potions at a Poké Mart.
-- Each Pokémon Center has a PC. It keeps your items, and the Pokémon that you catch when your party has 6 Pokémon. You cannot take a Pokémon from the PC yet.
+- Each Pokémon Center has a PC. It keeps your items, and the Pokémon that you catch when your party has 6 Pokémon. You cannot take a Pokémon from the PC yet, so a Pokémon that goes to the PC is lost for your team: do not catch more Pokémon when your party has 6 Pokémon.
 - ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
 }
 
-function reflection(atWalk: boolean): string[] {
-  return [
-    "Reflection turn: stop and think before you act.",
-    `- Read your Memory tree${atWalk ? " and the full Atlas" : ""} above. Use zoom freely to see the details of a node: zoom does not end this turn.`,
-    '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
-    '- Set a new "objective" that follows this lesson.',
-  ];
-}
+const REFLECTION = [
+  "Reflection turn: stop and think before you act.",
+  "- Read your Memory tree and the full Atlas above. Use zoom freely to see the details of a node: zoom does not end this turn.",
+  '- Write in "note" a lesson: what you tried, why it failed, and what you will do now.',
+  '- Set a new "objective" that follows this lesson.',
+];
 
 const REVIEW = [
   "Review turn: check your plan against the facts before you act.",
@@ -144,15 +142,14 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
-/** A character turn happens while a Run has no Pokémon and no character, and it comes first. A reflection turn happens at a walk or a battle action, a review turn at a walk only. At a walk, both add the full Atlas. A reflection turn has the priority over a review turn. */
 export type TurnKind = "normal" | "character" | "reflection" | "review";
 
 export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[] };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
-export function turnRequest(turn: TurnKind, atWalk: boolean, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
+export function turnRequest(turn: TurnKind, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
   if (turn === "character") return characterTurn(starter, gameNames);
-  if (turn === "reflection") return reflection(atWalk);
+  if (turn === "reflection") return REFLECTION;
   return turn === "review" ? REVIEW : [];
 }
 
@@ -162,11 +159,11 @@ export function showsAtlas(turn: TurnKind): boolean {
 
 export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], noProgress: NoProgress, partySize: number): TurnKind {
   if (partySize === 0 && !runCharacter(events)) return "character";
-  if ((kind === "walk" || kind === "battleAction") && reflectionDue(events, noProgress)) return "reflection";
-  return kind === "walk" && reviewDue(events) ? "review" : "normal";
+  if (kind !== "walk") return "normal";
+  if (reflectionDue(events, noProgress)) return "reflection";
+  return reviewDue(events) ? "review" : "normal";
 }
 
-// The count can pass a multiple of REFLECTION_EVERY at another Decision point. The Reflection turn then waits for the next walk or battle action in the same block.
 function reflectionDue(events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
   const block = Math.floor(stuck / REFLECTION_EVERY);
   const done = modelEvents(events.slice(since)).some((e) => e.reflection && Math.floor((e.stuck ?? 0) / REFLECTION_EVERY) === block);

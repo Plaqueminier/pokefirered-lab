@@ -211,7 +211,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "19", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "20", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -535,7 +535,7 @@ describe.skipIf(!ready)("model bot", () => {
           return reply(target(prompt, "exit mat", "unseen cells south"));
       }
       const man = prompt.user.match(/^([A-Z]+)\. (FAT MAN at \(\d+, \d+\))/m);
-      if (!man) return reply(target(prompt, "unseen cells south"));
+      if (!man) return reply(/^[A-Z]+\. unseen cells south/m.test(prompt.user) ? target(prompt, "unseen cells south") : "goTo 12 14");
       chosen = man[2];
       return reply(`go ${man[1]}`);
     };

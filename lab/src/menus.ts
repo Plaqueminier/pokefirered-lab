@@ -29,6 +29,8 @@ const NAMING_SUBJECTS = new Map([
 ]);
 // Decomp STATE_HANDLE_INPUT of Task_NamingScreen: the only state that reads the keys.
 const NAMING_INPUT_STATE = 2;
+// Decomp STATE_WAIT_SENT_TO_PC_MESSAGE of Task_NamingScreen.
+const NAMING_PC_MESSAGE_STATE = 7;
 const NAMING_PAGES = 3;
 // Decomp Task_RunEasyChat reads the keys at its step 1; sEasyChatScreen->state 4 is the menu to quit (easy_chat_2.c).
 const WORD_SCREEN_INPUT_STEP = 1;
@@ -40,7 +42,7 @@ export type WordScreen = { quitMenu: boolean };
 export type NamingScreen = {
   subject: string;
   maxLength: number;
-  ready: boolean;
+  phase: "input" | "pcMessage" | "busy";
   page: number;
   keys: string[];
   columns: number;
@@ -174,13 +176,14 @@ export function nicknamedSpecies(subject: string): string | null {
 export function namingScreen(mem: Memory, decode: Decode): NamingScreen | null {
   if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_NamingScreen") return null;
   const screen = mem.global("sNamingScreen").deref();
+  const state = screen.field("state").int();
   const page = screen.field("currentPage").int();
   const keys = keyboardRows(mem, decode, page);
   const cursor = mem.global("gSprites").at(screen.field("cursorSpriteId").int()).field("data");
   return {
     subject: NAMING_SUBJECTS.get(screen.field("templateNum").int()) ?? `${NICKNAME_SUBJECT}${nameAt(mem, "gSpeciesNames", screen.field("monSpecies").int(), decode)}`,
     maxLength: screen.field("template").deref().field("maxChars").int(),
-    ready: screen.field("state").int() === NAMING_INPUT_STATE,
+    phase: state === NAMING_INPUT_STATE ? "input" : state === NAMING_PC_MESSAGE_STATE ? "pcMessage" : "busy",
     page,
     keys,
     columns: keys[0].length,

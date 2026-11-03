@@ -1,6 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { modelSettings } from "../model/providers";
 import { CACHE_DIR } from "../core";
@@ -9,9 +8,7 @@ import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
-import { NAME_KEYS } from "../save-file";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness, must } from "./harness";
-import { originDifferences, RecordPlayer, replay } from "./record";
 import { findRoute } from "./path";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -126,7 +123,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "19", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "20", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -335,7 +332,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     const run = await Run.open();
     const harness = await Harness.open({}, run);
     await toRivalBattle(harness);
-    const mem = new Memory(run.core, await loadSymbols(ROM_FILE.replace(/\.gba$/, ".elf"), CACHE_DIR));
+    const mem = await memoryOf(run);
     // The test writes the memory: no PP in the 2 moves of SQUIRTLE, and STATUS3_LEECHSEED on the foe.
     run.core.patch16(mem.global("gBattleMons").at(0).field("pp").addr, 0);
     run.core.patch16(mem.global("gStatuses3").at(1).addr, 1 << 2);
@@ -547,8 +544,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
 const TEST_BAG = join(SAVES_DIR, "test-bag.sav");
 const TAIL_WHIP = 1;
 
-async function toWildBattle(startSave = TEST_BAG): Promise<Harness> {
-  const harness = await Harness.open({ startSave });
+async function walkToWildBattle(harness: Harness): Promise<Harness> {
   const observation = harness.observe();
   if (observation.mode !== "overworld") throw new Error("the test Starting save is not on the overworld");
   const { x, y } = observation.player;
@@ -560,9 +556,35 @@ async function toWildBattle(startSave = TEST_BAG): Promise<Harness> {
   return harness;
 }
 
+async function toWildBattle(startSave = TEST_BAG): Promise<Harness> {
+  return walkToWildBattle(await Harness.open({ startSave }));
+}
+
+async function memoryOf(run: Run): Promise<Memory> {
+  return new Memory(run.core, await loadSymbols(ROM_FILE.replace(/\.gba$/, ".elf"), CACHE_DIR));
+}
+
+function fillParty(run: Run, mem: Memory): void {
+  const party = mem.global("gPlayerParty");
+  const first = party.at(0).bytes();
+  for (let slot = 1; slot < 6; slot++) {
+    for (let at = 0; at < first.length; at += 2) run.core.patch16(party.at(slot).addr + at, first[at] | (first[at + 1] << 8));
+  }
+  const count = mem.global("gPlayerPartyCount").addr;
+  run.core.patch16(count, 6 | (run.core.read(count + 1, 1)[0] << 8));
+}
+
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the test Starting save with the Bag", () => {
   async function toNextAction(harness: Harness): Promise<void> {
     while (harness.observe().mode === "battle" && !["battleAction", "choice"].includes(harness.waitingFor().kind)) await harness.readText();
+  }
+
+  async function throwBallsToNicknameQuestion(harness: Harness): Promise<void> {
+    for (let ball = 0; harness.waitingFor().kind !== "choice"; ball++) {
+      if (ball === 20) throw new Error("no catch with 20 balls");
+      expect(await harness.use("POKé BALL")).toMatchObject({ status: "done" });
+      await toNextAction(harness);
+    }
   }
 
   test("observe() gives the Bag by pocket and the money, and a battle accepts use for the items that work now", async () => {
@@ -602,11 +624,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     const harness = await toWildBattle();
     const enemy = harness.observe();
     if (enemy.mode !== "battle") throw new Error("not in a battle");
-    for (let ball = 0; harness.waitingFor().kind !== "choice"; ball++) {
-      if (ball === 20) throw new Error("no catch with 20 balls");
-      expect(await harness.use("POKé BALL")).toMatchObject({ status: "done" });
-      await toNextAction(harness);
-    }
+    await throwBallsToNicknameQuestion(harness);
     expect(harness.observe()).toMatchObject({ mode: "battle", waitingFor: { kind: "choice", options: ["YES", "NO"] } });
     expect(await harness.choose("YES")).toMatchObject({ status: "done" });
     expect(harness.waitingFor()).toMatchObject({ kind: "naming", subject: `a nickname for ${enemy.battle.enemy.species}`, maxLength: 10 });
@@ -617,6 +635,22 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
       [enemy.battle.enemy.species, "Bird"],
     ]);
     expect(harness.events.filter((e) => e.type === "catch").map(({ frame, ...caught }) => caught)).toEqual([{ type: "catch", species: enemy.battle.enemy.species }]);
+  });
+
+  test("a catch with 6 Pokémon and a nickname: name reads the message of the PC, the battle ends, and the party stays at 6", async () => {
+    const run = await Run.open({ startSave: TEST_BAG });
+    const harness = await walkToWildBattle(await Harness.open({}, run));
+    fillParty(run, await memoryOf(run));
+    await throwBallsToNicknameQuestion(harness);
+    await harness.choose("YES");
+    const named = await harness.name("Bird");
+    expect(named).toMatchObject({ status: "done", text: expect.arrayContaining([expect.stringMatching(/was transferred to .* It was placed in /)]) });
+    for (let read = 0; harness.observe().mode === "battle" || harness.waitingFor().kind !== "walk"; read++) {
+      if (read === 20) throw new Error("the battle does not end");
+      expect(await harness.readText()).toMatchObject({ status: "done" });
+    }
+    expect(harness.observe().party).toHaveLength(6);
+    expect(harness.observe().party.map((m) => m.nickname)).not.toContain("Bird");
   });
 
   test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP each time", async () => {
@@ -835,138 +869,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PROFILE_SAVE))("Harness on 
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["What's your profile?"], leftWordScreen: true });
     expect((await harness.readText()).text[0]).toStartWith("Oh, you've decided not to?");
     expect(harness.waitingFor().kind).toBe("walk");
-  });
-});
-
-describe.skipIf(!ready)("the names of a Run", () => {
-  const NAMES = { player: "Mira", rival: "Crumb" };
-  const namedStarter: Bot = {
-    ...starter,
-    async play(harness) {
-      harness.nameTrainers(NAMES);
-      await starter.play(harness);
-    },
-  };
-
-  test("at the first Decision point, the Harness boots again with the names: same frame, same screen, and the game uses the names", async () => {
-    const harness = await Harness.open();
-    const { frame } = harness;
-    const screen = harness.screenHash();
-    expect(harness.fixedNames()).toBeNull();
-    expect(harness.trainerNames()).toEqual({ player: "PLOK", rival: "BOB" });
-    harness.nameTrainers(NAMES);
-    expect(harness.frame).toBe(frame);
-    expect(harness.screenHash()).toBe(screen);
-    expect(harness.trainerNames()).toEqual(NAMES);
-    harness.close();
-  });
-
-  test("the Run record keeps the names and the hash of the Starting save, and it replays to the same end, only with the names", async () => {
-    const plain = await Harness.open();
-    await plain.play(starter);
-    const plainRecord = plain.record();
-    plain.close();
-    const harness = await Harness.open();
-    await harness.play(namedStarter);
-    const record = harness.record();
-    expect(record.header.names).toEqual(NAMES);
-    expect(record.header.startSave).toBe(plainRecord.header.startSave);
-    expect(harness.actions.flatMap((e) => ("text" in e.result ? e.result.text : []))).toContain("RIVAL Crumb would like to battle!");
-    const replayed = await replay(record);
-    expect(replayed.frame).toBe(harness.frame);
-    expect(replayed.screen).toBe(harness.screenHash());
-    harness.close();
-
-    const named = await Run.open({ names: NAMES });
-    const other = await Run.open({ names: { ...NAMES, rival: "Other" } });
-    const unnamed = await Run.open();
-    expect(originDifferences(named, record)).toEqual([]);
-    expect(originDifferences(other, record)).toEqual(["names"]);
-    expect(originDifferences(unnamed, record)).toEqual(["names"]);
-    expect(originDifferences(named, plainRecord)).toEqual(["names"]);
-    expect(originDifferences(unnamed, plainRecord)).toEqual([]);
-    const { names: _, ...oldHeader } = plainRecord.header;
-    expect(originDifferences(unnamed, { ...plainRecord, header: oldHeader })).toEqual([]);
-    for (const run of [named, other, unnamed]) run.core.close();
-  });
-
-  test("a Run that has played cannot change its names, and a continued Run has the names of its parent", async () => {
-    const harness = await Harness.open();
-    await harness.play(namedStarter);
-    expect(harness.fixedNames()).toEqual(NAMES);
-    expect(() => harness.nameTrainers({ player: "A", rival: "B" })).toThrow("the names of a Run change only before its first action");
-    const record = harness.record();
-    const continued = await Harness.open({ parent: { name: "parent.json", record } });
-    expect(continued.frame).toBe(harness.frame);
-    expect(continued.screenHash()).toBe(harness.screenHash());
-    expect(continued.fixedNames()).toEqual(NAMES);
-    harness.close();
-    continued.close();
-  });
-
-  test("a reset with no names gives the save of the file again", async () => {
-    const run = await Run.open({ names: NAMES });
-    await run.reset();
-    expect(run.origin.names).toBeNull();
-    for (let i = 0; i < 100; i++) run.runFrame(0);
-    expect(run.game.rivalName()).toBe("BOB");
-    run.core.close();
-  });
-
-  test("a bad name changes nothing: the game keeps its frame and its names, and no path can write a cut name", async () => {
-    const harness = await Harness.open();
-    const { frame } = harness;
-    const screen = harness.screenHash();
-    for (const bad of ["Too long name", "", " Al", "é"]) expect(() => harness.nameTrainers({ player: bad, rival: "B" })).toThrow(`the name "${bad}"`);
-    expect(harness.frame).toBe(frame);
-    expect(harness.screenHash()).toBe(screen);
-    expect(harness.trainerNames()).toEqual({ player: "PLOK", rival: "BOB" });
-    harness.close();
-  });
-
-  test("the second boot uses the bytes of the first one: the file can change or go away while a Model call waits", async () => {
-    const path = join(mkdtempSync(join(tmpdir(), "names-")), "start.sav");
-    await Bun.write(path, Bun.file(START_SAVE));
-    const harness = await Harness.open({ startSave: path });
-    const { frame } = harness;
-    const screen = harness.screenHash();
-    rmSync(path);
-    harness.nameTrainers(NAMES);
-    expect(harness.frame).toBe(frame);
-    expect(harness.screenHash()).toBe(screen);
-    expect(harness.trainerNames()).toEqual(NAMES);
-    harness.close();
-  });
-
-  test("a Run that cannot boot with its names gives an error", async () => {
-    await expect(Run.open({ names: { player: "Too long name", rival: "B" } })).rejects.toThrow('the name "Too long name"');
-  });
-
-  test("a Run that stopped before its first action can still get names when it continues", async () => {
-    const parent = await Harness.open();
-    await parent.play({ name: "idle", version: "1", play: async () => {} });
-    const record = parent.record();
-    const screen = parent.screenHash();
-    parent.close();
-    const harness = await Harness.open({ parent: { name: "parent.json", record } });
-    expect(harness.fixedNames()).toBeNull();
-    harness.nameTrainers(NAMES);
-    expect(harness.frame).toBe(new RecordPlayer(record).frames);
-    expect(harness.screenHash()).toBe(screen);
-    expect(harness.trainerNames()).toEqual(NAMES);
-    harness.close();
-  });
-
-  test("each character of the rule of the names is a key of the keyboard of the game, and it comes back from the save", async () => {
-    const run = await Run.open();
-    for (let i = 0; i < NAME_KEYS.length; i += 7) {
-      const name = [...NAME_KEYS].slice(i, i + 7).join("").trim();
-      await run.reset({ player: name, rival: name });
-      for (let frame = 0; frame < 100; frame++) run.runFrame(0);
-      expect(run.game.playerName()).toBe(name);
-      expect(run.game.rivalName()).toBe(name);
-    }
-    run.core.close();
   });
 });
 

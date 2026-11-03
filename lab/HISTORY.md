@@ -208,3 +208,17 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     The limit of `character` goes from 300 to 400 characters, because 3 of the 12 answers reached 300 and lost their end, two in the middle of a word. The 5 Runs of version 18 stayed under 200 characters, so this limit matters only for some models. This change keeps the sentence "what the trainer likes, fears and wants", which gives many answers the same form. It also adds no rule for how the trainer plays.
 
     When this change was made, no Run had played version 19, so the effect on the model was not known. The first things to check are the first Pokémon, whether the nicknames really use the hobby, whether they stay in the 10 characters of a nickname, and whether the answers still reach 400 characters.
+
+62. The model bot goes to version 20, after Runs 00041 to 00044 of version 18. Two Runs of `gpt-6.1-terra` ended at the PC, and `gpt-6-luna` reached its limit of 15M tokens in Run 00044, after it went back and forth through Viridian Forest.
+
+    The end at the PC was a bug of the Harness. A catch with a nickname and 6 Pokémon in the party shows a message on the naming screen: the Pokémon goes to the PC. The Harness read this screen as busy, so `readText` failed, the Bot pressed only B, and this message ends only on A. After 3 failed reads, the Run ended with `unknown screen`, at frame 327,739 in Run 00042 and 395,042 in Run 00043. Now this message is a text. A test on the real game fills the party and catches a Pokémon, and a replay of the 2 records goes back to a walk.
+
+    The Bot has no action to take a Pokémon from the PC (issue #80), so the party of these Runs stayed at 6 Pokémon with one or two trained. A new rule of the prompt says that a Pokémon that goes to the PC is lost for the team, so do not catch more with 6 Pokémon. Issue #80 removes this rule.
+
+    Luna left the forest by its south gate 29 times. After the badge, it was on south Route 2, and it chose `go` to the north edge in 31 of 43 decisions. The route finder knew the way, but the prompt said "no seen way there yet", because the count of exits stopped at an outdoor map, and the forest is an outdoor map. Now the count crosses outdoor maps through the exits that the player took, and the prompt says "in another part of this map, 4 exits away". The leads and the "beyond it" marks do not change, so in one prompt a lead can show more exits than a target in the same part. This count does not cross a map edge yet.
+
+    The prompt gave one unseen target for each direction, so a map with many open places lost some of them. In Pewter City at (39, 21), one step east shows the edge to Route 3, but no target went there. Now the part of the player has one target for each group of open cells next to unseen cells, at the nearest cell of the group, with the same grouping as the count of the Known world. A group shows one direction only, the direction of that cell. The east lead was in 12 of 44 prompts in Pewter City, and Luna never took it, so this change alone may not change Luna. Terra left Pewter City by the east in both Runs.
+
+    A Reflection turn now comes only at a walk. In Run 00044, 17 of 34 Reflection turns came at a battle action, with no Atlas, and the lesson was often only to run from one Pokémon.
+
+    When this change was made, no Run had played version 20. The first checks are `--continue` on Runs 00042 and 00043, whether the model stops to catch at 6 Pokémon, and whether a model leaves Pewter City sooner.

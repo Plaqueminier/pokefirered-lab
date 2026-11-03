@@ -277,6 +277,17 @@ function normalCase(name: string): string {
   return name.toLowerCase().replace(/(^|[\s.])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
 }
 
+function namingWaitingFor(naming: NamingScreen): WaitingFor {
+  switch (naming.phase) {
+    case "input":
+      return { kind: "naming", subject: naming.subject, maxLength: naming.maxLength, keys: naming.characters() };
+    case "pcMessage":
+      return { kind: "text" };
+    case "busy":
+      return { kind: "busy" };
+  }
+}
+
 export class Game {
   private readonly decode: Decode;
   private readonly prompts: Prompts;
@@ -351,7 +362,7 @@ export class Game {
 
   waitingFor(): WaitingFor {
     const naming = this.namingScreen();
-    if (naming) return naming.ready ? { kind: "naming", subject: naming.subject, maxLength: naming.maxLength, keys: naming.characters() } : { kind: "busy" };
+    if (naming) return namingWaitingFor(naming);
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
     if (mode !== "overworld") return { kind: "busy" };

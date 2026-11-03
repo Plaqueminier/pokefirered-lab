@@ -173,6 +173,42 @@ describe("the parts of a map", () => {
     expect(beside.lines).toContain("C. east edge, in another part of this map, 2 exits away: to Town, taken");
   });
 
+  test("a way through a gate, an outdoor map and a second gate counts its exits: the edge and the gate past it are in another part, and a place with no taken way stays with no seen way", () => {
+    const door = (x: number, y: number, to: string, arrival: { x: number; y: number } | null) => ({ x, y, behavior: "MB_CAVE_DOOR", place: null, to, arrival });
+    const route: AtlasMap = {
+      ...LAB,
+      name: "Route",
+      outside: true,
+      width: 16,
+      height: 5,
+      cells: "#".repeat(16) + "###............." + "#".repeat(16) + "..##############" + "#".repeat(16),
+      warps: [door(0, 3, "SouthGate", { x: 1, y: 1 }), door(3, 1, "NorthGate", { x: 7, y: 1 })],
+      stepExits: [{ x: 0, y: 3 }, { x: 3, y: 1 }],
+      edges: [{ side: "east", to: "Town" }],
+      hasEdges: true,
+      entry: null,
+    };
+    const gate = (name: string, west: AtlasMap["warps"][number], east: AtlasMap["warps"][number]): AtlasMap => ({ ...floor(name, "#.......#", "Route"), warps: [west, east], stepExits: [] });
+    const southGate = gate("SouthGate", door(1, 1, "Route", { x: 0, y: 3 }), door(7, 1, "Forest", { x: 1, y: 1 }));
+    const forest: AtlasMap = { ...floor("Forest", "#.......#", "SouthGate"), outside: true, warps: [door(1, 1, "SouthGate", { x: 7, y: 1 }), door(7, 1, "NorthGate", { x: 1, y: 1 })], stepExits: [] };
+    const northGate = gate("NorthGate", door(1, 1, "Forest", { x: 7, y: 1 }), door(7, 1, "Route", { x: 3, y: 1 }));
+    const view = atlasExtract(overworld(route, [southGate, forest, northGate], { x: 1, y: 3 }));
+    expect(view.lines).toContainEqual(expect.stringContaining("entrance at (3, 1), in another part of this map, 4 exits away"));
+    expect(view.lines).toContainEqual(expect.stringContaining("east edge, in another part of this map, 4 exits away"));
+    const closed = atlasExtract(overworld({ ...route, warps: [route.warps[0]] }, [southGate, { ...forest, warps: [forest.warps[0]] }], { x: 1, y: 3 }));
+    expect(closed.lines).toContainEqual(expect.stringContaining("east edge, 15 east, no seen way there yet"));
+  });
+
+  test("each group of open cells next to unseen cells is one target, at its nearest cell: two groups on one side are two targets, and one group with two sides is one target", () => {
+    const pockets: AtlasMap = { ...LAB, name: "Field", width: 16, height: 3, cells: "?#######??##?###" + "................" + "############?###", warps: [], entry: null };
+    const view = atlasExtract(overworld(pockets, [], { x: 3, y: 1 }));
+    expect(view.lines.filter((line) => line.includes("unseen cells"))).toEqual([
+      "A. unseen cells north of (0, 1), 3 west",
+      "B. unseen cells north of (8, 1), 5 east",
+      "C. unseen cells north of (12, 1), 9 east",
+    ]);
+  });
+
   test("a ledge with an unseen landing is an unseen side of the part", () => {
     const ledge: AtlasMap = { ...LAB, name: "Hill", width: 3, height: 3, cells: "..." + "vvv" + "???", warps: [], entry: null };
     const view = atlasExtract(overworld(ledge, [], { x: 1, y: 0 }));

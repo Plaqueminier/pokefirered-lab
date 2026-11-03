@@ -73,7 +73,7 @@ The reasoning level of the **Character turns**, **Reflection turns** and **Revie
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:
-A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk or battle action. Its prompt asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. At a walk, it also adds the full **Atlas**. It is not a separate request.
+A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
 **Review turn**:
