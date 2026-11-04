@@ -300,3 +300,28 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     The tests found one fact: the TM Case sorts its pocket when it opens, with the HMs first. So the row of an item is known only after it opens.
 
     To use a Field move is not in this step: see #79 and #74. When this change was made, no Run had played version 24. The first check is whether a model teaches TM39 after the badge, and to which Pokémon.
+
+## 23. Keep the same Run (2026-11-03)
+
+69. An Extended Run plays on from its Run record (ADR 0006). A Run on a Plan provider can end with `plan limit` long before its Token limit. A Continued Run could play on, but it has a new id, so the Race draws another Ghost face, and the old file stays. Now a checkbox "Keep the same Run" in the form "Bots" plays on from the record, with the same id, the same Ghost and the same file. `00ab717ed`
+
+    Until now a Run record never changed after its Run. The new record holds all the buttons and events of the old one, and the Harness refuses to start when the replay does not give the same Game events. The header has the new Bot and limit, and `parts` keeps the Bot, the Run result and the end of each earlier part. The file is written next to the old one and then renamed, so a crash leaves the old file whole.
+
+    The cost: the file at the old stop is lost, so no Run can branch from that stop. A record that has a Continued Run cannot extend, so a person selects one of the two at each stop. The limit of each part counts from 0. The bot version does not change.
+
+## 24. Grok as a Plan provider (2026-11-03 to 11-04)
+
+70. The Plan provider `grok` is new (ADR 0007): a third subscription can pay for a Run. `grok` reads more than the two other tools. In an empty directory, it loads `~/.claude/Claude.md`, the skills and the permissions of Claude Code, and these instructions would make two Runs not equal. So each call has an empty `HOME`, and the lab has its own `GROK_HOME` with one more login. Each call names each tool in `--disallowed-tools`, because `grok` has no option for "no tools". The bot version does not change. `c7ad8fc0e`
+
+    In `grok` 1.0.70, `--system-prompt-override` has no effect, although the docs of Grok tell that it replaces the prompt. So the call sends the system prompt of the Bot in an agent file, and this adds its text after a base prompt of 3,456 characters. The home of the lab also hides the bundled skills, which add about 2,100 tokens to each call. The cost: the model on `grok` reads this base prompt before the prompt of the Bot, so a difference between a Run on `grok` and a Run on another provider can come from these words. `f1631b1b9`
+
+    Two more facts came with use. The first answer of `grok` after the end of a token tells that it is not logged in, so the status check asks two times. `60bd86cb7` The default model is `grok-4.7`, because the fast variant has 2 times the price for the same tokens. `0a289fc39`
+
+## 25. Smaller changes of the Run, the Viewer and the Race (2026-11-01 to 11-02)
+
+71. Four changes with no effect on the decisions of the model:
+
+    - A user stop ends a Model call at once. Before, a stop was read only at the end of the call: a call of 303 s kept the Run on "stops…" for all that time, and a call with no answer kept it there with no end. A call with no answer now ends after 10 minutes. The event keeps the error and no cost, because OpenRouter gives the cost with the answer only, so the cost limit does not count this call. `b855be5d7`
+    - The Model tab shows the character of the Run first, and the card of a Ghost shows it in full (issue #77). A Run with no Character turn shows "Normal trainer": the Viewer shows this text, the model never reads it, and no Run record holds it. The Race file goes to version 3. `bb648e169`
+    - Each Ghost shows its model: a dot on the map, the full id on hover, and the short id in the Leaderboard. The dot is blue for DeepSeek, orange for Claude and light grey for GPT. A Ghost of another model, for example `grok-4.7`, has no dot. `f4b0b6484`
+    - The three floors of Mt Moon are islands on the map of the Race, so the Ghosts walk on them, with no count at a door. `28e64f345`

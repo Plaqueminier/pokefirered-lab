@@ -85,7 +85,7 @@ One request of a model bot to its AI model that writes the summary of two nodes 
 _Avoid_: Model call (a **Model call** gives an action)
 
 **Model provider**:
-The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code` or `codex`. A **Run** has one Model provider and one AI model.
+The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code`, `codex` or `grok`. A **Run** has one Model provider and one AI model.
 _Avoid_: backend, mode, API
 
 **Plan provider**:
