@@ -10,7 +10,7 @@ const DOOR_REACH = 2;
 const BADGE_PREFIX = "badge-";
 const NO_BADGES: boolean[] = new Array(8).fill(false);
 
-export type ModelFamily = "deepseek" | "claude" | "gpt";
+export type ModelFamily = "deepseek" | "claude" | "gpt" | "grok";
 
 // The aliases of the claude command: a Race file holds only the id, with no provider.
 const CLAUDE_ALIASES = ["haiku", "sonnet", "opus", "fable"];
@@ -23,6 +23,7 @@ export function modelFamily(id: string): ModelFamily | null {
   const short = shortModelId(id);
   if (short.startsWith("deepseek")) return "deepseek";
   if (short.startsWith("gpt-")) return "gpt";
+  if (short.startsWith("grok-")) return "grok";
   return short.startsWith("claude") || CLAUDE_ALIASES.includes(short) ? "claude" : null;
 }
 

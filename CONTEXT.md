@@ -220,7 +220,7 @@ A file that a command makes from a set of **Run records**: the track and the **S
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
-One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude or GPT. A **Ghost** of another model and a group of **Ghosts** have no dot.
+One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok. A **Ghost** of another model and a group of **Ghosts** have no dot.
 _Avoid_: player, avatar
 
 **State track**:

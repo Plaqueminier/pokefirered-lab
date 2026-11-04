@@ -51,10 +51,11 @@ test("the family of a model comes from its id alone", () => {
   for (const id of ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4.1-flash"]) expect(modelFamily(id)).toBe("deepseek");
   for (const id of ["gpt-5.6-terra", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-6.-luna", "openai/gpt-5.5"]) expect(modelFamily(id)).toBe("gpt");
   for (const id of ["haiku", "sonnet", "opus", "fable", "claude-sonnet-5-5", "anthropic/claude-opus-5.5"]) expect(modelFamily(id)).toBe("claude");
+  for (const id of ["grok-4.7", "grok-4.7-fast", "x-ai/grok-4"]) expect(modelFamily(id)).toBe("grok");
 });
 
 test("a model of another family, or no model, has no family", () => {
-  for (const id of ["", "a/b", "mistralai/mistral-large", "haiku-of-another-maker", "my-gpt-copy"]) expect(modelFamily(id)).toBeNull();
+  for (const id of ["", "a/b", "mistralai/mistral-large", "haiku-of-another-maker", "my-gpt-copy", "my-grok-copy"]) expect(modelFamily(id)).toBeNull();
 });
 
 test("the short id of a model has no prefix", () => {
