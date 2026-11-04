@@ -347,3 +347,7 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 ## 27. A Run of Claude keeps the full id of its model (2026-11-04)
 
 73. Runs 00037, 00045, 00048 (`haiku`) and 00051 (`sonnet`) keep only an alias of the claude command, and the provider did not keep the model that answered. We ran one small call with the aliases on the 3 installed versions of the command (2.1.316 to 2.1.318), which cover the dates of these Runs. Each `modelUsage` gave `claude-haiku-5-5` and `claude-sonnet-5-5`. An alias changes at a new release of the command, so `modelSettings` now changes an alias to a full id, and the default of `claude-code` is `claude-haiku-5-5`. The old Run records stay as they are. An Extended Run of one of them holds the full id, which is the same model.
+
+## 28. The next Milestone does not tell the way to the Pokédex (2026-11-04)
+
+74. The model bot goes to version 26. The next Milestone said "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.", so the prompt told the model the steps that the game must teach it. It now says "Get the Pokédex." only.
