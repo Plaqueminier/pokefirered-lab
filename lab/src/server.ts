@@ -6,7 +6,7 @@ import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
-import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
+import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
 import { GridPlay } from "./grid";
 import { ScreenFanout } from "./screens";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
@@ -68,18 +68,18 @@ class LivePlay {
   inventory = new InventoryHistory();
 
   constructor(private readonly run: Run) {
-    this.atlas = new AtlasWatch(run.game);
+    this.atlas = new AtlasWatch(run.game, "player");
   }
 
   sight(): Sight {
     return this.atlas.sight();
   }
 
-  async reset(names: TrainerNames | null = null): Promise<void> {
+  async reset(names: TrainerNames | null = null, knowledge: KnowledgeLevel = "player"): Promise<void> {
     this.endReplay();
     await this.run.reset(names);
     this.inventory = new InventoryHistory();
-    this.atlas = new AtlasWatch(this.run.game);
+    this.atlas = new AtlasWatch(this.run.game, knowledge);
     this.resyncClock();
   }
 
@@ -92,7 +92,7 @@ class LivePlay {
 
   async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
     // A save with no place for the names gives a notice through the differences below.
-    await this.reset(record.header.names).catch(() => this.reset());
+    await this.reset(record.header.names, record.header.knowledge).catch(() => this.reset(null, record.header.knowledge));
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) {
       await this.reset();

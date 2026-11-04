@@ -13,7 +13,7 @@ The ROM built with the lab flag. It has the same gameplay as the vanilla build. 
 _Avoid_: debug build, mod, hack
 
 **Harness**:
-The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do.
+The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The one exception is FLASH on a **Dark map** (see **Field move**).
 _Avoid_: emulator, AI
 
 **Bot**:
@@ -57,7 +57,7 @@ The memory that a model bot writes itself. Each note is one short line that the 
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
 **Stuck counter**:
-The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is not progress.
+The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is progress only on a map that is dark for the model (see **Dark map**).
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Character turn**:
@@ -101,7 +101,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way: a removed one returns to the **Atlas** when the player leaves the map. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way: a removed one returns to the **Atlas** when the player leaves the map. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route, and if each map is dark for the model (see **Dark map**). On a map in the dark, the player sees only the 3 x 3 cells around the player.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
@@ -121,7 +121,7 @@ A part of each walk prompt of a model bot: one line for each outdoor map of the 
 _Avoid_: world map, overview, Town Map (an item of the game)
 
 **Dark map**:
-A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again at the next entry.
+A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again at the next entry. At the `player` **Knowledge level**, a **Dark map** is dark for the model when it is not lit and the party cannot use FLASH.
 _Avoid_: cave (Mt. Moon is a cave but it is not dark, and the game code gives the name `cave` to this property of a map)
 
 **Field move**:
@@ -184,7 +184,7 @@ The file that keeps one **Run**: the version of its format, its build, seed, **S
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
-A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a **Fixed obstacle** removed, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
+A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a **Fixed obstacle** removed, a use of FLASH, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:

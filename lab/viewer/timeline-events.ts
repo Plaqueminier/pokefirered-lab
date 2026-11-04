@@ -2,7 +2,7 @@ import type { Areas, Milestone } from "../src/game";
 import type { RunEvent } from "../src/harness/record";
 import { clock } from "./stats-format";
 
-export type TimelineKind = "milestone" | "faint" | "catch" | "evolution" | "trainer" | "heal" | "place" | "level" | "wild" | "purchase" | "item" | "obstacle";
+export type TimelineKind = "milestone" | "faint" | "catch" | "evolution" | "trainer" | "heal" | "place" | "level" | "wild" | "purchase" | "item" | "obstacle" | "flash";
 
 /** `end`: the end of a trainer battle. */
 export type TimelineEvent = { frame: number; kind: TimelineKind; text: string; end?: number };
@@ -76,6 +76,9 @@ export function timelineEvents(events: readonly RunEvent[], areas: Areas): Timel
       }
       case "obstacle":
         shown.push({ frame: event.frame, kind: "obstacle", text: `${titleCase(event.species)} used ${event.move}` });
+        break;
+      case "flash":
+        shown.push({ frame: event.frame, kind: "flash", text: `${titleCase(event.species)} used FLASH` });
         break;
       case "faint":
         if (event.side === "player") shown.push({ frame: event.frame, kind: "faint", text: `${titleCase(event.species)} fainted` });

@@ -7,11 +7,11 @@ import type { ActionEntry, BattleState, NoProgress, Observation } from "../harne
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
 import { type BoxMon, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
-import { actionText, modelEvents } from "../protocol";
+import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
-import { fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
+import { darkOfMap, fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, type Overworld, targetLines } from "./targets";
 
@@ -206,12 +206,12 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     ...context(asked),
     ...(showsAtlas(turn) && asked.kind === "walk" ? [...fullAtlas(asked.overworld), ...teachDetails(asked)] : []),
-    ...(asked.kind === "walk" ? fieldMoveHints(asked) : []),
+    ...(asked.kind === "walk" ? [...darkLine(asked), ...fieldMoveHints(asked)] : []),
     "",
     waitLine(asked, events),
     missionLine(events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
-    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): ${noProgress.stuck}.`,
+    `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, ${lastProgressKinds(asked)}): ${noProgress.stuck}.`,
     ...request,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
     ...loopWarning(answers),
@@ -467,7 +467,7 @@ function actionLines(asked: Asked): string[] {
     case "walk": {
       const { grid } = asked.overworld;
       return [
-        ...(asked.view.targets.length === 0 ? [] : ["- go <letter>: walk to the target, for example go B. At an exit, take it. At a person, an object or something you can check, walk next to it, then interact with it."]),
+        ...(asked.view.targets.length === 0 ? [] : [`- go <letter>: walk to the target, for example go B. At an exit, take it. At a person, an object or something you can check, walk next to it, then interact with it.${darkOfMap(asked.overworld) ? DARK_GO_RULE : ""}`]),
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
@@ -546,6 +546,19 @@ function teachDetails({ overworld: { teachables }, party }: WalkAsked): string[]
   const about = ({ item, move, able, knowing }: Teachable) => [`- ${item}: ${move.name} (${moveText(move)}). ${move.description} Can learn it: ${mons(able) || "none"}.`, ...(knowing.length === 0 ? [] : [`Knows it: ${mons(knowing)}.`])].join(" ");
   return ["", `Your TMs and HMs. ${TEACH_RULE}`, ...teachables.map(about), "Does one of these moves help your Objective?"];
 }
+
+// #74: the model does not see the screen, so this exception to #78 names the move, but no place and no HM number.
+function darkLine({ overworld }: WalkAsked): string[] {
+  const dark = darkOfMap(overworld);
+  if (!dark) return [];
+  return [`This map is dark: you see about 3 x 3 cells. ${dark.missingBadge === null ? "The HM move FLASH lights it, and no Pokémon of your party knows it." : `${badgeNeeded("FLASH", dark.missingBadge)}.`}`];
+}
+
+function lastProgressKinds(asked: Asked): string {
+  return asked.kind === "walk" && darkOfMap(asked.overworld) ? "an item found, a new species caught or a new cell seen on this dark map" : "an item found or a new species caught";
+}
+
+const DARK_GO_RULE = " At unseen cells of this dark map, the walk continues in the same direction: a wall, an exit, a new person or a battle stops it.";
 
 function fieldMoveHints({ overworld }: WalkAsked): string[] {
   return overworld.teachables.flatMap((teachable) => {

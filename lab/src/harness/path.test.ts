@@ -1,12 +1,62 @@
 import { describe, expect, test } from "bun:test";
 import type { Direction } from "../cells";
-import { type Cell, destinationOf, findRoute, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
+import { type Cell, destinationOf, findRoute, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
 
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
   const height = rows.length;
   return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], removable: [], ...more };
 }
+
+describe("a route on a map that is dark for the model", () => {
+  const room = map("Dark", ["......", "......", "......"]);
+  const seenRow = (y: number) => (c: Cell) => c.y === y;
+
+  test("it uses only the seen cells, and an unseen cell is not a destination", () => {
+    const seenOnTwoRows = onlySeen(room, (c) => c.y === 0 || (c.y === 1 && c.x === 5));
+    expect(path(seenOnTwoRows, { x: 0, y: 0 }, { x: 5, y: 1 })).toEqual(["east", "east", "east", "east", "east", "south"]);
+    expect(path(seenOnTwoRows, { x: 0, y: 0 }, { x: 0, y: 1 })).toBeNull();
+    expect(path(onlySeen(room, seenRow(1)), { x: 0, y: 1 }, { x: 0, y: 0 })).toBeNull();
+  });
+
+  test("an exit, a Fixed obstacle and an obstacle that the party can remove on an unseen cell are not on a route; the arrival of an exit stays known", () => {
+    const warp = { x: 2, y: 0, to: "Next", warpId: 0, how: "step" as const };
+    const dark = onlySeen(map("Dark", ["......"], { warps: [warp], removable: [{ x: 4, y: 0 }], obstacles: [{ x: 3, y: 0, name: "CUT TREE", move: "CUT" }] }), (c) => c.x < 2);
+    expect(dark.warps).toEqual([{ x: 2, y: 0, to: "Next", warpId: 0, how: "none" }]);
+    expect(dark.removable).toEqual([]);
+    expect(dark.obstacles).toEqual([]);
+  });
+
+  test("a route goes from another map to the arrival of an exit, on a floor that the player did not see", () => {
+    const here = map("Here", ["..."], { warps: [{ x: 2, y: 0, to: "Dark", warpId: 0, how: "step" }] });
+    const floor = onlySeen(map("Dark", ["..."], { warps: [{ x: 1, y: 0, to: "Here", warpId: 0, how: "step" }] }), () => false);
+    expect(findRoute({ map: "Here", x: 0, y: 0 }, { map: "Dark", x: 1, y: 0, exit: true }, world(here, floor))).not.toBeNull();
+    expect(findRoute({ map: "Here", x: 0, y: 0 }, { map: "Dark", x: 0, y: 0 }, world(here, floor))).toBeNull();
+  });
+});
+
+describe("the next step of a walk in the dark", () => {
+  const room = (rows: string[], people: Cell[] = []) => ({ ...map("Dark", rows), people: people.map((c) => person(c.x, c.y)) });
+  const from = { x: 0, y: 0 };
+
+  test("it goes on in the same direction on an open cell", () => {
+    expect(nextStraightStep(room(["..."]), from, "east")).toEqual({ x: 1, y: 0 });
+  });
+
+  test("it stops at a wall, at a thin wall, at the edge of the map, at water and before a ledge", () => {
+    expect(nextStraightStep(room([".#"]), from, "east")).toBeNull();
+    expect(nextStraightStep(room(["]."]), from, "east")).toBeNull();
+    expect(nextStraightStep(room(["]."]), { x: 1, y: 0 }, "west")).toBeNull();
+    expect(nextStraightStep(room(["."]), from, "east")).toBeNull();
+    expect(nextStraightStep(room([".~"]), from, "east")).toBeNull();
+    expect(nextStraightStep(room([".>."]), from, "east")).toBeNull();
+  });
+
+  test("it stops before an exit and before a person", () => {
+    expect(nextStraightStep({ ...room(["..."]), warps: [{ x: 1, y: 0, to: "Next", warpId: 0, how: "step" }] }, from, "east")).toBeNull();
+    expect(nextStraightStep(room(["..."], [{ x: 1, y: 0 }]), from, "east")).toBeNull();
+  });
+});
 
 function person(x: number, y: number): RouteMap["people"][number] {
   return { x, y, graphics: "MAN", stays: false };

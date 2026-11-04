@@ -85,7 +85,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("teach, on the
 
   test("the two floors of Rock Tunnel are the Dark maps, and Mt. Moon is not", async () => {
     const run = await Run.open({ startSave: PARTY_SAVE });
-    const dark = (map: string) => run.game.mapView(map)?.grid.dark;
+    const dark = (map: string) => run.game.mapView(map)?.grid.cave;
     expect(["RockTunnel_1F", "RockTunnel_B1F", "MtMoon_1F", "PalletTown"].map(dark)).toEqual([true, true, false, false]);
   });
 });

@@ -32,6 +32,10 @@ export function obstacleRemedy(move: string): string {
   return `Only a Pokémon that knows ${move} can remove it`;
 }
 
+export function badgeNeeded(move: string, badge: number): string {
+  return `A Pokémon of your party knows ${move}, but its use on the map needs badge ${badge}`;
+}
+
 export const MODEL_PROVIDERS = ["openrouter", "claude-code", "codex", "grok"] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];

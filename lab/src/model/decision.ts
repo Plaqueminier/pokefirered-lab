@@ -44,7 +44,7 @@ export const REVIEW_SCHEMA = {
 
 /** The Macro-actions and the Raw input that the model can choose, and the actions that the code of the model bot plays: go, viewAtlas and zoom. */
 export type ModelAction =
-  | Exclude<MacroAction, { name: "interact" | "readText" }>
+  | Exclude<MacroAction, { name: "interact" | "readText" | "walkOn" }>
   | RawInput
   | { name: "go"; target: number }
   | { name: "viewAtlas" }

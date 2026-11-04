@@ -28,6 +28,7 @@ const START_MENU_BAG = "BAG";
 const TM_CASE_ITEM = "TM CASE";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
+const FLASH_ACTION = "FLASH";
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
 // Decomp MoveCursorToOKButton: the OK button is in the third row of the button column, the column after the keys.
@@ -520,6 +521,16 @@ export class MenuDriver {
     if (moved.status !== "done") return moved;
     const swapped = this.menuInput(Keys.A, () => this.pickMenu()?.swapping === false);
     return swapped.status === "done" ? this.closeStartMenu() : swapped;
+  }
+
+  useFlash(slot: number): Outcome {
+    const { game } = this;
+    const opened = this.openStartMenu(START_MENU_POKEMON, () => this.pickMenu() !== null);
+    if (opened.status !== "done") return opened;
+    const actions = this.openPartyActions(slot);
+    if (actions.status !== "done") return actions;
+    const chosen = this.selectPartyAction((options) => options.indexOf(FLASH_ACTION), () => game.flashActive());
+    return chosen.status === "done" ? this.untilReady(() => game.waitingFor().kind === "walk") : chosen;
   }
 
   private namingScreen() {

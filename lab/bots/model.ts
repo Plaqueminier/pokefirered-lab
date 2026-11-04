@@ -7,6 +7,7 @@ import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, rea
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import type { AskOptions, ModelClient, ModelReply } from "../src/model/openrouter";
 import { modelClient, modelSettings, PlanLimitError } from "../src/model/providers";
+import { darkOfMap } from "../src/model/extract";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
@@ -27,7 +28,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "26",
+    version: "27",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -217,6 +218,7 @@ class ModelPlay {
   }
 
   private async walkTo(target: LocalTarget, overworld: Overworld): Promise<ActionResult | null> {
+    if (target.kind === "frontier" && darkOfMap(overworld)) return this.harness.walkOn(target.cell.x, target.cell.y, target.direction);
     let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
       result = await this.harness.goTo(cell.x, cell.y);

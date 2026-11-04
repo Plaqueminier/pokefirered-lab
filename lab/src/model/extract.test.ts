@@ -80,6 +80,24 @@ describe("the exits of the Atlas", () => {
   });
 });
 
+describe("the unseen cells of a map that is dark for the model", () => {
+  const room = (dark: boolean): AtlasMap => ({ ...LAB, name: "Dark", width: 9, height: 5, cells: "?".repeat(9) + "?.......?".repeat(3) + "?".repeat(9), warps: [], entry: null, ...(dark ? { dark: { missingBadge: null } } : {}) });
+  const unseen = (dark: boolean) => atlasExtract(overworld(room(dark), [], { x: 4, y: 2 })).lines.filter((line) => line.includes("unseen cells"));
+
+  test("each direction of a group has one target, at the cell nearest to the player", () => {
+    expect(unseen(true).map((line) => line.slice(3))).toEqual(["unseen cells north of (4, 1), adjacent north, you face it", "unseen cells south of (4, 3), adjacent south", "unseen cells west of (1, 2), 3 west", "unseen cells east of (7, 2), 3 east"]);
+  });
+
+  test("on another map, a group has one target", () => {
+    expect(unseen(false)).toHaveLength(1);
+  });
+
+  test("the target keeps the direction of its unseen cells", () => {
+    const { targets } = atlasExtract(overworld(room(true), [], { x: 4, y: 2 }));
+    expect(targets.filter((target) => target.kind === "frontier")).toContainEqual(expect.objectContaining({ cell: { x: 7, y: 2 }, direction: "east" }));
+  });
+});
+
 describe("the parts of a map", () => {
   const stairs = (x: number, to: string): AtlasMap["warps"][number] => ({ x, y: 1, behavior: "MB_UP_RIGHT_STAIR_WARP", place: null, to, arrival: { x, y: 1 } });
   const floor = (name: string, row: string, to: string, more: Partial<AtlasMap> = {}): AtlasMap => ({ ...LAB, name, width: 16, height: 3, cells: "#".repeat(16) + row.padEnd(16, "#") + "#".repeat(16), warps: [stairs(1, to), stairs(7, to)], stepExits: [{ x: 1, y: 1 }, { x: 7, y: 1 }], entry: null, ...more });

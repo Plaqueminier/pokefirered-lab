@@ -67,7 +67,7 @@ function unseenFronts(map: AtlasMap): { cell: Cell; far: Cell }[] {
   }));
 }
 
-function unseenSides({ map, cells, view }: Part): { direction: Direction; cell: Cell }[] {
+function unseenSides({ map, cells, view }: Pick<Part, "map" | "cells" | "view">): { direction: Direction; cell: Cell }[] {
   return DIRECTION_STEPS.flatMap(([direction]) => {
     const cell = cells.find((c) => unseenPast(map, view, c, direction));
     return cell ? [{ direction, cell }] : [];
@@ -99,12 +99,18 @@ export function unseenGroups(map: AtlasMap): number {
   return touchingGroups(unseenFronts(map).map(({ cell }) => cell)).length;
 }
 
-export function unseenPlaces({ map, cells, view }: Part): { direction: Direction; cell: Cell }[] {
+export function unseenPlaces({ map, cells, view, from }: Part): { direction: Direction; cell: Cell }[] {
   const fronts = cells.flatMap((cell) => {
     const side = DIRECTION_STEPS.find(([direction]) => unseenPast(map, view, cell, direction));
     return side ? [{ ...cell, direction: side[0] }] : [];
   });
-  return touchingGroups(fronts).map(([{ direction, x, y }]) => ({ direction, cell: { x, y } }));
+  const away = ({ x, y }: Cell) => Math.abs(x - from.x) + Math.abs(y - from.y);
+  const nearestFirst = (group: Cell[]) => group.toSorted((a, b) => away(a) - away(b));
+  return touchingGroups(fronts).flatMap((group) => {
+    // Run 00047: a walk with 3 x 3 sight makes long groups, and their first cell can be far behind the player.
+    const shown = map.dark ? unseenSides({ map, view, cells: nearestFirst(group) }) : [{ direction: group[0].direction, cell: group[0] }];
+    return shown.map(({ direction, cell: { x, y } }) => ({ direction, cell: { x, y } }));
+  });
 }
 
 export function closedCells(map: AtlasMap, view: MapCells, people: Cell[]): Set<string> {

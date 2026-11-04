@@ -20,7 +20,7 @@ import {
   readBattle,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
-import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
+import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
 import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
@@ -150,7 +150,7 @@ export type MapGrid = {
   /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), . open. */
   kinds: string;
   outside: boolean;
-  dark: boolean;
+  cave: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
   /** Metatile behavior id per cell; names in behaviorNames. */
@@ -173,6 +173,8 @@ const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
 export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
 
 const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["ROCK SMASH", 6]]);
+
+const FLASH_BADGE = 1;
 
 export type Obstacle = { x: number; y: number; name: string; move: FieldMove };
 
@@ -838,6 +840,22 @@ export class Game {
     return new Set([...WALK_MOVE_BADGE].flatMap(([move, badge]) => (known.has(move) && this.flag(badgeFlag(badge)) ? [move] : [])));
   }
 
+  // The game keeps this flag between floors, and clears it at a warp outdoors, at Fly, Teleport, Dig, Escape Rope and a whiteout.
+  flashActive(): boolean {
+    return this.flag(FLAG_SYS_FLASH_ACTIVE);
+  }
+
+  // A Pokémon that fainted can use it: the party menu of the game does not test the HP.
+  flashUser(): number | null {
+    if (!this.flag(badgeFlag(FLASH_BADGE))) return null;
+    const slot = this.party().findIndex((mon) => !mon.isEgg && mon.moves.some((move) => move.name === "FLASH"));
+    return slot < 0 ? null : slot;
+  }
+
+  flashBadgeMissing(): number | null {
+    return !this.flag(badgeFlag(FLASH_BADGE)) && this.partyMoves().has("FLASH") ? FLASH_BADGE : null;
+  }
+
   missingBadge(move: FieldMove): number | null {
     const badge = WALK_MOVE_BADGE.get(move);
     return badge !== undefined && !this.flag(badgeFlag(badge)) && this.partyMoves().has(move) ? badge : null;
@@ -960,7 +978,7 @@ export class Game {
       mapWidth: layout.field("width").int(),
       mapHeight: layout.field("height").int(),
       outside: this.mapKind(group, num) === "outdoor",
-      dark: header.field("cave").int() !== 0,
+      cave: header.field("cave").int() !== 0,
       kinds,
       blocks,
       behaviors,

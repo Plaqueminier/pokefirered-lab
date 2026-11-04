@@ -135,7 +135,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "26", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "27", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -220,25 +220,26 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     seen.push(harness.availableActions());
     await starter.play(harness);
     const goTo = { name: "goTo" as const };
+    const walkOn = { name: "walkOn" as const };
     const readText = [{ name: "readText" as const }];
     const fights: AvailableAction[] = [
       { name: "fight", move: 0 },
       { name: "fight", move: 1 },
     ];
     expect(seen).toEqual([
-      [goTo, { name: "interact", x: 6, y: 5 }],
-      [goTo],
+      [goTo, walkOn, { name: "interact", x: 6, y: 5 }],
+      [goTo, walkOn],
       readText,
       ...OAK_TEXTS.slice(1).map(() => readText),
-      [goTo, { name: "interact", x: 6, y: 3 }, { name: "interact", x: 5, y: 4 }],
-      [goTo, { name: "interact", x: 9, y: 4 }],
+      [goTo, walkOn, { name: "interact", x: 6, y: 3 }, { name: "interact", x: 5, y: 4 }],
+      [goTo, walkOn, { name: "interact", x: 9, y: 4 }],
       readText,
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
       readText,
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
       [{ name: "name" }],
       // BOB stops at (8, 5) after he takes BULBASAUR.
-      [goTo, { name: "interact", x: 8, y: 5 }],
+      [goTo, walkOn, { name: "interact", x: 8, y: 5 }],
       readText,
       readText,
       fights,
@@ -250,7 +251,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       fights,
       readText,
       readText,
-      [goTo],
+      [goTo, walkOn],
     ]);
     harness.actions.forEach(({ action }, i) => {
       if (action.name === "press") throw new Error("the scripted bot uses a Raw input");

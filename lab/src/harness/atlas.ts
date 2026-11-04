@@ -3,11 +3,12 @@ import type { Game, MapActors, MapGrid, Obstacle, Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
+type Area = { left: number; right: number; up: number; down: number };
+
 // The camera keeps the player at screen cell (7, 5) of the 15 x 10 cells of the screen (field_camera.c).
-const SCREEN_LEFT = 7;
-const SCREEN_RIGHT = 7;
-const SCREEN_UP = 5;
-const SCREEN_DOWN = 4;
+const SCREEN: Area = { left: 7, right: 7, up: 5, down: 4 };
+// The game shows a circle of 24 px in the dark (sFlashLevelToRadius): the centres of these 3 x 3 cells are in it.
+const DARK_AREA: Area = { left: 1, right: 1, up: 1, down: 1 };
 const RIVAL_GRAPHICS = "BLUE";
 
 /** What a player sees of an exit, before it takes the exit. */
@@ -41,6 +42,8 @@ export type AtlasMap = {
   entry: Cell | null;
   /** The seen cells where a step leaves the map, also the other cells of a wide exit. */
   stepExits: Cell[];
+  /** The map is dark for the model. `missingBadge`: a Pokémon knows FLASH, and the player does not have this badge. */
+  dark?: { missingBadge: number | null };
 };
 
 export function personName({ graphics, rival }: AtlasPerson): string {
@@ -68,7 +71,7 @@ export function seenIn(map: AtlasMap): (cell: Cell) => boolean {
 }
 
 export function fitsScreen({ width, height }: Pick<AtlasMap, "width" | "height">): boolean {
-  return width <= SCREEN_LEFT + SCREEN_RIGHT + 1 && height <= SCREEN_UP + SCREEN_DOWN + 1;
+  return width <= SCREEN.left + SCREEN.right + 1 && height <= SCREEN.up + SCREEN.down + 1;
 }
 
 export function mapNamed(atlas: Atlas, name: string): AtlasMap {
@@ -97,6 +100,8 @@ type AtlasGrid = MapGrid & { obstacles: Obstacle[] };
 
 type IsClosed = (map: string, obstacle: Obstacle) => boolean;
 
+type CaveGrid = Pick<MapGrid, "cave">;
+
 type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 
 export class AtlasWatch {
@@ -108,12 +113,17 @@ export class AtlasWatch {
   #talk: Talk | null = null;
   #lastTalk: Atlas["lastTalk"] = null;
   #battle: "none" | "during" | "after" = "none";
+  #inDarkness = false;
+  #darkCells = 0;
 
-  constructor(private readonly game: Game) {}
+  constructor(
+    private readonly game: Game,
+    private readonly knowledge: KnowledgeLevel,
+  ) {}
 
   // The grids are shared: they never change after the first visit.
   clone(): AtlasWatch {
-    const copy = new AtlasWatch(this.game);
+    const copy = new AtlasWatch(this.game, this.knowledge);
     for (const [name, visit] of this.#visits) {
       copy.#visits.set(name, {
         ...visit,
@@ -131,6 +141,8 @@ export class AtlasWatch {
     copy.#lastAction = this.#lastAction;
     copy.#lastTalk = this.#lastTalk;
     copy.#battle = this.#battle;
+    copy.#inDarkness = this.#inDarkness;
+    copy.#darkCells = this.#darkCells;
     return copy;
   }
 
@@ -141,12 +153,14 @@ export class AtlasWatch {
     const player = game.player();
     if (!player) return;
     const map = game.map();
-    const last = this.#place;
-    if (last?.map === map.name && last.x === player.x && last.y === player.y) return;
     const visit = this.visit(map.name, map.group, map.num);
     if (!visit) return;
+    const last = this.#place;
+    const inDarkness = this.isDark(visit.grid);
+    if (last?.map === map.name && last.x === player.x && last.y === player.y && inDarkness === this.#inDarkness) return;
     const here = { map: map.name, x: player.x, y: player.y };
     this.#place = here;
+    this.#inDarkness = inDarkness;
     this.see(visit, here);
     this.seeActors(visit, here);
     if (last && last.map !== here.map) this.crossed(last, here);
@@ -184,24 +198,58 @@ export class AtlasWatch {
     return exits;
   }
 
+  get darkCells(): number {
+    return this.#darkCells;
+  }
+
+  get darkHere(): boolean {
+    return this.#inDarkness;
+  }
+
+  peopleSeen(map: string): number {
+    return this.#visits.get(map)?.people.size ?? 0;
+  }
+
   lookAround(): void {
     const place = this.#place;
     const visit = place && this.#visits.get(place.map);
     if (visit) this.seeActors(visit, place);
   }
 
-  atlas(knowledge: KnowledgeLevel): Atlas {
+  atlas(): Atlas {
     const blocked = this.blockOf;
     const lastTalk = this.#lastTalk;
     const closed = this.closedNow();
-    if (knowledge === "player") return { maps: [...this.#visits.values()].map((visit) => atlasMap(visit, blocked, closed)), lastTalk };
+    if (this.knowledge === "player") return { maps: [...this.#visits.values()].map((visit) => atlasMap(visit, blocked, closed, this.darkOf(visit.grid))), lastTalk };
     const maps = this.game.allMapNames.flatMap((names, group) =>
       names.flatMap((name, num) => {
         const grid = this.grid(name, group, num);
-        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name), (w) => this.arrivalOf(w)), blocked, closed)] : [];
+        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name), (w) => this.arrivalOf(w)), blocked, closed, undefined)] : [];
       }),
     );
     return { maps, lastTalk };
+  }
+
+  darkSight(grid: Pick<MapGrid, "cave" | "name">): ((cell: Cell) => boolean) | null {
+    if (!this.darkForModel(grid)) return null;
+    const visit = this.#visits.get(grid.name);
+    return visit ? seenOn(visit) : () => false;
+  }
+
+  private isDark({ cave }: CaveGrid): boolean {
+    return cave && this.knowledge === "player" && !this.game.flashActive();
+  }
+
+  darkForModel(grid: CaveGrid): boolean {
+    return this.isDark(grid) && this.game.flashUser() === null;
+  }
+
+  private darkOf(grid: CaveGrid): AtlasMap["dark"] {
+    return this.darkForModel(grid) ? { missingBadge: this.game.flashBadgeMissing() } : undefined;
+  }
+
+  private areaOf(grid: CaveGrid): Area {
+    return this.isDark(grid) ? DARK_AREA : SCREEN;
   }
 
   private closedNow(): IsClosed {
@@ -241,8 +289,9 @@ export class AtlasWatch {
 
   private seeActors(visit: Visit, player: Cell): void {
     const actors = this.game.mapView(visit.grid.name)?.actors;
-    for (const p of actors?.people ?? []) if (p.loaded && onScreen(player, p)) this.seen(visit, p);
-    for (const o of actors?.obstacles ?? []) if (onScreen(player, o) && inside(visit.grid, o)) visit.obstacles.set(cellKey(o), o);
+    const area = this.areaOf(visit.grid);
+    for (const p of actors?.people ?? []) if (p.loaded && inArea(area, player, p)) this.seen(visit, p);
+    for (const o of actors?.obstacles ?? []) if (inArea(area, player, o) && inside(visit.grid, o)) visit.obstacles.set(cellKey(o), o);
   }
 
   private seen(visit: Visit, { localId, graphics, x, y }: MapActors["people"][number]): AtlasPerson {
@@ -276,8 +325,14 @@ export class AtlasWatch {
 
   private see(visit: Visit, { x, y }: Cell): void {
     const { grid, seen } = visit;
-    for (let cy = Math.max(0, y - SCREEN_UP); cy <= Math.min(grid.mapHeight - 1, y + SCREEN_DOWN); cy++) {
-      for (let cx = Math.max(0, x - SCREEN_LEFT); cx <= Math.min(grid.mapWidth - 1, x + SCREEN_RIGHT); cx++) seen[cy * grid.mapWidth + cx] = 1;
+    const { left, right, up, down } = this.areaOf(grid);
+    const counts = this.darkForModel(grid);
+    for (let cy = Math.max(0, y - up); cy <= Math.min(grid.mapHeight - 1, y + down); cy++) {
+      for (let cx = Math.max(0, x - left); cx <= Math.min(grid.mapWidth - 1, x + right); cx++) {
+        const cell = cy * grid.mapWidth + cx;
+        if (counts && !seen[cell]) this.#darkCells++;
+        seen[cell] = 1;
+      }
     }
     if (!visit.entry && walkable(grid, { x, y })) visit.entry = { x, y };
   }
@@ -299,8 +354,8 @@ export class AtlasWatch {
   }
 }
 
-function onScreen(player: Cell, { x, y }: Cell): boolean {
-  return x >= player.x - SCREEN_LEFT && x <= player.x + SCREEN_RIGHT && y >= player.y - SCREEN_UP && y <= player.y + SCREEN_DOWN;
+function inArea({ left, right, up, down }: Area, player: Cell, { x, y }: Cell): boolean {
+  return x >= player.x - left && x <= player.x + right && y >= player.y - up && y <= player.y + down;
 }
 
 function told(talk: Talk, part: string): void {
@@ -386,7 +441,7 @@ function seenEdges(visit: Visit): Edge[] {
   return edgesOf(visit.grid).filter((c) => visit.edgesTaken.has(c.direction) || edgeCells(visit.grid, c.direction).some(isSeen));
 }
 
-function atlasMap(visit: Visit, blocked: BlockOf, isClosed: IsClosed): AtlasMap {
+function atlasMap(visit: Visit, blocked: BlockOf, isClosed: IsClosed, dark: AtlasMap["dark"]): AtlasMap {
   const { grid, seen, entry, edgesTaken, signTexts, people, obstacles } = visit;
   const isSeen = seenOn(visit);
   const closed = (o: Obstacle) => isClosed(grid.name, o);
@@ -409,6 +464,7 @@ function atlasMap(visit: Visit, blocked: BlockOf, isClosed: IsClosed): AtlasMap 
     obstacles: [...obstacles.values()].filter(closed),
     entry,
     stepExits: grid.warps.flatMap((w) => (w.how === "step" && isSeen(w) ? [{ x: w.x, y: w.y }] : [])),
+    ...(dark ? { dark } : {}),
   };
 }
 

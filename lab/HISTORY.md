@@ -351,3 +351,24 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 ## 28. The next Milestone does not tell the way to the Pokédex (2026-11-04)
 
 74. The model bot goes to version 26. The next Milestone said "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.", so the prompt told the model the steps that the game must teach it. It now says "Get the Pokédex." only.
+
+## 29. The Dark maps of Rock Tunnel (2026-11-04)
+
+75. The model bot goes to version 27: it sees on a Dark map what a player sees, and the program uses FLASH (issue #74). In Run 00047, the bot had no FLASH on `RockTunnel_1F`. After 21 steps, its prompt showed 375 seen cells, and the screen in the Viewer stayed dark. With the 3 x 3 sight, the same steps give about 70 cells.
+
+    The rule is one sentence: a Dark map that the party can light is a lit map for the model. It follows #79. The state comes from the game: the map has `cave`, and `FLAG_SYS_FLASH_ACTIVE` is not set. The flag stays on the two floors. The game clears it at a warp to an outdoor map, at Fly, Teleport, Dig and Escape Rope, and at a whiteout.
+
+    With a Pokémon that knows FLASH and badge 1, the program uses the move at the arrival, also in the middle of a walk, and at the end of each action. So a `teach` in the dark and a trainer at the entry also light the map before the next walk prompt. It takes the first Pokémon that knows the move, also a Pokémon that fainted, because the party menu does not test the HP. The model gets no action and no text. A new Game event, `flash`, gives the map and the Pokémon, for the Timeline. After FLASH, the Atlas marks the 15 x 10 cells at once, with no new step.
+
+    With no FLASH, the map is dark for the model:
+
+    - The Atlas marks only the 3 x 3 cells around the player, also for the people and the Fixed obstacles. The `full` Knowledge level keeps 15 x 10.
+    - `goTo` refuses an unseen cell, and its route uses only seen cells, also from another map.
+    - A long group of unseen cells gives one target for each direction, at the cell nearest to the player. The old first cell of the group could be far behind the player.
+    - `go` to such a target continues in the same direction. It stops at a wall, before an exit, before a ledge, at a new person and at a battle. A floor has 48 x 40 cells, and one Model call for each step would cost too much. This walk is one new Macro-action, `walkOn`, so that the prompt shows one line for it and the Stuck counter adds 1 for it. The model cannot choose it.
+    - One line in the prompt tells what the dark means, and it names FLASH. This is an exception to "the Bag does not have it: no new text" of #78, because the model does not see the screen. The line gives no place and no HM number. The hint of #78 now shows only when the map is dark for the model.
+    - A new cell seen is progress for the Stuck counter.
+
+    Rock Tunnel has no ledge, so only a test with no emulator proves the stop before a ledge. The first test of ROCK SMASH walked 2 cells into the dark: the new rule refused it, and the test now walks one cell at a time.
+
+    No Run played this version when this change was made. The proof is a Run of the user: an Extended Run of Run 00047, up to the exit of Rock Tunnel to Lavender Town. Run 00047 has no FLASH, so the emulator tests prove the use of FLASH.

@@ -700,7 +700,7 @@ describe("the TMs and the HMs of the Bag", () => {
     const cut = teachable("HM01", "CUT");
 
     test("each Field move has its obstacle on the current map, with one line and no text for a place", () => {
-      expect(promptOf(with_([teachable("HM05", "FLASH")], {}, { dark: true }))).toContain("Your Bag has HM05 (FLASH). It can help on this map: teach it.");
+      expect(promptOf(with_([teachable("HM05", "FLASH")], { dark: { missingBadge: null } }))).toContain("Your Bag has HM05 (FLASH). It can help on this map: teach it.");
       expect(promptOf(with_([cut], tree))).toContain("Your Bag has HM01 (CUT). It can help on this map: teach it.");
       expect(promptOf(with_([teachable("HM06", "ROCK SMASH")], { obstacles: [{ x: 0, y: 0, name: "ROCK SMASH ROCK", move: "ROCK SMASH" }] }))).toContain("Your Bag has HM06 (ROCK SMASH). It can help on this map: teach it.");
       expect(promptOf(with_([teachable("HM04", "STRENGTH")], { obstacles: [{ x: 0, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" }] }))).toContain("Your Bag has HM04 (STRENGTH). It can help on this map: teach it.");
@@ -715,10 +715,47 @@ describe("the TMs and the HMs of the Bag", () => {
       expect(promptOf(with_([cut]))).not.toContain(HINT);
       expect(promptOf(with_([teachable("HM05", "FLASH")]))).not.toContain(HINT);
       expect(promptOf(with_([teachable("HM03", "SURF")]))).not.toContain(HINT);
-      expect(promptOf(with_([TM], { ...tree, edges: [{ side: "south", to: null, blocked: "water" }] }, { dark: true }))).not.toContain(HINT);
+      expect(promptOf(with_([TM], { ...tree, edges: [{ side: "south", to: null, blocked: "water" }], dark: { missingBadge: null } }))).not.toContain(HINT);
       expect(promptOf(with_([], tree))).not.toContain(HINT);
       expect(promptOf(with_([teachable("HM01", "CUT", [], [0])], tree))).not.toContain(HINT);
     });
+  });
+});
+
+describe("a map that is dark for the model", () => {
+  const LINE = "This map is dark: you see about 3 x 3 cells.";
+  const base = route1(22, []) as Extract<Observation, { mode: "overworld" }>;
+  const observed = (dark?: { missingBadge: number | null }): Observation => ({ ...base, atlas: { ...base.atlas, maps: [{ ...base.atlas.maps[0], ...(dark ? { dark } : {}) }] } });
+  const NO_MOVE = { missingBadge: null };
+  const promptOf = (observation: Observation) => userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+
+  test("with no Pokémon that knows FLASH, the line names the move, and it does not tell where to find the HM", () => {
+    const prompt = promptOf(observed(NO_MOVE));
+    expect(prompt).toContain(`${LINE} The HM move FLASH lights it, and no Pokémon of your party knows it.`);
+    expect(prompt).not.toContain("HM05");
+  });
+
+  test("with a Pokémon that knows FLASH and no badge, the line names the missing badge", () => {
+    expect(promptOf(observed({ missingBadge: 1 }))).toContain(`${LINE} A Pokémon of your party knows FLASH, but its use on the map needs badge 1.`);
+  });
+
+  test("on another map or on a lit map, there is no line", () => {
+    expect(promptOf(observed())).not.toContain(LINE);
+  });
+
+  test("on a map that is dark for the model, the line of go tells that the walk goes on", () => {
+    const WALK_ON = "At unseen cells of this dark map, the walk continues in the same direction";
+    const withTarget = (observation: Observation): Observation => {
+      const overworld = observation as Extract<Observation, { mode: "overworld" }>;
+      return { ...overworld, atlas: { ...overworld.atlas, maps: [{ ...overworld.atlas.maps[0], signs: [{ x: 0, y: 0, facing: "any", text: null }] }] } };
+    };
+    expect(promptOf(withTarget(observed(NO_MOVE)))).toContain(WALK_ON);
+    expect(promptOf(withTarget(observed()))).not.toContain(WALK_ON);
+  });
+
+  test("on a map that is dark for the model, a new cell seen is progress", () => {
+    expect(promptOf(observed(NO_MOVE))).toContain("an item found, a new species caught or a new cell seen on this dark map)");
+    expect(promptOf(observed())).not.toContain("a new cell seen");
   });
 });
 

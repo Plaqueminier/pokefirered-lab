@@ -161,7 +161,7 @@ function removableAt(map: RouteMap, { x, y }: Cell): boolean {
   return map.removable.some((c) => c.x === x && c.y === y);
 }
 
-function warpAt(map: RouteMap, { x, y }: Cell): WarpExit | undefined {
+function warpAt(map: Pick<RouteMap, "warps">, { x, y }: Cell): WarpExit | undefined {
   return map.warps.find((w) => w.how !== "none" && w.x === x && w.y === y);
 }
 
@@ -235,6 +235,24 @@ export function edgeCells(map: Pick<MapCells, "mapWidth" | "mapHeight">, side: D
     if (vertical) return { x: i, y: side === "north" ? 0 : map.mapHeight - 1 };
     return { x: side === "west" ? 0 : map.mapWidth - 1, y: i };
   });
+}
+
+export function onlySeen(map: RouteMap, seen: (cell: Cell) => boolean): RouteMap {
+  const cellOf = (i: number) => ({ x: map.x0 + (i % map.width), y: map.y0 + Math.floor(i / map.width) });
+  return {
+    ...map,
+    kinds: Array.from(map.kinds, (kind, i) => (inside(map, cellOf(i)) && !seen(cellOf(i)) ? KIND.blocked : kind)).join(""),
+    // Each warp keeps its index: `arrivalOf` reads the list by the id of the warp.
+    warps: map.warps.map((warp) => (seen(warp) ? warp : { x: warp.x, y: warp.y, to: warp.to, warpId: warp.warpId, how: "none" })),
+    obstacles: map.obstacles.filter(seen),
+    removable: map.removable.filter(seen),
+  };
+}
+
+export function nextStraightStep(map: MapCells & Pick<RouteMap, "warps"> & { people: Cell[] }, from: Cell, direction: Direction): Cell | null {
+  const [dx, dy] = DIRECTION_STEP[direction];
+  const next = { x: from.x + dx, y: from.y + dy };
+  return inside(map, next) && !wallBetween(map, from, direction) && free(map, next) && !warpAt(map, next) ? next : null;
 }
 
 export function kindAt(map: MapCells, c: Cell): string {

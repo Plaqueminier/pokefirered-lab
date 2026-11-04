@@ -4,16 +4,18 @@ import { isAbsolute, join } from "node:path";
 import { type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
 import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
-import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
+import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
-import { type Atlas, AtlasWatch, blockedText, cellAt, personName, seenIn, type Sight, WATER_RULE } from "./atlas";
+import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, reached, type RouteMap, type RoutePerson, whyNoRoute } from "./path";
+import { type Cell, destinationOf, findRoute, type Leg, type MapSource, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
+import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
+import { RunEnd, RunLimits } from "./run-limits";
 import {
   ButtonTrack,
   GameWatch,
@@ -23,7 +25,6 @@ import {
   type ModelEvent,
   type ModelOptions,
   type ModelSettings,
-  modelTotals,
   originDifferences,
   RECORD_FORMAT,
   RecordPlayer,
@@ -43,7 +44,7 @@ const MAX_LEGS = 64;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "interact", "swap", "use", "teach"],
+  walk: ["goTo", "walkOn", "interact", "swap", "use", "teach"],
   choice: ["choose"],
   text: ["readText"],
   battleAction: ["fight", "switch", "run", "use"],
@@ -92,6 +93,7 @@ export type TextResult = ActionResult & Texts;
 
 export type MacroAction =
   | { name: "goTo"; x: number; y: number; map?: string }
+  | { name: "walkOn"; x: number; y: number; direction: Direction }
   | { name: "interact"; x: number; y: number }
   | { name: "readText" }
   | { name: "choose"; option: string }
@@ -113,9 +115,9 @@ export type MacroAction =
   | { name: "keep" };
 
 export type AvailableAction =
-  | { name: "goTo" | "swap" | "name" }
+  | { name: "goTo" | "walkOn" | "swap" | "name" }
   | { name: "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit" }>;
+  | Exclude<MacroAction, { name: "goTo" | "walkOn" | "swap" | "name" | "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -198,59 +200,8 @@ export type Bot = {
 
 const STOP_CHECK_MS = 100;
 
-class RunEnd extends Error {
-  constructor(
-    readonly reason: EndReason,
-    readonly planLimit?: string,
-  ) {
-    super(`the Run ends: ${reason}`);
-  }
-}
-
 /** The end reasons whose result has `lastText`: the Bot reads the last text of the game to know why. */
 const ENDS_WITH_TEXT: readonly EndReason[] = ["whiteout", "unknown screen"];
-
-type Limits = { goal: Milestone; lastFrame: number; noProgressLimit: number; costLimit: number; tokenLimit: number; progress: number; firstEvent: number; stopAtWhiteout: boolean };
-
-class RunLimits {
-  #noProgress: NoProgress;
-  #whitedOut = false;
-  #progress: number;
-
-  constructor(private readonly limits: Limits) {
-    this.#noProgress = { stuck: 0, since: limits.firstEvent };
-    this.#progress = limits.progress;
-  }
-
-  beforeFrame(frame: number): void {
-    if (frame >= this.limits.lastFrame) throw new RunEnd("frame budget");
-  }
-
-  // Battle poison and field poison both white out through CB2_WhiteOut. The game is read only when the Run stops at a whiteout.
-  afterFrame(whitingOut: () => boolean): void {
-    if (this.limits.stopAtWhiteout && !this.#whitedOut) this.#whitedOut = whitingOut();
-  }
-
-  get noProgress(): NoProgress {
-    return this.#noProgress;
-  }
-
-  atAction(milestones: Milestone[], progress: number, decisionPoint: boolean, events: number): void {
-    if (milestones.includes(this.limits.goal)) throw new RunEnd("goal");
-    if (this.#whitedOut) throw new RunEnd("whiteout");
-    if (progress > this.#progress) this.#noProgress = { stuck: 0, since: events };
-    else if (decisionPoint) this.#noProgress = { ...this.#noProgress, stuck: this.#noProgress.stuck + 1 };
-    // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
-    this.#progress = Math.max(this.#progress, progress);
-    if (this.#noProgress.stuck >= this.limits.noProgressLimit) throw new RunEnd("no progress");
-  }
-
-  afterCall(events: readonly RunEvent[]): void {
-    const totals = modelTotals(events.slice(this.limits.firstEvent));
-    if (totals.cost > this.limits.costLimit) throw new RunEnd("cost limit");
-    if (spentIn("tokens", totals) > this.limits.tokenLimit) throw new RunEnd("token limit");
-  }
-}
 
 type Phase = { kind: "ready" } | { kind: "playing"; limits: RunLimits } | { kind: "ended"; bot: RunHeader["bot"]; result: RunResult };
 
@@ -289,7 +240,7 @@ export class Harness {
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#parent = options.parent?.name ?? null;
     this.#watch = new GameWatch(run.game);
-    this.#atlas = new AtlasWatch(run.game);
+    this.#atlas = new AtlasWatch(run.game, this.#knowledge);
     this.#menus = new MenuDriver(run.game, { advance: (keys) => this.advance(keys) });
   }
 
@@ -359,6 +310,7 @@ export class Harness {
     let planLimit: string | undefined;
     let result: RunResult | null = null;
     try {
+      this.lightDarkMap();
       await bot.play(this);
     } catch (error) {
       if (!(error instanceof RunEnd)) throw error;
@@ -455,7 +407,7 @@ export class Harness {
       bag: game.bag(),
       money: game.money(),
       milestones: game.milestones(),
-      atlas: this.#atlas.atlas(this.#knowledge),
+      atlas: this.#atlas.atlas(),
     };
     // The naming screen has no map and no grid: overworld() would fail there.
     if (base.waitingFor.kind === "naming") return { ...base, mode: "naming" };
@@ -473,6 +425,7 @@ export class Harness {
     return ACCEPTS[waiting.kind].flatMap((name): AvailableAction[] => {
       switch (name) {
         case "goTo":
+        case "walkOn":
         case "readText":
         case "leave":
         case "name":
@@ -519,47 +472,73 @@ export class Harness {
   }
 
   async goTo(x: number, y: number, map?: string): Promise<ActionResult> {
-    return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
-      const asked = { map: map ?? this.place().map, x, y };
-      const destination = destinationOf(asked, map === undefined, this.routeMaps());
-      const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), map === undefined, this.#atlas.blockOf);
-      if (outside) return { status: "impossible", reason: outside };
-      let tries = 0;
-      let stuckAt: Place | null = null;
-      for (let legs = 0; legs < MAX_LEGS; legs++) {
-        const here = this.place();
-        if (reached(destination, here)) return { status: "done" };
-        const maps = this.routeMaps();
-        const route = findRoute(here, destination, maps);
-        if (!route) {
-          const why = whyNoRoute(here, destination, maps);
-          if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge), (move) => this.obstacleRemedyNow(move)) };
-          if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas(this.#knowledge)) };
-        }
-        const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
-        switch (result) {
-          case "done":
-            tries = 0;
-            break;
-          case "stuck": {
-            const now = this.place();
-            tries = stuckAt && at(stuckAt) === at(now) ? tries + 1 : 1;
-            stuckAt = now;
-            if (tries >= BLOCKED_TRIES) return { status: "blocked", reason: `a person or an object stays in the way after ${tries} tries; the player is at ${at(now)}` };
-            const interruption = this.wait(BLOCKED_WAIT_FRAMES);
-            if (interruption) return { status: "interrupted", reason: interruption };
-            break;
-          }
-          case "no move":
-            return { status: "impossible", reason: `the player cannot move from ${at(this.place())}` };
-          case "no warp":
-            return { status: "impossible", reason: `the warp does not start from ${at(this.place())}` };
-          default:
-            return { status: "interrupted", reason: result };
-        }
+    return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => this.walkTo({ map: map ?? this.place().map, x, y }, map === undefined));
+  }
+
+  // One Model call for each step would cost too much on a floor of 48 x 40 cells (#74).
+  async walkOn(x: number, y: number, direction: Direction): Promise<ActionResult> {
+    return this.act({ name: "walkOn", x, y, direction }, () => {
+      const { map } = this.place();
+      this.#atlas.lookAround();
+      const peopleBefore = this.#atlas.peopleSeen(map);
+      let outcome = this.walkTo({ map, x, y }, true);
+      while (outcome.status === "done") {
+        const next = this.nextDarkStep(map, peopleBefore, direction);
+        if (!next) break;
+        outcome = this.walkTo({ map, ...next }, true);
       }
-      return { status: "impossible", reason: `the player is not at the target after ${MAX_LEGS} legs` };
+      return outcome;
     });
+  }
+
+  private nextDarkStep(map: string, peopleBefore: number, direction: Direction): Cell | null {
+    if (this.#run.game.waitingFor().kind !== "walk" || this.place().map !== map) return null;
+    this.#atlas.lookAround();
+    if (this.#atlas.peopleSeen(map) > peopleBefore) return null;
+    const { player, grid, actors } = this.overworld();
+    return this.#atlas.darkForModel(grid) ? nextStraightStep({ ...grid, people: actors.people }, player, direction) : null;
+  }
+
+  private walkTo(asked: Place, canExit: boolean): Outcome {
+    const destination = destinationOf(asked, canExit, this.routeMaps());
+    const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), canExit, this.#atlas.blockOf);
+    if (outside) return { status: "impossible", reason: outside };
+    let tries = 0;
+    let stuckAt: Place | null = null;
+    for (let legs = 0; legs < MAX_LEGS; legs++) {
+      const here = this.place();
+      if (reached(destination, here)) return { status: "done" };
+      const maps = this.routeMaps();
+      const route = findRoute(here, destination, maps);
+      if (!route) {
+        const why = whyNoRoute(here, destination, maps);
+        if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(), (move) => this.obstacleRemedyNow(move)) };
+        if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas()) };
+      }
+      const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
+      switch (result) {
+        case "done":
+          tries = 0;
+          this.lightDarkMap();
+          break;
+        case "stuck": {
+          const now = this.place();
+          tries = stuckAt && at(stuckAt) === at(now) ? tries + 1 : 1;
+          stuckAt = now;
+          if (tries >= BLOCKED_TRIES) return { status: "blocked", reason: `a person or an object stays in the way after ${tries} tries; the player is at ${at(now)}` };
+          const interruption = this.wait(BLOCKED_WAIT_FRAMES);
+          if (interruption) return { status: "interrupted", reason: interruption };
+          break;
+        }
+        case "no move":
+          return { status: "impossible", reason: `the player cannot move from ${at(this.place())}` };
+        case "no warp":
+          return { status: "impossible", reason: `the warp does not start from ${at(this.place())}` };
+        default:
+          return { status: "interrupted", reason: result };
+      }
+    }
+    return { status: "impossible", reason: `the player is not at the target after ${MAX_LEGS} legs` };
   }
 
   async interact(x: number, y: number): Promise<ActionResult> {
@@ -659,6 +638,8 @@ export class Harness {
     switch (action.name) {
       case "goTo":
         return this.goTo(action.x, action.y, action.map);
+      case "walkOn":
+        return this.walkOn(action.x, action.y, action.direction);
       case "interact":
         return this.interact(action.x, action.y);
       case "readText":
@@ -718,6 +699,8 @@ export class Harness {
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
     const turnStart = action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
     const outcome: Outcome & Partial<Texts> = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
+    // #74: a teach in the dark and a trainer at the entry must also give a lit map at the next walk prompt.
+    if (!refused) this.lightDarkMap();
     const left = this.#menus.takeLeftWordScreen() ? { leftWordScreen: true as const } : {};
     const result = { ...defaults, ...outcome, ...left, frames: this.frame - start };
     const entry = { action, result };
@@ -754,7 +737,16 @@ export class Harness {
   }
 
   private progress(): number {
-    return this.#watch.gameProgress + this.#atlas.heard + this.#atlas.exits;
+    return this.#watch.gameProgress + this.#atlas.heard + this.#atlas.exits + this.#atlas.darkCells;
+  }
+
+  private lightDarkMap(): void {
+    const game = this.#run.game;
+    if (!this.#atlas.darkHere || game.waitingFor().kind !== "walk") return;
+    const user = game.flashUser();
+    if (user === null) return;
+    const used = this.#menus.useFlash(user);
+    if (used.status === "impossible" || used.status === "blocked") throw new Error(`the use of FLASH stops: ${used.reason}`);
   }
 
   private callEnded<E extends ModelEvent | SummaryEvent>(event: E, listener?: (event: E, harness: Harness) => void): E {
@@ -815,7 +807,7 @@ export class Harness {
 
   private obstacleRemedyNow(move: FieldMove): string {
     const badge = this.#run.game.missingBadge(move);
-    return badge === null ? obstacleRemedy(move) : `A Pokémon of your party knows ${move}, but its use on the map needs badge ${badge}`;
+    return badge === null ? obstacleRemedy(move) : badgeNeeded(move, badge);
   }
 
   private routeMaps(): MapSource {
@@ -828,7 +820,9 @@ export class Harness {
           return null;
         }
         const { usable, closed } = this.obstaclesByUse(view.actors);
-        maps.set(name, { ...view.grid, people: view.actors.people, obstacles: closed, removable: usable });
+        const map = { ...view.grid, people: view.actors.people, obstacles: closed, removable: usable };
+        const sight = this.#atlas.darkSight(view.grid);
+        maps.set(name, sight ? onlySeen(map, sight) : map);
       }
       return maps.get(name)!;
     };
@@ -958,38 +952,6 @@ export class Harness {
   }
 }
 
-function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, blockOf: BlockOf): string | null {
-  if (!map || inside(map, cell)) return null;
-  const range = `the cells of ${map.name} are x from 0 to ${map.mapWidth - 1}, y from 0 to ${map.mapHeight - 1}`;
-  const side = pastEdge(map, cell);
-  if (!side) return `(${cell.x}, ${cell.y}) is outside ${map.name}; ${range}`;
-  if (!canExit) return `(${cell.x}, ${cell.y}) is outside ${map.name}, and a cell past an edge crosses it only in a goTo with no map; ${range}`;
-  const block = blockOf(map.name, side);
-  if (block) return blockedText(map.name, side, block);
-  if (map.connections.some((c) => c.direction === side)) return `(${cell.x}, ${cell.y}) leads to a cell of the next map where the player cannot stand: cross the ${side} edge at another cell`;
-  return `no map connects to the ${side} edge of ${map.name}; ${range}`;
-}
-
-function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas, remedy: (move: FieldMove) => string): string {
-  const obstacle = obstacleOnRoute(here, destination, maps);
-  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${remedy(obstacle.move)}`;
-  const map = known.find((m) => m.name === asked.map);
-  const kind = map && seenIn(map)(asked) ? cellAt(map, asked) : null;
-  if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${WATER_RULE}`;
-  if (kind === KIND.blocked) return `(${asked.x}, ${asked.y}) is a blocked cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
-  return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
-}
-
-function stayingReason(person: RoutePerson & Place, { maps: known }: Atlas): string {
-  const seen = known.find((m) => m.name === person.map)?.people.find((p) => p.x === person.x && p.y === person.y);
-  if (!seen) return "a person or an object that you did not see stands on the only way";
-  return `the ${personName(seen)} at ${at(person)} stands on the only way, and it does not leave by itself. Walk next to it and interact with it`;
-}
-
 function neighbours(cell: { x: number; y: number }): { direction: Direction; x: number; y: number }[] {
   return DIRECTION_STEPS.map(([direction, [dx, dy]]) => ({ direction, x: cell.x + dx, y: cell.y + dy }));
-}
-
-function at(place: Place): string {
-  return `${place.map} (${place.x}, ${place.y})`;
 }

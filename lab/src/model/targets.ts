@@ -13,7 +13,7 @@ export type Overworld = Extract<Observation, { mode: "overworld" }>;
 
 export type Target = { label: string } & (
   | { kind: "exit"; name: string; cell: Cell; to: string | null; warp: AtlasWarp }
-  | { kind: "frontier"; cell: Cell }
+  | { kind: "frontier"; cell: Cell; direction: Direction }
   | { kind: "person"; cell: Cell; localId: number }
   | { kind: "sign"; cell: Cell; facing: Direction | "any" }
   | { kind: "edge"; name: string; side: Direction; to: string | null }
@@ -170,7 +170,7 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts,
   const targets = [
     ...here.warps.map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
     ...here.edges.filter((e) => !e.blocked).map(edge),
-    ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}${pastThe(inWay, cell)}`, cell }))),
+    ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}${pastThe(inWay, cell)}`, cell, direction }))),
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map(person),
     ...here.signs.map((s) => located(s, own.touches(s), (place) => signTarget(s, place))),
   ];
