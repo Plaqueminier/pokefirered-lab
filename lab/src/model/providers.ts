@@ -289,9 +289,11 @@ async function ignoreGrokSkills(): Promise<void> {
 
 async function grokProblem(cwd: string, signal: AbortSignal): Promise<string | null> {
   if (!Bun.which("grok")) return "the command grok is not found: install Grok Build";
-  const { stdout } = await runTool(["grok", "models"], { cwd, env: grokEnv(cwd), signal });
+  const loggedIn = async () => /logged in with grok\.com/i.test((await runTool(["grok", "models"], { cwd, env: grokEnv(cwd), signal })).stdout);
+  // A token lasts 6 hours. The first command after its end renews it but still tells "not authenticated", so only a second answer is true.
+  if (!(await loggedIn()) && !(await loggedIn())) return `Grok is not logged in for the lab: run GROK_HOME=${GROK_HOME} grok login`;
   await ignoreGrokSkills();
-  return /logged in with grok\.com/i.test(stdout) ? null : `Grok is not logged in for the lab: run GROK_HOME=${GROK_HOME} grok login`;
+  return null;
 }
 
 const PLAN_PROBLEMS: Record<PlanProvider, (cwd: string, signal: AbortSignal) => Promise<string | null>> = { "claude-code": claudeProblem, codex: codexProblem, grok: grokProblem };

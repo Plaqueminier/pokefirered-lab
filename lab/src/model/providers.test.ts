@@ -2,12 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { modelClient, modelSettings } from "./providers";
+import { modelClient, modelSettings, providerProblem } from "./providers";
 
 const PROMPT = { system: "rules", user: "now" };
 
 // A fake `grok`: it writes its environment and its arguments to a log, and it answers as the real one does.
 const FAKE_GROK = `#!/bin/sh
+if [ "$1" = "models" ]; then
+  echo asked >> "$FAKE_GROK_LOG.models"
+  echo "You are not authenticated."
+  exit 0
+fi
 if [ -n "$FAKE_GROK_FAILS" ]; then
   echo '{"type":"error","message":"'"$FAKE_GROK_FAILS"'"}'
   exit 1
@@ -68,6 +73,11 @@ describe("the client of grok", () => {
 
   test("the prompt tokens count the cached tokens, and the cost is 0", async () => {
     expect((await ask()).usage).toEqual({ promptTokens: 33, cachedTokens: 20, completionTokens: 7, reasoningTokens: 5, cost: 0 });
+  });
+
+  test("the status check asks two times before it tells that Grok is not logged in, because the first answer after the end of a token is false", async () => {
+    expect(await providerProblem("grok")).toContain("Grok is not logged in for the lab: run GROK_HOME=");
+    expect(await Bun.file(join(bin, "log.models")).text()).toBe("asked\nasked\n");
   });
 
   test("it throws the message of Grok", async () => {
