@@ -23,7 +23,7 @@ echo '{"text":"{ \\"action\\": \\"go\\" }","structuredOutput":{"action":"go"},"u
 
 describe("modelSettings of grok", () => {
   test("it has a token limit and the default model, and it plays off as low", () => {
-    expect(modelSettings({ provider: "grok", reasoning: "off", thinking: "off" }, {})).toMatchObject({ id: "grok-4.7-build-fast", provider: "grok", tokenLimit: 1_000_000, reasoning: "low", thinking: "low" });
+    expect(modelSettings({ provider: "grok", reasoning: "off", thinking: "off" }, {})).toMatchObject({ id: "grok-4.7", provider: "grok", tokenLimit: 1_000_000, reasoning: "low", thinking: "low" });
   });
 
   test("it refuses a cost limit and a temperature", () => {

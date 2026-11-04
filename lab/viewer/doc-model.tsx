@@ -78,6 +78,7 @@ export function ProvidersPage() {
         ["Temperature", "a Plan provider refuses `--temperature`, because the tools do not take one."],
         ["Codex tools", "three tools stay in Codex. A call that uses a tool stops at once and counts as a failed request. The Bot asks again, and 3 errors in a row end the Run."],
         ["Grok tools", "a Grok call has no tools, one turn, and a permission mode that refuses a tool."],
+        ["Grok models", "`grok-4.5`, `grok-4.6` and `grok-4.7` have the same price for each token (measured in 2026-11), so the default is `grok-4.7`. Grok has no smaller model. `grok-4.7-build-fast` is the same price multiplied by 2."],
         ["Time limit", "a call with no answer ends with an error after 5 minutes (10 minutes on OpenRouter)."],
         ["User stop", "a user stop ends the process of the tool at once."],
         ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code and Grok are the global `claude` and `grok` commands, so they can change when you update them."],
@@ -90,7 +91,7 @@ export function ProvidersPage() {
         <DocCard title="openrouter" lines={["the default model: `deepseek/deepseek-v4.1-flash`", "bills each call", "limit: a cost in dollars"]} />
         <DocCard title="claude-code" lines={["the default model: `haiku`", "uses your Claude subscription", "limit: a number of tokens"]} />
         <DocCard title="codex" lines={["the default model: `gpt-5.6-luna`", "uses your ChatGPT subscription", "limit: a number of tokens"]} />
-        <DocCard title="grok" lines={["the default model: `grok-4.7-build-fast`", "uses your grok.com login", "limit: a number of tokens"]} />
+        <DocCard title="grok" lines={["the default model: `grok-4.7`", "uses your grok.com login", "limit: a number of tokens"]} />
       </div>
       <Block label="🔑 1. Log in" sub="In `lab/`. You do this one time. You do not need a global install of Codex.">
         <Terms
