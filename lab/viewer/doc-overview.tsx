@@ -66,7 +66,7 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination and arrival cell, the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the signs read, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination and arrival cell, the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
@@ -76,7 +76,7 @@ export function PrinciplePage() {
         <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
         <DocCard icon={Eye} title="Knowledge level" lines={["`player` what a careful player knows", "`full` also the exact HP and stats of the enemy, and all the maps"]} />
-        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10), exits, signs, people and their texts", "edges blocked by water, fixed obstacles"]} />
+        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10), exits, things to check, people and their texts", "edges blocked by water, fixed obstacles"]} />
       </div>
     </Page>
   );
@@ -85,7 +85,7 @@ export function PrinciplePage() {
 // x and y in percent of the screenshot.
 const LAB_SPOTS = [
   { x: 40, y: 9, title: "Top bar", text: "the Run, Bots, the cost or the tokens and the limit, the Stuck counter, the Model calls, the badges, the money, the map, the time" },
-  { x: 6, y: 30, title: "Screen", text: "the game, and under it the controls: pause, the speeds ×1 to ×16 and Max, the overlay, the sound, the savestate, the keys" },
+  { x: 6, y: 30, title: "Screen", text: "the game, dim with the seconds while the Run waits for the model or writes its memory, and under it the controls: pause, the speeds ×1 to ×16 and Max, the overlay, the sound, the savestate, the keys" },
   { x: 6, y: 82, title: "Decision line and party", text: "a hover shows the answer of the call; the Pokémon cards" },
   { x: 47.7, y: 36, title: "Rail", text: "Whole map, Model, Stats, Memory tree, Bag and PC" },
   { x: 88, y: 60, title: "Panel", text: "one panel at a time; a click moves the cursor of all the panels" },
@@ -102,7 +102,7 @@ export function ViewerPage() {
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
         ["Decision line", "the last action of the Bot; a hover shows the answer of the call, with no character."],
-        ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer."],
+        ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer. In a fight or a menu, it keeps the last map of the Run. Map parts have a tint, except the largest. Inside a building or a cave, both ends of a warp have one color. At a large zoom, each warp on any map shows the short name of its map (switch Exits). The other floors stand next to the floor shown, with no people (switch Floors), and a pointer on a warp shows both ends and its arrival cell."],
         [
           "Model",
           "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
@@ -151,7 +151,7 @@ export function ViewerPage() {
       </div>
       <Block label="🧭 The panels" sub="One cursor (a frame) and one selection (a range of frames) for all the panels. Esc returns them to now.">
         <div class={GRID3}>
-          <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer"]} />
+          <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer", "colors of the warps, map parts; the other floors"]} />
           <DocCard icon={Bot} title="Model" lines={["the Model calls, with the flags of the Unusual calls", "one call in full: answer, result, cost if any, prompt"]} />
           <DocCard icon={ChartColumn} title="Stats" lines={["large numbers for a video: time, cost or tokens, Stuck counter", "chapters, Areas, charts, the counts of the selection"]} />
           <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them", "a click opens a node and its Summary call"]} />
@@ -188,9 +188,9 @@ export function GridPage() {
         <Block label="🧩 One cell">
           <Terms
             rows={[
-              ["Screen", "the game of the Run; dim when it waits for the model or when the Run ended"],
+              ["Screen", "the game of the Run; dim when it waits for the model, when it writes its memory or when the Run ended"],
               ["Kind", "live or replay"],
-              ["State", "plays, waits for the model, in battle, or ended with its Run result"],
+              ["State", "plays, waits for the model, writes its memory, in battle, or ended with its Run result"],
               ["Facts", "the name, the names of the character, the Bot, the model, the game time, the last Milestone, the cost or the tokens"],
               ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
             ]}

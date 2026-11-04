@@ -254,6 +254,41 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     When this change was made, no Run had played version 22, so the effect on the model was not known. No Run has played version 21 either, and version 21 changed the PC, so a change in a Run can have more than one cause. The first checks are whether the model buys and uses a repel and in which map, the wild battles and the battle time in Mt. Moon, the item balls taken and left and whether the left ones had a way, and the level of the team at the exit of Mt. Moon, because fewer battles give less training.
 
+## 20. Objects and what closes a way (2026-11-03)
+
+65. The model bot goes to version 23, because weak models did not see that an object is a thing to interact with. At Mt. Moon, the fossils on B2F at (13, 7) and (14, 7) stand in the only gap to the way out. Run 00047 (Terra) read the line of Miguel, chose `go` on a fossil and reached Cerulean City 8,000 frames later. Run 00048 (Haiku) had a FOSSIL target in 103 prompts and chose it 0 times. 81 walks stopped with `a person stays in the way`, also when the blocker was not a person, and Haiku wrote the false note that the Scientist had left the path. About 81% of its frames from Mt. Moon on were battles.
+
+    The rules are generic, with no facts about a map:
+
+    - Each object says `an object that you can interact with`, also when it closes no way. A free ITEM BALL keeps `a free item, go takes it`.
+    - A person or an object that does not move and closes a way says `in your way`, and the unseen cells past it say `past the FOSSIL on this cell`. A first version read `wander` for this. It passed its unit tests and failed on the real game, because `wander` comes from the movement range, and the fossils and Miguel have a range with a `FACE_*` type. The code now reads the movement type.
+    - A rule of the prompt tells the model to interact with these things and read the text, that an object can be a thing to take, and to come back later when nothing changes.
+    - A `goTo` that only such a person or object stops returns `blocked` at once and names it, when the player saw it. It no longer waits 60 frames. The wait and the new try stay for people who walk.
+    - A text right after a battle belongs to the person that the player faces. Before, the line `We'll each take a fossil!` of Miguel was never in the Atlas, because a script gave it with no `interact`.
+    - The target of a sign event says `something you can check`: the same event is a poster, a trash can, a statue, a door of Silph Co or an elevator panel.
+
+    One error of Run 00048 came from the Harness. At frame 1357123, `interact` gave `nothing at (13, 11) starts a script`, and Haiku wrote a false note from it. The `goTo` before it took 1 frame: the first step from a stop changes the coordinates one frame before `tileTransitionState`, so the walk ended while the player still moved, and the game ignored the A button. `goTo` now waits for this frame. The record of Run 00048 has 5 such walks of 1 frame.
+
+    A scan of all maps with the player knowing each cell marks 37 people and objects in the way, among them both fossils and both Snorlax of Routes 12 and 16. The list also has dead ends with an item ball, and some people in pockets of a room.
+
+    When this change was made, no Run had played version 23, so the effect on the model was not known. The first check is whether a weak model takes a fossil.
+
+## 21. See what a long Run does (2026-11-03)
+
+66. The Viewer of a long Run looked frozen. A measure on Run 00048 gave two causes. The server sent all the events of the Run at each new event: 46 MB about every 3 s at the end of the Run. It now sends only the new events. Most of the wait stays, because the game stops during Model calls: about 85% of the time of Run 00048 (130 min of decisions and 98 min of summaries, in 268 min). So the Viewer now tells it:
+
+    - The screen of the Lab tab dims and says `waits for the model` or `writes its memory`, with the seconds since the call started. The Grid says the same. Before, a Summary call looked like a Run that plays.
+    - A continued Run also shows `waits for the model`. Before, the count of the calls did not add the calls of its parent. One state, the call that runs now, replaces the counts.
+
+67. The Whole map helps to read a cave:
+
+    - In a fight or a menu, it keeps the last map of the Run, and says `Last map of the player`.
+    - Both ends of a warp have one color inside a building or a cave, also for several warps with one destination, and each warp shows the short name of its map when the zoom is large enough. A label that would cover another label does not show. The switch `Exits` turns this off.
+    - The Map parts have a light tint, when 2 or more of them have an exit. The largest has no tint. A cut tree, a person who stays and a thin wall cut a map. A ledge links both sides. With its people and obstacles, Route 2 has 5 Map parts and B2F of Mt. Moon has 4. Another floor shows no people, so its tint can change when the player arrives.
+    - The other floors of a map stand next to it. Pan and zoom work on all the floors, and the first zoom stays the zoom of the floor shown. A pointer on a warp shows a ring on both ends and the arrival cell. The other floors show no people, because the server has the actors of the current floor only for a Bot Run; the Viewer Run keeps the same look. The switch `Floors` turns this off.
+
+## 22. Teach a TM or an HM (2026-11-04)
+
 68. The model bot goes to version 24: it can teach a TM or an HM (issue #78). Brock gives TM39 at badge 1, and until now no Run could use it, because `use` does not cover the TM CASE pocket.
 
     A new Macro-action `teach(item, on)` goes through the TM Case and the party menu of the game, and returns to the walk. The Harness refuses a Pokémon that cannot learn the move or that knows it, with the reason, before any frame. A Pokémon with 4 moves stops at the learn-move question of the game. This Decision point was only in a battle before, so the Observation has a new mode: `menu`.

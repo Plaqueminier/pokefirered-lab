@@ -1,6 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
+import { DIRECTION_STEP, type Direction, KIND, LEDGE, WALL } from "./cells";
 import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag, readTeachables, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   type Battle,
@@ -51,9 +52,6 @@ export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]
 const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic", "CB2_BuyMenu"]);
 const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
 const MB_TALL_GRASS = 0x02;
-export const KIND = { blocked: "#", water: "~", grass: '"', open: "." } as const;
-export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
-export const WALL: Record<Direction, string> = { north: "-", south: "_", west: "[", east: "]" };
 const MB_WALL: Record<number, string> = { 0x30: WALL.east, 0x31: WALL.west, 0x32: WALL.north, 0x33: WALL.south };
 const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
 // From IsWarpMetatileBehavior, TryArrowWarp and TryDoorWarp in field_control_avatar.c.
@@ -79,12 +77,11 @@ const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3:
 // BG_EVENT_PLAYER_FACING_NORTH, _SOUTH, _EAST and _WEST.
 const SIGN_PLAYER_FACING: Record<number, Direction> = { 1: "north", 2: "south", 3: "east", 4: "west" };
 const CONNECTION_SIDES: Record<number, ConnectionSide> = { ...DIRECTION_OF_DIR, 5: "dive", 6: "emerge" };
-export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
-export const DIRECTION_STEPS = Object.entries(DIRECTION_STEP) as [Direction, [number, number]][];
-export const OPPOSITE: Record<Direction, Direction> = { north: "south", south: "north", west: "east", east: "west" };
 // MOVEMENT_TYPE_FACE_UP/DOWN/LEFT/RIGHT: the direction of a person not loaded in memory.
 const FACING_OF_MOVEMENT: Record<number, number> = { 0x7: 2, 0x8: 1, 0x9: 3, 0xa: 4 };
 const T_NOT_MOVING = 0;
+// MOVEMENT_TYPE_* (event_object_movement.h) that leave the cell: wander, walk, copy. Any other type stays on its cell, whatever its range.
+const WALKING_MOVEMENTS: [from: number, to: number][] = [[0x2, 0x6], [0x19, 0x38], [0x3b, 0x3e], [0x50, 0x50]];
 const SCRIPT_MODE_NATIVE = 2;
 // Map script tables (script.c): entries of a tag byte and a pointer; frame table rows of two variables and a pointer.
 const MAP_SCRIPT_ON_FRAME_TABLE = 2;
@@ -121,7 +118,6 @@ export function isDecisionPoint({ kind }: WaitingFor): boolean {
   return kind !== "text" && kind !== "busy";
 }
 
-export type Direction = "south" | "north" | "west" | "east";
 
 export type PlayerPosition = { x: number; y: number; facing: Direction };
 
@@ -191,6 +187,7 @@ export type MapActors = {
     loaded: boolean;
     /** The area where a wandering person can walk. */
     wander?: { x: number; y: number; w: number; h: number };
+    stays: boolean;
     trainer?: { id: number; defeated: boolean; range: number; allDirections: boolean; sight: [number, number][] };
   }[];
   obstacles: Obstacle[];
@@ -392,6 +389,12 @@ export class Game {
       !this.mem.global("gPaletteFade").field("active").int() &&
       !this.frameScriptWaits()
     );
+  }
+
+  // The first step from a stop changes the coordinates one frame before tileTransitionState.
+  stepStarts(): boolean {
+    const obj = this.playerObject();
+    return obj !== null && this.mem.global("gPlayerAvatar").field("tileTransitionState").int() === T_NOT_MOVING && obj.field("heldMovementActive").int() !== 0 && obj.field("heldMovementFinished").int() === 0;
   }
 
   // As MapHeaderGetScriptTable (script.c).
@@ -1031,7 +1034,9 @@ export class Game {
         obstacles.push({ x, y, ...obstacle });
         continue;
       }
-      const person: MapActors["people"][number] = { localId, x, y, graphics, facing, loaded: obj !== undefined };
+      const movement = normal.field("movementType").int();
+      const stays = !WALKING_MOVEMENTS.some(([from, to]) => movement >= from && movement <= to);
+      const person: MapActors["people"][number] = { localId, x, y, graphics, facing, loaded: obj !== undefined, stays };
       if (rangeX > 0 || rangeY > 0) {
         person.wander = { x: template.field("x").int() - rangeX, y: template.field("y").int() - rangeY, w: rangeX * 2 + 1, h: rangeY * 2 + 1 };
       }

@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { Direction } from "../game";
-import { type Cell, destinationOf, findRoute, reached, type Leg, type MapSource, type RouteMap } from "./path";
+import type { Direction } from "../cells";
+import { type Cell, destinationOf, findRoute, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
 
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
   const height = rows.length;
   return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], ...more };
+}
+
+function person(x: number, y: number): RouteMap["people"][number] {
+  return { x, y, graphics: "MAN", stays: false };
 }
 
 function world(...maps: RouteMap[]): MapSource {
@@ -121,9 +125,9 @@ describe("findRoute on one map", () => {
       "...",
       "...",
     ];
-    const route = path(map("A", rows, { people: [{ x: 1, y: 0 }] }), { x: 0, y: 0 }, { x: 2, y: 0 });
+    const route = path(map("A", rows, { people: [person(1, 0)] }), { x: 0, y: 0 }, { x: 2, y: 0 });
     expect(route).toEqual(["south", "east", "east", "north"]);
-    expect(path(map("A", rows, { people: [{ x: 1, y: 0 }] }), { x: 0, y: 0 }, { x: 1, y: 0 })).toBeNull();
+    expect(path(map("A", rows, { people: [person(1, 0)] }), { x: 0, y: 0 }, { x: 1, y: 0 })).toBeNull();
   });
 
   test("uses map coordinates when the grid has a border, and stays inside the map", () => {
@@ -185,7 +189,33 @@ describe("findRoute over ledges", () => {
 
   test("does not jump onto a blocked cell or a person", () => {
     expect(path(map("A", [".", "v", "#", "."]), { x: 0, y: 0 }, { x: 0, y: 3 })).toBeNull();
-    expect(path(map("A", [".", "v", ".", "."], { people: [{ x: 0, y: 2 }] }), { x: 0, y: 0 }, { x: 0, y: 3 })).toBeNull();
+    expect(path(map("A", [".", "v", ".", "."], { people: [person(0, 2)] }), { x: 0, y: 0 }, { x: 0, y: 3 })).toBeNull();
+  });
+});
+
+describe("whyNoRoute", () => {
+  const fossil = { x: 1, y: 1, graphics: "FOSSIL", stays: true };
+
+  test("names what does not move and closes all the ways", () => {
+    const cave = map("Cave", ["...", "#.#", "..."], { people: [fossil] });
+    expect(whyNoRoute({ map: "Cave", x: 1, y: 2 }, { map: "Cave", x: 1, y: 0 }, world(cave))).toEqual({ kind: "staying", person: { ...fossil, map: "Cave" } });
+  });
+
+  test("names what closes the way, not a person on the shortest route whom a walk can go around, and not what stands past it", () => {
+    const man = { x: 2, y: 3, graphics: "SCIENTIST", stays: true };
+    const cave = map("Cave", [".....", "##.##", ".....", ".....", "....."], { people: [man, { ...fossil, x: 2 }] });
+    const twoGates = map("Two", [".....", "##.##", ".....", "##.##", ".....", "....."], { people: [{ ...fossil, x: 2, y: 3, graphics: "FIRST" }, { ...fossil, x: 2, y: 1, graphics: "SECOND" }] });
+    expect(whyNoRoute({ map: "Cave", x: 2, y: 4 }, { map: "Cave", x: 2, y: 0 }, world(cave))).toMatchObject({ person: { graphics: "FOSSIL" } });
+    expect(whyNoRoute({ map: "Two", x: 2, y: 5 }, { map: "Two", x: 2, y: 0 }, world(twoGates))).toMatchObject({ person: { graphics: "FIRST" } });
+  });
+
+  test("a free way is not closed, a person who walks is a wait, and a wall closes the way", () => {
+    const hall = map("Hall", ["...", "...", "..."], { people: [fossil] });
+    expect(whyNoRoute({ map: "Hall", x: 1, y: 2 }, { map: "Hall", x: 1, y: 0 }, world(hall))).toEqual({ kind: "walker" });
+    const walker = map("Cave", ["...", "#.#", "..."], { people: [{ ...fossil, stays: false }] });
+    expect(whyNoRoute({ map: "Cave", x: 1, y: 2 }, { map: "Cave", x: 1, y: 0 }, world(walker))).toEqual({ kind: "walker" });
+    const wall = map("Cave", ["...", "###", "..."]);
+    expect(whyNoRoute({ map: "Cave", x: 1, y: 2 }, { map: "Cave", x: 1, y: 0 }, world(wall))).toEqual({ kind: "closed" });
   });
 });
 
@@ -288,7 +318,7 @@ const HOUSE_1F = map(
       { x: 10, y: 2, to: "PalletTown_PlayersHouse_2F", warpId: 0, how: "press", from: { x: 10, y: 2 }, direction: "east" },
       { x: 3, y: 9, to: "PalletTown", warpId: 0, how: "none" },
     ],
-    people: [{ x: 8, y: 4 }],
+    people: [person(8, 4)],
   },
 );
 

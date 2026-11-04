@@ -1,8 +1,23 @@
 import type { Milestone } from "../src/game";
 import type { GridReplay, GridSize, RunSummary, Spend } from "../src/protocol";
 import type { TrainerNames } from "../src/save-file";
+import type { Tone } from "./components";
 
-export type CellState = { kind: "plays" } | { kind: "waits" } | { kind: "battle" } | { kind: "ended"; result: string };
+export type CellState = { kind: "plays" } | { kind: "waits" } | { kind: "memory" } | { kind: "battle" } | { kind: "ended"; result: string };
+
+export const STATE_LOOKS: Record<CellState["kind"], { tone: Tone; label: string; dim?: boolean }> = {
+  plays: { tone: "ok", label: "plays" },
+  waits: { tone: "warn", label: "waits for the model", dim: true },
+  memory: { tone: "warn", label: "writes its memory", dim: true },
+  battle: { tone: "info", label: "in battle" },
+  ended: { tone: "bad", label: "ended", dim: true },
+};
+
+const STOPPED = { model: "waits", summary: "memory" } as const;
+
+export function stoppedState({ calling }: Pick<RunSummary, "calling">): "waits" | "memory" | null {
+  return calling && STOPPED[calling.kind];
+}
 
 export type GridCell = {
   kind: "live" | "replay";
@@ -20,7 +35,8 @@ export type GridCell = {
 
 function liveState(run: RunSummary): CellState {
   if (!run.playing) return { kind: "ended", result: run.error ? `error: ${run.error}` : (run.endReason ?? "unknown") };
-  if (run.waits) return { kind: "waits" };
+  const stopped = stoppedState(run);
+  if (stopped) return { kind: stopped };
   return run.battle ? { kind: "battle" } : { kind: "plays" };
 }
 

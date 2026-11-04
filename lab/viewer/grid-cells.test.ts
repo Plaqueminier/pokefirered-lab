@@ -2,6 +2,12 @@ import { expect, test } from "bun:test";
 import type { GridReplay, RunSummary } from "../src/protocol";
 import { type GridCell, gridCells } from "./grid-cells";
 
+test("a Run that writes its memory shows this state; a Run that ended does not", () => {
+  const [writing, ended] = gridCells(2, [live(1, { calling: { kind: "summary", since: 0 } }), live(2, { calling: { kind: "summary", since: 0 }, playing: false, endReason: "cost limit" })], [], 0) as GridCell[];
+  expect(writing.state).toEqual({ kind: "memory" });
+  expect(ended.state).toEqual({ kind: "ended", result: "cost limit" });
+});
+
 function live(id: number, facts: Partial<RunSummary>): RunSummary {
   return {
     id,
@@ -12,11 +18,11 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     error: null,
     from: null,
     continued: null,
-    model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 }, callsStarted: 3 },
+    model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 } },
     frame: 1000 * id,
     milestone: null,
     battle: false,
-    waits: false,
+    calling: null,
     record: null,
     names: null,
     ...facts,
@@ -40,7 +46,7 @@ const short = (cell: GridCell | null) => cell && `${cell.kind} ${cell.runId} ${c
 test("the Grid puts each chosen Run record in its cell, then the live Runs that play in the order they started, then the ended live Runs, but not a live Run whose record a cell replays; a replay ends at the last frame of its record", () => {
   const runs = [
     live(1, { playing: false, endReason: "cost limit", record: "model-bot-1.json" }),
-    live(2, { waits: true }),
+    live(2, { calling: { kind: "model", since: 0 } }),
     live(3, { battle: true, milestone: "first-rival-battle" }),
     live(4, { playing: false, error: "the worker stopped" }),
   ];

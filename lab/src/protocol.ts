@@ -4,6 +4,7 @@ import type { Sight } from "./harness/atlas";
 import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
+import type { RunCall } from "./harness/pool";
 import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
 
@@ -182,12 +183,12 @@ export type RunSummary = {
   error: string | null;
   from: RunFrom | null;
   continued: Continuation | null;
-  /** A Model call runs while `callsStarted` is more than the model events of the Run. */
-  model: (ModelFacts & { spent: Spend; ownSpent: Spend; callsStarted: number }) | null;
+  model: (ModelFacts & { spent: Spend; ownSpent: Spend }) | null;
   frame: number;
   milestone: Milestone | null;
   battle: boolean;
-  waits: boolean;
+  /** The call that the game waits for now. */
+  calling: RunCall | null;
   record: string | null;
 };
 
@@ -226,6 +227,7 @@ export type ServerMessage =
   | { type: "maps"; names: string[][] }
   /** Another map, read from ROM, as asked with "view-map". The player does not move. */
   | { type: "preview"; grid: MapGrid | null; actors: MapActors | null }
+  | { type: "floors"; grids: MapGrid[] }
   /** With each screen, while the screen overlay is on. */
   | { type: "camera"; camera: Camera | null }
   | { type: "notice"; text: string }
@@ -235,7 +237,8 @@ export type ServerMessage =
   | { type: "replay-events"; name: string; events: GameEvent[] }
   /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
   /** `quiet`: the events after a jump; the Viewer gives no toast for them. */
-  | { type: "events"; events: RunEvent[]; quiet?: boolean };
+  | { type: "events"; events: RunEvent[]; quiet?: boolean }
+  | { type: "events-added"; from: number; events: RunEvent[] };
 
 export type ClientMessage =
   | { type: "keys"; keys: number }
@@ -246,6 +249,7 @@ export type ClientMessage =
   /** Audio queued in the Viewer, in milliseconds. */
   | { type: "audio-level"; ms: number }
   | { type: "view-map"; group: number; num: number }
+  | { type: "view-floors"; names: string[] }
   | { type: "quick-save" }
   | { type: "quick-load" }
   | { type: "reset" }

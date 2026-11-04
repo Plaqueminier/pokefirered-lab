@@ -1,12 +1,15 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, type MapGrid, type Obstacle, OPPOSITE, WALL, type WarpExit } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, OPPOSITE, WALL } from "../cells";
+import type { MapGrid, Obstacle, WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
 export type Place = Cell & { map: string };
 
+export type RoutePerson = Cell & { graphics: string; stays: boolean };
+
 export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | "height" | "mapWidth" | "mapHeight"> & {
   warps: WarpExit[];
   connections: Pick<MapGrid["connections"][number], "direction" | "offset" | "map">[];
-  people: Cell[];
+  people: RoutePerson[];
   obstacles: Obstacle[];
 };
 
@@ -46,6 +49,26 @@ export function obstacleOnRoute(from: Place, to: Destination, mapOf: MapSource):
     if (obstacle) return { ...obstacle, map: place.map };
   }
   return null;
+}
+
+export type NoRoute = { kind: "closed" } | { kind: "walker" } | { kind: "staying"; person: RoutePerson & { map: string } };
+
+export function whyNoRoute(from: Place, to: Destination, mapOf: MapSource): NoRoute {
+  const only = (keep: (person: RoutePerson) => boolean): MapSource => (name) => {
+    const map = mapOf(name);
+    return map && { ...map, people: map.people.filter(keep) };
+  };
+  const stays = (person: RoutePerson) => person.stays;
+  const open = search(from, to, only(() => false));
+  if (!open) return { kind: "closed" };
+  if (search(from, to, only(stays))) return { kind: "walker" };
+  const onRoute = open.flatMap(({ to: place }) => {
+    const person = mapOf(place.map)?.people.find((p) => stays(p) && p.x === place.x && p.y === place.y);
+    return person ? [{ person, map: place.map }] : [];
+  });
+  // A person before the last one that the player can reach is one that a walk goes around, and a person after it stands past it.
+  const reachable = onRoute.findLast(({ person, map }) => search(from, { map, x: person.x, y: person.y }, only((p) => stays(p) && p !== person)));
+  return reachable ? { kind: "staying", person: { ...reachable.person, map: reachable.map } } : { kind: "walker" };
 }
 
 function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
@@ -214,6 +237,45 @@ export function walkable(map: MapCells, c: Cell): boolean {
 export function wallBetween(map: MapCells, from: Cell, direction: Direction): boolean {
   const [dx, dy] = DIRECTION_STEP[direction];
   return kindAt(map, from) === WALL[direction] || kindAt(map, { x: from.x + dx, y: from.y + dy }) === WALL[OPPOSITE[direction]];
+}
+
+/** Where a step in `direction` goes: null across a thin wall, and past a ledge when the next cell is a ledge in this direction. */
+function stepFrom(map: MapCells, cell: Cell, direction: Direction): Cell | null {
+  if (wallBetween(map, cell, direction)) return null;
+  const [dx, dy] = DIRECTION_STEP[direction];
+  const next = { x: cell.x + dx, y: cell.y + dy };
+  return kindAt(map, next) === LEDGE[direction] ? { x: next.x + dx, y: next.y + dy } : next;
+}
+
+export function allCells({ mapWidth, mapHeight }: Pick<MapCells, "mapWidth" | "mapHeight">): Cell[] {
+  return Array.from({ length: mapWidth * mapHeight }, (_, i) => ({ x: i % mapWidth, y: Math.floor(i / mapWidth) }));
+}
+
+/** The groups of the `open` cells of a map that steps connect, in both directions: the number of the group of each cell by `cellKey`, and the first cell of a group gives its number. */
+export function walkGroups(map: MapCells, open: (cell: Cell) => boolean): { cells: Cell[]; groups: Map<string, number>; stepsOf: (cell: Cell) => Cell[] } {
+  const cells = allCells(map).filter(open);
+  const stepsOf = (cell: Cell) => DIRECTION_STEPS.flatMap(([direction]) => stepFrom(map, cell, direction) ?? []).filter(open);
+  const links = new Map<string, Cell[]>(cells.map((cell) => [cellKey(cell), []]));
+  for (const cell of cells) {
+    for (const next of stepsOf(cell)) {
+      links.get(cellKey(cell))?.push(next);
+      links.get(cellKey(next))?.push(cell);
+    }
+  }
+  const groups = new Map<string, number>();
+  for (const [group, start] of cells.entries()) {
+    if (groups.has(cellKey(start))) continue;
+    groups.set(cellKey(start), group);
+    const stack = [start];
+    for (let cell = stack.pop(); cell; cell = stack.pop()) {
+      for (const next of links.get(cellKey(cell)) ?? []) {
+        if (groups.has(cellKey(next))) continue;
+        groups.set(cellKey(next), group);
+        stack.push(next);
+      }
+    }
+  }
+  return { cells, groups, stepsOf };
 }
 
 export function free(map: MapCells & { people: Cell[] }, c: Cell): boolean {

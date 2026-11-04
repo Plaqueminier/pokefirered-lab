@@ -69,7 +69,7 @@ describe.skipIf(!ready)("RunPool", () => {
     await Bun.write(bot, `import { modelBot as real } from ${JSON.stringify(join(import.meta.dir, "../../bots/model.ts"))};
 export const modelBot = (options) => real(options, () => (_prompt, { signal }) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason))));`);
     const run = new RunPool().start({ bot, model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "off", temperature: null, starter: "free", stopAtWhiteout: true } });
-    while (run.modelCallsStarted === 0) await Bun.sleep(5);
+    while (run.calling === null) await Bun.sleep(5);
     run.stop();
     const { record, error } = await run.done;
     expect(error).toBeNull();

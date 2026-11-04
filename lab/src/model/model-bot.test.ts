@@ -154,7 +154,7 @@ describe.skipIf(!ready)("model bot", () => {
     const { client, prompts } = fakeModel();
     const seen: string[] = [];
     const harness = await Harness.open({
-      onModelCallStart: () => seen.push("thinks"),
+      onCallStart: (kind) => kind === "model" && seen.push("thinks"),
       onModelCall: (event) => seen.push(`answer ${event.decision?.action}`),
       onAction: ({ action }) => seen.push(action.name),
     });
@@ -182,7 +182,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(seen.slice(0, 4)).toEqual(["thinks", "answer go A", "goTo", "thinks"]);
     expect(seen.filter((s) => s === "thinks")).toHaveLength(calls.length);
     expect(harness.actions.filter((e) => e.action.name === "readText").length).toBeGreaterThan(10);
-    const titles = calls.flatMap((_, i) => modelPanelView(harness.events, 0, i).call?.blocks.map((b) => b.title) ?? []);
+    const titles = calls.flatMap((_, i) => modelPanelView(harness.events, false, i).call?.blocks.map((b) => b.title) ?? []);
     expect(titles).not.toContain("Other");
     expect(titles).toEqual(expect.arrayContaining(["Local view", "Battle", "Actions", "Rules"]));
 

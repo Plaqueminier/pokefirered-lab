@@ -22,7 +22,7 @@ type MacroScreen = (typeof MACRO_SCREENS)[number]["id"];
 
 // Exactly one entry for each Macro-action of the Harness (doc.test.ts).
 export const MACRO_DOC: { form: string; when: string; effect: string; cards: Partial<Record<MacroScreen, string>> }[] = [
-  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
+  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
   { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, an item.", cards: { walk: "turn to the next cell and press A" } },
   {
     form: "readText()",
@@ -107,7 +107,7 @@ export const RAW_INPUT_FORM = "press(button)";
 const RESULTS: Record<Outcome["status"], { tone: Tone; text: string }> = {
   done: { tone: "ok", text: "complete" },
   impossible: { tone: "bad", text: "cannot start or continue" },
-  blocked: { tone: "warn", text: "a person stays in the way" },
+  blocked: { tone: "warn", text: "a person or an object stays in the way; the reason names it when it does not move and the player saw it" },
   interrupted: { tone: "info", text: "trigger, trainer, script, battle or a map off the route" },
 };
 const RESULT_ROWS = Object.entries(RESULTS);

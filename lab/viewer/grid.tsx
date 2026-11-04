@@ -5,7 +5,7 @@ import { type ClientMessage, GRID_SIZES, GRID_SPEEDS, type GridSize, type GridSp
 import { Button, Card, LABEL, Pill, Slider, Tabs, type Tone, Tooltip } from "./components";
 import { Popover, Select } from "./components-layers";
 import { type ScreenFeed, Store, useStore } from "./cursor";
-import { type CellState, type GridCell, gridCells } from "./grid-cells";
+import { type CellState, type GridCell, gridCells, STATE_LOOKS } from "./grid-cells";
 import { SPEND_WORDS, spendText } from "../src/protocol";
 import { botRunKey, replayKey } from "./runs";
 import { clock } from "./stats-format";
@@ -30,12 +30,15 @@ const SIZE_OF_TAB = new Map(GRID_SIZES.map((size) => [String(size), size]));
 
 const SPEED_OF_TAB = new Map(GRID_SPEEDS.map((speed) => [String(speed), speed]));
 
-const STATE_LOOKS: Record<CellState["kind"], { tone: Tone; label: string }> = {
-  plays: { tone: "ok", label: "plays" },
-  waits: { tone: "warn", label: "waits for the model" },
-  battle: { tone: "info", label: "in battle" },
-  ended: { tone: "bad", label: "ended" },
-};
+export function ScreenState({ tone, label }: { tone: Tone; label: string }) {
+  return (
+    <div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/60">
+      <span class="rounded-full bg-bg">
+        <Pill tone={tone}>{label}</Pill>
+      </span>
+    </div>
+  );
+}
 
 function stateLabel(state: CellState): string {
   return state.kind === "ended" ? `ended: ${state.result}` : STATE_LOOKS[state.kind].label;
@@ -94,7 +97,6 @@ function Fact({ label, value, shrink }: { label: string; value: string; shrink?:
 function FilledCell({ cell, index, records, screens, actions }: { cell: GridCell; index: number; records: readonly string[]; screens: ScreenFeed; actions: GridActions }) {
   const { state } = cell;
   const look = STATE_LOOKS[state.kind];
-  const dim = state.kind === "waits" || state.kind === "ended";
   const replayRecord = cell.kind === "live" && state.kind === "ended" ? cell.record : null;
   return (
     <Card interactive size="sm">
@@ -107,13 +109,7 @@ function FilledCell({ cell, index, records, screens, actions }: { cell: GridCell
         >
           <div class="relative overflow-hidden rounded-sm border border-line">
             <CellScreen runId={cell.runId} screens={screens} />
-            {dim && (
-              <div class="absolute inset-0 flex items-center justify-center bg-bg/60">
-                <span class="rounded-full bg-bg">
-                  <Pill tone={look.tone}>{stateLabel(state)}</Pill>
-                </span>
-              </div>
-            )}
+            {look.dim && <ScreenState tone={look.tone} label={stateLabel(state)} />}
           </div>
           <span class="truncate font-mono text-xs" title={cell.name}>
             {cell.name.replace(/\.json$/, "")}

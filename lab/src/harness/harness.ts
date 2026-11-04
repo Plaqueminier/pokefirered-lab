@@ -4,29 +4,16 @@ import { isAbsolute, join } from "node:path";
 import { type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
-import {
-  DIRECTION_STEP,
-  DIRECTION_STEPS,
-  type Direction,
-  isDecisionPoint,
-  type GameInterruption,
-  type GameState,
-  KIND,
-  type MapActors,
-  type MapGrid,
-  MILESTONES,
-  type Milestone,
-  type PlayerPosition,
-  type WaitingFor,
-} from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND } from "../cells";
+import { isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, MILESTONES, type Milestone, type PlayerPosition, type WaitingFor } from "../game";
 import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
-import { type Atlas, AtlasWatch, blockedText, cellAt, seenIn, type Sight, WATER_RULE } from "./atlas";
+import { type Atlas, AtlasWatch, blockedText, cellAt, personName, seenIn, type Sight, WATER_RULE } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, reached } from "./path";
+import { type BlockOf, type Destination, destinationOf, findRoute, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, reached, type RouteMap, type RoutePerson, whyNoRoute } from "./path";
 import {
   ButtonTrack,
   GameWatch,
@@ -80,7 +67,7 @@ export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
 /** `unbeatenTrainer`: a trainer that the player did not beat yet. A talk or its sight starts a battle. */
-export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded"> & { unbeatenTrainer?: boolean };
+export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; repelActive: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
@@ -174,7 +161,9 @@ export function must(result: ActionResult): void {
 
 type ActionListener = (entry: ActionEntry, harness: Harness) => void;
 
-type ModelCallStartListener = (harness: Harness) => void;
+export type CallKind = "model" | "summary";
+
+type CallStartListener = (kind: CallKind, harness: Harness) => void;
 
 type ModelCallListener = (event: ModelEvent, harness: Harness) => void;
 
@@ -185,7 +174,7 @@ export type HarnessOptions = {
   startSave?: string;
   onAction?: ActionListener;
   onFrame?: (harness: Harness) => void;
-  onModelCallStart?: ModelCallStartListener;
+  onCallStart?: CallStartListener;
   onModelCall?: ModelCallListener;
   onSummaryCall?: SummaryCallListener;
   frameBudget?: number;
@@ -270,7 +259,7 @@ export class Harness {
   readonly #knowledge: KnowledgeLevel;
   readonly #onAction?: ActionListener;
   readonly #onFrame?: (harness: Harness) => void;
-  readonly #onModelCallStart?: ModelCallStartListener;
+  readonly #onCallStart?: CallStartListener;
   readonly #onModelCall?: ModelCallListener;
   readonly #onSummaryCall?: SummaryCallListener;
   readonly #frameBudget?: number;
@@ -292,7 +281,7 @@ export class Harness {
     this.#knowledge = options.knowledge ?? options.parent?.record.header.knowledge ?? "player";
     this.#onAction = options.onAction;
     this.#onFrame = options.onFrame;
-    this.#onModelCallStart = options.onModelCallStart;
+    this.#onCallStart = options.onCallStart;
     this.#onModelCall = options.onModelCall;
     this.#onSummaryCall = options.onSummaryCall;
     this.#frameBudget = options.frameBudget;
@@ -412,7 +401,7 @@ export class Harness {
 
   /** `ask` must end when its signal aborts, and can throw only through `endAtPlanLimit`. */
   async modelCall<T>(ask: (signal: AbortSignal) => Promise<{ answer: ModelAnswer; action: T }>): Promise<T> {
-    this.#onModelCallStart?.(this);
+    this.#onCallStart?.("model", this);
     const start = performance.now();
     const { answer, action } = await this.untilStop(ask);
     // Before callEnded: a limit can end the Run there, and its record must agree with its game.
@@ -423,6 +412,7 @@ export class Harness {
   }
 
   async summaryCall(ask: (signal: AbortSignal) => Promise<SummaryAnswer>): Promise<SummaryEvent> {
+    this.#onCallStart?.("summary", this);
     const start = performance.now();
     const answer = await this.untilStop(ask);
     return this.callEnded({ type: "summary", frame: this.frame, latencyMs: Math.round(performance.now() - start), ...answer }, this.#onSummaryCall);
@@ -473,7 +463,7 @@ export class Harness {
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
-    const people = actors.people.map(({ localId, x, y, graphics, loaded, trainer }): Person => ({ localId, x, y, graphics, loaded, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
+    const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
     return { ...base, mode: "overworld", map: game.map(), player, grid, people, boxes: game.boxMons(), repelActive: game.repelActive(), teachables: game.teachables() };
   }
 
@@ -541,8 +531,10 @@ export class Harness {
         if (reached(destination, here)) return { status: "done" };
         const maps = this.routeMaps();
         const route = findRoute(here, destination, maps);
-        if (!route && !findRoute(here, destination, (name) => withoutPeople(maps(name)))) {
-          return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge)) };
+        if (!route) {
+          const why = whyNoRoute(here, destination, maps);
+          if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge)) };
+          if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas(this.#knowledge)) };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
         switch (result) {
@@ -553,7 +545,7 @@ export class Harness {
             const now = this.place();
             tries = stuckAt && at(stuckAt) === at(now) ? tries + 1 : 1;
             stuckAt = now;
-            if (tries >= BLOCKED_TRIES) return { status: "blocked", reason: `a person stays in the way after ${tries} tries; the player is at ${at(now)}` };
+            if (tries >= BLOCKED_TRIES) return { status: "blocked", reason: `a person or an object stays in the way after ${tries} tries; the player is at ${at(now)}` };
             const interruption = this.wait(BLOCKED_WAIT_FRAMES);
             if (interruption) return { status: "interrupted", reason: interruption };
             break;
@@ -838,7 +830,7 @@ export class Harness {
       if (result !== "done") return result;
       if (this.#run.game.map().name !== leg.map) break;
     }
-    const interruption = this.settle();
+    const interruption = (this.#run.game.stepStarts() ? this.wait(1) : null) ?? this.settle();
     if (interruption) return interruption;
     return this.#run.game.map().name === next ? "done" : "map";
   }
@@ -940,8 +932,10 @@ function noRouteReason(here: Place, destination: Destination, asked: Place, maps
   return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
 }
 
-function withoutPeople(map: RouteMap | null): RouteMap | null {
-  return map && { ...map, people: [] };
+function stayingReason(person: RoutePerson & Place, { maps: known }: Atlas): string {
+  const seen = known.find((m) => m.name === person.map)?.people.find((p) => p.x === person.x && p.y === person.y);
+  if (!seen) return "a person or an object that you did not see stands on the only way";
+  return `the ${personName(seen)} at ${at(person)} stands on the only way, and it does not leave by itself. Walk next to it and interact with it`;
 }
 
 function neighbours(cell: { x: number; y: number }): { direction: Direction; x: number; y: number }[] {

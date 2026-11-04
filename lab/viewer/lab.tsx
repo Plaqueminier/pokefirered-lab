@@ -1,6 +1,6 @@
 import { ArrowLeft, Backpack, Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
-import { useContext, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas, GameState } from "../src/game";
 import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
 import type { InventoryAt } from "../src/inventory";
@@ -9,10 +9,12 @@ import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, us
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
 import { callAt, type Readable, type SharedCursor, Store, useStore } from "./cursor";
 import { InventoryPanel } from "./inventory-panel";
+import { ScreenState } from "./grid";
+import { STATE_LOOKS, stoppedState } from "./grid-cells";
 import { CellPointerCard, MapPanel } from "./map-panel";
 import { memoryPanelView } from "./memory-panel";
 import { MemoryTreePanel } from "./memory-tree-panel";
-import { callsStarted, modelCalls, type UnusualCall, unusualCalls } from "./model-calls";
+import { type UnusualCall, unusualCalls, waitsForModel } from "./model-calls";
 import { CallSummary, FLAG_LOOKS, ModelPanel, SpendUnitContext } from "./model-panel";
 import { PokemonCard } from "./pokemon";
 import { BotsPanel, RunSelect, runKey, spendShort } from "./runs";
@@ -275,9 +277,8 @@ function useCursorCall() {
   const lab = useStore(data);
   const { cursor } = useStore(shared);
   const calls = useMemo(() => lab.rows.map((row) => row.call), [lab.rows]);
-  const waiting = useMemo(() => modelCalls(lab.events).calling, [lab.events]);
   const index = callAt(calls, cursor);
-  const calling = !cursor && lab.status !== null && waiting(callsStarted(lab.status.shown));
+  const calling = !cursor && lab.status !== null && waitsForModel(lab.status.shown);
   const row = index === null ? null : (lab.rows[index] ?? null);
   return { ...lab, cursor, calls, index, calling, row, call: row?.call ?? null };
 }
@@ -453,6 +454,26 @@ function Party() {
   );
 }
 
+function useSecondsSince(since: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === null) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [since]);
+  return since === null ? 0 : Math.max(0, Math.floor((now - since) / 1000));
+}
+
+function StoppedScreen({ shown }: { shown: ShownRun | null }) {
+  const run = shown?.kind === "bot" ? shown.run : null;
+  const stopped = run && stoppedState(run);
+  const seconds = useSecondsSince(stopped ? (run?.calling?.since ?? null) : null);
+  if (!stopped) return null;
+  const { tone, label } = STATE_LOOKS[stopped];
+  return <ScreenState tone={tone} label={`${label}, ${seconds} s`} />;
+}
+
 function Screen() {
   const { status } = useStore(useLab().data);
   const jump = replayOf(status?.shown ?? null)?.seeking;
@@ -468,6 +489,7 @@ function Screen() {
       detail={jump ? `${Math.max(0, total - done).toLocaleString("en-US")} frames to play from ${clock(jump.from)}` : undefined}
     >
       <Legacy id="screen" />
+      <StoppedScreen shown={status?.shown ?? null} />
     </Cover>
   );
 }

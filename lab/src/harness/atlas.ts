@@ -1,4 +1,5 @@
-import { DIRECTION_STEP, type Direction, type Game, type MapActors, type MapGrid, type Obstacle, type Warp } from "../game";
+import { DIRECTION_STEP, type Direction } from "../cells";
+import type { Game, MapActors, MapGrid, Obstacle, Warp } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type Place, walkable } from "./path";
 
@@ -41,6 +42,10 @@ export type AtlasMap = {
   /** The seen cells where a step leaves the map, also the other cells of a wide exit. */
   stepExits: Cell[];
 };
+
+export function personName({ graphics, rival }: AtlasPerson): string {
+  return rival ? `${rival} (your rival)` : graphics.replaceAll("_", " ");
+}
 
 export type Atlas = { maps: AtlasMap[]; lastTalk: { map: string; localId: number } | null };
 
@@ -98,6 +103,7 @@ export class AtlasWatch {
   #lastAction: ActionEntry | null = null;
   #talk: Talk | null = null;
   #lastTalk: Atlas["lastTalk"] = null;
+  #battle: "none" | "during" | "after" = "none";
 
   constructor(private readonly game: Game) {}
 
@@ -120,11 +126,13 @@ export class AtlasWatch {
     copy.#place = this.#place;
     copy.#lastAction = this.#lastAction;
     copy.#lastTalk = this.#lastTalk;
+    copy.#battle = this.#battle;
     return copy;
   }
 
   onFrame(): void {
     const { game } = this;
+    if (game.battleUnderway()) this.#battle = "during";
     if (game.mode() !== "overworld") return;
     const player = game.player();
     if (!player) return;
@@ -145,12 +153,15 @@ export class AtlasWatch {
     this.#lastAction = entry;
     const { action, result } = entry;
     const visit = this.#place && this.#visits.get(this.#place.map);
+    const afterBattle = this.#battle === "after";
+    this.#battle = this.#battle === "during" || (afterBattle && action.name === "readText") ? "after" : "none";
     if (action.name !== "readText") {
       const talked = action.name === "interact" && result.status === "done";
       this.#talk = visit && this.#place && talked ? this.talkWith(visit, action, this.#place) : null;
       if (this.#talk && this.#place) this.#lastTalk = { map: this.#place.map, localId: this.#talk.person.localId };
     }
     if (!visit || action.name !== "readText" || !("text" in result) || result.text.length === 0) return;
+    if (afterBattle) this.#talk ??= this.talkAfterBattle(visit);
     if (this.#talk) told(this.#talk, result.text.join(" "));
     const interact = previous?.action.name === "interact" && previous.result.status === "done" ? previous.action : null;
     if (interact && visit.grid.signs.some((s) => s.kind === "sign" && s.x === interact.x && s.y === interact.y)) visit.signTexts.set(cellKey(interact), result.text.join(" "));
@@ -206,6 +217,14 @@ export class AtlasWatch {
     const found = cells.flatMap((c) => people.filter((p) => p.loaded && p.x === c.x && p.y === c.y))[0];
     if (!found) return null;
     return { person: this.seen(visit, found), text: null, index: null };
+  }
+
+  // A script can go on after its battle with no interact; its person then stands in front of the player.
+  private talkAfterBattle(visit: Visit): Talk | null {
+    const player = this.game.player();
+    if (!player) return null;
+    const [dx, dy] = DIRECTION_STEP[player.facing];
+    return this.talkWith(visit, { x: player.x + dx, y: player.y + dy }, player);
   }
 
   private seeActors(visit: Visit, player: Cell): void {

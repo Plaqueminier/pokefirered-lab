@@ -41,14 +41,14 @@ describe.skipIf(!ready)("the panel Model", () => {
       const player = new RecordPlayer(record);
       while (player.frame < call.frame) player.next();
       const replay = player.played();
-      expect(modelPanelView(replay, 0, i).call).toEqual(modelPanelView(live, 0, null).call);
-      expect(modelPanelView(live, 0, null).call?.answer).toMatchObject({ action: call.decision?.action });
+      expect(modelPanelView(replay, false, i).call).toEqual(modelPanelView(live, false, null).call);
+      expect(modelPanelView(live, false, null).call?.answer).toMatchObject({ action: call.decision?.action });
     }
   });
 
   test("it lists all the Model calls, shows the selected one in full, and tells when a Model call runs", async () => {
     const record = await modelRecord();
-    const view = modelPanelView(record.events, 4, 1);
+    const view = modelPanelView(record.events, true, 1);
     expect(view.calling).toBe(true);
     expect(view.rows.map((r) => [r.action, r.stuck, r.turn])).toEqual([["go A", 0, "character turn"], ["viewAtlas", 0, undefined], ["goTo 8 6", 0, undefined]]);
     expect(view.call?.title).toMatch(/ · stuck 0$/);
@@ -57,11 +57,11 @@ describe.skipIf(!ready)("the panel Model", () => {
     expect(view.call?.fields).toEqual({ Mission: "Get my first Pokémon", Objective: "Leave the house", Note: "–" });
     expect(view.call?.usage).toMatch(/^1000 tokens in \(600 cached\) · 30 out \(0 reasoning\) · 0\.001 \$ · \d+\.\d s$/);
     expect(view.call?.blocks.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Party", "Local view", "Atlas", "Targets", "Situation", "History", "Events", "Actions", "Rules"]);
-    const afterAtlas = modelPanelView(record.events, 3, 2).call?.blocks ?? [];
+    const afterAtlas = modelPanelView(record.events, false, 2).call?.blocks ?? [];
     expect(afterAtlas.map((b) => b.title)).toEqual(["Progress", "Memory tree", "Party", "Local view", "Atlas", "Targets", "Situation", "History", "Events", "Actions", "Your answer", "Full Atlas", "Request", "Rules"]);
     expect(afterAtlas[1].text).toBe("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1: Mom is downstairs.");
     expect(afterAtlas[10].text).toBe(reply("viewAtlas").content);
-    expect(modelPanelView(record.events, 3, null)).toMatchObject({ calling: false, selected: 2 });
+    expect(modelPanelView(record.events, false, null)).toMatchObject({ calling: false, selected: 2 });
   });
 });
 
@@ -81,7 +81,7 @@ describe("the panel Model and an old Run record", () => {
     };
     const record = readRecord({ header: {}, buttons: [[0, 200]], events: [old], result: {} });
     expect(record).not.toBeNull();
-    const view = modelPanelView(record?.events ?? [], 0, null);
+    const view = modelPanelView(record?.events ?? [], false, null);
     expect(view.rows).toEqual([{ frame: 120, situation: "a walk on PalletTown (5, 6)", action: "go 1" }]);
     expect(view.call?.fields).toEqual({ Mission: "m", Objective: "o", Note: "Oak is in his lab." });
     expect(view.call?.usage).toMatch(/^1000 tokens in · 30 out/);

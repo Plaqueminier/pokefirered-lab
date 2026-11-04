@@ -38,19 +38,14 @@ type CallRow = { frame: number; situation: string; action: string | null; stuck?
 
 export type ModelPanelView = { rows: CallRow[]; selected: number | null; calling: boolean; call: CallView | null };
 
-export function modelCalls(events: readonly RunEvent[]): { calls: ModelEvent[]; calling: (callsStarted: number) => boolean } {
+export function modelPanelView(events: readonly RunEvent[], calling: boolean, selected: number | null): ModelPanelView {
   const calls = modelEvents(events);
-  return { calls, calling: (callsStarted) => callsStarted > calls.length };
-}
-
-export function modelPanelView(events: readonly RunEvent[], callsStarted: number, selected: number | null): ModelPanelView {
-  const { calls, calling } = modelCalls(events);
   const index = selected !== null && selected < calls.length ? selected : calls.length - 1;
   const call = calls[index];
   return {
     rows: calls.map((c) => ({ frame: c.frame, situation: c.situation, action: c.decision?.action ?? null, stuck: c.stuck, turn: turnText(c) })),
     selected: call ? index : null,
-    calling: calling(callsStarted),
+    calling,
     call: call ? callView(call, index) : null,
   };
 }
@@ -109,9 +104,8 @@ export function promptBlocks({ prompt, reasoning }: ModelEvent): PromptBlock[] {
   });
 }
 
-// A Run that ended with an error can have a Model call with no model event.
-export function callsStarted(shown: ShownRun): number {
-  return shown.kind === "bot" && shown.run.playing ? (shown.run.model?.callsStarted ?? 0) : 0;
+export function waitsForModel(shown: ShownRun): boolean {
+  return shown.kind === "bot" && shown.run.calling?.kind === "model";
 }
 
 export const FLAGS = ["unreadable", "impossible", "reflection", "review", "expensive", "turns", "mission", "repeat"] as const;

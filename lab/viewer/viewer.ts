@@ -1,9 +1,11 @@
 import type { Camera, MapActors, MapGrid } from "../src/game";
+import type { RunEvent } from "../src/harness/record";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { mountDocTab } from "./doc";
 import { ScreenFeed, SharedCursor, Store } from "./cursor";
 import { GridTab } from "./grid";
+import { runKey } from "./runs";
 import { LabTab } from "./lab";
 import type { ScreenSettings } from "./screen-controls";
 import { type CellTip, describe, draw } from "./mapdraw";
@@ -49,6 +51,7 @@ audio.setVolume(settings.volume);
 
 const shared = new SharedCursor();
 const screens = new ScreenFeed();
+let runEvents: readonly RunEvent[] = [];
 let shownRunId = VIEWER_RUN_ID;
 let stopDrawing = screens.subscribe(shownRunId, drawGame);
 let gridShown = false;
@@ -116,7 +119,7 @@ function onMessage(message: ServerMessage): void {
   switch (message.type) {
     case "status": {
       const run = message.shown.kind === "bot" ? message.shown.run : null;
-      map.onRun(run?.id ?? null);
+      map.onRun(runKey(message.shown));
       const runId = run?.id ?? VIEWER_RUN_ID;
       if (runId !== shownRunId) {
         shownRunId = runId;
@@ -149,6 +152,9 @@ function onMessage(message: ServerMessage): void {
       map.onActors(actors);
       drawOverlay();
       break;
+    case "floors":
+      map.onFloors(message.grids);
+      break;
     case "sight":
       map.onSight(message.maps);
       break;
@@ -180,12 +186,19 @@ function onMessage(message: ServerMessage): void {
       lab.onBots(message.bots, message.providers);
       bots.set(message.bots);
       break;
-    case "events": {
-      const added = shared.onEvents(message.events);
-      lab.onEvents(message.events, message.quiet ? null : added);
+    case "events":
+      onEvents(message.events, message.quiet);
       break;
-    }
+    case "events-added":
+      onEvents([...runEvents.slice(0, message.from), ...message.events]);
+      break;
   }
+}
+
+function onEvents(events: readonly RunEvent[], quiet?: boolean): void {
+  runEvents = events;
+  const added = shared.onEvents(events);
+  lab.onEvents(events, quiet ? null : added);
 }
 
 // No reason here: the tooltip of the sound button tells why no sound plays.
