@@ -1,4 +1,4 @@
-import { ChevronsUp, CircleDot, Gift, Heart, MapPin, PawPrint, ShoppingBag, Skull, Sparkles, Swords, Trophy } from "lucide-preact";
+import { ChevronsUp, CircleDot, Gift, Heart, MapPin, PawPrint, Scissors, ShoppingBag, Skull, Sparkles, Swords, Trophy } from "lucide-preact";
 import type { ComponentType } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { Button, FilterChip, LABEL, Pill, Tip, type Tone, Tooltip, toggled, toneText, useWidth } from "./components";
@@ -17,6 +17,7 @@ const KINDS: KindLook[] = [
   { id: "trainer", label: "Trainer battles", icon: Swords, tone: "accent", on: true },
   { id: "heal", label: "Heals", icon: Heart, tone: "ok", on: true },
   { id: "place", label: "New places", icon: MapPin, on: true, legacy: true },
+  { id: "obstacle", label: "Obstacles removed", icon: Scissors, on: true },
   { id: "level", label: "Levels", icon: ChevronsUp, on: false },
   { id: "wild", label: "Wild battles", icon: PawPrint, on: false },
   { id: "purchase", label: "Purchases", icon: ShoppingBag, on: false },

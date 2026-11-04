@@ -11,9 +11,10 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   connections: Pick<MapGrid["connections"][number], "direction" | "offset" | "map">[];
   people: RoutePerson[];
   obstacles: Obstacle[];
+  removable: Cell[];
 };
 
-type Move = { direction: Direction; kind: "walk" | "jump" | "push" };
+type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" };
 
 export type Leg = { map: string; moves: Move[] };
 
@@ -23,6 +24,8 @@ export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidt
 
 const WALKABLE = new Set<string>([KIND.open, KIND.grass, ...Object.values(WALL)]);
 const WARP_COST = 4;
+// Measured: one use of CUT takes 545 frames, and one step 16 frames.
+const REMOVE_COST = 34;
 export const MAX_ROUTE_MAPS = 32;
 
 type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
@@ -78,7 +81,7 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
     return maps.get(name)!;
   };
   const target = load(to.map);
-  if (!load(from.map) || !target || !(to.exit || free(target, to))) return null;
+  if (!load(from.map) || !target || !(to.exit || free(target, to) || removableAt(target, to))) return null;
 
   const id = (p: Place) => `${p.map}:${p.x},${p.y}`;
   const estimate = (p: Place) => (p.map === to.map ? Math.abs(p.x - to.x) + Math.abs(p.y - to.y) : 0);
@@ -125,6 +128,10 @@ function* edges(place: Place, load: MapSource): Generator<Edge> {
       if (inside(map, landing) && free(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: 2, leaves: false };
       continue;
     }
+    if (removableAt(map, next)) {
+      yield { to: next, move: { direction, kind: "remove" }, cost: REMOVE_COST, leaves: false };
+      continue;
+    }
     if (!free(map, next)) continue;
     const step = map.warps.find((w) => w.how === "step" && w.x === next.x && w.y === next.y);
     if (step) {
@@ -148,6 +155,10 @@ export function destinationOf(cell: Place, canExit: boolean, load: MapSource): D
 export function reached(destination: Destination, here: Place): boolean {
   const steps = Math.abs(here.x - destination.x) + Math.abs(here.y - destination.y);
   return here.map === destination.map && steps <= (destination.exit ? 1 : 0);
+}
+
+function removableAt(map: RouteMap, { x, y }: Cell): boolean {
+  return map.removable.some((c) => c.x === x && c.y === y);
 }
 
 function warpAt(map: RouteMap, { x, y }: Cell): WarpExit | undefined {

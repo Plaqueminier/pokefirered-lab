@@ -241,7 +241,7 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
 }
 
 /** The decrypted substructs of a Pokémon (`secure` is changed in place) and the offsets of the growth, attacks and misc substructs. */
-function decryptMon(personality: number, otId: number, secure: Uint8Array): { substructs: DataView; growth: number; attacks: number; misc: number } {
+export function decryptMon(personality: number, otId: number, secure: Uint8Array): { substructs: DataView; growth: number; attacks: number; misc: number } {
   const key = (personality ^ otId) >>> 0;
   const substructs = new DataView(secure.buffer, secure.byteOffset, secure.byteLength);
   for (let offset = 0; offset < secure.byteLength; offset += 4) substructs.setUint32(offset, (substructs.getUint32(offset, true) ^ key) >>> 0, true);

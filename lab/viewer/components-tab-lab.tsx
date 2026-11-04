@@ -242,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "24", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "25", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
@@ -417,7 +417,7 @@ const TIMELINE_STATES = {
 
 export function TimelineDemo() {
   const [state, setState] = useState<keyof typeof TIMELINE_STATES>("live");
-  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place"]));
+  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place", "obstacle"]));
   const [cursor, setCursor] = useState<number | null>(null);
   const [selection, setSelection] = useState<Span | null>(null);
   const { events, end, now, reached, ended, available } = TIMELINE_STATES[state];

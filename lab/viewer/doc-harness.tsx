@@ -22,7 +22,7 @@ type MacroScreen = (typeof MACRO_SCREENS)[number]["id"];
 
 // Exactly one entry for each Macro-action of the Harness (doc.test.ts).
 export const MACRO_DOC: { form: string; when: string; effect: string; cards: Partial<Record<MacroScreen, string>> }[] = [
-  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
+  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again. It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. A cut tree or a rock that a Pokémon can remove with a badge that the player does not have gives a reason that names the badge.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
   { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, an item.", cards: { walk: "turn to the next cell and press A" } },
   {
     form: "readText()",
@@ -150,7 +150,7 @@ export function MacroPage() {
         </Block>
         <Block label="⌨️ Raw input">
           <p class="m-0 text-sm text-muted">
-            <Code>{RAW_INPUT_FORM}</Code> one press when no Macro-action fits. The Harness counts them.
+            <Code>{RAW_INPUT_FORM}</Code> one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text.
           </p>
         </Block>
       </div>
@@ -248,6 +248,7 @@ const EVENT_KINDS: Record<GameEvent["type"], string> = {
   level: "level",
   money: "money",
   trainer: "trainer",
+  obstacle: "obstacle removed",
   whiteout: "whiteout",
 };
 
@@ -261,7 +262,7 @@ export function RecordPage() {
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
           "Game events",
-          "from the game state, with typed fields: map, battle, Milestone, heal (Pokémon Center, item or other, with the HP of the party before and after), purchase, item (found or received), catch, faint (of the player or of the enemy), level (with the new moves and the evolution), money (before, after and cause), trainer beaten and whiteout.",
+          "from the game state, with typed fields: map, battle, Milestone, heal (Pokémon Center, item or other, with the HP of the party before and after), purchase, item (found or received), catch, faint (of the player or of the enemy), level (with the new moves and the evolution), money (before, after and cause), trainer beaten, obstacle removed (the move, the map, the cell and the Pokémon) and whiteout.",
         ],
         ["Old record", "a record from before format 1 has only the map, battle and Milestone events, and the facts of the record say “No Game events in this record”. A record from before format 2 has no track, and a record from before format 3 has no State track; a replay and Continue still work on them. `bun run migrate` replays the keys of each one, and writes the track and the State track, and the Game events of the state when the record has none; it does not change the keys."],
         ["Replay", "choose the record in the list of the Run, in the top bar."],

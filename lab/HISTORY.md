@@ -325,3 +325,21 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The Model tab shows the character of the Run first, and the card of a Ghost shows it in full (issue #77). A Run with no Character turn shows "Normal trainer": the Viewer shows this text, the model never reads it, and no Run record holds it. The Race file goes to version 3. `bb648e169`
     - Each Ghost shows its model: a dot on the map, the full id on hover, and the short id in the Leaderboard. The dot is blue for DeepSeek, orange for Claude and light grey for GPT, and a Ghost of another model has no dot. `f4b0b6484` Grok came later with no dot, so Run 00052 had none on the map. It now has a black dot.
     - The three floors of Mt Moon are islands on the map of the Race, so the Ghosts walk on them, with no count at a door. `28e64f345`
+
+## 26. A walk removes a Fixed obstacle (2026-11-04)
+
+72. The model bot goes to version 25: a walk removes a cut tree or a rock (issue #79). In Run 00047, the model had HM01 for 250,305 frames and could not use it, so no Run could pass badge 2.
+
+    The rule is one sentence: a Fixed obstacle that the party can remove is a normal open cell for the model. A Pokémon of the party knows the move, and the player has badge 2 for CUT or badge 6 for ROCK SMASH. `go` and `goTo` route through the cell. The walk faces the obstacle, presses A, answers YES, reads the texts and steps. The model gets no question and no text. A in front of the obstacle does the same, so that the model can never see the question. In the route, the cell costs 34 steps, the real time of the move, so a short detour wins.
+
+    An obstacle that the party cannot remove does not change. The HM in the Bag keeps its hint, and when a Pokémon knows the move with no badge, the refusal of `goTo` names the badge.
+
+    The game clears the flag of a removed obstacle when the player leaves the map. So the Atlas does not keep a list of what the player removed: it reads the game. A new Game event, `obstacle`, gives the move, the map, the cell and the Pokémon, for the Timeline and the videos. The model does not see it.
+
+    The tests and the reviews found three facts:
+
+    - The flags are shared: FLAG_TEMP_12 hides a tree on many maps. So a temporary flag now applies only to the map of the player. A permanent flag applies to all maps, because the boulders of Victory Road use one.
+    - In the first frame after a crossing of a west edge, the objects of the new map still have old coordinates. The Atlas read a tree at (-7, 21) and showed its real cell as open. It now reads the cells of the obstacles from the ROM.
+    - The game also sets the flag of an obstacle by itself near a connection (`SetHideObstacleFlag`). So the event comes only from the flag of the object that the player last talked to.
+
+    The proof: an Extended Run of Run 00047 with `gpt-6.1-terra`. Its Memory tree said that CUT blocked the Gym, so we watched for a model that does not trust the open cell. This did not occur. After 2 zooms in its memory and one refusal (Tortuga cannot learn CUT), it taught HM01 to Writney. The next decision was `go A`, the door of the Gym: **1 decision from the `teach` to the walk through the tree**. `goTo(14, 25)` took 997 frames. The same Run then beat Lt. Surge: the first badge 3 of the lab.

@@ -522,7 +522,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "view-map": {
       const grid = safely(() => {
         const rom = run.game.gridOf(message.group, message.num);
-        return rom && run.game.withObstacles(rom, run.game.actorsOf(rom));
+        return rom && run.game.withObstacles(rom, run.game.actorsOf(rom).obstacles);
       });
       // The actors are those of the Run of the Viewer: none for a Run of a Bot.
       send({ type: "preview", grid, actors: grid && shown === viewerRun ? safely(() => run.game.actorsOf(grid)) : null }, ws);

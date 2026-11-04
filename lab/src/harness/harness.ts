@@ -5,7 +5,7 @@ import { type BagPocket, battleItems, depositableItems, sellableItems, type Teac
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND } from "../cells";
-import { isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, MILESTONES, type Milestone, type PlayerPosition, type WaitingFor } from "../game";
+import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
 import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
 import { type BotInfo, Keys, obstacleRemedy, spentIn } from "../protocol";
 import { Run, START_SAVE } from "../run";
@@ -533,7 +533,7 @@ export class Harness {
         const route = findRoute(here, destination, maps);
         if (!route) {
           const why = whyNoRoute(here, destination, maps);
-          if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge)) };
+          if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(this.#knowledge), (move) => this.obstacleRemedyNow(move)) };
           if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas(this.#knowledge)) };
         }
         const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
@@ -705,7 +705,7 @@ export class Harness {
   }
 
   async press(button: Button): Promise<ActionResult> {
-    return this.act({ name: "press", button }, () => this.#menus.input(Keys[button]));
+    return this.act({ name: "press", button }, () => (button === "A" && this.facesUsableObstacle() ? this.#menus.useFieldMove() : this.#menus.input(Keys[button])));
   }
 
   private act(action: MacroAction | RawInput, body: () => Outcome): ActionResult;
@@ -789,7 +789,7 @@ export class Harness {
     const grid = game.grid();
     const actors = grid && game.actors(grid);
     if (!player || !grid || !actors) throw new Error("the player is not on the overworld");
-    return { player, grid: { ...game.withObstacles(grid, actors), signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
+    return { player, grid: { ...game.withObstacles(grid, this.obstaclesByUse(actors).closed), signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
   }
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
@@ -813,12 +813,22 @@ export class Harness {
     return { map: this.#run.game.map().name, x: player.x, y: player.y };
   }
 
+  private obstacleRemedyNow(move: FieldMove): string {
+    const badge = this.#run.game.missingBadge(move);
+    return badge === null ? obstacleRemedy(move) : `A Pokémon of your party knows ${move}, but its use on the map needs badge ${badge}`;
+  }
+
   private routeMaps(): MapSource {
     const maps = new Map<string, RouteMap | null>();
     return (name) => {
       if (!maps.has(name)) {
         const view = this.#run.game.mapView(name);
-        maps.set(name, view && { ...view.grid, people: view.actors.people, obstacles: view.actors.obstacles });
+        if (!view) {
+          maps.set(name, null);
+          return null;
+        }
+        const { usable, closed } = this.obstaclesByUse(view.actors);
+        maps.set(name, { ...view.grid, people: view.actors.people, obstacles: closed, removable: usable });
       }
       return maps.get(name)!;
     };
@@ -826,13 +836,51 @@ export class Harness {
 
   private walkLeg(leg: Leg, next: string): LegResult {
     for (const move of leg.moves) {
-      const result = move.kind === "push" ? this.push(move.direction) : this.step(move.direction, move.kind === "jump" ? 2 : 1);
+      const result = this.playMove(move);
       if (result !== "done") return result;
       if (this.#run.game.map().name !== leg.map) break;
     }
-    const interruption = (this.#run.game.stepStarts() ? this.wait(1) : null) ?? this.settle();
+    const interruption = this.stopWalking();
     if (interruption) return interruption;
     return this.#run.game.map().name === next ? "done" : "map";
+  }
+
+  private playMove({ direction, kind }: Leg["moves"][number]): LegResult {
+    switch (kind) {
+      case "push":
+        return this.push(direction);
+      case "remove":
+        return this.removeObstacle(direction);
+      case "jump":
+        return this.step(direction, 2);
+      case "walk":
+        return this.step(direction, 1);
+    }
+  }
+
+  private stopWalking(): Interruption | null {
+    return (this.#run.game.stepStarts() ? this.wait(1) : null) ?? this.settle();
+  }
+
+  private facesUsableObstacle(): boolean {
+    if (this.#run.game.waitingFor().kind !== "walk") return false;
+    const { player, actors } = this.overworld();
+    const [dx, dy] = DIRECTION_STEP[player.facing];
+    return this.obstaclesByUse(actors).usable.some((o) => o.x === player.x + dx && o.y === player.y + dy);
+  }
+
+  private obstaclesByUse({ obstacles }: Pick<MapActors, "obstacles">): { usable: Obstacle[]; closed: Obstacle[] } {
+    const moves = this.#run.game.usableFieldMoves();
+    return { usable: obstacles.filter((o) => moves.has(o.move)), closed: obstacles.filter((o) => !moves.has(o.move)) };
+  }
+
+  private removeObstacle(direction: Direction): LegResult {
+    const interruption = this.stopWalking();
+    if (interruption) return interruption;
+    const turned = this.face(direction);
+    if (turned.status !== "done") return turned.status === "interrupted" ? turned.reason : "no move";
+    const used = this.#menus.useFieldMove();
+    return used.status === "interrupted" ? used.reason : this.step(direction, 1);
   }
 
   // Hold the direction: a short press only turns a player who faces another way. A jump moves the
@@ -922,9 +970,9 @@ function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, bloc
   return `no map connects to the ${side} edge of ${map.name}; ${range}`;
 }
 
-function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas): string {
+function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas, remedy: (move: FieldMove) => string): string {
   const obstacle = obstacleOnRoute(here, destination, maps);
-  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${obstacleRemedy(obstacle.move)}`;
+  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${remedy(obstacle.move)}`;
   const map = known.find((m) => m.name === asked.map);
   const kind = map && seenIn(map)(asked) ? cellAt(map, asked) : null;
   if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${WATER_RULE}`;

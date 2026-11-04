@@ -18,8 +18,9 @@ function walk(grids: MapGrid[], places: [string, number][]) {
     player: () => ({ x: places[at][1], y: 0 }),
     map: () => here(),
     gridOf: (_group: number, num: number) => grids.find((g) => g.num === num) ?? null,
-    withObstacles: (g: MapGrid) => g,
+    usableFieldMoves: () => new Set(),
     actorsOf: () => ({ people: [], obstacles: [] }),
+    obstaclesOf: () => [],
     mapView: (name: string) => ({ grid: grids.find((g) => g.name === name), actors: { people: [], obstacles: [] } }),
   };
   const watch = new AtlasWatch(game as unknown as Game);
@@ -38,8 +39,9 @@ describe("what the people said", () => {
       player: () => ({ x: 1, y: 1, facing: "north" }),
       map: () => room,
       gridOf: () => room,
-      withObstacles: (g: MapGrid) => g,
+      usableFieldMoves: () => new Set(),
       actorsOf: () => ({ people: [man], obstacles: [] }),
+      obstaclesOf: () => [],
       mapView: () => ({ grid: room, actors: { people: [man], obstacles: [] } }),
     };
     const watch = new AtlasWatch(game as unknown as Game);

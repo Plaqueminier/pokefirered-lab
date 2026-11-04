@@ -8,6 +8,8 @@ export const TRAINER_FLAGS_START = 0x500;
 export const TRAINER_FLAGS_COUNT = 768;
 export const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 export const FLAG_HIDDEN_ITEMS_COUNT = 200;
+const LAST_TEMPORARY_FLAG = 0x1f;
+const TEMPORARY_FLAGS = Array.from({ length: LAST_TEMPORARY_FLAG }, (_, i) => i + 1);
 // TRAINER_CLASS_RIVAL_EARLY, TRAINER_CLASS_RIVAL_LATE and TRAINER_CLASS_CHAMPION: the name of these trainers is the name that the player gave to the rival.
 const RIVAL_CLASSES = new Set([81, 89, 90]);
 const B_OUTCOME_CAUGHT = 7;
@@ -18,6 +20,10 @@ const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
 
 // A map load moves the save blocks, and a frame can end in the middle of the copy.
 export type EventKeys = { blocks: string; money: number; party: Uint8Array; items: Uint8Array; flags: Uint8Array };
+
+export function isTemporaryFlag(flag: number): boolean {
+  return flag >= 1 && flag <= LAST_TEMPORARY_FLAG;
+}
 
 function joined(...parts: Uint8Array[]): Uint8Array {
   const bytes = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
@@ -96,10 +102,10 @@ export class EventReads {
     };
   }
 
-  flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean } {
+  flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean; temporary: number[] } {
     const set = (id: number) => bitAt(before, id) === 0 && bitAt(after, id) === 1;
     const trainers = Array.from({ length: TRAINER_FLAGS_COUNT }, (_, i) => i).filter((i) => set(TRAINER_FLAGS_START + i));
-    return { trainers, itemBall: this.itemBallFlags.some(set) };
+    return { trainers, itemBall: this.itemBallFlags.some(set), temporary: TEMPORARY_FLAGS.filter(set) };
   }
 
   trainerName(id: number): string {

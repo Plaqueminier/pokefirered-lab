@@ -15,7 +15,7 @@ export function LoopPage() {
         ["Frozen game", "in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot."],
         ["Viewer Run", "no Bot: the keyboard or a replay plays it, in real time."],
         ["`zoom`, `viewAtlas`", "no frames run: the model gets a new call at once, at the same Decision point."],
-        ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them.`],
+        ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text.`],
       ]}
     >
       <Card>
@@ -66,7 +66,7 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination and arrival cell, the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10), the exits taken with their destination and arrival cell, the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the edges blocked by water, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
@@ -116,7 +116,7 @@ export function ViewerPage() {
         ["Bag and PC", "the five pockets of the Bag with their items (quantity and description), the items of the PC and the Pokémon of the boxes at the cursor, and the changes of the Bag and the PC with their times; a click on a change goes to it."],
         [
           "Timeline",
-          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
+          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],

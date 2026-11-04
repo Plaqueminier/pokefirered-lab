@@ -305,6 +305,25 @@ describe("the clearest map", () => {
     expect(knownWorld({ atlas, bag: withItem("HM01"), party: [] }).join("\n")).toContain("Fixed obstacles: CUT TREE at (3, 0).");
   });
 
+  test("an obstacle that the party can remove is an open cell with no text, and the door past it is in the part of the player", () => {
+    const tree = { x: 3, y: 0, name: "CUT TREE", move: "CUT" as const };
+    const door = { x: 5, y: 0, behavior: "MB_WARP_DOOR", place: "gym" as const, to: null, arrival: null };
+    const usable = room("......", { warps: [door] });
+    const atlas = { maps: [{ ...usable, outside: true }], lastTalk: null };
+    const { lines, targets } = atlasExtract({ ...overworld(usable, [], { x: 0, y: 0 }), party: knowing("CUT") });
+    expect(rows(lines)).toEqual(["y= 0  @....A"]);
+    expect(lines.join("\n")).not.toContain("CUT");
+    expect(legend(lines)).not.toContain("a cut tree");
+    expect(targets[0].label).toBe("door at (5, 0), 5 east: a Gym, not taken");
+    expect(knownWorld({ atlas, bag: [], party: knowing("CUT") }).join("\n")).not.toContain("Fixed obstacles");
+
+    const closed = room("...#..", { warps: [door], obstacles: [tree] });
+    const wall = atlasExtract({ ...overworld(closed, [], { x: 0, y: 0 }), party: knowing("CUT") });
+    expect(rows(wall.lines)).toEqual(["y= 0  @..t.A"]);
+    expect(wall.lines.join("\n")).toContain("- CUT TREE at (3, 0). Only a Pokémon that knows CUT can remove it.");
+    expect(wall.targets[0].label).toBe("door at (5, 0), 5 east, no seen way there yet: a Gym, not taken");
+  });
+
   test("a TM in the Bag or another move on a Pokémon changes nothing on the map", () => {
     const view = atlasExtract({ ...overworld(blocks, [], { x: 0, y: 0 }), bag: withItem("TM39"), party: knowing("TACKLE") });
     expect(rows(view.lines)).toEqual(["y= 0  @..###"]);

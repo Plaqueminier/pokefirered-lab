@@ -198,6 +198,18 @@ export class MenuDriver {
     return moved.status === "done" ? this.input(Keys.A) : moved;
   }
 
+  useFieldMove(): Outcome {
+    if (this.tap(Keys.A)) return BATTLE_INTERRUPTION;
+    for (let screens = 0; screens < MAX_TEXT_PRESSES; screens++) {
+      const { kind } = this.game.waitingFor();
+      if (kind === "walk") return DONE;
+      const outcome = kind === "choice" ? this.choose("YES") : this.readText();
+      if (outcome.status === "interrupted") return { status: "interrupted", reason: outcome.reason };
+      if (outcome.status !== "done") throw new Error(`the script of the obstacle stops: ${outcome.reason}`);
+    }
+    throw new Error(`the script of the obstacle still runs after ${MAX_TEXT_PRESSES} screens`);
+  }
+
   fight(move: number): Outcome & Partial<Texts> {
     const { game } = this;
     const { player } = game.requireBattle();

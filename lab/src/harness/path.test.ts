@@ -5,7 +5,7 @@ import { type Cell, destinationOf, findRoute, reached, whyNoRoute, type Leg, typ
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
   const height = rows.length;
-  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], ...more };
+  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], removable: [], ...more };
 }
 
 function person(x: number, y: number): RouteMap["people"][number] {
@@ -74,6 +74,13 @@ describe("destinationOf", () => {
 describe("findRoute on one map", () => {
   test("walks in a straight line on open cells", () => {
     expect(path(map("A", ["....."]), { x: 0, y: 0 }, { x: 3, y: 0 })).toEqual(["east", "east", "east"]);
+  });
+
+  test("takes the open way when the detour is short, and crosses a Fixed obstacle when the detour is too long", () => {
+    const around = (rows: number) => map("A", ["..#..", ...Array.from({ length: rows }, () => ".###."), "....."], { removable: [{ x: 2, y: 0 }] });
+    const kinds = (m: RouteMap) => findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0].moves.map((move) => move.kind);
+    expect(kinds(around(1))).not.toContain("remove");
+    expect(kinds(around(40))).toEqual(["walk", "remove", "walk", "walk"]);
   });
 
   test("goes around a wall by the shortest way", () => {
