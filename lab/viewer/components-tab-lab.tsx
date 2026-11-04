@@ -476,7 +476,7 @@ const RECORD_STATES = {
     label: "A Run on a Plan provider",
     replay: {
       ...DEMO_REPLAY,
-      model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, id: "haiku", provider: "claude-code" as const, limit: { unit: "tokens" as const, amount: 1_000_000 }, spent: { unit: "tokens" as const, amount: 412_000 }, totalSpent: { unit: "tokens" as const, amount: 980_000 } },
+      model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, id: "claude-haiku-5-5", provider: "claude-code" as const, limit: { unit: "tokens" as const, amount: 1_000_000 }, spent: { unit: "tokens" as const, amount: 412_000 }, totalSpent: { unit: "tokens" as const, amount: 980_000 } },
     },
   },
   ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, spent: { unit: "dollars" as const, amount: 10.02 } } } },

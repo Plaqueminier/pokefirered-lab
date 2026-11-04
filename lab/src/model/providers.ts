@@ -14,6 +14,8 @@ const EXIT_DRAIN_MS = 1000;
 const KILL_GRACE_MS = 2000;
 // Each tool bills an API key when it finds one, so the subscription pays only with no key in its environment.
 const API_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY"];
+// The claude command changes the model of an alias at a new release, so a Run keeps a full id. Run records of before this change hold an alias: these ids are what the alias gave at their date, so an Extended Run stays on the same model.
+const CLAUDE_MODELS: Record<string, string> = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", fable: "claude-fable-5-1" };
 const CODEX = join(import.meta.dir, "../../node_modules/.bin/codex");
 // The docs of the tools give no format for a quota error, so only its text can tell it.
 const QUOTA_ERROR = /(usage|session|weekly|hourly|5-hour|plan)[ _-]?limit|hit your .*limit|quota/i;
@@ -56,7 +58,8 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   if (temperature !== null && isPlanProvider(provider)) throw new Error(`the provider ${provider} has no temperature`);
   const starter = STARTERS.find((name) => name === (given.starter ?? DEFAULT_STARTER));
   if (!starter) throw new Error(`the starter must be ${STARTERS.join(", ")}, not "${given.starter}"`);
-  const choice = { id: given.id || DEFAULT_MODELS[provider], reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true };
+  const id = given.id || DEFAULT_MODELS[provider];
+  const choice = { id: (provider === "claude-code" && CLAUDE_MODELS[id]) || id, reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true };
   if (isPlanProvider(provider)) {
     if (given.costLimit !== undefined) throw new Error(`the provider ${provider} has a token limit, not a cost limit`);
     const tokenLimit = given.tokenLimit ?? DEFAULT_TOKEN_LIMIT;

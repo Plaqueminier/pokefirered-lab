@@ -32,6 +32,22 @@ describe("modelSettings of grok", () => {
   });
 });
 
+describe("modelSettings of claude-code", () => {
+  test("it keeps a full model id, so that a later release of the claude command does not change the model of a Run", () => {
+    const idOf = (id?: string) => modelSettings({ provider: "claude-code", id }, {}).id;
+    expect(idOf()).toBe("claude-haiku-5-5");
+    expect(idOf("haiku")).toBe("claude-haiku-5-5");
+    expect(idOf("sonnet")).toBe("claude-sonnet-5-5");
+    expect(idOf("opus")).toBe("claude-opus-5-5");
+    expect(idOf("fable")).toBe("claude-fable-5-1");
+    expect(idOf("claude-sonnet-6-0")).toBe("claude-sonnet-6-0");
+  });
+
+  test("another provider keeps the id that it gets", () => {
+    expect(modelSettings({ id: "sonnet" }, {}).id).toBe("sonnet");
+  });
+});
+
 describe("the client of grok", () => {
   let bin = "";
   const savedPath = process.env.PATH;

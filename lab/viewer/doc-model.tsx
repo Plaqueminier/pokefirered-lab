@@ -89,7 +89,7 @@ export function ProvidersPage() {
     >
       <div class={GRID3}>
         <DocCard title="openrouter" lines={["the default model: `deepseek/deepseek-v4.1-flash`", "bills each call", "limit: a cost in dollars"]} />
-        <DocCard title="claude-code" lines={["the default model: `haiku`", "uses your Claude subscription", "limit: a number of tokens"]} />
+        <DocCard title="claude-code" lines={["the default model: `claude-haiku-5-5`", "uses your Claude subscription", "limit: a number of tokens"]} />
         <DocCard title="codex" lines={["the default model: `gpt-5.6-luna`", "uses your ChatGPT subscription", "limit: a number of tokens"]} />
         <DocCard title="grok" lines={["the default model: `grok-4.7`", "uses your grok.com login", "limit: a number of tokens"]} />
       </div>

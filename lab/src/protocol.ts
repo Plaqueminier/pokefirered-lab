@@ -52,7 +52,7 @@ export function hasNoReasoningOff(provider: ModelProvider): boolean {
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 
-export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "haiku", codex: "gpt-5.6-luna", grok: "grok-4.7" };
+export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "claude-haiku-5-5", codex: "gpt-5.6-luna", grok: "grok-4.7" };
 
 export const MILLION = 1_000_000;
 
