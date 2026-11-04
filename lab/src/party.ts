@@ -27,6 +27,7 @@ const FIXED_DAMAGE_POWER = 1;
 const MAX_STRING = 256;
 // sHMMoves (pokemon.c): the learn-move flow refuses to forget them.
 const HM_MOVES = new Set(["CUT", "FLY", "SURF", "STRENGTH", "FLASH", "ROCK SMASH", "WATERFALL", "DIVE"]);
+const TMHM_WORD_BITS = 32;
 const STAT_NAMES = ["attack", "defense", "speed", "spAttack", "spDefense"] as const;
 // The order of STAT_ATK to STAT_EVASION (constants/pokemon.h).
 export const STAGE_NAMES = [...STAT_NAMES, "accuracy", "evasion"] as const;
@@ -106,6 +107,14 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       moves,
     };
   });
+}
+
+export function canLearnTmHm(mem: Memory, slot: number, tm: number): boolean {
+  const box = mem.global("gPlayerParty").at(slot).field("box");
+  const personality = box.field("personality").int();
+  const { substructs, growth } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
+  const word = mem.global("sTMHMLearnsets").at(substructs.getUint16(growth, true)).at(Math.floor(tm / TMHM_WORD_BITS)).int();
+  return ((word >>> (tm % TMHM_WORD_BITS)) & 1) === 1;
 }
 
 export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number };

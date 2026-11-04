@@ -1,6 +1,6 @@
 import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
 import { type BattleMenu, struggles } from "../battle";
-import type { Game } from "../game";
+import type { Game, WaitingFor } from "../game";
 import type { NamingScreen, WordScreen } from "../menus";
 import { isHmMove, PARTY_SIZE } from "../party";
 import { freeBox, IN_BOX_COLUMNS, type StorageScreen } from "../pc";
@@ -25,6 +25,7 @@ const MAX_CLOSE_PRESSES = 4;
 const MAX_TEXT_PRESSES = 256;
 const START_MENU_POKEMON = "POKéMON";
 const START_MENU_BAG = "BAG";
+const TM_CASE_ITEM = "TM CASE";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const CURSOR_COLUMN = 1;
@@ -360,7 +361,7 @@ export class MenuDriver {
     return pressed.status === "done" ? this.readText() : withText(pressed);
   }
 
-  forget(move: string): Outcome {
+  forget(move: string): Outcome & Partial<Texts> {
     const { game } = this;
     const learn = game.waitingFor();
     if (learn.kind !== "learnMove") throw new Error("forget is available only at a learnMove");
@@ -370,18 +371,90 @@ export class MenuDriver {
     if (isHmMove(move)) return impossible(`${move} is an HM move, and HM moves cannot be forgotten now`);
     const yes = this.answerLearnMove(YES);
     if (yes.status !== "done") return yes;
-    const shown = this.tapUntil(Keys.A, () => game.forgetMoveCursor() !== null, "the moves of the Pokémon");
+    const shown = this.showForgetMoves();
     if (shown.status !== "done") return shown;
     const moved = this.moveMenuCursor(slot, () => game.forgetMoveCursor());
-    return moved.status === "done" ? this.input(Keys.A) : moved;
+    return moved.status === "done" ? this.endLearnMove(learn) : moved;
   }
 
-  keep(): Outcome {
+  keep(): Outcome & Partial<Texts> {
+    const learn = this.game.waitingFor();
+    if (learn.kind !== "learnMove") throw new Error("keep is available only at a learnMove");
     const no = this.answerLearnMove(NO);
     if (no.status !== "done") return no;
     const asked = this.tapUntil(Keys.A, () => this.game.learnMoveBox()?.question === "stop", "the question to stop learning the move");
     if (asked.status !== "done") return asked;
-    return this.input(Keys.A);
+    return this.endLearnMove(learn);
+  }
+
+  teach(item: string, on: number): Outcome & Partial<Texts> {
+    const { game } = this;
+    const teachable = game.teachables().find((t) => t.item === item);
+    if (!teachable) return impossible(`there is no ${item} in the TM Case`);
+    const missing = this.missingPokemon(on);
+    if (missing) return missing;
+    const { nickname } = game.party()[on];
+    const move = teachable.move.name;
+    if (teachable.knowing.includes(on)) return impossible(`${nickname} already knows ${move}`);
+    if (!teachable.able.includes(on)) return impossible(`${nickname} cannot learn ${move}`);
+    const chosen = this.chooseTeach(item, on);
+    return chosen.status === "done" ? this.finishTeach(on, move) : chosen;
+  }
+
+  private chooseTeach(item: string, on: number): Outcome {
+    const { game } = this;
+    const tmCase = game.findInBag(TM_CASE_ITEM);
+    if (!tmCase) return impossible(`there is no ${TM_CASE_ITEM} in the Bag`);
+    const opened = this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list");
+    if (opened.status !== "done") return opened;
+    const context = this.pickItem(tmCase, undefined, true);
+    if (context.status !== "done") return context;
+    const list = this.menuInput(Keys.A, () => game.tmCaseRow() !== null);
+    if (list.status !== "done") return list;
+    // InitTMCase sorts the pocket when it opens, with the HMs first: the row of an item changes.
+    const place = game.findInBag(item);
+    if (!place) return impossible(`there is no ${item} in the TM Case`);
+    const row = this.moveMenuCursor(place.row, () => game.tmCaseRow());
+    if (row.status !== "done") return row;
+    const itemMenu = this.menuInput(Keys.A, () => game.tmCaseItemMenu());
+    if (itemMenu.status !== "done") return itemMenu;
+    const party = this.menuInput(Keys.A, () => this.pickMenu() !== null);
+    if (party.status !== "done") return party;
+    const moved = this.moveMenuCursor(on, () => this.pickMenu()?.cursor ?? null);
+    return moved.status === "done" ? this.pressUntilRead(Keys.A) : moved;
+  }
+
+  private finishTeach(slot: number, move: string): Outcome & Partial<Texts> {
+    const { game } = this;
+    // B cancels the scene of a TM, and A only passes its texts (pokemon_special_anim.c).
+    const after = this.untilReady(
+      () => game.tmCaseRow() !== null || game.learnMoveBox() !== null,
+      () => {
+        if (game.teachSceneRuns() || game.waitingTexts().length > 0) this.tap(Keys.A);
+      },
+    );
+    if (after.status !== "done" || game.learnMoveBox()) return after;
+    const bag = this.menuInput(Keys.B, () => game.bagMenu()?.screen === "list");
+    if (bag.status !== "done") return withText(bag);
+    const closed = this.closeStartMenu();
+    if (closed.status !== "done") return withText(closed);
+    const { nickname, moves } = game.party()[slot];
+    return withText(DONE, [moves.some((known) => known.name === move) ? `${nickname} learned ${move}!` : `${nickname} did not learn the move ${move}.`]);
+  }
+
+  private showForgetMoves(): Outcome {
+    const { game } = this;
+    const moves = () => game.forgetMoveCursor() !== null;
+    const screen = "the moves of the Pokémon";
+    if (game.mode() === "battle") return this.tapUntil(Keys.A, moves, screen);
+    const text = this.tapUntil(Keys.A, () => game.waitingTexts().length > 0, "the question of the move to forget");
+    return text.status === "done" ? this.tapUntil(Keys.A, moves, screen) : text;
+  }
+
+  private endLearnMove({ slot, move }: Extract<WaitingFor, { kind: "learnMove" }>): Outcome & Partial<Texts> {
+    if (this.game.mode() === "battle") return this.input(Keys.A);
+    const pressed = this.pressUntilRead(Keys.A);
+    return pressed.status === "done" ? this.finishTeach(slot, move.name) : pressed;
   }
 
   private answerLearnMove(target: number): Outcome {

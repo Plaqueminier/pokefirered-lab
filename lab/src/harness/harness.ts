@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { type BagPocket, battleItems, depositableItems, sellableItems, walkItems } from "../bag";
+import { type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import {
@@ -56,7 +56,7 @@ const MAX_LEGS = 64;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "interact", "swap", "use"],
+  walk: ["goTo", "interact", "swap", "use", "teach"],
   choice: ["choose"],
   text: ["readText"],
   battleAction: ["fight", "switch", "run", "use"],
@@ -83,7 +83,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; repelActive: boolean } | { mode: "battle"; battle: BattleState } | { mode: "naming" });
+  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; repelActive: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -112,6 +112,7 @@ export type MacroAction =
   | { name: "switch"; slot: number }
   | { name: "send"; slot: number }
   | { name: "swap"; first: number; second: number }
+  | { name: "teach"; item: string; on: number }
   | { name: "run" }
   | { name: "use"; item: string; on?: number }
   | { name: "buy"; item: string; quantity: number }
@@ -126,8 +127,8 @@ export type MacroAction =
 
 export type AvailableAction =
   | { name: "goTo" | "swap" | "name" }
-  | { name: "use" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "buy" | "sell" | "withdraw" | "deposit" }>;
+  | { name: "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
+  | Exclude<MacroAction, { name: "goTo" | "swap" | "name" | "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -470,9 +471,10 @@ export class Harness {
     if (base.waitingFor.kind === "naming") return { ...base, mode: "naming" };
     const battle = game.battle();
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
+    if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, trainer }): Person => ({ localId, x, y, graphics, loaded, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), player, grid, people, boxes: game.boxMons(), repelActive: game.repelActive() };
+    return { ...base, mode: "overworld", map: game.map(), player, grid, people, boxes: game.boxMons(), repelActive: game.repelActive(), teachables: game.teachables() };
   }
 
   availableActions(): AvailableAction[] {
@@ -490,6 +492,8 @@ export class Harness {
           return waiting.kind === "learnMove" ? game.party()[waiting.slot].moves.flatMap((move) => (isHmMove(move.name) ? [] : [{ name, move: move.name }])) : [];
         case "swap":
           return game.party().length > 1 ? [{ name }] : [];
+        case "teach":
+          return game.teachables().map(({ item }) => ({ name, item }));
         case "switch":
         case "send":
           return sendableSlots(game.partyOnScreen(), game.requireBattle().player.partyIndex).map((slot) => ({ name, slot }));
@@ -634,12 +638,12 @@ export class Harness {
     return this.act<Texts>({ name: "name", text }, () => this.#menus.name(text), { text: [] });
   }
 
-  async forget(move: string): Promise<ActionResult> {
-    return this.act({ name: "forget", move }, () => this.#menus.forget(move));
+  async forget(move: string): Promise<TextResult> {
+    return this.act<Texts>({ name: "forget", move }, () => this.#menus.forget(move), { text: [] });
   }
 
-  async keep(): Promise<ActionResult> {
-    return this.act({ name: "keep" }, () => this.#menus.keep());
+  async keep(): Promise<TextResult> {
+    return this.act<Texts>({ name: "keep" }, () => this.#menus.keep(), { text: [] });
   }
 
   async switch(slot: number): Promise<TextResult> {
@@ -652,6 +656,10 @@ export class Harness {
 
   async swap(first: number, second: number): Promise<ActionResult> {
     return this.act({ name: "swap", first, second }, () => this.#menus.swap(first, second));
+  }
+
+  async teach(item: string, on: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "teach", item, on }, () => this.#menus.teach(item, on), { text: [] });
   }
 
   /** Runs a Macro-action or a Raw input from its description. */
@@ -673,6 +681,8 @@ export class Harness {
         return this.send(action.slot);
       case "swap":
         return this.swap(action.first, action.second);
+      case "teach":
+        return this.teach(action.item, action.on);
       case "run":
         return this.run();
       case "use":

@@ -1,5 +1,5 @@
 import { nicknamedSpecies } from "../menus";
-import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, walkItems } from "../bag";
+import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, type Teachable, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange, NodeSentence } from "../harness/record";
 import { type BoxMon, type PartyMon, type PartyMove, sendableSlots } from "../party";
@@ -61,7 +61,7 @@ type BoxAction = Extract<MacroAction, { name: "depositPokemon" | "withdrawPokemo
 
 type ActionVerb = Exclude<ModelAction["name"], BoxAction["name"]>;
 
-const NAMES = { go: 0, goTo: 0, swap: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
+const NAMES = { go: 0, goTo: 0, swap: 0, teach: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ActionVerb[];
@@ -80,7 +80,7 @@ export type Asked = { party: PartyMon[] } & (
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ActionVerb[]> = {
-  walk: ["go", "goTo", "swap", "use", "viewAtlas", "zoom", "press"],
+  walk: ["go", "goTo", "swap", "use", "teach", "viewAtlas", "zoom", "press"],
   choice: ["choose", "zoom"],
   battleAction: ["fight", "switch", "run", "use", "zoom"],
   battleMove: ["fight", "zoom", "press"],
@@ -104,6 +104,8 @@ export function actionsOf(asked: Asked): ActionVerb[] {
         return sendable(asked).length > 0;
       case "use":
         return "items" in asked && asked.items.length > 0;
+      case "teach":
+        return asked.kind === "walk" && asked.overworld.teachables.length > 0;
       case "sell":
         return asked.kind === "shopMenu" && asked.sellable.length > 0;
       case "withdraw":
@@ -136,6 +138,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
     if (waitingFor.kind === "pokemonPc") return { kind: "pokemonPc", party, boxes: observation.boxes };
     return waitingFor.kind === "choice" ? { kind: "choice", party, overworld: observation, options: waitingFor.options, storage: waitingFor.storage } : null;
   }
+  if (observation.mode === "menu") return null;
   const { battle } = observation;
   if (waitingFor.kind === "choice") return { kind: "choice", party, battle, options: waitingFor.options };
   const { kind } = waitingFor;
@@ -187,6 +190,7 @@ type Written =
   | { name: "go"; target: string }
   | { name: "switch" | "send" | "swap"; pokemon: string }
   | { name: "use"; item: string; on?: string }
+  | { name: "teach"; item: string; on: string }
   | { name: QuantityName; item: string; quantity: number }
   | { name: "forget"; move: string };
 type ParsedAction = Exclude<ModelAction, { name: Written["name"] | BoxAction["name"] }> | Written;
@@ -225,6 +229,8 @@ export function readAction(text: string, asked: Asked): ModelAction {
     }
     case "use":
       return readUse(action.item, action.on, asked);
+    case "teach":
+      return readTeach(action.item, action.on, asked);
     case "buy":
     case "sell":
     case "withdraw":
@@ -243,8 +249,9 @@ export function readAction(text: string, asked: Asked): ModelAction {
 function noStartMenu(asked: Asked): string {
   const hint = "there is no Start menu: write use <item> to use an item of your Bag";
   if (!("items" in asked)) return hint;
-  if (asked.items.length > 0) return `${hint}; the items that work now: ${asked.items.map((i) => i.name).join(", ")}`;
-  return `${hint}; ${asked.bagEmpty ? "your Bag is empty" : "your Bag has no item that works now"}`;
+  const teach = asked.kind === "walk" && asked.overworld.teachables.length > 0 ? "; write teach <TM or HM> on <Pokémon> for a TM or an HM" : "";
+  if (asked.items.length > 0) return `${hint}; the items that work now: ${asked.items.map((i) => i.name).join(", ")}${teach}`;
+  return `${hint}; ${asked.bagEmpty ? "your Bag is empty" : "your Bag has no item that works now"}${teach}`;
 }
 
 function forgotten(move: string, asked: Asked): string {
@@ -259,6 +266,8 @@ function readUse(name: string, writtenOn: string | undefined, asked: Asked): Mod
   const items = "items" in asked ? asked.items : [];
   const [itemName, on] = writtenOn === undefined ? withoutOn(name, items) : [name, writtenOn];
   const item = items.find((i) => plain(i.name) === plain(itemName));
+  const tm = asked.kind === "walk" ? asked.overworld.teachables.find((t) => plain(t.item) === plain(itemName)) : undefined;
+  if (tm) throw new Error(`${tm.item} is a TM or an HM: write teach ${tm.item} on <Pokémon>`);
   if (!item) throw new Error(`"${quoted(name)}" is not an item that works now: ${items.map((i) => i.name).join(", ") || "none"}`);
   if (itemUse(item, asked) === "alone") {
     if (on !== undefined) throw new Error(`${item.name} does not work on a Pokémon: use ${item.name}`);
@@ -266,6 +275,17 @@ function readUse(name: string, writtenOn: string | undefined, asked: Asked): Mod
   }
   if (on === undefined) throw new Error(`${item.name} works on a Pokémon: use ${item.name} on <Pokémon>`);
   return { name: "use", item: item.name, on: partySlot(on, asked.party) };
+}
+
+function readTeach(name: string, on: string, asked: Asked): ModelAction {
+  const teachables = asked.kind === "walk" ? asked.overworld.teachables : [];
+  const found = teachables.find((t) => plain(t.item) === plain(name) || plain(teachableName(t)) === plain(name));
+  if (!found) throw new Error(`"${quoted(name)}" is not a TM or an HM of your Bag: ${teachables.map(teachableName).join(", ")}`);
+  return { name: "teach", item: found.item, on: partySlot(on, asked.party) };
+}
+
+export function teachableName({ item, move }: Teachable): string {
+  return `${item} (${move.name})`;
 }
 
 function withoutOn(written: string, items: BagItem[]): [item: string, on: string | undefined] {
@@ -305,7 +325,7 @@ function plain(text: string): string {
 }
 
 // The separator of the arguments in the form action(a, b) or action a, b, as a written action: a space when the action is not here. A null keeps the text as one argument.
-const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["name", null], ["choose", null]]);
+const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["teach", " on "], ["name", null], ["choose", null]]);
 
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/) ?? (action.includes(",") ? action.match(/^(\w+)\s+(.*)$/) : null);
@@ -326,6 +346,7 @@ const FORMS: Record<ActionVerb, [form: string, example: string]> = {
   send: ["send <Pokémon>", "send 2"],
   run: ["run", "run"],
   use: ["use <item> [on <Pokémon>]", "use POTION on 1"],
+  teach: ["teach <TM or HM> on <Pokémon>", "teach TM13 on 1"],
   buy: ["buy <item> <quantity>", "buy POTION 2"],
   sell: ["sell <item> <quantity>", "sell POTION 2"],
   withdraw: ["withdraw <item> [quantity]", "withdraw POTION 2"],
@@ -356,6 +377,7 @@ function parse(written: string): ParsedAction | null {
   const action = withSpaces(written);
   let m: RegExpMatchArray | null;
   if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
+  if ((m = action.match(/^teach\s+(.+?)\s+on\s+(.+)$/i))) return { name: "teach", item: m[1], on: m[2] };
   if ((m = action.match(/^(buy|sell|withdraw|deposit)\s+(.+?)(?:\s+(\d+))?$/i))) {
     const name = m[1].toLowerCase() as QuantityName;
     // The quantity is 1 when a withdraw or a deposit does not give it. A buy or a sell must give it.

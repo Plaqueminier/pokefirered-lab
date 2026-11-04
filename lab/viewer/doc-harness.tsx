@@ -50,6 +50,12 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     cards: { walk: "a medicine, REPEL, ESCAPE ROPE", battle: "a Potion, a Poké Ball" },
   },
   {
+    form: "teach(item, on)",
+    when: "walk",
+    effect: "Teaches the move of a TM or an HM of the Bag to a Pokémon, through the TM Case and the party menu of the game, and returns to the walk. A TM leaves the Bag, and an HM stays. With 4 moves, it stops at the learn-move question of the game. Impossible for a Pokémon that cannot learn the move or that knows it.",
+    cards: { walk: "the move of a TM or an HM" },
+  },
+  {
     form: "buy(item, quantity)",
     when: "shop menu of a Poké Mart",
     effect: "Selects BUY, the item, the quantity and YES, then returns to the shop menu. Impossible when the money does not pay the items.",
@@ -89,11 +95,11 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   },
   {
     form: "forget(move)",
-    when: "learn a move: “Delete a move to make room for …?”, after a level up in a battle or an evolution",
-    effect: "Selects YES and the move on the summary screen: the Pokémon forgets it and learns the new move. Impossible for a move or a place that the Pokémon does not know, or an HM move.",
+    when: "learn a move: “Delete a move to make room for …?”, after a level up in a battle, an evolution, or a TM or an HM",
+    effect: "Selects YES and the move on the summary screen: the Pokémon forgets it and learns the new move. After a TM or an HM, it also returns to the walk. Impossible for a move or a place that the Pokémon does not know, or an HM move.",
     cards: { learn: "forget it and learn the new move" },
   },
-  { form: "keep()", when: "learn a move", effect: "Selects NO, then YES at “Stop learning …?”: the Pokémon keeps its 4 moves.", cards: { learn: "keep the 4 moves" } },
+  { form: "keep()", when: "learn a move", effect: "Selects NO, then YES at “Stop learning …?”: the Pokémon keeps its 4 moves. After a TM or an HM, the item stays in the Bag, and the action returns to the walk.", cards: { learn: "keep the 4 moves" } },
 ];
 
 export const RAW_INPUT_FORM = "press(button)";
@@ -115,7 +121,7 @@ export function MacroPage() {
         ["Results", RESULT_ROWS.map(([status, { text }]) => `\`${status}\` ${text}`).join(" · ")],
         [
           "`observe()`",
-          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place) and whether a REPEL is active. The Atlas gives the rival with its name from the save.",
+          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place) whether a REPEL is active, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save.",
         ],
         [
           "Battle facts",
@@ -150,7 +156,7 @@ export function MacroPage() {
       </div>
       <Block label="👁️ observe()" sub="What the game waits for, and the state of the game.">
         <div class={GRID3}>
-          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes, whether a REPEL is active"]} />
+          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes, whether a REPEL is active, each TM and HM of the Bag with who can learn it"]} />
           <DocCard title="Party and Bag" lines={["the party as the Summary screen shows it", "the Bag (quantity, effect, price) and the money"]} />
           <DocCard title="Battle" lines={["the enemy as the player sees it, with its types and states", "each move: effect, STAB, damage estimate"]} />
         </div>
@@ -310,13 +316,13 @@ export function NotYetPage() {
     <Page
       lead="Here the Harness sees a busy game: no Decision point, no action."
       details={[
-        ["Menus", "the mailbox of the PC, the Bag outside use, sell and deposit: the Harness sees a busy game. At the Pokémon PC, the Harness does not move a Pokémon between boxes or release a Pokémon."],
-        ["Learn a move", "a level up outside a battle (Rare Candy), a TM and a move tutor: the question to learn a move is not a Decision point there."],
+        ["Menus", "the mailbox of the PC, the Bag outside use, teach, sell and deposit: the Harness sees a busy game. At the Pokémon PC, the Harness does not move a Pokémon between boxes or release a Pokémon."],
+        ["Learn a move", "a level up outside a battle (Rare Candy) and a move tutor: the question to learn a move is not a Decision point there."],
       ]}
     >
       <div class={GRID2}>
-        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the mailbox of the PC", "the Bag outside use, sell and deposit", "a move between boxes or a release at the Pokémon PC"]} />
-        <DocCard icon={TriangleAlert} tone="warn" title="Learn a move" lines={["a level up outside a battle (Rare Candy)", "a TM and a move tutor"]} />
+        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the mailbox of the PC", "the Bag outside use, teach, sell and deposit", "a move between boxes or a release at the Pokémon PC"]} />
+        <DocCard icon={TriangleAlert} tone="warn" title="Learn a move" lines={["a level up outside a battle (Rare Candy)", "a move tutor"]} />
       </div>
     </Page>
   );

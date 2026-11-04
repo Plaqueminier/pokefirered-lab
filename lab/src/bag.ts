@@ -1,4 +1,5 @@
 import type { Memory, Ref } from "./memory";
+import { canLearnTmHm, newMove, type PartyMon, type PartyMove } from "./party";
 import { activeTask, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -14,6 +15,8 @@ const FIRST_ITEM_POCKET = 1;
 export const BATTLE_POCKETS = 3;
 export const POKE_BALLS_POCKET = POCKET_NAMES.indexOf("POKé BALLS");
 export const ITEMS_POCKET = POCKET_NAMES.indexOf("ITEMS");
+const TM_CASE_POCKET = POCKET_NAMES.indexOf("TM CASE");
+const ITEM_TM01 = 289;
 
 export type PocketName = (typeof POCKET_NAMES)[number];
 
@@ -28,6 +31,28 @@ export type BagPocket = { pocket: PocketName; items: BagItem[] };
 export type BagPlace = { item: number; pocket: number; row: number; price: number } & Pick<BagItem, "battle" | "walk">;
 
 export type BagMenu = { screen: "list" | "context"; pocket: number; row: number; menuCursor: number };
+
+export type Teachable = { item: string; move: PartyMove; able: number[]; knowing: number[] };
+
+export function readTeachables(mem: Memory, decode: Decode, party: PartyMon[]): Teachable[] {
+  return pocketSlots(mem)[TM_CASE_POCKET].map(({ item }) => {
+    const tm = item - ITEM_TM01;
+    const move = newMove(mem, decode, mem.global("sTMHMMoves").at(tm).int());
+    const slots = [...party.keys()];
+    const knowing = slots.filter((slot) => party[slot].moves.some((known) => known.name === move.name));
+    return { item: itemName(mem, item, decode), move, able: slots.filter((slot) => !knowing.includes(slot) && canLearnTmHm(mem, slot, tm)), knowing };
+  });
+}
+
+export function tmCaseRow(mem: Memory): number | null {
+  if (functionName(mem.symbols, mem.global("gMain").field("callback2").pointer()) !== "CB2_Idle" || mem.global("gPaletteFade").field("active").int() || !activeTask(mem, "Task_HandleListInput")) return null;
+  const list = mem.global("sTMCaseStaticResources");
+  return list.field("scrollOffset").int() + list.field("selectedRow").int();
+}
+
+export function tmCaseItemMenu(mem: Memory): boolean {
+  return activeTask(mem, "Task_ContextMenu_HandleInput") !== null;
+}
 
 export function readBag(mem: Memory, decode: Decode): BagPocket[] {
   return pocketSlots(mem).flatMap((slots, pocket) => {

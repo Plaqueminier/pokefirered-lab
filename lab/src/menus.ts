@@ -1,9 +1,14 @@
+import type { LearnMoveBox } from "./battle";
 import type { Memory } from "./memory";
 import { nameAt } from "./party";
 import { activeTask, type Choice, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
 const PARTY_ACTION_SWITCH = 8;
+// party_menu.c: #define learnMoveId data[0], #define learnMoveMethod data[1], and the first of its enum is LEARN_VIA_TMHM.
+const PARTY_LEARN_MOVE_ID = 0;
+const PARTY_LEARN_MOVE_METHOD = 1;
+const LEARN_VIA_TMHM = 0;
 const MAX_MENU_TEXT = 32;
 // tMultichoiceId (script_menu.c).
 const MULTICHOICE_ID = 7;
@@ -115,6 +120,13 @@ function multichoiceOptions(mem: Memory, id: number, decode: Decode): string[] {
   const menu = mem.global("sMultichoiceLists").at(id);
   const list = menu.field("list");
   return Array.from({ length: menu.field("count").int() }, (_, i) => menuText(mem, list.at(i).field("text").pointer(), decode));
+}
+
+export function partyLearnMoveBox(mem: Memory): LearnMoveBox | null {
+  const question = activeTask(mem, "Task_HandleReplaceMoveYesNoInput") ? "learn" : activeTask(mem, "Task_HandleStopLearningMoveYesNoInput") ? "stop" : null;
+  const menu = mem.global("gPartyMenu");
+  if (!question || menu.field("data").at(PARTY_LEARN_MOVE_METHOD).int() !== LEARN_VIA_TMHM) return null;
+  return { question, cursor: mem.global("sMenu").field("cursorPos").int(), slot: menu.field("slotId").int(), move: menu.field("data").at(PARTY_LEARN_MOVE_ID).int() };
 }
 
 export function partyMenu(mem: Memory, decode: Decode): PartyMenu | null {

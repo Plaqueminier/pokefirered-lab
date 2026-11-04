@@ -48,6 +48,13 @@ function readableWorld({ atlas, bag, party }: WorldFacts): { atlas: Atlas; hasMo
   return { atlas: { ...atlas, maps: atlas.maps.map((map) => ({ ...map, obstacles: map.obstacles.filter((o) => hasMove(o.move)) })) }, hasMove };
 }
 
+/** The current map has what this move works on: FLASH a Dark map, SURF an edge with water, CUT, ROCK SMASH and STRENGTH their Fixed obstacle. */
+export function moveObstacleHere(move: string, { grid, atlas, map }: Overworld): boolean {
+  if (move === "FLASH") return grid.dark;
+  const here = mapNamed(atlas, map.name);
+  return move === "SURF" ? here.edges.some((edge) => edge.blocked === "water") : here.obstacles.some((obstacle) => obstacle.move === move);
+}
+
 export function atlasExtract(overworld: Overworld): AtlasView {
   const { atlas, hasMove } = readableWorld(overworld);
   const here = mapNamed(atlas, overworld.map.name);

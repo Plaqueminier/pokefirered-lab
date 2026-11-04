@@ -253,3 +253,15 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     A test on the real game shows the end of a REPEL in a walk: `goTo` returns `interrupted` with the reason `script`, and this is not a Decision point, so the Bot reads "REPEL's effect wore off…" with `readText`. The next prompt shows this text in the last decisions. No Run has shown this with a model.
 
     When this change was made, no Run had played version 22, so the effect on the model was not known. No Run has played version 21 either, and version 21 changed the PC, so a change in a Run can have more than one cause. The first checks are whether the model buys and uses a repel and in which map, the wild battles and the battle time in Mt. Moon, the item balls taken and left and whether the left ones had a way, and the level of the team at the exit of Mt. Moon, because fewer battles give less training.
+
+68. The model bot goes to version 24: it can teach a TM or an HM (issue #78). Brock gives TM39 at badge 1, and until now no Run could use it, because `use` does not cover the TM CASE pocket.
+
+    A new Macro-action `teach(item, on)` goes through the TM Case and the party menu of the game, and returns to the walk. The Harness refuses a Pokémon that cannot learn the move or that knows it, with the reason, before any frame. A Pokémon with 4 moves stops at the learn-move question of the game. This Decision point was only in a battle before, so the Observation has a new mode: `menu`.
+
+    With a TM or an HM in the Bag, each walk shows one line for `teach`. A Review turn or a Reflection turn at a walk also shows each TM and HM, its move and who can learn it, and asks if it helps the Objective. The action is at each walk, because a model in front of an obstacle must not wait for 20 decisions.
+
+    A generic hint gives one line when the Bag has a TM or an HM whose Field move has its obstacle on the current map: FLASH a Dark map, CUT a cut tree, ROCK SMASH a rock, STRENGTH a boulder, SURF an edge with water. The prompt never tells where to find a TM or an HM.
+
+    The tests found one fact: the TM Case sorts its pocket when it opens, with the HMs first. So the row of an item is known only after it opens.
+
+    To use a Field move is not in this step: see #79 and #74. When this change was made, no Run had played version 24. The first check is whether a model teaches TM39 after the badge, and to which Pokémon.

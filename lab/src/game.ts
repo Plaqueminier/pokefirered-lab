@@ -1,7 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag } from "./bag";
+import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag, readTeachables, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   type Battle,
   type BattleMenu,
@@ -22,7 +22,7 @@ import { readTypeChart, type TypeChart } from "./battle-facts";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
-import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
+import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
 import { type BoxMon, nameAt, newMove, type PartyMon, type PartyMove, readBoxMons, readParty } from "./party";
 import { currentBox, itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, pokemonPcCursor, storageScreen, type StorageScreen, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
@@ -154,6 +154,7 @@ export type MapGrid = {
   /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), . open. */
   kinds: string;
   outside: boolean;
+  dark: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
   /** Metatile behavior id per cell; names in behaviorNames. */
@@ -367,7 +368,7 @@ export class Game {
     if (naming) return namingWaitingFor(naming);
     const { mode, callback1 } = this.context();
     if (mode === "battle") return this.battleWaitingFor();
-    if (mode !== "overworld") return { kind: "busy" };
+    if (mode !== "overworld") return this.learnMoveWait() ?? { kind: "busy" };
     const list = this.buyList();
     if (list) return { kind: "shopMenu", items: list.items, screen: "buyList" };
     const shop = this.shopMenu();
@@ -433,8 +434,9 @@ export class Game {
     return box?.question === "learn" ? { kind: "learnMove", slot: box.slot, move: newMove(this.mem, this.decode, box.move) } : null;
   }
 
+  // Outside a battle, gBattlescriptCurrInstr keeps its old value, so the battle read is false there.
   learnMoveBox(): LearnMoveBox | null {
-    return learnMoveBox(this.mem);
+    return this.context().mode === "battle" ? learnMoveBox(this.mem) : partyLearnMoveBox(this.mem);
   }
 
   forgetMoveCursor(): number | null {
@@ -469,6 +471,22 @@ export class Game {
 
   findInBag(name: string): BagPlace | null {
     return findInBag(this.mem, name, this.decode);
+  }
+
+  teachables(): Teachable[] {
+    return readTeachables(this.mem, this.decode, this.party());
+  }
+
+  tmCaseRow(): number | null {
+    return tmCaseRow(this.mem);
+  }
+
+  tmCaseItemMenu(): boolean {
+    return tmCaseItemMenu(this.mem);
+  }
+
+  teachSceneRuns(): boolean {
+    return this.context().callback2 === "CB2_PSA";
   }
 
   bagQuantity(item: number): number {
@@ -912,6 +930,7 @@ export class Game {
       mapWidth: layout.field("width").int(),
       mapHeight: layout.field("height").int(),
       outside: this.mapKind(group, num) === "outdoor",
+      dark: header.field("cave").int() !== 0,
       kinds,
       blocks,
       behaviors,

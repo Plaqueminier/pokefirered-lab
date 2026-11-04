@@ -33,7 +33,7 @@ An event of the game that stops a **Macro-action**: a coord trigger, a trainer w
 _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
 **Decision point**:
-A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
+A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**, after a level up in a battle, an evolution, or a TM or an HM: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step
 
 **Mission**:
@@ -120,13 +120,17 @@ _Avoid_: one-way wall, directional collision
 A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows. The code makes it from the **Atlas** only, so it shows only what the player saw.
 _Avoid_: world map, overview, Town Map (an item of the game)
 
+**Dark map**:
+A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game.
+_Avoid_: cave (Mt. Moon is a cave but it is not dark, and the game code gives the name `cave` to this property of a map)
+
+**Field move**:
+A move that a Pokémon uses outside a battle, for example FLASH, CUT or FLY. CUT, ROCK SMASH and STRENGTH remove a **Fixed obstacle**, and SURF crosses water: a walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move.
+_Avoid_: HM move (DIG and TELEPORT are **Field moves**, but they are not HM moves)
+
 **Fixed obstacle**:
 An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it. A walk prompt shows it as a blocked cell with no text until the Bag has its HM or a Pokémon knows its move; the **Atlas** keeps it all the time.
 _Avoid_: person, tree (a tree of the map is a blocked metatile)
-
-**Field move**:
-CUT, ROCK SMASH, STRENGTH or SURF: a move that removes a **Fixed obstacle** or crosses water. A walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move.
-_Avoid_: HM move (FLY and FLASH are HM moves too)
 
 **Area**:
 A town, a route or another place of the Town Map, with all its maps: the game gives each map one map section. For example, Viridian City has its streets, its Poké Mart and its Pokémon Center.

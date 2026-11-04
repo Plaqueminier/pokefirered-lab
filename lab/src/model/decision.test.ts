@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { BagItem } from "../bag";
+import type { BagItem, Teachable } from "../bag";
 import type { BattleState } from "../harness/harness";
 import type { BoxMon, PartyMon } from "../party";
 import { type Asked, MAX_SENTENCE, readAction, readDecision } from "./decision";
@@ -36,7 +36,7 @@ describe("readDecision", () => {
 });
 
 describe("readAction", () => {
-  const overworld = {} as Overworld;
+  const overworld = { teachables: [] as Teachable[] } as Overworld;
   const battle = { player: { partyIndex: 0 } } as BattleState;
   const party: PartyMon[] = [];
   const edge: Target = { kind: "edge", name: "north edge", label: "north edge, 3 north: not taken", side: "north", to: null };
@@ -63,6 +63,24 @@ describe("readAction", () => {
     expect(readAction("go(B)", walk(3))).toEqual({ name: "go", target: 1 });
     expect(readAction("goTo(4, 7)", walk(3))).toEqual({ name: "goTo", x: 4, y: 7 });
     expect(readAction("goTo 9, 42", walk(3))).toEqual({ name: "goTo", x: 9, y: 42 });
+  });
+
+  test("teach: a TM or an HM of the Bag on a Pokémon of the party, only at a walk with a TM or an HM", () => {
+    const iceBeam = { item: "TM13", move: { name: "ICE BEAM" } } as Teachable;
+    const mons = [{ nickname: "Shelly" }, { nickname: "Pip" }] as PartyMon[];
+    const asked: Asked = { ...(walk(0, mons) as Asked & { kind: "walk" }), overworld: { teachables: [iceBeam] } as Overworld };
+    expect(readAction("teach TM13 on 2", asked)).toEqual({ name: "teach", item: "TM13", on: 1 });
+    expect(readAction("teach TM13 (ICE BEAM) on 1", asked)).toEqual({ name: "teach", item: "TM13", on: 0 });
+    expect(readAction("teach tm13 on Shelly", asked)).toEqual({ name: "teach", item: "TM13", on: 0 });
+    expect(readAction("teach(TM13, 1)", asked)).toEqual({ name: "teach", item: "TM13", on: 0 });
+    expect(() => readAction("teach HM01 on 1", asked)).toThrow('"HM01" is not a TM or an HM of your Bag: TM13 (ICE BEAM)');
+    expect(() => readAction("teach TM13 on 3", asked)).toThrow("there is no Pokémon 3");
+    expect(() => readAction("teach TM13", asked)).toThrow('"teach TM13" is not an action: write teach <TM or HM> on <Pokémon>, for example teach TM13 on 1');
+    expect(() => readAction("teach TM13 on 1", walk(3))).toThrow('"teach" is not an action now');
+    const potion: BagItem = { name: "POTION", quantity: 5, description: "", price: 300, battle: "pokemon", walk: "pokemon" };
+    expect(() => readAction("use TM13 on 1", { ...asked, items: [potion] } as Asked)).toThrow("TM13 is a TM or an HM: write teach TM13 on <Pokémon>");
+    expect(() => readAction("use TM13 on 1", asked)).toThrow('"use" is not an action now: use go, goTo, swap, teach, viewAtlas, zoom or press');
+    expect(() => readAction("press Start", asked)).toThrow("your Bag has no item that works now; write teach <TM or HM> on <Pokémon> for a TM or an HM");
   });
 
   test("at a choice: an option of the choice, in any case", () => {

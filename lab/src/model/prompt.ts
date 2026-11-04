@@ -1,4 +1,4 @@
-import type { BagItem, BagPocket } from "../bag";
+import type { BagItem, BagPocket, Teachable } from "../bag";
 import { struggles } from "../battle";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
@@ -10,8 +10,8 @@ import { type BoxMon, isHmMove, type PartyMon, type PartyMove, statLabel } from 
 import { actionText, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable } from "./decision";
-import { fullAtlas, knownWorld, localView } from "./extract";
+import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
+import { fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
 import { isExit, type Overworld, targetLines } from "./targets";
 
@@ -49,6 +49,7 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
 };
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
+const TEACH_RULE = "A TM works one time, then it leaves your Bag. An HM stays in your Bag. A Pokémon with 4 moves must forget a move to learn a new one: you choose the move, or you keep the 4 moves.";
 const NICKNAME_RULE = "Give a nickname to each Pokémon that you get.";
 const WORD_SCREEN_LEFT = "The game opened a screen to write the words of a profile, and you cannot write words: the program left it. A profile gives nothing in the game: choose NO when a person asks for your profile.";
 const TRANSFERS = [
@@ -83,7 +84,7 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -121,6 +122,7 @@ Advice of a good player:
 - Buy Poké Balls, Potions and REPELS at a Poké Mart.
 - A REPEL stops wild Pokémon with a level below your first healthy Pokémon for 100 steps. Use it to cross a cave when your team is ready: a battle that you avoid gives no experience.
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
+- ${TEACH_RULE}
 - Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
 - ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
@@ -202,7 +204,8 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     ...(asked.kind === "walk" ? walkFacts(asked.overworld) : []),
     "",
     ...context(asked),
-    ...(showsAtlas(turn) && asked.kind === "walk" ? fullAtlas(asked.overworld) : []),
+    ...(showsAtlas(turn) && asked.kind === "walk" ? [...fullAtlas(asked.overworld), ...teachDetails(asked)] : []),
+    ...(asked.kind === "walk" ? fieldMoveHints(asked) : []),
     "",
     waitLine(asked, events),
     missionLine(events),
@@ -467,6 +470,7 @@ function actionLines(asked: Asked): string[] {
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
+        ...teachLine(asked),
         ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle.${pokemonHelp(asked.party)}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
@@ -529,14 +533,38 @@ function useLine(asked: Asked & { items: BagItem[] }): string[] {
   return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}.${pokemonHelp(asked.party)}`];
 }
 
+type WalkAsked = Asked & { kind: "walk" };
+
+function teachLine({ overworld: { teachables } }: WalkAsked): string[] {
+  return teachables.length === 0 ? [] : [`- teach <TM or HM> on <Pokémon>: teach its move to a Pokémon of your party, for example teach ${teachables[0].item} on 1. Your Bag has: ${teachables.map(teachableName).join(", ")}.`];
+}
+
+function teachDetails({ overworld: { teachables }, party }: WalkAsked): string[] {
+  if (teachables.length === 0) return [];
+  const mons = (slots: number[]) => slots.map((slot) => monPlace(party, slot)).join(", ");
+  const about = ({ item, move, able, knowing }: Teachable) => [`- ${item}: ${move.name} (${moveText(move)}). ${move.description} Can learn it: ${mons(able) || "none"}.`, ...(knowing.length === 0 ? [] : [`Knows it: ${mons(knowing)}.`])].join(" ");
+  return ["", `Your TMs and HMs. ${TEACH_RULE}`, ...teachables.map(about), "Does one of these moves help your Objective?"];
+}
+
+function fieldMoveHints({ overworld }: WalkAsked): string[] {
+  return overworld.teachables.flatMap((teachable) => {
+    if (teachable.knowing.length > 0 || !moveObstacleHere(teachable.move.name, overworld)) return [];
+    return [`Your Bag has ${teachableName(teachable)}. It can help on this map${teachable.able.length > 0 ? ": teach it." : ", but no Pokémon of your party can learn it."}`];
+  });
+}
+
 function partyLine(asked: Asked, name: "switch" | "send", help: string): string[] {
   const slots = sendable(asked);
   return slots.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}.${pokemonHelp(asked.party, slots)}`];
 }
 
+function monPlace(party: PartyMon[], slot: number): string {
+  return `${slot + 1} ${party[slot].nickname}`;
+}
+
 /** The help for `<Pokémon>`, with a space before it. No help when there is no place to name. */
 function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()): string {
-  const mons = [...slots].map((slot) => `${slot + 1} ${party[slot].nickname}`);
+  const mons = [...slots].map((slot) => monPlace(party, slot));
   if (mons.length === 0) return "";
   return ` <Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
 }

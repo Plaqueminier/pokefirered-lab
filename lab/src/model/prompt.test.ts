@@ -41,6 +41,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     repelActive: false,
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
+    teachables: [],
     milestones: [],
     map: { group: 0, num: 0, name: "Route1" },
     player: { x: 1, y: 1, facing: "north" },
@@ -652,6 +653,72 @@ describe("the review turn", () => {
       ].join("\n"),
     );
     expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
+  });
+});
+
+describe("the TMs and the HMs of the Bag", () => {
+  const move = (name: string) => ({ name, type: "NORMAL", effect: 0, power: 50, accuracy: 100, pp: 10, maxPp: 10, description: `What ${name} does.` });
+  const teachable = (item: string, name: string, able: number[] = [0], knowing: number[] = []) => ({ item, move: move(name), able, knowing });
+  const TM = teachable("TM13", "ICE BEAM");
+  const with_ = (teachables: Extract<Observation, { mode: "overworld" }>["teachables"], map: object = {}, grid: object = {}): Observation => {
+    const base = route1(22, []) as Extract<Observation, { mode: "overworld" }>;
+    return { ...base, teachables, grid: { ...base.grid, ...grid }, atlas: { ...base.atlas, maps: [{ ...base.atlas.maps[0], ...map }] } };
+  };
+  const promptOf = (observation: Observation, turn: "normal" | "review" | "reflection" = "normal") => userPrompt(observation, askedOf(observation, turn !== "normal")!, [], { ...NO_TURN, turn });
+  const action = "- teach <TM or HM> on <Pokémon>: teach its move to a Pokémon of your party, for example teach TM13 on 1. Your Bag has: TM13 (ICE BEAM).";
+
+  test("a normal walk shows one line for the action, and no line with no TM and no HM", () => {
+    const prompt = promptOf(with_([TM]));
+    expect(prompt).toContain(action);
+    expect(prompt).not.toContain("Does one of these moves help your Objective?");
+    expect(promptOf(with_([]))).not.toContain("teach");
+  });
+
+  test("a Review turn and a Reflection turn at a walk show each TM and HM, its move, who can learn it, and the question", () => {
+    const party = with_([teachable("HM06", "ROCK SMASH", [0], []), teachable("TM39", "ROCK TOMB", [], [0])]);
+    for (const turn of ["review", "reflection"] as const) {
+      const prompt = promptOf(party, turn);
+      expect(prompt).toContain(
+        [
+          "Your TMs and HMs. A TM works one time, then it leaves your Bag. An HM stays in your Bag. A Pokémon with 4 moves must forget a move to learn a new one: you choose the move, or you keep the 4 moves.",
+          "- HM06: ROCK SMASH (NORMAL, power 50, accuracy 100, PP 10/10). What ROCK SMASH does. Can learn it: 1 SQUIRTLE.",
+          "- TM39: ROCK TOMB (NORMAL, power 50, accuracy 100, PP 10/10). What ROCK TOMB does. Can learn it: none. Knows it: 1 SQUIRTLE.",
+          "Does one of these moves help your Objective?",
+        ].join("\n"),
+      );
+    }
+    expect(promptOf(with_([]), "review")).not.toContain("Your TMs and HMs.");
+  });
+
+  test("the rules tell what a TM and an HM do", () => {
+    expect(systemPrompt(SYSTEM, true)).toContain("A TM works one time, then it leaves your Bag. An HM stays in your Bag.");
+  });
+
+  describe("the hint of a Field move", () => {
+    const HINT = "It can help on this map";
+    const tree = { obstacles: [{ x: 0, y: 0, name: "CUT TREE", move: "CUT" }] };
+    const cut = teachable("HM01", "CUT");
+
+    test("each Field move has its obstacle on the current map, with one line and no text for a place", () => {
+      expect(promptOf(with_([teachable("HM05", "FLASH")], {}, { dark: true }))).toContain("Your Bag has HM05 (FLASH). It can help on this map: teach it.");
+      expect(promptOf(with_([cut], tree))).toContain("Your Bag has HM01 (CUT). It can help on this map: teach it.");
+      expect(promptOf(with_([teachable("HM06", "ROCK SMASH")], { obstacles: [{ x: 0, y: 0, name: "ROCK SMASH ROCK", move: "ROCK SMASH" }] }))).toContain("Your Bag has HM06 (ROCK SMASH). It can help on this map: teach it.");
+      expect(promptOf(with_([teachable("HM04", "STRENGTH")], { obstacles: [{ x: 0, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" }] }))).toContain("Your Bag has HM04 (STRENGTH). It can help on this map: teach it.");
+      expect(promptOf(with_([teachable("HM03", "SURF")], { edges: [{ side: "south", to: null, blocked: "water" }] }))).toContain("Your Bag has HM03 (SURF). It can help on this map: teach it.");
+    });
+
+    test("with the TM or HM in the Bag and no Pokémon that can learn it, one line tells this", () => {
+      expect(promptOf(with_([teachable("HM01", "CUT", [])], tree))).toContain("Your Bag has HM01 (CUT). It can help on this map, but no Pokémon of your party can learn it.");
+    });
+
+    test("no text with no obstacle on this map, with another move, with no TM or HM in the Bag, or when a Pokémon already knows the move", () => {
+      expect(promptOf(with_([cut]))).not.toContain(HINT);
+      expect(promptOf(with_([teachable("HM05", "FLASH")]))).not.toContain(HINT);
+      expect(promptOf(with_([teachable("HM03", "SURF")]))).not.toContain(HINT);
+      expect(promptOf(with_([TM], { ...tree, edges: [{ side: "south", to: null, blocked: "water" }] }, { dark: true }))).not.toContain(HINT);
+      expect(promptOf(with_([], tree))).not.toContain(HINT);
+      expect(promptOf(with_([teachable("HM01", "CUT", [], [0])], tree))).not.toContain(HINT);
+    });
   });
 });
 
