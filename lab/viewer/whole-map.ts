@@ -1,21 +1,35 @@
-import type { Camera, MapActors, MapGrid } from "../src/game";
+import type { Camera, MapActors, MapGrid, Warp } from "../src/game";
 import type { Sight } from "../src/harness/atlas";
+import type { Cell } from "../src/harness/path";
 import type { ClientMessage } from "../src/protocol";
 import { Store } from "./cursor";
-import { type CellTip, describe, draw, drawScreenFrame, linkAt, type View } from "./mapdraw";
+import { floorLayout, mapFamily } from "./map-floors";
+import { mapParts } from "./map-parts";
+import { type CellTip, describe, draw, drawFloorName, drawScreenFrame, drawWarpLink, linkAt, type MapExtras, type View, warpPairColors } from "./mapdraw";
 
-export type MapState = { grid: MapGrid | null; actors: MapActors | null; preview: boolean; follow: boolean; names: string[][] };
+export type MapState = { grid: MapGrid | null; actors: MapActors | null; preview: boolean; follow: boolean; names: string[][]; lastSeen: boolean; exits: boolean; floors: boolean; floorCount: number };
+
+type Floor = { grid: MapGrid; actors: MapActors | null; dx: number };
 
 type MapRef = { group: number; num: number };
 
 const DRAG_PX = 4;
 
 export class WholeMap {
-  readonly state = new Store<MapState>({ grid: null, actors: null, preview: false, follow: true, names: [] });
+  readonly state = new Store<MapState>({ grid: null, actors: null, preview: false, follow: true, names: [], lastSeen: false, exits: true, floors: true, floorCount: 1 });
   readonly #send: (message: ClientMessage) => void;
   readonly #tip: Store<CellTip | null>;
   #grid: MapGrid | null = null;
   #actors: MapActors | null = null;
+  #lastSeen = false;
+  #family: string[] = [];
+  #exitColors: MapExtras["exits"] = null;
+  readonly #otherFloors = new Map<string, MapGrid>();
+  readonly #asked = new Set<string>();
+  readonly #mapParts = new Map<string, Uint8Array | null>();
+  #exits = true;
+  #floors = true;
+  #pointed: { map: string; warp: Warp } | null = null;
   #sight: Sight = {};
   #camera: Camera | null = null;
   #names: string[][] = [];
@@ -23,7 +37,7 @@ export class WholeMap {
   #history: MapRef[] = [];
   #follow = true;
   #view: View = { x: 0, y: 0, cell: 12 };
-  #runId: number | null = null;
+  #run: string | null = null;
   #canvas: HTMLCanvasElement | null = null;
   #background = "";
 
@@ -37,21 +51,48 @@ export class WholeMap {
   }
 
   // A preview shows the actors of one Run only.
-  onRun(id: number | null): void {
-    if (id !== this.#runId && this.#preview) this.backToPlayer();
-    this.#runId = id;
+  onRun(run: string): void {
+    if (run === this.#run) return;
+    if (this.#preview) this.backToPlayer();
+    this.#run = run;
+    // The server sends the map of a new Run before its status, so a map shown now already belongs to this Run.
+    if (this.#lastSeen) {
+      this.#grid = null;
+      this.#actors = null;
+      this.#lastSeen = false;
+    }
+    this.#changed();
   }
 
   onMap(grid: MapGrid | null): void {
-    if (grid && grid.key !== this.#grid?.key && !this.#preview) this.#fit(grid);
-    this.#grid = grid;
-    if (this.#follow) this.#center();
+    this.#lastSeen = !grid;
+    if (grid) {
+      if (grid.key !== this.#grid?.key && !this.#preview) this.#fit(grid);
+      this.#grid = grid;
+      if (this.#follow) this.#center();
+    }
     this.#changed();
   }
 
   onActors(actors: MapActors | null): void {
+    if (!actors) return;
     this.#actors = actors;
     if (this.#follow) this.#center();
+    this.#changed();
+  }
+
+  onFloors(grids: readonly MapGrid[]): void {
+    for (const grid of grids) this.#otherFloors.set(grid.name, grid);
+    this.#changed();
+  }
+
+  setExits(on: boolean): void {
+    this.#exits = on;
+    this.#changed();
+  }
+
+  setFloors(on: boolean): void {
+    this.#floors = on;
     this.#changed();
   }
 
@@ -67,7 +108,9 @@ export class WholeMap {
 
   onNames(names: string[][]): void {
     this.#names = names;
-    this.#publish();
+    // The server sends the names at each connection, and a server from before a restart may not have answered.
+    this.#asked.clear();
+    this.#changed();
   }
 
   onPreview(grid: MapGrid | null, actors: MapActors | null): void {
@@ -144,13 +187,71 @@ export class WholeMap {
   }
 
   #changed(): void {
+    const { grid } = this.#shown();
+    this.#family = grid ? mapFamily(grid.name, this.#names.flat()) : [];
+    this.#exitColors = this.#exits ? warpPairColors(this.#family.flatMap((name) => this.#floorNamed(name) ?? [])) : null;
+    this.#askFloors();
     this.#publish();
     this.#draw();
   }
 
+  #askFloors(): void {
+    const shown = this.#shown().grid;
+    const names = this.#family.filter((name) => name !== shown?.name && !this.#otherFloors.has(name) && !this.#asked.has(name));
+    if (names.length === 0) return;
+    for (const name of names) this.#asked.add(name);
+    this.#send({ type: "view-floors", names });
+  }
+
+  #layout(): Floor[] {
+    const { grid, actors } = this.#shown();
+    if (!grid) return [];
+    const floors = floorLayout(grid, this.#floors ? this.#family : [], this.#otherFloors);
+    return floors.map((floor) => ({ ...floor, actors: floor.grid === grid ? actors : null }));
+  }
+
   #publish(): void {
     const { grid, actors } = this.#shown();
-    this.state.set({ grid, actors, preview: !!this.#preview, follow: this.#follow, names: this.#names });
+    this.state.set({ grid, actors, preview: !!this.#preview, follow: this.#follow, names: this.#names, lastSeen: !this.#preview && this.#lastSeen && !!grid, exits: this.#exits, floors: this.#floors, floorCount: this.#family.length });
+  }
+
+  #mapPartsOf({ grid, actors }: Floor): Uint8Array | null {
+    const blocked = [...(actors?.obstacles ?? []), ...(actors?.people ?? []).filter((p) => p.stays)];
+    const key = `${grid.key} ${blocked.map(({ x, y }) => `${x},${y}`).join(" ")}`;
+    if (!this.#mapParts.has(key)) {
+      if (this.#mapParts.size > 64) this.#mapParts.clear();
+      this.#mapParts.set(key, mapParts(grid, blocked));
+    }
+    return this.#mapParts.get(key) ?? null;
+  }
+
+  #arrival = (warp: Warp): Cell | null => this.#floorNamed(warp.to)?.warps[warp.warpId] ?? null;
+
+  #floorNamed(name: string): MapGrid | null {
+    const { grid } = this.#shown();
+    return grid?.name === name ? grid : (this.#otherFloors.get(name) ?? null);
+  }
+
+  #floorAt(x: number): (Floor & { x: number }) | null {
+    const floors = this.#layout();
+    const under = floors.find(({ grid, dx }) => x - dx >= grid.x0 && x - dx < grid.x0 + grid.width) ?? floors[0];
+    return under ? { ...under, x: x - under.dx } : null;
+  }
+
+  #pointAt(pointed: { map: string; warp: Warp } | null): void {
+    if (pointed?.warp === this.#pointed?.warp) return;
+    this.#pointed = pointed;
+    this.#draw();
+  }
+
+  #drawPointed(ctx: CanvasRenderingContext2D, floors: Floor[]): void {
+    const pointed = this.#pointed;
+    const floor = pointed && floors.find(({ grid }) => grid.name === pointed.map);
+    if (!pointed || !floor) return;
+    const { warp } = pointed;
+    const other = floors.find(({ grid }) => grid.name === warp.to);
+    const end = other?.grid.warps[warp.warpId];
+    drawWarpLink(ctx, this.#view, { x: warp.x + floor.dx, y: warp.y }, other && end ? { x: end.x + other.dx, y: end.y } : null);
   }
 
   #draw(): void {
@@ -159,10 +260,15 @@ export class WholeMap {
     if (!canvas || !ctx) return;
     ctx.fillStyle = this.#background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const { grid, actors } = this.#shown();
-    if (!grid) return;
-    draw(ctx, grid, actors, this.#view, "map", this.#sight[grid.name]);
-    if (this.#camera && !this.#preview) drawScreenFrame(ctx, this.#view, this.#camera);
+    const floors = this.#layout();
+    const moved = (dx: number): View => ({ ...this.#view, x: this.#view.x + dx * this.#view.cell });
+    for (const floor of floors) {
+      const view = moved(floor.dx);
+      draw(ctx, floor.grid, floor.actors, view, "map", this.#sight[floor.grid.name], { mapParts: this.#mapPartsOf(floor), exits: this.#exitColors });
+      if (floors.length > 1) drawFloorName(ctx, view, floor.grid);
+    }
+    if (floors.length > 0 && this.#camera && !this.#preview) drawScreenFrame(ctx, this.#view, this.#camera);
+    this.#drawPointed(ctx, floors);
   }
 
   #point(canvas: HTMLCanvasElement, event: MouseEvent): [number, number] {
@@ -230,24 +336,30 @@ export class WholeMap {
         }
         return this.#tip.set(null);
       }
-      const { grid, actors } = this.#shown();
-      if (!grid) return;
-      const [x, y] = this.#cellAt(canvas, event);
+      const [cellX, y] = this.#cellAt(canvas, event);
+      const floor = this.#floorAt(cellX);
+      if (!floor) return;
+      const { grid, actors, x } = floor;
       const link = linkAt(grid, x, y);
       canvas.style.cursor = link ? "pointer" : "";
-      const facts = describe(grid, actors, x, y);
+      const warp = grid.warps.find((w) => w.x === x && w.y === y);
+      this.#pointAt(warp ? { map: grid.name, warp } : null);
+      const facts = describe(grid, actors, x, y, this.#arrival);
       this.#tip.set(facts && { at: { x: event.clientX, y: event.clientY }, facts, link: link?.name ?? null });
     });
     on("pointerup", (event) => {
       const clicked = drag && !drag.moved;
       drag = null;
-      const grid = this.#shown().grid;
-      if (!clicked || !grid) return;
-      const [x, y] = this.#cellAt(canvas, event);
-      const link = linkAt(grid, x, y);
+      if (!clicked) return;
+      const [cellX, y] = this.#cellAt(canvas, event);
+      const floor = this.#floorAt(cellX);
+      const link = floor && linkAt(floor.grid, floor.x, y);
       if (link) this.viewMap(link.group, link.num);
     });
-    on("pointerleave", () => this.#tip.set(null));
+    on("pointerleave", () => {
+      this.#tip.set(null);
+      this.#pointAt(null);
+    });
     on("dblclick", () => (this.#preview ? this.backToPlayer() : this.#setFollow(true)));
     const observer = new ResizeObserver(() => this.#resize(canvas));
     observer.observe(canvas);

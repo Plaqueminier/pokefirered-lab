@@ -1,10 +1,12 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, type MapGrid, OPPOSITE } from "../game";
-import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, seenIn } from "../harness/atlas";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE } from "../cells";
+import type { MapGrid } from "../game";
+import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
-import { atlasCells, type Beyond, type Lead, type Parts, unseenPlaces } from "./parts";
+import { atlasCells, type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
 
 const ITEM_BALL = "ITEM_BALL";
+const OBJECTS = new Set([ITEM_BALL, "FOSSIL", "OLD_AMBER", "CLIPBOARD", "POKEDEX", "TOWN_MAP", "LAPRAS_DOLL", "METEORITE", "RUBY", "SAPPHIRE", "SNORLAX", "MEWTWO", "ARTICUNO", "ZAPDOS", "MOLTRES", "LUGIA", "HO_OH"]);
 const STARTERS_MAP = "PalletTown_ProfessorOaksLab";
 
 export type Overworld = Extract<Observation, { mode: "overworld" }>;
@@ -22,7 +24,28 @@ export type Exit = Target & { kind: "exit" | "edge" };
 
 export type LocalTarget = Exclude<Target, { kind: "map" | "lead" }>;
 
-type Located = { target: LocalTarget; inPart: boolean };
+type Located = { target: LocalTarget; inPart: boolean; inWay: boolean };
+
+export type InTheWay = Map<string, string>;
+
+export function peopleInTheWay({ grid, people }: Overworld, here: AtlasMap, parts: Parts): InTheWay {
+  const staying = people.filter((p) => p.stays && !isBehindCounter(grid, parts, p));
+  const closed = closedCells(here, atlasCells(here), staying);
+  return new Map(here.people.filter((p) => closed.has(cellKey(p))).map((p) => [cellKey(p), personName(p)]));
+}
+
+// The player talks across a counter only from its own side: a person on that side next to a counter is not behind it.
+function isBehindCounter(grid: MapGrid, { own }: Parts, person: Cell): boolean {
+  return DIRECTION_STEPS.some(([, step]) => {
+    const from = talkFrom(grid, person, step);
+    return from.across && own.keys.has(cellKey(from.cell));
+  });
+}
+
+function pastThe(inWay: InTheWay, cell: Cell): string {
+  const name = inWay.get(cellKey(cell));
+  return name ? `, past the ${name} on this cell` : "";
+}
 
 type TargetGroup = { title: string; kinds: Target["kind"][]; empty?: string };
 
@@ -31,7 +54,7 @@ export const EXITS_GROUP: TargetGroup = { title: "Exits of this map:", kinds: ["
 export const TARGET_GROUPS: TargetGroup[] = [
   EXITS_GROUP,
   { title: "Unseen cells:", kinds: ["frontier"] },
-  { title: "People and signs:", kinds: ["person", "sign"] },
+  { title: "People, objects and things to check:", kinds: ["person", "sign"] },
   { title: "Leads, what you did not explore in other parts and maps:", kinds: ["lead"] },
   { title: "Far maps:", kinds: ["map"] },
 ];
@@ -122,50 +145,42 @@ export function targetLines(targets: Target[], keep: (target: Target) => boolean
   return targets.flatMap((t, i) => (keep(t) ? [`${targetLetter(i)}. ${t.label}`] : []));
 }
 
-export function personName({ graphics, rival }: AtlasPerson): string {
-  return rival ? `${rival} (your rival)` : graphics.replaceAll("_", " ");
-}
-
-export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts): LocalTarget[] {
+export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts, inWay: InTheWay): LocalTarget[] {
   const { grid, player, people } = overworld;
   const seen = seenIn(here);
   const { own } = parts;
-  // The player talks across a counter only from its own side: a person on that side next to a counter is not behind it.
-  const behindCounter = (p: Cell) => DIRECTION_STEPS.some(([, step]) => {
-    const from = talkFrom(grid, p, step);
-    return from.across && own.keys.has(cellKey(from.cell));
-  });
   const elsewhere = (cells: Cell[], direction: string) => {
     const exits = parts.exitsTo(cells);
     return exits === Number.POSITIVE_INFINITY ? `${direction}, no seen way there yet` : `in another part of this map, ${away(exits)}`;
   };
   const where = (cell: Cell, inPart: boolean) => (inPart ? whereFrom(player, cell) : elsewhere([cell], whereFrom(player, cell)));
   const present = new Map(people.map((p) => [p.localId, p]));
-  const located = (cell: Cell, inPart: boolean, target: (where: string) => LocalTarget): Located => ({ inPart, target: target(where(cell, inPart)) });
+  const located = (cell: Cell, inPart: boolean, target: (where: string) => LocalTarget): Located => ({ inPart, inWay: false, target: target(where(cell, inPart)) });
   const edge = (e: AtlasEdge): Located => {
     const cells = edgeCells(atlasCells(here), e.side).filter((c) => seen(c) && walkable(atlasCells(here), c));
     const inPart = cells.some(own.touches);
     const direction = `${edgeSteps(here, player, e.side)} ${e.side}`;
-    return { inPart, target: edgeTarget(e, inPart ? direction : elsewhere(cells, direction)) };
+    return { inPart, inWay: false, target: edgeTarget(e, inPart ? direction : elsewhere(cells, direction)) };
   };
   const person = (p: AtlasPerson): Located => {
-    const counter = behindCounter(p);
-    return located(p, own.touches(p) || counter, (w) => personTarget(p, w, { behindCounter: counter, unbeatenTrainer: present.get(p.localId)?.unbeatenTrainer === true, freeItem: holdsFreeItem(p, here) }));
+    const counter = isBehindCounter(grid, parts, p);
+    const closes = inWay.has(cellKey(p));
+    return { ...located(p, own.touches(p) || counter, (w) => personTarget(p, w, { behindCounter: counter, unbeatenTrainer: present.get(p.localId)?.unbeatenTrainer === true, object: objectText(p, here), inWay: closes })), inWay: closes };
   };
   const targets = [
     ...here.warps.map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
     ...here.edges.filter((e) => !e.blocked).map(edge),
-    ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}`, cell }))),
+    ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}${pastThe(inWay, cell)}`, cell }))),
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map(person),
     ...here.signs.map((s) => located(s, own.touches(s), (place) => signTarget(s, place))),
   ];
   const group = ({ target }: Located) => TARGET_GROUPS.findIndex((g) => g.kinds.includes(target.kind));
   const steps = ({ target }: Located) => (target.kind === "edge" ? edgeSteps(here, player, target.side) : distance(player, target.cell));
-  return targets.toSorted((a, b) => group(a) - group(b) || Number(b.inPart) - Number(a.inPart) || steps(a) - steps(b)).map(({ target }) => target);
+  return targets.toSorted((a, b) => group(a) - group(b) || Number(b.inPart) - Number(a.inPart) || Number(b.inWay) - Number(a.inWay) || steps(a) - steps(b)).map(({ target }) => target);
 }
 
-export function leadTargets(parts: Parts): Target[] {
-  return parts.leads().map((lead) => ({ kind: "lead", map: lead.map.name, cell: lead.cell, label: leadLabel(lead, parts.own.map) }));
+export function leadTargets(parts: Parts, inWay: InTheWay): Target[] {
+  return parts.leads().map((lead) => ({ kind: "lead", map: lead.map.name, cell: lead.cell, label: `${leadLabel(lead, parts.own.map)}${lead.map.name === parts.own.map.name ? pastThe(inWay, lead.cell) : ""}` }));
 }
 
 export function away(distance: number): string {
@@ -188,21 +203,26 @@ function edgeTarget(e: AtlasEdge, where: string): LocalTarget {
   return { kind: "edge", name, label: `${name}, ${where}: ${taken(e.to)}`, side: e.side, to: e.to };
 }
 
-function holdsFreeItem(p: AtlasPerson, here: AtlasMap): boolean {
-  return p.graphics === ITEM_BALL && here.name !== STARTERS_MAP;
+function objectText({ graphics }: AtlasPerson, here: AtlasMap): string {
+  if (graphics === ITEM_BALL && here.name !== STARTERS_MAP) return ": a free item, go takes it";
+  return OBJECTS.has(graphics) ? ", an object that you can interact with" : "";
 }
 
-function personTarget(p: AtlasPerson, where: string, { behindCounter, unbeatenTrainer, freeItem }: { behindCounter: boolean; unbeatenTrainer: boolean; freeItem: boolean }): LocalTarget {
+function personTarget(p: AtlasPerson, where: string, { behindCounter, unbeatenTrainer, object, inWay }: { behindCounter: boolean; unbeatenTrainer: boolean; object: string; inWay: boolean }): LocalTarget {
   const counter = behindCounter ? ", behind a counter: go talks across it" : "";
   const trainer = unbeatenTrainer ? ", a trainer that you did not beat yet: a talk starts a battle" : "";
-  const item = freeItem ? ": a free item, go takes it" : "";
+  const way = inWay ? ", in your way: the way past it stays closed while it is here" : "";
   const talked = p.texts.length > 0 ? `: talked, "${p.texts.at(-1)}"` : "";
-  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${item}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
+  return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${object}${way}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
+}
+
+export function checkName({ x, y }: Cell): string {
+  return `something you can check at (${x}, ${y})`;
 }
 
 function signTarget(s: AtlasSign, where: string): LocalTarget {
   const read = s.text ? `: read, "${s.text}"` : "";
-  return { kind: "sign", label: `sign at (${s.x}, ${s.y}), ${where}${read}`, cell: { x: s.x, y: s.y }, facing: s.facing };
+  return { kind: "sign", label: `${checkName(s)}, ${where}${read}`, cell: { x: s.x, y: s.y }, facing: s.facing };
 }
 
 function whereFrom(player: Overworld["player"], cell: Cell): string {

@@ -2,7 +2,7 @@ import { ArrowLeft, ChevronDown, Crosshair, DoorOpen, Info, MapPin, Waypoints } 
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MapActors, MapGrid } from "../src/game";
-import { blurClickedButton, Button, Card, KeyList, type KeyRow, LABEL, Legend, ListRow, Pill, Tooltip, toggled } from "./components";
+import { blurClickedButton, Button, Card, KeyList, type KeyRow, LABEL, Legend, ListRow, Pill, Switch, Tooltip, toggled } from "./components";
 import { HoverCard, PointerCard, Select } from "./components-layers";
 import { useStore } from "./cursor";
 import { exitList, type StopRow, stopList } from "./map-lists";
@@ -31,7 +31,7 @@ export function MapPanel({ map }: { map: WholeMap }) {
   );
 }
 
-function MapHeader({ map, state: { grid, preview, follow, names } }: { map: WholeMap; state: MapState }) {
+function MapHeader({ map, state: { grid, preview, follow, names, lastSeen, exits, floors, floorCount } }: { map: WholeMap; state: MapState }) {
   const options = useMemo(() => [...new Set(names.flat())].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })), [names]);
   return (
     <div class="flex min-h-8 flex-wrap items-center gap-2">
@@ -39,10 +39,18 @@ function MapHeader({ map, state: { grid, preview, follow, names } }: { map: Whol
         <MapPin size={16} class={`shrink-0 ${preview ? "text-info" : "text-accent"}`} />
         <span class="min-w-0 truncate text-base font-semibold">{grid?.name ?? "Whole map"}</span>
         <span class="min-w-0 shrink-1000 truncate text-xs text-muted tabular-nums">
-          {grid ? `${preview ? "Preview" : "Map of the player"} · ${grid.mapWidth} × ${grid.mapHeight}` : "No map (menu, battle or transition)"}
+          {grid ? `${preview ? "Preview" : lastSeen ? "Last map of the player" : "Map of the player"} · ${grid.mapWidth} × ${grid.mapHeight}` : "No map yet"}
         </span>
       </span>
       <span class="ml-auto flex flex-wrap items-center gap-2">
+        <Tooltip text="A color for both ends of each warp inside a building or a cave, and the name of the map at each warp when the zoom is large enough">
+          <Switch on={exits} onChange={(on) => map.setExits(on)}>Exits</Switch>
+        </Tooltip>
+        {floorCount > 1 && (
+          <Tooltip text="The other floors next to this floor. Only this floor shows its people">
+            <Switch on={floors} onChange={(on) => map.setFloors(on)}>Floors</Switch>
+          </Tooltip>
+        )}
         <span class="w-[240px]">
           <Select
             options={options}
@@ -79,6 +87,7 @@ const MOUSE: KeyRow[] = [
   [["Drag"], "move"],
   [["Click"], "on a warp or past an edge: see the other map; the player does not move"],
   [["Double-click"], "back to the player"],
+  [["Point"], "at a warp: a ring on it, and on its other end when this floor shows"],
 ];
 
 function MapHelp() {

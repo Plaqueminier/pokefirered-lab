@@ -1,6 +1,6 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, LEDGE, WALL } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, LEDGE, WALL } from "../cells";
 import { type Atlas, type AtlasMap, type AtlasWarp, fitsScreen, seenIn } from "../harness/atlas";
-import { type Cell, cellKey, inside, kindAt, type MapCells, walkable, wallBetween } from "../harness/path";
+import { allCells, type Cell, cellKey, inside, kindAt, type MapCells, walkable, walkGroups, wallBetween } from "../harness/path";
 
 export type Part = {
   map: AtlasMap;
@@ -60,7 +60,7 @@ function unseenPast(map: AtlasMap, view: MapCells, c: Cell, direction: Direction
 function unseenFronts(map: AtlasMap): { cell: Cell; far: Cell }[] {
   const view = atlasCells(map);
   const seen = seenIn(map);
-  const cells = Array.from({ length: map.width * map.height }, (_, i) => ({ x: i % map.width, y: Math.floor(i / map.width) })).filter((c) => seen(c) && walkable(view, c));
+  const cells = allCells(view).filter((c) => seen(c) && walkable(view, c));
   return cells.flatMap((cell) => DIRECTION_STEPS.flatMap(([direction]) => {
     const far = unseenPast(map, view, cell, direction);
     return far ? [{ cell, far }] : [];
@@ -105,6 +105,24 @@ export function unseenPlaces({ map, cells, view }: Part): { direction: Direction
     return side ? [{ ...cell, direction: side[0] }] : [];
   });
   return touchingGroups(fronts).map(([{ direction, x, y }]) => ({ direction, cell: { x, y } }));
+}
+
+export function closedCells(map: AtlasMap, view: MapCells, people: Cell[]): Set<string> {
+  const seen = seenIn(map);
+  const closed = new Set(people.map(cellKey));
+  const open = (c: Cell) => seen(c) && walkable(view, c) && !closed.has(cellKey(c)) && !isStepExit(map, c);
+  const { groups, stepsOf } = walkGroups(view, open);
+  const closes = (person: Cell) => {
+    if (!seen(person) || !walkable(view, person)) return false;
+    const sides = new Set(stepsOf(person).map((c) => groups.get(cellKey(c))));
+    if (sides.size !== 1) return sides.size > 1;
+    const touchesSides = (c: Cell) => DIRECTION_STEPS.some(([, [dx, dy]]) => sides.has(groups.get(cellKey({ x: c.x + dx, y: c.y + dy }))));
+    return DIRECTION_STEPS.some(([direction]) => {
+      const far = unseenPast(map, view, person, direction);
+      return far !== null && !touchesSides(far);
+    });
+  };
+  return new Set(people.filter(closes).map(cellKey));
 }
 
 function leadsOf(part: Part, away: number): Lead[] {

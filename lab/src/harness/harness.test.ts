@@ -68,6 +68,15 @@ describe.skipIf(!ready)("goTo", () => {
     expect(warps.find((w) => w.x === 15 && w.y === 7)?.place).toBe("house");
   });
 
+  test("a goTo of one cell in the direction that the player faces ends when the step ends, so an action after it is not lost", async () => {
+    const harness = await Harness.open();
+    await harness.goTo(12, 5, "PalletTown");
+    await harness.goTo(12, 4);
+    const step = await harness.goTo(12, 3);
+    expect(step).toMatchObject({ status: "done" });
+    expect(step.frames).toBeGreaterThan(8);
+  });
+
   test("a goTo with a map to a door ends on the cell next to the door, also from inside the building", async () => {
     const harness = await Harness.open();
     expect(await harness.goTo(6, 7, "PalletTown")).toMatchObject({ status: "done" });
@@ -126,7 +135,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "22", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "23", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -471,10 +480,10 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(after.observe()).toMatchObject({ map: { name: "Route1" } });
   });
 
-  test("goTo to the cell of Mom waits, plans again, and returns blocked", async () => {
+  test("goTo to the cell of Mom, who stays and whom the player did not see, returns blocked at once and does not name her", async () => {
     const harness = await Harness.open();
     const result = await harness.goTo(8, 4, "PalletTown_PlayersHouse_1F");
-    expect(result).toMatchObject({ status: "blocked", frames: 60 });
+    expect(result).toEqual({ status: "blocked", reason: "a person or an object that you did not see stands on the only way", frames: 0 });
     expect(harness.observe()).toMatchObject({ mode: "overworld", map: { name: "PalletTown_PlayersHouse_2F" } });
   });
 

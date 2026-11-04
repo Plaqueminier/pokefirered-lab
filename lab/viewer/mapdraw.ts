@@ -1,12 +1,17 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
 import type { Camera, ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
+import type { Cell } from "../src/harness/path";
 import { obstacleRemedy } from "../src/protocol";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
 export type View = { x: number; y: number; cell: number };
 
 export type Style = "overlay" | "map";
+
+export type MapExtras = { mapParts: Uint8Array | null; exits: WarpColor | null };
+
+type WarpColor = (grid: MapGrid, index: number) => string;
 
 const OVERLAY_FILL = { "#": "rgba(224, 70, 70, 0.45)", "~": "rgba(60, 130, 230, 0.45)", '"': "rgba(80, 200, 110, 0.3)" };
 const KIND_FILL: Record<Style, Record<string, string | null>> = {
@@ -15,6 +20,10 @@ const KIND_FILL: Record<Style, Record<string, string | null>> = {
 };
 const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
+
+const MAP_PART_TINTS = ["rgba(240, 170, 60, 0.28)", "rgba(190, 110, 230, 0.28)", "rgba(90, 200, 220, 0.28)", "rgba(240, 110, 130, 0.28)", "rgba(170, 210, 80, 0.28)", "rgba(255, 255, 255, 0.16)"];
+const WARP_PAIR_COLORS = ["#ff6b6b", "#ffa94d", "#ffd43b", "#a9e34b", "#51cf66", "#20c997", "#22b8cf", "#4dabf7", "#748ffc", "#cc5de8", "#f783ac", "#e9ecef"];
+const LABEL_MIN_CELL = 12;
 
 const COLOR = {
   neverSeen: "rgba(150, 155, 165, 0.8)",
@@ -36,7 +45,7 @@ const COLOR = {
   playerRing: "rgba(232, 100, 60, 1)",
 };
 
-export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string): void {
+export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapActors | null, view: View, style: Style, seen?: string, extras?: MapExtras): void {
   const { width, height } = ctx.canvas;
   const c = view.cell;
   const px = (x: number) => view.x + x * c;
@@ -70,6 +79,11 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
         ctx.strokeRect(px(x) + 0.5, py(y) + 0.5, c - 1, c - 1);
       }
       const inMap = x >= 0 && y >= 0 && x < grid.mapWidth && y < grid.mapHeight;
+      const part = inMap ? (extras?.mapParts?.[y * grid.mapWidth + x] ?? 0) : 0;
+      if (part > 1) {
+        ctx.fillStyle = MAP_PART_TINTS[(part - 2) % MAP_PART_TINTS.length];
+        ctx.fillRect(px(x), py(y), c, c);
+      }
       if (style === "map" && inMap && seen?.[y * grid.mapWidth + x] !== "1") {
         ctx.fillStyle = COLOR.neverSeen;
         ctx.fillRect(px(x), py(y), c, c);
@@ -130,13 +144,14 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
   });
 
   // Warps: filled when they work, outlined when the cell does not warp
-  for (const w of grid.warps) {
-    ctx.fillStyle = COLOR.warp;
-    ctx.strokeStyle = COLOR.warp;
+  grid.warps.forEach((w, i) => {
+    const color = extras?.exits && !grid.outside ? extras.exits(grid, i) : COLOR.warp;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
     ctx.lineWidth = line;
     if (w.how === "none") ctx.strokeRect(px(w.x) + inset, py(w.y) + inset, c - 2 * inset, c - 2 * inset);
     else ctx.fillRect(px(w.x) + inset, py(w.y) + inset, c - 2 * inset, c - 2 * inset);
-  }
+  });
 
   // People and player
   const person = (x: number, y: number, facing: number, fill: string | null, ring: string) => {
@@ -169,8 +184,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
 
   // Connections, as labels on the edges
   if (style === "map" && c >= 4) {
-    ctx.font = `600 ${Math.round(13 * (window.devicePixelRatio || 1))}px ui-sans-serif, system-ui`;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    setMapLabelStyle(ctx);
     for (const conn of grid.connections) {
       const label = `${SIDE_ARROW[conn.direction]} ${conn.map}`;
       const at: Record<string, [number, number]> = {
@@ -183,6 +197,99 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
       if (pos) ctx.fillText(label, px(pos[0]), py(pos[1]));
     }
   }
+  if (extras?.exits) drawExitLabels(ctx, grid, view);
+  ctx.restore();
+}
+
+export function warpPairColors(floors: readonly MapGrid[]): WarpColor {
+  const mapId = ({ group, num }: Pick<MapGrid, "group" | "num">) => `${group}.${num}`;
+  const here = new Map(floors.map((grid) => [mapId(grid), grid]));
+  const insideKey = (grid: MapGrid, w: Warp) => {
+    const other = here.get(mapId(w));
+    if (!other) return null;
+    const back = other.warps[w.warpId];
+    return back && mapId(back) === mapId(grid) ? [`${mapId(grid)}.${back.warpId}`, `${mapId(w)}.${w.warpId}`].sort().join() : `to ${mapId(w)}.${w.warpId}`;
+  };
+  const ordered = [...new Set(floors.flatMap((grid) => grid.warps.flatMap((w) => insideKey(grid, w) ?? [])))].sort();
+  const colors = new Map(ordered.map((key, i) => [key, WARP_PAIR_COLORS[i % WARP_PAIR_COLORS.length]]));
+  // A warp that leaves these floors cannot read its other end, so all the warps between two maps share the color of the pair of maps.
+  const hashed = (key: string) => WARP_PAIR_COLORS[[...key].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 0) % WARP_PAIR_COLORS.length];
+  return (grid, index) => {
+    const w = grid.warps[index];
+    const key = insideKey(grid, w);
+    return (key && colors.get(key)) ?? hashed([mapId(grid), mapId(w)].sort().join());
+  };
+}
+
+export function shortMapName(to: string, from: string): string {
+  const others = from.split("_");
+  const parts = to.split("_");
+  let same = 0;
+  while (same < parts.length - 1 && parts[same] === others[same]) same++;
+  return parts.slice(same).join("_");
+}
+
+function drawExitLabels(ctx: CanvasRenderingContext2D, grid: MapGrid, view: View): void {
+  const ratio = window.devicePixelRatio || 1;
+  const c = view.cell;
+  if (c < LABEL_MIN_CELL * ratio) return;
+  const size = Math.round(10 * ratio);
+  const height = size + 4 * ratio;
+  const pad = 3 * ratio;
+  ctx.font = labelFont(size);
+  const taken: { x: number; y: number; w: number; h: number }[] = [];
+  for (const w of grid.warps) {
+    const label = shortMapName(w.to, grid.name);
+    const width = ctx.measureText(label).width + 2 * pad;
+    const x = view.x + w.x * c + c / 2 - width / 2;
+    const tries = [view.y + w.y * c - height - ratio, view.y + (w.y + 1) * c + ratio];
+    const y = tries.find((top) => !taken.some((t) => x < t.x + t.w && t.x < x + width && top < t.y + t.h && t.y < top + height));
+    if (y === undefined) continue;
+    taken.push({ x, y, w: width, h: height });
+    ctx.fillStyle = "rgba(10, 12, 15, 0.82)";
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.fillText(label, x + width / 2, y + height / 2);
+  }
+}
+
+export function drawWarpLink(ctx: CanvasRenderingContext2D, view: View, from: Cell, to: Cell | null): void {
+  const c = view.cell;
+  const center = ({ x, y }: Cell): [number, number] => [view.x + (x + 0.5) * c, view.y + (y + 0.5) * c];
+  const ring = (cell: Cell) => {
+    ctx.beginPath();
+    ctx.arc(...center(cell), c * 0.75, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.strokeStyle = COLOR.screen;
+  ctx.lineWidth = Math.max(2, c * 0.1);
+  ring(from);
+  if (to) {
+    ring(to);
+    ctx.setLineDash([c * 0.4, c * 0.3]);
+    ctx.beginPath();
+    ctx.moveTo(...center(from));
+    ctx.lineTo(...center(to));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function labelFont(px: number): string {
+  return `600 ${px}px ui-sans-serif, system-ui`;
+}
+
+function setMapLabelStyle(ctx: CanvasRenderingContext2D): void {
+  ctx.font = labelFont(Math.round(13 * (window.devicePixelRatio || 1)));
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+}
+
+export function drawFloorName(ctx: CanvasRenderingContext2D, view: View, grid: MapGrid): void {
+  ctx.save();
+  ctx.textAlign = "left";
+  setMapLabelStyle(ctx);
+  ctx.fillText(grid.name, view.x, view.y + (grid.y0 - 1) * view.cell);
   ctx.restore();
 }
 
@@ -245,6 +352,8 @@ export const MAP_SWATCHES = [
   { label: "hidden item", style: SWATCH.hiddenItem },
   { label: "fixed obstacle", style: SWATCH.obstacle },
   { label: "wander area", style: `border: 1px dashed ${COLOR.wander}` },
+  { label: "tint: map parts that a walk does not connect", style: `background: ${swatch(MAP_PART_TINTS[0], 0.6)}` },
+  { label: "warp color: both ends of a warp", style: `background: linear-gradient(90deg, ${WARP_PAIR_COLORS[0]} 50%, ${WARP_PAIR_COLORS[7]} 50%)` },
 ];
 
 const SIDE_ARROW: Record<ConnectionSide, string> = { north: "↑", south: "↓", west: "←", east: "→", dive: "", emerge: "" };
@@ -274,7 +383,7 @@ export type CellFacts = { title: string; kind?: string; facts: string[]; tech?: 
 
 export type CellTip = { at: { x: number; y: number }; facts: CellFacts; link: string | null };
 
-export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: number): CellFacts | null {
+export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: number, arrival?: (warp: Warp) => Cell | null): CellFacts | null {
   const gx = x - grid.x0;
   const gy = y - grid.y0;
   if (gx < 0 || gy < 0 || gx >= grid.width || gy >= grid.height) return linkAt(grid, x, y) ? { title: "Edge of the map", facts: [] } : null;
@@ -285,7 +394,8 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
   const facts: string[] = [];
   for (const w of grid.warps) {
     if (w.x !== x || w.y !== y) continue;
-    facts.push(`warp → ${w.to} (${howLabel(w)})`);
+    const end = arrival?.(w);
+    facts.push(`warp → ${w.to}${end ? ` (${end.x}, ${end.y})` : ""} (${howLabel(w)})`);
   }
   grid.triggers.forEach((t, k) => {
     if (t.x !== x || t.y !== y) return;

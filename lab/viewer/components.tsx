@@ -767,7 +767,7 @@ export function Badges({ got }: { got: readonly boolean[] | null }) {
 
 // A part that never keeps the focus, so Enter goes to the game.
 export function blurClickedButton(event: MouseEvent): void {
-  (event.target as Element).closest("button")?.blur();
+  (event.target as Element).closest<HTMLElement>("button, [role=switch]")?.blur();
 }
 
 // Not scrollIntoView: it also scrolls the page. A hidden panel has no layout, so the observer places the list when the panel shows.

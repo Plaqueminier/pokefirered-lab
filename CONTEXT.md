@@ -25,7 +25,7 @@ An AI coding assistant that writes or changes the code of a **Bot**. It does not
 _Avoid_: bot
 
 **Macro-action**:
-One game action that a **Bot** asks the **Harness** to do, for example go to a cell, talk to a person or use a move. It runs until it is complete or until the game interrupts it, and it never makes a game decision. Its result is `done`, `impossible` (it cannot start or continue), `blocked` (a person stays in the way) or `interrupted`, with an **Interruption** as the reason.
+One game action that a **Bot** asks the **Harness** to do, for example go to a cell, talk to a person or use a move. It runs until it is complete or until the game interrupts it, and it never makes a game decision. Its result is `done`, `impossible` (it cannot start or continue), `blocked` (a person or an object stays in the way) or `interrupted`, with an **Interruption** as the reason.
 _Avoid_: command, move (a move is a Pokémon attack)
 
 **Interruption**:
@@ -77,7 +77,7 @@ A **Model call** of a model bot at each 20 more **Decision points** on the **Stu
 _Avoid_: stuck message, reflection call
 
 **Review turn**:
-A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the signs and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
+A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
 _Avoid_: review call, check turn
 
 **Summary call**:
@@ -101,7 +101,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each sign that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
@@ -119,6 +119,22 @@ _Avoid_: one-way wall, directional collision
 **Known world**:
 A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows. The code makes it from the **Atlas** only, so it shows only what the player saw.
 _Avoid_: world map, overview, Town Map (an item of the game)
+
+**Object**:
+A graphic of a map that is not a person and that the player can interact with, for example a fossil, an item ball or a clipboard. A cut tree, a rock and a boulder are **Fixed obstacles**, not objects.
+_Avoid_: item
+
+**Thing to check**:
+A sign event of a map: a sign, a poster, a trash can, a statue, a door or an elevator panel. The player reads it with an interaction.
+_Avoid_: sign, for all of them
+
+**In your way**:
+What the prompt says of a person or an **Object** whose movement type does not leave its cell and whose cell closes a way, on the cells that the player saw.
+_Avoid_: blocker
+
+**Map part**:
+A tint of the Whole map of the Viewer: the cells of the full map that a walk connects, with a ledge that links both sides and the people who stay as walls. It does not read what the player saw, so it is not a **Part**.
+_Avoid_: part, zone, region
 
 **Fixed obstacle**:
 An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it. A walk prompt shows it as a blocked cell with no text until the Bag has its HM or a Pokémon knows its move; the **Atlas** keeps it all the time.

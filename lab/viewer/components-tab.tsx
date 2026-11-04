@@ -655,7 +655,7 @@ const DEMO_PROMPT = `Your last decisions, oldest first:
 - goTo(6, 4): done. "Oh, okay then!"
 - interact 8 4: impossible: nothing at (8, 4) starts a script
 - Objective: Leave ViridianCity_PokemonCenter_2F by the stairs, then go to #1-2 with zoom <a-b>.
-- Review turn: check the way to the next Milestone, the facts against the Mission, the guesses from the signs and the people, and the team (levels, HP, status, PP).
+- Review turn: check the way to the next Milestone, the facts against the Mission, the guesses from the things checked and the people, and the team (levels, HP, status, PP).
 {"reason": "The stairs are south.", "action": "go S"}`;
 
 function PromptTextDemo() {
@@ -910,7 +910,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
+    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model, a Summary call of the memory or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
     demo: () => <GridCellDemo />,
   },
   {

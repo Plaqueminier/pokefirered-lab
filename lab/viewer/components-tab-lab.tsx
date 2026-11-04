@@ -189,11 +189,11 @@ const DEMO_RUNS: RunSummary[] = [
     error: null,
     from: null,
     continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 }, callsStarted: 120 },
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 } },
     frame: 52_000,
     milestone: "has-pokemon",
     battle: false,
-    waits: true,
+    calling: { kind: "model", since: 0 },
     record: null,
     names: { player: "Mira", rival: "Crumb" },
   },
@@ -210,7 +210,7 @@ const DEMO_RUNS: RunSummary[] = [
     frame: 81_000,
     milestone: "first-rival-battle",
     battle: false,
-    waits: false,
+    calling: null,
     record: RECORD,
     names: null,
   },
@@ -242,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "22", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "23", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
@@ -490,6 +490,7 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   plays: { label: "Live, plays", cell: DEMO_CELL },
   named: { label: "With the names of its character", cell: { ...DEMO_CELL, names: { player: "Mira", rival: "Crumb" } } },
   waits: { label: "Waits for the model", cell: { ...DEMO_CELL, state: { kind: "waits" } } },
+  memory: { label: "Writes its memory", cell: { ...DEMO_CELL, state: { kind: "memory" } } },
   battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
   ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD } },
   replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD } },

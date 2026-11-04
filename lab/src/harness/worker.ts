@@ -76,9 +76,9 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
         stopAsked: () => Atomics.load(stop, 0) === 1,
         onFrame: (h) => poster.onFrame(h),
         onAction: (_, h) => poster.onEvents(h.events),
-        onModelCallStart: (h) => {
+        onCallStart: (kind, h) => {
           poster.postNow(h);
-          post({ type: "model-call-start" });
+          post({ type: "call-start", kind });
         },
         onModelCall: (_, h) => poster.onEvents(h.events),
         onSummaryCall: (_, h) => poster.onEvents(h.events),

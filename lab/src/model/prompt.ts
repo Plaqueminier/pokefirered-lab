@@ -104,12 +104,13 @@ Rules of the program:
 - When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
+- People, objects and things to check are there for you to interact with. "go" walks next to them and interacts, and you read the text. An object can be a thing that you can take. A person or an object "in your way" stays there and no walk can pass it: interact with it. When nothing changes, the story needs another step first, so come back later.
 ${offers}- At the question of a nickname, the program answers YES for you.
 
-When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, read the signs, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
+When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, interact with the objects, check the signs and other things, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
 Advice of a good player:
-- Read the signs and talk to the people: they often tell you the way and what to do.
+- Check the signs and other things, and talk to the people: they often tell you the way and what to do.
 - Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
 - Keep your POTIONS for when they are necessary, for example before a difficult battle.
@@ -139,7 +140,7 @@ const REVIEW = [
   "Review turn: check your plan against the facts before you act.",
   "- Where are you on the way to the next Milestone?",
   "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
-  "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+  "- What do the things that you checked and the people tell you? Which of your guesses do they confirm?",
   "- Which exits, edges, unseen cells and leads are left to explore?",
   "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
   `- Write in "remove" ${REMOVE_RULE}. The number of a sentence is the [n] before it. You cannot change a sentence.`,
@@ -463,7 +464,7 @@ function actionLines(asked: Asked): string[] {
     case "walk": {
       const { grid } = asked.overworld;
       return [
-        ...(asked.view.targets.length === 0 ? [] : ["- go <letter>: walk to the target, for example go B. At an exit, take it. At a person or a sign, walk next to it, then talk to it or read it."]),
+        ...(asked.view.targets.length === 0 ? [] : ["- go <letter>: walk to the target, for example go B. At an exit, take it. At a person, an object or something you can check, walk next to it, then interact with it."]),
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),

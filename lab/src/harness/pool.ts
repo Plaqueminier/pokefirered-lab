@@ -3,7 +3,7 @@ import type { InventoryAt } from "../inventory";
 import type { RunFrom } from "../protocol";
 import type { RunState } from "../run";
 import type { Sight } from "./atlas";
-import type { HarnessOptions } from "./harness";
+import type { CallKind, HarnessOptions } from "./harness";
 import type { Continuation, ModelSettings, Replay, RunEvent, RunRecord } from "./record";
 
 // A choice: the machine plays about 12 Runs at full speed. 10 is the Viewer Run and a Grid of 9 (#72).
@@ -22,13 +22,16 @@ export type WorkerMessage =
   | ({ type: "state"; sight: Sight } & RunState)
   | { type: "inventory"; entries: InventoryAt[] }
   | { type: "events"; events: RunEvent[] }
-  | { type: "model-call-start" }
+  | { type: "call-start"; kind: CallKind }
   | ({ type: "end" } & RunEnd);
+
+/** `since`: ms since the epoch. */
+export type RunCall = { kind: CallKind; since: number };
 
 export class PoolRun {
   #end: RunEnd | null = null;
   #view: RunView = { frame: 0, screen: null, sight: {}, state: null, grid: null, actors: null, camera: null };
-  #modelCallsStarted = 0;
+  #calling: RunCall | null = null;
   // A scripted Bot gives the event loop of its worker no turn until the end of its Run, so a message cannot stop it: the worker reads this shared flag.
   readonly #stop = new Int32Array(new SharedArrayBuffer(4));
   readonly #events: RunEvent[] = [];
@@ -57,12 +60,14 @@ export class PoolRun {
           break;
         case "events":
           this.#events.push(...data.events);
+          if (data.events.some((e) => e.type === this.#calling?.kind)) this.#calling = null;
           break;
-        case "model-call-start":
-          this.#modelCallsStarted++;
+        case "call-start":
+          this.#calling = { kind: data.kind, since: Date.now() };
           break;
         case "end":
           end = { record: data.record, error: data.error };
+          this.#calling = null;
           break;
       }
     };
@@ -92,9 +97,8 @@ export class PoolRun {
     return this.#view;
   }
 
-  /** A Model call runs while its model event is not in `events`. */
-  get modelCallsStarted(): number {
-    return this.#modelCallsStarted;
+  get calling(): RunCall | null {
+    return this.#calling;
   }
 
   /** The events of the Run record up to the end of the last Macro-action, Raw input or Model call, and all of them at the end. */

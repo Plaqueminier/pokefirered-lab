@@ -1,9 +1,10 @@
-import { type Direction, type FieldMove, KIND, LEDGE, type Obstacle, WALL } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, mapNamed, seenIn, UNSEEN } from "../harness/atlas";
+import { type Direction, KIND, LEDGE, WALL } from "../cells";
+import type { FieldMove, Obstacle } from "../game";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
 import { type Cell, cellKey, kindAt, type MapCells } from "../harness/path";
 import { obstacleRemedy } from "../protocol";
 import { atlasCells, explorableCells, Parts, unseenGroups } from "./parts";
-import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, LETTERS, leadTargets, type LocalTarget, localTargets, type Overworld, personName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
+import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, LETTERS, leadTargets, type LocalTarget, localTargets, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
 export const FULL_ATLAS_BUDGET = 100_000;
@@ -52,8 +53,9 @@ export function atlasExtract(overworld: Overworld): AtlasView {
   const { atlas, hasMove } = readableWorld(overworld);
   const here = mapNamed(atlas, overworld.map.name);
   const parts = new Parts(atlas, here, overworld.grid, overworld.player);
-  const local = localTargets(overworld, here, parts);
-  const leads = leadTargets(parts);
+  const inWay = peopleInTheWay(overworld, here, parts);
+  const local = localTargets(overworld, here, parts, inWay);
+  const leads = leadTargets(parts, inWay);
   const view = [...drawnView(overworld, here, hasMove, local), ...seenLines(here, local), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
   const outside = outsideLine(atlas, here, local);
   let neighbours: string[] = [];
@@ -208,8 +210,8 @@ function exitsText(map: AtlasMap): string {
 }
 
 function signsText(map: AtlasMap): string {
-  const read = map.signs.flatMap((s) => (s.text ? [`sign at (${s.x}, ${s.y}): "${s.text}"`] : []));
-  return read.length === 0 ? "" : ` Signs: ${read.join("; ")}.`;
+  const read = map.signs.flatMap((s) => (s.text ? [`${checkName(s)}: "${s.text}"`] : []));
+  return read.length === 0 ? "" : ` Things to check: ${read.join("; ")}.`;
 }
 
 function talkedPeople(map: AtlasMap): AtlasPerson[] {

@@ -101,7 +101,7 @@ describe("the parts of a map", () => {
   });
 
   test("an exit or a person in another part of the map shows how far it is in exits, comes after the targets of the part, and the unseen cells of the other part stay a target", () => {
-    const rocket = { localId: 2, graphics: "ROCKET_M", x: 2, y: 1, loaded: true };
+    const rocket = { localId: 2, graphics: "ROCKET_M", x: 2, y: 1, loaded: true, stays: false };
     const view = atlasExtract(overworld({ ...lower, people: [{ ...rocket, texts: [] }] }, [upper], { x: 6, y: 1 }, [rocket]));
     expect(view.lines).toContain("A. stairs at (7, 1), adjacent east: to Upper (7, 1), taken; beyond it: unseen cells");
     expect(view.lines).toContain("B. stairs at (1, 1), in another part of this map, 2 exits away: to Upper (1, 1), taken; beyond it: unseen cells");
@@ -387,7 +387,7 @@ describe("the extract of the Atlas", () => {
       stepExits: [],
     };
     const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", place: null, to: "House", arrival: null }], signs: [], people: [] };
-    const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true }]));
+    const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true, stays: false }]));
     expect(view.lines).toEqual([
       "Map House: x from 0 to 7, y from 0 to 5. You are at (3, 1), facing north.",
       "Legend: # blocked; . open; ? not seen, next to a cell where you can walk; a blank cell not seen, and no cell that you saw leads to it; @ you; letters the targets.",
@@ -412,8 +412,8 @@ describe("the extract of the Atlas", () => {
       "No exit to the outside is seen yet: explore B.",
       "Unseen cells:",
       "B. unseen cells south of (3, 3), 2 south",
-      "People and signs:",
-      'C. sign at (3, 0), adjacent north, you face it: read, "It\'s a TV."',
+      "People, objects and things to check:",
+      'C. something you can check at (3, 0), adjacent north, you face it: read, "It\'s a TV."',
       'D. MOM at (5, 3), 2 south, 2 east: talked, "MOM: Take care!"',
     ]);
   });
@@ -432,21 +432,52 @@ describe("the extract of the Atlas", () => {
   });
 
   test("the people on the cells that the player did not see are not targets", () => {
-    const lass = { localId: 3, graphics: "LASS", x: 3, y: 1, loaded: true };
+    const lass = { localId: 3, graphics: "LASS", x: 3, y: 1, loaded: true, stays: false };
     const view = atlasExtract(overworld({ ...LAB, people: [{ ...lass, texts: [] }] }, [], { x: 1, y: 2 }, [lass]));
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("LASS"));
   });
 
-  test("an ITEM BALL says that it is a free item, but the starter balls of Oak's Lab do not", () => {
-    const ball = { localId: 3, graphics: "ITEM_BALL", x: 1, y: 1, loaded: true };
+  test("an ITEM BALL says that it is a free item; the starter balls of Oak's Lab are objects to interact with", () => {
+    const ball = { localId: 3, graphics: "ITEM_BALL", x: 1, y: 1, loaded: true, stays: false };
     const label = (name: string) => atlasExtract(overworld({ ...LAB, name, people: [{ ...ball, texts: [] }] }, [], { x: 1, y: 2 }, [ball])).targets.find((t) => t.kind === "person")?.label;
     expect(label("Route3")).toBe("ITEM BALL at (1, 1), adjacent north, you face it: a free item, go takes it");
-    expect(label("PalletTown_ProfessorOaksLab")).toBe("ITEM BALL at (1, 1), adjacent north, you face it");
+    expect(label("PalletTown_ProfessorOaksLab")).toBe("ITEM BALL at (1, 1), adjacent north, you face it, an object that you can interact with");
+  });
+
+  test("each object says that the player can interact with it, also when it closes no way", () => {
+    const fossil = { localId: 3, graphics: "FOSSIL", x: 1, y: 1, loaded: true, stays: false };
+    const lass = { localId: 4, graphics: "LASS", x: 2, y: 1, loaded: true, stays: false };
+    const view = atlasExtract(overworld({ ...LAB, people: [fossil, lass].map((p) => ({ ...p, texts: [] })) }, [], { x: 1, y: 2 }, [fossil, lass]));
+    expect(view.targets.flatMap((t) => (t.kind === "person" ? [t.label] : []))).toEqual([
+      "FOSSIL at (1, 1), adjacent north, you face it, an object that you can interact with",
+      "LASS at (2, 1), 1 north, 1 east",
+    ]);
+  });
+
+  test("an object that stays on the only way is in your way, and the unseen cells past it say so; a person who walks or stands in the open is not", () => {
+    const cave: AtlasMap = { ...LAB, name: "Cave", width: 5, height: 5, cells: "?????" + "##.##" + "#...#" + "#...#" + "#####", warps: [] };
+    const fossil = { localId: 1, graphics: "FOSSIL", x: 2, y: 1, loaded: true, stays: true };
+    const man = { localId: 2, graphics: "MAN", x: 3, y: 2, loaded: true, stays: true };
+    const view = atlasExtract(overworld({ ...cave, people: [fossil, man].map((p) => ({ ...p, texts: [] })) }, [], { x: 1, y: 3 }, [fossil, man]));
+    const labels = view.targets.map((t) => t.label);
+    expect(labels).toContain("FOSSIL at (2, 1), 2 north, 1 east, an object that you can interact with, in your way: the way past it stays closed while it is here");
+    expect(labels).toContain("MAN at (3, 2), 1 north, 2 east");
+    expect(labels.find((l) => l.startsWith("unseen"))).toContain("past the FOSSIL on this cell");
+    expect(labels.findIndex((l) => l.startsWith("FOSSIL"))).toBeLessThan(labels.findIndex((l) => l.startsWith("MAN")));
+    const walker = atlasExtract(overworld({ ...cave, people: [{ ...fossil, texts: [] }] }, [], { x: 1, y: 3 }, [{ ...fossil, stays: false }]));
+    expect(walker.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("in your way"));
+  });
+
+  test("a person who stays in a gap between two groups of seen cells is in your way", () => {
+    const hall: AtlasMap = { ...LAB, name: "Hall", width: 5, height: 5, cells: "#####" + "#...#" + "##.##" + "#...#" + "#####", warps: [] };
+    const guard = { localId: 1, graphics: "POLICEMAN", x: 2, y: 2, loaded: true, stays: true };
+    const view = atlasExtract(overworld({ ...hall, people: [{ ...guard, texts: [] }] }, [], { x: 1, y: 3 }, [guard]));
+    expect(view.targets.map((t) => t.label)).toContainEqual(expect.stringContaining("POLICEMAN at (2, 2), 1 north, 1 east, in your way"));
   });
 
   test("a trainer that the player did not beat yet has a mark in its target; a beaten trainer has none", () => {
-    const lass = { localId: 3, graphics: "LASS", x: 2, y: 1, loaded: true, unbeatenTrainer: true };
-    const youngster = { localId: 4, graphics: "YOUNGSTER", x: 1, y: 1, loaded: true };
+    const lass = { localId: 3, graphics: "LASS", x: 2, y: 1, loaded: true, stays: false, unbeatenTrainer: true };
+    const youngster = { localId: 4, graphics: "YOUNGSTER", x: 1, y: 1, loaded: true, stays: false };
     const view = atlasExtract(overworld({ ...LAB, people: [lass, youngster].map((p) => ({ ...p, texts: [] })) }, [], { x: 1, y: 2 }, [lass, youngster]));
     expect(view.targets.flatMap((t) => (t.kind === "person" ? [t.label] : []))).toEqual([
       "YOUNGSTER at (1, 1), adjacent north, you face it",

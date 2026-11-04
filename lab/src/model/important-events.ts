@@ -1,8 +1,7 @@
-import { mapNamed } from "../harness/atlas";
+import { mapNamed, personName } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { callTurns, type RunEvent } from "../harness/record";
 import type { PartyMon } from "../party";
-import { personName } from "./targets";
 
 export function importantEvents(before: Observation | null, now: Observation, events: readonly RunEvent[]): string[] {
   const start = events.findLastIndex((e) => e.type === "model") + 1;

@@ -644,7 +644,7 @@ describe("the review turn", () => {
         "Review turn: check your plan against the facts before you act.",
         "- Where are you on the way to the next Milestone?",
         "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
-        "- What do the signs and the people tell you? Which of your guesses do they confirm?",
+        "- What do the things that you checked and the people tell you? Which of your guesses do they confirm?",
         "- Which exits, edges, unseen cells and leads are left to explore?",
         "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
         '- Write in "remove" the numbers of the sentences of your Memory tree that are false now or useless, 5 at most, or an empty list. The number of a sentence is the [n] before it. You cannot change a sentence.',

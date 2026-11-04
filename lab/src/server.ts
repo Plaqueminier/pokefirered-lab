@@ -21,7 +21,6 @@ import {
   extendProblem,
   GBA_FPS,
   type Jump,
-  modelEvents,
   type ModelProvider,
   type ReplayModel,
   type ReplayStatus,
@@ -372,7 +371,7 @@ async function replayFile(name: string): Promise<string> {
   return `Replay of ${name}.${noParent}`;
 }
 
-function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopAsked, view }: PoolRun): RunSummary {
+function runSummary({ id, spec, continued, end, events, calling, stopAsked, view }: PoolRun): RunSummary {
   const { milestone, battle, totals } = factsAt(events, Number.POSITIVE_INFINITY);
   const facts = spec.model && modelFacts(spec.model);
   const own = continued ? modelTotals(events.slice(continued.events)) : totals;
@@ -386,11 +385,11 @@ function runSummary({ id, spec, continued, end, events, modelCallsStarted, stopA
     stopAsked,
     endReason: end?.record?.result.endReason ?? null,
     error: end?.error ?? null,
-    model: facts ? { ...facts, spent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, totals) }, ownSpent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, own) }, callsStarted: modelCallsStarted } : null,
+    model: facts ? { ...facts, spent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, totals) }, ownSpent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, own) } } : null,
     frame: view.frame,
     milestone,
     battle,
-    waits: end === null && modelCallsStarted > modelEvents(events).length,
+    calling,
     record: writtenRecords.get(id) ?? null,
   };
 }
@@ -473,15 +472,26 @@ function sendReplayEvents(to?: ServerWebSocket<unknown>): void {
 }
 
 let eventsSent = 0;
+let lastEventSent: RunEvent | undefined;
+
+function noteEventsSent(events: readonly RunEvent[]): void {
+  eventsSent = events.length;
+  lastEventSent = events.at(-1);
+}
 
 function sendEvents({ to, quiet }: { to?: ServerWebSocket<unknown>; quiet?: boolean } = {}): void {
   const events = [...shown.events()];
-  if (!to) eventsSent = events.length;
+  if (!to) noteEventsSent(events);
   send({ type: "events", events, quiet }, to);
 }
 
 function sendNewEvents(): void {
-  if (shown.events().length !== eventsSent) sendEvents();
+  const events = shown.events();
+  if (events.length === eventsSent) return;
+  // A replay that starts again gives another list, which does not continue the one that the clients have.
+  if (events.length < eventsSent || events[eventsSent - 1] !== lastEventSent) return sendEvents();
+  send({ type: "events-added", from: eventsSent, events: events.slice(eventsSent) });
+  noteEventsSent(events);
 }
 
 async function addToGrid(cell: number, name: string): Promise<string | null> {
@@ -510,9 +520,17 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       setAudioClient(ws, message.enabled);
       break;
     case "view-map": {
-      const grid = safely(() => run.game.gridOf(message.group, message.num));
+      const grid = safely(() => {
+        const rom = run.game.gridOf(message.group, message.num);
+        return rom && run.game.withObstacles(rom, run.game.actorsOf(rom));
+      });
       // The actors are those of the Run of the Viewer: none for a Run of a Bot.
       send({ type: "preview", grid, actors: grid && shown === viewerRun ? safely(() => run.game.actorsOf(grid)) : null }, ws);
+      return;
+    }
+    case "view-floors": {
+      const grids = message.names.flatMap((name) => safely(() => run.game.mapView(name)?.grid ?? null) ?? []);
+      send({ type: "floors", grids }, ws);
       return;
     }
     case "audio-level": {
