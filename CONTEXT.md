@@ -121,11 +121,11 @@ A part of each walk prompt of a model bot: one line for each outdoor map of the 
 _Avoid_: world map, overview, Town Map (an item of the game)
 
 **Dark map**:
-A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game.
+A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again at the next entry.
 _Avoid_: cave (Mt. Moon is a cave but it is not dark, and the game code gives the name `cave` to this property of a map)
 
 **Field move**:
-A move that a Pokémon uses outside a battle, for example FLASH, CUT or FLY. CUT, ROCK SMASH and STRENGTH remove a **Fixed obstacle**, and SURF crosses water: a walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move. For CUT and ROCK SMASH, the model does not use the move: when a Pokémon of the party knows it and the player has its badge, the obstacle is an open cell and a walk through it uses the move. STRENGTH and SURF do not use a move in a walk yet.
+A move that a Pokémon uses outside a battle, for example FLASH, CUT or FLY. CUT, ROCK SMASH and STRENGTH remove a **Fixed obstacle**, and SURF crosses water: a walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move. For CUT and ROCK SMASH, the model does not use the move: when a Pokémon of the party knows it and the player has its badge, the obstacle is an open cell and a walk through it uses the move. For FLASH, the model also does not use the move: when a Pokémon of the party knows it and the player has its badge, a **Dark map** is a lit map for the model. STRENGTH and SURF do not use a move in a walk yet.
 _Avoid_: HM move (DIG and TELEPORT are **Field moves**, but they are not HM moves)
 
 **Object**:
