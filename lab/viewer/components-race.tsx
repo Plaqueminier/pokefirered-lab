@@ -55,12 +55,12 @@ export function LeaderboardRow({
       <span class="shrink-0">{face}</span>
       <span class="flex min-w-0 flex-1 flex-col gap-1">
         <span class="flex items-center gap-2">
-          <span class="font-mono font-semibold">{id}</span>
-          {state}
+          <span class="shrink-0 font-mono font-semibold">{id}</span>
           <span class="min-w-0 flex-1">
             <ModelName id={model} short />
           </span>
-          <span class="shrink-0 text-muted tabular-nums">{cost}</span>
+          <span class="shrink-0">{state}</span>
+          <span class="w-[9ch] shrink-0 whitespace-nowrap text-right text-muted tabular-nums">{cost}</span>
         </span>
         <span class="flex h-6 items-center justify-between gap-2">
           <span class="flex min-w-0 items-center gap-0.5">{team}</span>

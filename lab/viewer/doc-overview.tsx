@@ -272,7 +272,7 @@ export function RacePage() {
           <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
           <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "a click on a row follows one Ghost, and a second click ends it", "the button “Frame the Ghosts” gives it back"]} />
           <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
-          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, state, model with no prefix, cost or tokens, team and badges of each Run"]} />
+          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, model with no prefix, state, cost or tokens, team and badges of each Run"]} />
           <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>

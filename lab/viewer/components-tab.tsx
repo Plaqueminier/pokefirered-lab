@@ -801,7 +801,7 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "LeaderboardRow",
-    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state, model and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
+    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, model, state and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. The state goes against the column of the cost, so a change of state moves no text: only the end of a long model name is cut. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
     demo: () => <LeaderboardRowDemo />,
   },
   {
