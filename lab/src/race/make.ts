@@ -2,7 +2,7 @@ import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { type CurrentRecord, isCurrentRecord, limitOf, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
 import { NORMAL_TRAINER, shownCharacter } from "../model/character";
-import { modelEvents, parseRunId, type SpendUnit, spentIn } from "../protocol";
+import { modelEvents, parseRunId, type SpendUnit, spentIn, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { encodeTrack, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
@@ -51,22 +51,32 @@ function moneyOf(events: readonly RunEvent[]): RaceRun["money"] {
   return changes.length === 0 ? [] : [[0, changes[0].before], ...changes.map(({ frame, after }): [number, number] => [frame, after])];
 }
 
+// After a whiteout the game warps the player to a Pokémon Center and heals the party. A Run that ends there lost at the cell before: its Ghost stays on that cell, with its team as it lost. A Run that plays on after a whiteout keeps the warp.
+function playUntilEnd({ events, track, state, result }: CurrentRecord): Pick<CurrentRecord, "track" | "state"> {
+  const whiteout = result.endReason === "whiteout" ? events.findLast((event) => event.type === "whiteout") : undefined;
+  if (!whiteout) return { track, state };
+  let end = track.length;
+  while (end > TRACK_POINT && track[end - TRACK_POINT + TRACK_FIELD.frame] > whiteout.frame) end -= TRACK_POINT;
+  return { track: track.slice(0, end), state: state.filter((entry) => entry.frame <= whiteout.frame) };
+}
+
 function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
   const { events, header } = record;
   const lastFrame = new RecordPlayer(record).frames;
   const unit = header.bot.model ? limitOf(header.bot.model).unit : "dollars";
+  const { track, state } = playUntilEnd(record);
   return {
     number,
     record: name,
     bot: `${header.bot.name} ${header.bot.version}`,
     model: header.bot.model?.id ?? "",
     character: shownCharacter(modelEvents(events)) ?? NORMAL_TRAINER,
-    track: encodeTrack(record.track),
+    track: encodeTrack(track),
     battles: battlesOf(events, lastFrame),
     trainers: events.flatMap((e) => (e.type === "trainer" ? [[e.frame, e.trainer] as [number, string]] : [])),
     milestones: events.flatMap((e) => (e.type === "milestone" ? [[e.frame, e.milestone] as [number, string]] : [])),
     end: { frame: lastFrame, result: record.result.endReason },
-    state: record.state,
+    state,
     ...(unit === "tokens" ? { unit } : {}),
     cost: costOf(events, unit),
     faints: events.flatMap((e) => (e.type === "faint" && e.side === "player" ? [e.frame] : [])),

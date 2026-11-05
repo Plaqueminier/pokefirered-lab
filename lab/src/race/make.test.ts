@@ -39,6 +39,25 @@ const MIDDLE = "00003-model-2-2026-10-25T08-36-38.631Z.json";
 const LAST = "00004-model-12-2026-11-01T07-41-47.303Z.json";
 const NO_ID = "model-12-2026-11-02T07-41-47.303Z.json";
 
+test("a Run that ends with a whiteout stays where it lost, with its team as it lost; a Run that plays on after a whiteout keeps the warp to the Pokémon Center", async () => {
+  const lost = [10, 3, 19, 16, 11, 1, 20, 3, 19, 16, 10, 1];
+  const warp = [47, 5, 4, 7, 4, 1];
+  const fainted: StateEntry = { frame: 30, kind: "health", health: [{ hp: 0, status: "none" }] };
+  const healed: StateEntry = { frame: 47, kind: "health", health: [{ hp: 20, status: "none" }] };
+  const fields = { track: [...lost, ...warp], state: [fainted, healed], events: [{ frame: 40, type: "whiteout" }] } satisfies Partial<RunRecord>;
+  const dir = await runsDir({
+    [OLDEST]: record({ ...fields, result: { endReason: "whiteout", frames: 90, milestones: [], rawInputs: 0 } }),
+    [LAST]: record(fields),
+  });
+
+  const [ended, onward] = (await makeRace(dir)).runs;
+  expect(Array.from(decodeTrack(ended.track))).toEqual(lost);
+  expect(ended.state).toEqual([fainted]);
+  expect(ended.end).toEqual({ frame: 100, result: "whiteout" });
+  expect(Array.from(decodeTrack(onward.track))).toEqual([...lost, ...warp]);
+  expect(onward.state).toEqual([fainted, healed]);
+});
+
 test("a Race holds the Runs of the model bots with the Run id of their file, their track, State track, battles, trainers, Milestones and Run result; a record of another Bot changes no number", async () => {
   const track = [10, 4, 1, 6, 6, 1, 26, 4, 1, 6, 7, 0, 100, 3, 0, 12, 5, 3];
   const state: StateEntry[] = [{ frame: 15, kind: "team", team: [{ species: "SQUIRTLE", nickname: "BOB", level: 5, maxHp: 20, moves: ["TACKLE"] }] }, { frame: 15, kind: "health", health: [{ hp: 20, status: "none" }] }];

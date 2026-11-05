@@ -227,7 +227,7 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track and the State track of each Run on one game time, with its names and its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Race file of an older version does not open: make it again."],
+        ["Race file", "the track and the State track of each Run on one game time, with its names and its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Run that ends with a whiteout stops at the cell where it lost, with no warp to the Pokémon Center and no heal; a Run that plays on after a whiteout keeps them. A Race file of an older version does not open: make it again."],
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). With no record named, the command takes all the records of the model bots. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
