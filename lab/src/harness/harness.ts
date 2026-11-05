@@ -13,7 +13,7 @@ import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, destinationOf, findRoute, type Leg, type MapSource, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
+import { type Cell, destinationOf, findRoute, headingAlong, type Leg, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { RunEnd, RunLimits } from "./run-limits";
 import {
@@ -478,12 +478,14 @@ export class Harness {
   // One Model call for each step would cost too much on a floor of 48 x 40 cells (#74).
   async walkOn(x: number, y: number, direction: Direction): Promise<ActionResult> {
     return this.act({ name: "walkOn", x, y, direction }, () => {
-      const { map } = this.place();
+      const start = this.place();
+      const { map } = start;
+      const heading = headingAlong(start, { x, y }, direction);
       this.#atlas.lookAround();
       const peopleBefore = this.#atlas.peopleSeen(map);
       let outcome = this.walkTo({ map, x, y }, true);
       while (outcome.status === "done") {
-        const next = this.nextDarkStep(map, peopleBefore, direction);
+        const next = this.nextDarkStep(map, peopleBefore, direction, heading);
         if (!next) break;
         outcome = this.walkTo({ map, ...next }, true);
       }
@@ -491,12 +493,15 @@ export class Harness {
     });
   }
 
-  private nextDarkStep(map: string, peopleBefore: number, direction: Direction): Cell | null {
+  private nextDarkStep(map: string, peopleBefore: number, direction: Direction, heading: Direction | null): Cell | null {
     if (this.#run.game.waitingFor().kind !== "walk" || this.place().map !== map) return null;
     this.#atlas.lookAround();
     if (this.#atlas.peopleSeen(map) > peopleBefore) return null;
     const { player, grid, actors } = this.overworld();
-    return this.#atlas.darkForModel(grid) ? nextStraightStep({ ...grid, people: actors.people }, player, direction) : null;
+    const seen = this.#atlas.darkSight(grid);
+    if (!seen) return null;
+    const cells = { ...grid, people: actors.people };
+    return nextStraightStep(cells, player, direction) ?? (heading && nextStepAlong(cells, player, direction, heading, seen));
   }
 
   private walkTo(asked: Place, canExit: boolean): Outcome {

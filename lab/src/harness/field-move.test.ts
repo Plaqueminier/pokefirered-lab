@@ -226,6 +226,17 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a walk on a m
     harness.close();
   });
 
+  test("walkOn goes along a long wall when the asked side has unseen cells: Run 00047 paid one Model call for each 2 cells on this row", async () => {
+    const { harness } = await openAt("RockTunnel_1F", 30, 14, false);
+    await stepThrough(harness, Array.from({ length: 14 }, (_, i): [number, number] => [31 + i, 14]));
+    const decisions = harness.actions.length;
+    expect(await harness.walkOn(41, 15, "south")).toMatchObject({ status: "done" });
+    expect(harness.actions.length).toBe(decisions + 1);
+    expect(harness.observe()).toMatchObject({ player: { x: 28, y: 15 } });
+    expect(cellOf(harness, "RockTunnel_1F", 27, 15)).toBe("#");
+    harness.close();
+  });
+
   test("walkOn stops before an exit", async () => {
     const { harness } = await openAt("RockTunnel_1F", 17, 13, false);
     expect(await harness.walkOn(18, 13, "east")).toMatchObject({ status: "done" });

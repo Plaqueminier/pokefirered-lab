@@ -255,6 +255,22 @@ export function nextStraightStep(map: MapCells & Pick<RouteMap, "warps"> & { peo
   return inside(map, next) && !wallBetween(map, from, direction) && free(map, next) && !warpAt(map, next) ? next : null;
 }
 
+/** The side of `direction` that a walk from `from` to `to` goes to. Null for a walk straight in `direction`. */
+export function headingAlong(from: Cell, to: Cell, direction: Direction): Direction | null {
+  if (direction === "north" || direction === "south") return to.x === from.x ? null : to.x < from.x ? "west" : "east";
+  return to.y === from.y ? null : to.y < from.y ? "north" : "south";
+}
+
+/** One step along a wall on `side`, while `side` has unseen cells on the next cell or the cell after it: 3 x 3 sight sees one cell ahead. */
+export function nextStepAlong(map: MapCells & Pick<RouteMap, "warps"> & { people: Cell[] }, from: Cell, side: Direction, heading: Direction, seen: (cell: Cell) => boolean): Cell | null {
+  const next = nextStraightStep(map, from, heading);
+  if (!next) return null;
+  const [dx, dy] = DIRECTION_STEP[heading];
+  const [sideX, sideY] = DIRECTION_STEP[side];
+  const unseenAt = ({ x, y }: Cell) => inside(map, { x: x + sideX, y: y + sideY }) && !seen({ x: x + sideX, y: y + sideY });
+  return unseenAt(next) || unseenAt({ x: next.x + dx, y: next.y + dy }) ? next : null;
+}
+
 export function kindAt(map: MapCells, c: Cell): string {
   return map.kinds[(c.y - map.y0) * map.width + (c.x - map.x0)];
 }

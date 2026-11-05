@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Direction } from "../cells";
-import { type Cell, destinationOf, findRoute, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
+import { type Cell, destinationOf, findRoute, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
 
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
@@ -55,6 +55,48 @@ describe("the next step of a walk in the dark", () => {
   test("it stops before an exit and before a person", () => {
     expect(nextStraightStep({ ...room(["..."]), warps: [{ x: 1, y: 0, to: "Next", warpId: 0, how: "step" }] }, from, "east")).toBeNull();
     expect(nextStraightStep(room(["..."], [{ x: 1, y: 0 }]), from, "east")).toBeNull();
+  });
+});
+
+describe("the next step along a wall on a dark map", () => {
+  const rows = (...kinds: string[]) => map("Dark", kinds);
+  const corridor = rows(".......", "#######");
+  const seenUpTo = (lastX: number) => (c: Cell) => c.x <= lastX;
+  const from = { x: 3, y: 0 };
+
+  test("it goes on while the wall side has unseen cells on the next cell", () => {
+    expect(nextStepAlong(corridor, from, "south", "east", seenUpTo(3))).toEqual({ x: 4, y: 0 });
+  });
+
+  test("it goes on when only the cell after the next one has unseen cells on the wall side: 3 x 3 sight sees one cell ahead", () => {
+    expect(nextStepAlong(corridor, from, "south", "east", seenUpTo(4))).toEqual({ x: 4, y: 0 });
+  });
+
+  test("it stops when the wall side is seen for the next two cells", () => {
+    expect(nextStepAlong(corridor, from, "south", "east", seenUpTo(5))).toBeNull();
+  });
+
+  test("the edge of the map is not an unseen cell", () => {
+    expect(nextStepAlong(rows("......."), from, "south", "east", seenUpTo(6))).toBeNull();
+  });
+
+  test("it stops at a wall in front, before an exit and before a person", () => {
+    expect(nextStepAlong(rows("...#...", "#######"), { x: 2, y: 0 }, "south", "east", seenUpTo(2))).toBeNull();
+    expect(nextStepAlong({ ...corridor, warps: [{ x: 4, y: 0, to: "Next", warpId: 0, how: "step" }] }, from, "south", "east", seenUpTo(3))).toBeNull();
+    expect(nextStepAlong({ ...corridor, people: [person(4, 0)] }, from, "south", "east", seenUpTo(3))).toBeNull();
+  });
+});
+
+describe("the side of a walk to a target of a dark map", () => {
+  test("a walk to a side of the asked direction goes along that side", () => {
+    expect(headingAlong({ x: 41, y: 15 }, { x: 39, y: 15 }, "south")).toBe("west");
+    expect(headingAlong({ x: 41, y: 15 }, { x: 43, y: 15 }, "north")).toBe("east");
+    expect(headingAlong({ x: 5, y: 9 }, { x: 5, y: 7 }, "east")).toBe("north");
+    expect(headingAlong({ x: 5, y: 7 }, { x: 5, y: 9 }, "west")).toBe("south");
+  });
+
+  test("a walk straight in the asked direction has no side", () => {
+    expect(headingAlong({ x: 16, y: 37 }, { x: 15, y: 37 }, "west")).toBeNull();
   });
 });
 

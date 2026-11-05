@@ -372,3 +372,13 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     Rock Tunnel has no ledge, so only a test with no emulator proves the stop before a ledge. The first test of ROCK SMASH walked 2 cells into the dark: the new rule refused it, and the test now walks one cell at a time.
 
     No Run played this version when this change was made. The proof is a Run of the user: an Extended Run of Run 00047, up to the exit of Rock Tunnel to Lavender Town. Run 00047 has no FLASH, so the emulator tests prove the use of FLASH.
+
+## 30. A walk along a wall in the dark (2026-11-05)
+
+76. The model bot goes to version 28. The user extended Run 00047 on version 27 and stopped it on `RockTunnel_1F`: 22,950 frames, 49 Model calls (21 on 1F, 25 on B1F, 3 before the first walk), 759,114 prompt tokens with the memory summaries, no exit of the tunnel found. The seen cells make strips of 3 cells. The party has no FLASH, so no Run has proved the use of FLASH.
+
+    The Run showed a cost: 12 of the 19 walks that ended with `done` moved 2 cells or fewer. On row 15, `go` asked for unseen cells south of `x:41, 39, 37, 35, 33, 31, 29`, with one Model call each. A walk on row 14 had already seen row 15. With 3 x 3 sight, each stop shows row 16 for 3 cells only, so the next target is 2 cells away. The direction of the target was south, a wall closed it, and the walk stopped.
+
+    `walkOn` now goes along the wall: when the asked direction is closed, it continues in the direction of the walk to the target, while the side of the wall has unseen cells on the next two cells. An opening on that side turns the walk into it. The same test on the same row now walks from `x:41` to `x:28` in one Model call, and stops at the wall at `(27, 15)`. No Run played this version when this change was made.
+
+    The emulator shows the size of the dark circle: radius 24 pixels at the centre of the player's cell, as in `sFlashLevelToRadius`. The 4 cells at the sides are lit at about 100%, and the 4 diagonal cells at 57 to 63%. So 3 x 3 stays, and a player sees part of each diagonal cell.

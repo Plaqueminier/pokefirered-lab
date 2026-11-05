@@ -558,7 +558,7 @@ function lastProgressKinds(asked: Asked): string {
   return asked.kind === "walk" && darkOfMap(asked.overworld) ? "an item found, a new species caught or a new cell seen on this dark map" : "an item found or a new species caught";
 }
 
-const DARK_GO_RULE = " At unseen cells of this dark map, the walk continues in the same direction: a wall, an exit, a new person or a battle stops it.";
+const DARK_GO_RULE = " At unseen cells of this dark map, the walk continues in the same direction, then along a wall while the side of that direction stays unseen: a wall in front, an exit, a new person or a battle stops it.";
 
 function fieldMoveHints({ overworld }: WalkAsked): string[] {
   return overworld.teachables.flatMap((teachable) => {

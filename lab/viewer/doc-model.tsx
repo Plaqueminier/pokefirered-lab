@@ -191,7 +191,7 @@ const ANSWER = [
 
 // A copy of the actions of the model bot at each screen: change it with them.
 const SCREENS = [
-  { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "the map as a grid: `?` an unseen cell that an open cell leads to, a blank any other unseen cell, `-` `_` `[` `]` a thin wall, `t` `r` `b` `w` an obstacle or water whose HM is in the Bag or whose move a Pokémon knows, a cut tree or a rock that the party can remove is an open cell, a letter is a target", "with a TM or an HM in the Bag: one line for `teach`, and one line when its Field move can help on this map", "on a map that is dark for the model: one line for the dark, and `go` to unseen cells continues in the same direction"], actions: ["go", "goTo", "swap", "use", "teach", "viewAtlas", "zoom", "press"] },
+  { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "the map as a grid: `?` an unseen cell that an open cell leads to, a blank any other unseen cell, `-` `_` `[` `]` a thin wall, `t` `r` `b` `w` an obstacle or water whose HM is in the Bag or whose move a Pokémon knows, a cut tree or a rock that the party can remove is an open cell, a letter is a target", "with a TM or an HM in the Bag: one line for `teach`, and one line when its Field move can help on this map", "on a map that is dark for the model: one line for the dark, and `go` to unseen cells continues in the same direction, then along a wall"], actions: ["go", "goTo", "swap", "use", "teach", "viewAtlas", "zoom", "press"] },
   { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES"], actions: ["choose", "zoom"] },
   { title: "⚔️ Battle action", adds: ["your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use", "zoom"] },
   { title: "🎯 Move menu", adds: ["the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "zoom", "press"] },
@@ -349,7 +349,7 @@ export function PromptPage() {
         <DocCard title="🌊 Blocked edge" lines={["water between two maps: only SURF crosses it", "not a target; a `goTo` past it is impossible, with the reason"]} />
         <DocCard title="🧩 Part" lines={["the cells that the player can walk to on one map", "another part shows the number of exits to it, or “no seen way there yet”", "the leads keep the unseen cells of the other parts"]} />
         <DocCard title="🧱 Thin wall" lines={["`-` `_` `[` `]`: a wall on the north, south, west or east side of an open cell", "no step across it, in both directions"]} />
-        <DocCard title="🔦 Dark map" lines={["3 × 3 cells seen until FLASH", "a Pokémon that knows FLASH and badge 1: the program uses the move, with no Model call", "no FLASH: `goTo` on seen cells only, `go` continues in the same direction, a new cell seen is progress"]} />
+        <DocCard title="🔦 Dark map" lines={["3 × 3 cells seen until FLASH", "a Pokémon that knows FLASH and badge 1: the program uses the move, with no Model call", "no FLASH: `goTo` on seen cells only, `go` continues in the same direction, then along a wall, a new cell seen is progress"]} />
         <DocCard title="🪨 Fixed obstacle" lines={["a cut tree, a rock, a boulder: not people", "a `goTo` that only it stops is impossible at once, with the move", "a cut tree or a rock that the party can remove is an open cell: the walk uses the move"]} />
       </div>
     </Page>
