@@ -200,7 +200,7 @@ const SCREENS = [
   { title: "💾 Item PC", adds: ["the items in the PC and in the ITEMS pocket, with quantities", "1 with no quantity; `leave` returns to the menu of the PC"], actions: ["withdraw", "deposit", "leave", "zoom"] },
   { title: "📦 Pokémon PC", adds: ["the Pokémon in the boxes, with a number: species, nickname, level, box", "`deposit` names a Pokémon of the party, `withdraw` a number or a name of the list; no `withdraw` with empty boxes"], actions: ["deposit", "withdraw", "leave", "zoom"] },
   { title: "✏️ Naming screen", adds: ["what the screen names, and the maximum length", "for a nickname, the text must be new; for another name, `name` alone keeps the name"], actions: ["name", "zoom"] },
-  { title: "📖 Learn a move", adds: ["the new move and the 4 moves: type, power, accuracy, PP", "an important choice: count the damage moves and compare their PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
+  { title: "📖 Learn a move", adds: ["the species, the new move and the 4 moves: type, power, accuracy, maximum PP", "for each answer, the damage moves that it leaves", "keep at least 2 damage moves; an important choice: count the damage moves and compare their PP", "an HM move cannot be forgotten"], actions: ["forget", "keep", "zoom"] },
 ];
 
 function AnswerCard() {
@@ -290,7 +290,7 @@ export function PromptPage() {
         ["Naming screen", "what the screen names and the maximum length. The action is `name <text>`. For a nickname, the text must be new and different from the species. For another name, `name` alone keeps the name."],
         [
           "Learn a move",
-          "“SQUIRTLE wants to learn BUBBLE (WATER, power 20, accuracy 100, PP 30/30).” with the description of the move, then “It already knows 4 moves. To learn BUBBLE, it must forget one of them:” and the 4 moves, then “This is an important choice. Before you choose, count your damage moves and compare their PP.” The actions are `forget <move>` (a name, or the place 1 to 4) and `keep`. An HM move says that it cannot be forgotten. The code does all the menus.",
+          "“Hasp (SQUIRTLE) wants to learn BUBBLE (WATER, power 20, accuracy 100, max PP 30).” with the description of the move, then “It already knows 4 moves. To learn BUBBLE, it must forget one of them:” and the 4 moves with their maximum PP. After each move, “If you forget it: Hasp then has 2 damage moves: TACKLE (NORMAL, max PP 35), BUBBLE (WATER, STAB, max PP 30).”, which counts the new move Then a line that a Pokémon Center gives back all the PP, the same sentence for `keep`, “Keep at least 2 damage moves when you can: with only one, a foe can resist it and its PP can run out.” and “This is an important choice. Before you choose, count your damage moves and compare their PP.” The Party above the question keeps the PP of the moment. The actions are `forget <move>` (a name, or the place 1 to 4) and `keep`. An HM move says that it cannot be forgotten, in place of the sentence on what it leaves. The code does all the menus.",
         ],
         [
           "`press`",

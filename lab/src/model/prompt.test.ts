@@ -11,6 +11,18 @@ import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, t
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
+function move(name: string, type: string, power: number | null, pp: number, maxPp: number, description: string) {
+  return { name, type, effect: 0, power, accuracy: 100, pp, maxPp, description };
+}
+
+function learnMovePrompt(known: ReturnType<typeof move>[], newMove: ReturnType<typeof move>): string {
+  const observation = route1(22, []);
+  const [mon] = observation.party;
+  const party = [{ ...mon, nickname: "Sage", species: "METAPOD", types: ["BUG"] }, { ...mon, nickname: "Sage", species: "IVYSAUR", types: ["GRASS", "POISON"], moves: known }];
+  const learning: Observation = { ...observation, party, waitingFor: { kind: "learnMove", slot: 1, move: newMove } };
+  return userPrompt(learning, askedOf(learning, false)!, [], NO_TURN);
+}
+
 function call(action: string, mission = "", note = ""): ModelEvent {
   return {
     type: "model",
@@ -793,5 +805,59 @@ describe("the events that ask for a note", () => {
     expect(importantEvents({ ...now, party: [] }, now, [call("choose NO")])).toEqual([]);
     const ended: RunEvent = { type: "battle", frame: 0, state: "end" };
     expect(importantEvents(now, route1(5, []), [call("fight 1"), ended])).toEqual(["the battle ended, and your party needs care: 1 SQUIRTLE HP 5/22"]);
+  });
+});
+
+describe("the learn-move question", () => {
+  const TACKLE = move("TACKLE", "NORMAL", 35, 29, 35, "A hit.");
+  const POWDER = move("POISONPOWDER", "POISON", null, 35, 35, "Poison.");
+  const SEED = move("LEECH SEED", "GRASS", null, 10, 10, "Seed.");
+  const WHIP = move("VINE WHIP", "GRASS", 35, 3, 10, "A whip.");
+  const SLEEP = move("SLEEP POWDER", "GRASS", null, 15, 15, "Sleep.");
+
+  test("it names the species, shows the maximum PP, and tells what each answer leaves", () => {
+    const prompt = learnMovePrompt([TACKLE, POWDER, SEED, WHIP], SLEEP);
+    expect(prompt).toContain(
+      [
+        "Sage (IVYSAUR) wants to learn SLEEP POWDER (GRASS, power ---, accuracy 100, max PP 15). Sleep.",
+        "It already knows 4 moves. To learn SLEEP POWDER, it must forget one of them:",
+        "- 1. TACKLE: NORMAL, power 35, accuracy 100, max PP 35. A hit. If you forget it: Sage then has 1 damage move: VINE WHIP (GRASS, STAB, max PP 10).",
+        "- 2. POISONPOWDER: POISON, power ---, accuracy 100, max PP 35. Poison. If you forget it: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
+        "- 3. LEECH SEED: GRASS, power ---, accuracy 100, max PP 10. Seed. If you forget it: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
+        "- 4. VINE WHIP: GRASS, power 35, accuracy 100, max PP 10. A whip. If you forget it: Sage then has 1 damage move: TACKLE (NORMAL, max PP 35).",
+        "A Pokémon Center gives back all the PP, so this list shows only the maximum PP of each move.",
+        "If you keep your moves: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
+        "Keep at least 2 damage moves when you can: with only one, a foe can resist it and its PP can run out.",
+        "This is an important choice. Before you choose, count your damage moves and compare their PP.",
+      ].join("\n"),
+    );
+  });
+
+  test("a new damage move counts in what an answer leaves, and an answer can leave no damage move", () => {
+    const leaf = move("RAZOR LEAF", "GRASS", 55, 25, 25, "A leaf.");
+    const prompt = learnMovePrompt([POWDER, SEED, SLEEP, WHIP], leaf);
+    expect(prompt).toContain("Poison. If you forget it: Sage then has 2 damage moves: VINE WHIP (GRASS, STAB, max PP 10), RAZOR LEAF (GRASS, STAB, max PP 25).");
+    const scent = move("SWEET SCENT", "NORMAL", null, 20, 20, "A scent.");
+    expect(learnMovePrompt([POWDER, SEED, SLEEP, WHIP], scent)).toContain("A whip. If you forget it: Sage then has 0 damage moves.");
+  });
+
+  test("a move with no fixed power is a damage move", () => {
+    const magnitude = { ...move("MAGNITUDE", "GROUND", null, 30, 30, "A quake."), fixedDamage: true as const };
+    expect(learnMovePrompt([magnitude, POWDER, SEED, SLEEP], WHIP)).toContain("If you keep your moves: Sage then has 1 damage move: MAGNITUDE (GROUND, max PP 30).");
+  });
+
+  test("a move with no fixed power has no STAB, as in the fight lines", () => {
+    const toxic = { ...move("VENOM", "POISON", null, 15, 15, "A poison."), fixedDamage: true as const };
+    expect(learnMovePrompt([toxic, POWDER, SEED, SLEEP], WHIP)).toContain("If you keep your moves: Sage then has 1 damage move: VENOM (POISON, max PP 15).");
+  });
+
+  test("an HM move says that it cannot be forgotten, and not what forgetting it leaves", () => {
+    const cut = move("CUT", "NORMAL", 50, 30, 30, "A cut.");
+    const prompt = learnMovePrompt([cut, POWDER, SEED, WHIP], SLEEP);
+    expect(prompt).toContain("- 1. CUT: NORMAL, power 50, accuracy 100, max PP 30. A cut. It is an HM move: it cannot be forgotten.\n");
+  });
+
+  test("the Party keeps the PP of the moment", () => {
+    expect(learnMovePrompt([TACKLE, POWDER, SEED, WHIP], SLEEP)).toContain("  - VINE WHIP: GRASS, power 35, accuracy 100, PP 3/10. A whip.");
   });
 });

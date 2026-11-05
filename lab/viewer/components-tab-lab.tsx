@@ -242,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "28", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "29", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 

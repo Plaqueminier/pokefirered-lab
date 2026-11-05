@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 28, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 29, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.

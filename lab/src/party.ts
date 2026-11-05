@@ -200,6 +200,10 @@ export function statLabel(stat: string): string {
   return STAT_LABELS[stat] ?? stat;
 }
 
+export function isDamageMove({ power, fixedDamage }: Pick<PartyMove, "power" | "fixedDamage">): boolean {
+  return power !== null || fixedDamage === true;
+}
+
 export function isHmMove(move: string): boolean {
   return HM_MOVES.has(move);
 }

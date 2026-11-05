@@ -6,7 +6,7 @@ import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
-import { type BoxMon, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
+import { type BoxMon, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
@@ -413,8 +413,16 @@ function bagText(bag: BagPocket[]): string {
   return ["Bag:", ...bag.map(pocket)].join("\n");
 }
 
+function moveFacts(move: PartyMove): string {
+  return `${move.type}, power ${move.power ?? "---"}, accuracy ${move.accuracy ?? "---"}`;
+}
+
+function moveAtMaxPp(move: PartyMove): string {
+  return `${moveFacts(move)}, max PP ${move.maxPp}`;
+}
+
 function moveText(move: PartyMove): string {
-  return `${move.type}, power ${move.power ?? "---"}, accuracy ${move.accuracy ?? "---"}, PP ${move.pp}/${move.maxPp}`;
+  return `${moveFacts(move)}, PP ${move.pp}/${move.maxPp}`;
 }
 
 function statsText(stats: Record<string, number>): string {
@@ -443,19 +451,36 @@ function context(asked: Asked): string[] {
       return asked.boxes.length === 0 ? ["The boxes are empty."] : ["The Pokémon in the boxes:", ...asked.boxes.map((mon, row) => `${row + 1}. ${boxMonText(mon)}`)];
     case "naming":
       return [`The naming screen asks for ${asked.subject}, ${asked.maxLength} characters at most.`];
-    case "learnMove": {
-      const { nickname, moves } = asked.party[asked.slot];
-      const { move } = asked;
-      return [
-        `${nickname} wants to learn ${move.name} (${moveText(move)}). ${move.description}`,
-        `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
-        ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveText(known)}. ${known.description}${isHmMove(known.name) ? " It is an HM move: it cannot be forgotten." : ""}`),
-        "This is an important choice. Before you choose, count your damage moves and compare their PP.",
-      ];
-    }
+    case "learnMove":
+      return learnMoveLines(asked.party[asked.slot], asked.move);
     default:
       return battleLines(asked.battle, asked.party);
   }
+}
+
+function learnMoveLines(mon: PartyMon, move: PartyMove): string[] {
+  const { moves } = mon;
+  const forgetting = (known: PartyMove) => {
+    if (isHmMove(known.name)) return "It is an HM move: it cannot be forgotten.";
+    const after = [...moves.filter((other) => other !== known), move];
+    return `If you forget it: ${damageLeft(mon, after)}`;
+  };
+  return [
+    `${monName(mon)} wants to learn ${move.name} (${moveAtMaxPp(move)}). ${move.description}`,
+    `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
+    ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveAtMaxPp(known)}. ${known.description} ${forgetting(known)}`),
+    "A Pokémon Center gives back all the PP, so this list shows only the maximum PP of each move.",
+    `If you keep your moves: ${damageLeft(mon, moves)}`,
+    "Keep at least 2 damage moves when you can: with only one, a foe can resist it and its PP can run out.",
+    "This is an important choice. Before you choose, count your damage moves and compare their PP.",
+  ];
+}
+
+function damageLeft({ nickname, types }: PartyMon, moves: PartyMove[]): string {
+  const hasStab = (move: PartyMove) => move.power !== null && types.includes(move.type);
+  const damage = moves.filter(isDamageMove).map((move) => `${move.name} (${move.type}${hasStab(move) ? ", STAB" : ""}, max PP ${move.maxPp})`);
+  const count = `${nickname} then has ${damage.length} damage ${damage.length === 1 ? "move" : "moves"}`;
+  return damage.length === 0 ? `${count}.` : `${count}: ${damage.join(", ")}.`;
 }
 
 function pcLine(storage: string): string {
@@ -622,7 +647,7 @@ function battleLines(battle: BattleState, party: PartyMon[]): string[] {
 
 /** All the damage moves together have a quarter of their PP or less, and a move still has PP. */
 function fewDamagePp(moves: PartyMove[]): boolean {
-  const damage = moves.filter((move) => move.power !== null || move.fixedDamage);
+  const damage = moves.filter(isDamageMove);
   const sum = (pp: (move: PartyMove) => number) => damage.reduce((total, move) => total + pp(move), 0);
   return damage.length > 0 && sum((move) => move.pp) * 4 <= sum((move) => move.maxPp) && moves.some((move) => move.pp > 0);
 }

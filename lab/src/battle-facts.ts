@@ -1,6 +1,6 @@
 import type { Battle, BattleMon } from "./battle";
 import type { Memory } from "./memory";
-import { type PartyMove, STAGE_NAMES, type StageName, statLabel, typeName } from "./party";
+import { isDamageMove, type PartyMove, STAGE_NAMES, type StageName, statLabel, typeName } from "./party";
 import type { Decode } from "./prompts";
 
 const HP_BAR_PIXELS = 48;
@@ -64,8 +64,8 @@ export function readTypeChart(mem: Memory, decode: Decode): TypeChart {
 
 export function fightFacts({ player, enemy }: Battle, chart: TypeChart, milestones: readonly string[]): (FightFacts | null)[] {
   return player.moves.map((move) => {
-    const { type, power, fixedDamage } = move;
-    if (power === null && !fixedDamage) {
+    const { type, power } = move;
+    if (!isDamageMove(move)) {
       const noEffect = noEffectReason(move, player, enemy, chart);
       return noEffect ? { noEffect } : null;
     }
