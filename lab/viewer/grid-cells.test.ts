@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { GridReplay, RunSummary } from "../src/protocol";
-import { type GridCell, gridCells } from "./grid-cells";
+import { cellTitle, type GridCell, gridCells } from "./grid-cells";
 
 test("a Run that writes its memory shows this state; a Run that ended does not", () => {
   const [writing, ended] = gridCells(2, [live(1, { calling: { kind: "summary", since: 0 } }), live(2, { calling: { kind: "summary", since: 0 }, playing: false, endReason: "cost limit" })], [], 0) as GridCell[];
@@ -74,4 +74,12 @@ test("the Grid puts each chosen Run record in its cell, then the live Runs that 
   const replayed = [live(1, { playing: false, endReason: "goal", record: "r.json" }), live(2, {})];
   expect(gridCells(4, replayed, [replay(0, "r.json", 500)], 0).map(short)).toEqual(["replay 20 plays", "live 2 plays", null, null]);
   expect(gridCells(2, [], [replay(1, "old.json", 500, { error: "different rom" })], 0).map(short)).toEqual([null, "replay 21 ended error: different rom"]);
+});
+
+test("a cell gives the short name of its Run record, with no date", () => {
+  const name = "00061-model-28-2026-11-05T09-59-37.060Z.json";
+  const [replayed, playing, ended] = gridCells(4, [live(1, { playing: false, endReason: "whiteout", record: name }), live(2, {})], [replay(0, name.replace("61", "60"), 500)], 0) as GridCell[];
+  expect(cellTitle(replayed)).toBe("00060-model-28");
+  expect(cellTitle(ended)).toBe("Run 1 · 00061-model-28");
+  expect(cellTitle(playing)).toBe("Run 2");
 });

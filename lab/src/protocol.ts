@@ -265,6 +265,7 @@ export type ClientMessage =
   | { type: "start-bot"; name: string; model: ModelOptions; parent?: string; count: number }
   | { type: "extend-run"; record: string; limit: SpendLimit }
   | { type: "stop-run"; runId: number }
+  | { type: "remove-run"; runId: number }
   | { type: "show"; runId: number | null }
   /** The server also sends the screens of the shown Run. */
   | { type: "follow"; runIds: number[]; size: GridSize }

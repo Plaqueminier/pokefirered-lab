@@ -592,6 +592,17 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "notice", text: `Run ${poolRun.id}: stop asked. The Run stops after the action that plays, or at once in a Model call.` });
       break;
     }
+    case "remove-run": {
+      const poolRun = pool.runs.find((r) => r.id === message.runId);
+      // Before it is settled, its Run record is not written yet.
+      if (!poolRun || !settled.has(poolRun.id)) break;
+      pool.remove(poolRun);
+      settled.delete(poolRun.id);
+      writtenRecords.delete(poolRun.id);
+      screens.forget(poolRun.id);
+      if (shown.id === poolRun.id) show(viewerRun);
+      break;
+    }
     case "show": {
       const poolRun = pool.runs.find((r) => r.id === message.runId);
       show(poolRun ? botRun(poolRun) : viewerRun);
@@ -751,6 +762,8 @@ Bun.serve({
     return new Response("Not found", { status: 404 });
   },
   websocket: {
+    // The events of a long Run are one message of more than 100 MB. Over the default limit of 16 MB, Bun drops the next messages with no error, and a page then has no list of Run records.
+    backpressureLimit: 2 ** 30,
     open(ws) {
       clients.add(ws);
       screens.add(ws);

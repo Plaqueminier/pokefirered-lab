@@ -242,6 +242,12 @@
   }
 }
 
+@custom-variant cell-row {
+  @container (min-aspect-ratio: 4/3) {
+    @slot;
+  }
+}
+
 @layer base {
   @media (min-width: 900px) {
     body:has(> #lab:not([hidden])),

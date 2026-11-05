@@ -177,6 +177,8 @@ export function GridPage() {
         ["Places", "the 9 places are for the Runs of the Bots and the replays of the Grid together, and the bar gives the free places. A start past the free places gets a notice."],
         ["Cost", "the form “Bots” shows the maximum total cost of its N Runs, or the maximum total tokens on a Plan provider. Each Run keeps its own limit."],
         ["Smaller Grid", "a replay in a cell that goes away leaves the Grid."],
+        ["Ended Runs", "an ended live Run keeps its cell until you remove it: the X of its cell, or “Remove N ended” in the bar. It also leaves the Run select. Its Run record stays, so you can still replay it or continue it."],
+        ["Continue", "the button “Continue” of an ended Run opens the form “Bots” on its Run record, with “Keep the same Run” on. Other Runs can play at the same time."],
         ["Reload", "the Grid does not keep its replays when the last page closes. The live Runs fill it again."],
         ["Errors", "a worker that fails, or a Run record of another origin, shows its error in its cell."],
         ["Lab tab only", "the panels, the Timeline, the keyboard, the speed and the savestate are for the shown Run. The Grid has no sound, and the arrow keys scroll the page."],
@@ -201,10 +203,10 @@ export function GridPage() {
             numbered
             rows={[
               ["Size", "choose 2, 4 or 9 cells"],
-              ["Bots", "the form “Bots” starts N Runs of a Bot with one action"],
+              ["Bots", "the form “Bots” of the bar starts N Runs of a Bot with one action"],
               ["Live Runs", "they fill the free cells: first those that play, then those that ended"],
               ["Run records", "an empty cell lists them, and the button “Record” replaces what a cell holds"],
-              ["Replay", "a live Run that ended can replay its record in its cell"],
+              ["Replay", "a Run that ended can replay its record in its cell"],
             ]}
           />
         </Block>

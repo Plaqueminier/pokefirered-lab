@@ -1,18 +1,21 @@
-import { FolderOpen, Pause, Play, RotateCcw, X } from "lucide-preact";
+import { Bot, FolderOpen, Pause, Play, RotateCcw, Trash2, X } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { type ClientMessage, GRID_SIZES, GRID_SPEEDS, type GridSize, type GridSpeed, type ServerMessage } from "../src/protocol";
+import { type BotInfo, type ClientMessage, GRID_SIZES, GRID_SPEEDS, type GridSize, type GridSpeed, type ProviderStatus, type RecordFacts, type ServerMessage } from "../src/protocol";
 import { Button, Card, LABEL, Pill, Slider, Tabs, type Tone, Tooltip } from "./components";
 import { Popover, Select } from "./components-layers";
 import { type ScreenFeed, Store, useStore } from "./cursor";
-import { type CellState, type GridCell, gridCells, STATE_LOOKS } from "./grid-cells";
-import { SPEND_WORDS, spendText } from "../src/protocol";
-import { botRunKey, replayKey } from "./runs";
+import { type CellState, cellTitle, type GridCell, gridCells, STATE_LOOKS } from "./grid-cells";
+import { spendText } from "../src/protocol";
+import { BotsPanel, botRunKey, replayKey } from "./runs";
 import { clock } from "./stats-format";
 
 type Status = Extract<ServerMessage, { type: "status" }>;
 
-type GridData = { status: Status | null; records: readonly string[]; size: GridSize; visible: boolean };
+type GridData = { status: Status | null; records: readonly string[]; facts: Readonly<Record<string, RecordFacts>>; bots: readonly BotInfo[]; providers: readonly ProviderStatus[]; size: GridSize; visible: boolean };
+
+/** The form "Bots", open on a Run record to continue it in the same Run. */
+export type BotsForm = (continued?: string) => ComponentChildren;
 
 export type GridActions = {
   setSize: (size: GridSize) => void;
@@ -33,7 +36,7 @@ const SPEED_OF_TAB = new Map(GRID_SPEEDS.map((speed) => [String(speed), speed]))
 export function ScreenState({ tone, label }: { tone: Tone; label: string }) {
   return (
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/60">
-      <span class="rounded-full bg-bg">
+      <span class="flex max-w-[calc(100%-0.5rem)] rounded-full bg-bg">
         <Pill tone={tone}>{label}</Pill>
       </span>
     </div>
@@ -83,82 +86,122 @@ function CellScreen({ runId, screens }: { runId: number; screens: ScreenFeed }) 
       context.putImageData(image, 0, 0);
     });
   }, [runId, screens]);
-  return <canvas ref={canvas} width={240} height={160} class="block aspect-[3/2] w-full bg-bg [image-rendering:pixelated]" />;
+  return <canvas ref={canvas} width={240} height={160} class="block size-full bg-bg object-contain [image-rendering:pixelated]" />;
 }
 
-function Fact({ label, value, shrink }: { label: string; value: string; shrink?: boolean }) {
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <span class={shrink ? "min-w-0 truncate" : "shrink-0"}>
-      <span class="text-faint">{label}</span> <span class="font-mono tabular-nums">{value}</span>
+    <span class="flex min-w-0 justify-between gap-2">
+      <span class="shrink-0 text-muted">{label}</span>
+      <span class="min-w-0 truncate font-mono tabular-nums" title={value}>
+        {value}
+      </span>
     </span>
   );
 }
 
-function FilledCell({ cell, index, records, screens, actions }: { cell: GridCell; index: number; records: readonly string[]; screens: ScreenFeed; actions: GridActions }) {
+function CellFacts({ cell }: { cell: GridCell }) {
   const { state } = cell;
   const look = STATE_LOOKS[state.kind];
-  const replayRecord = cell.kind === "live" && state.kind === "ended" ? cell.record : null;
   return (
-    <Card interactive size="sm">
-      <div class="relative flex flex-col gap-2.5">
-        <button
-          type="button"
-          title={`Show ${cell.name} in the Lab tab`}
-          class="flex min-w-0 flex-col gap-1.5 rounded-sm text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/35"
-          onClick={() => actions.focus(cell)}
-        >
-          <div class="relative overflow-hidden rounded-sm border border-line">
-            <CellScreen runId={cell.runId} screens={screens} />
-            {look.dim && <ScreenState tone={look.tone} label={stateLabel(state)} />}
-          </div>
-          <span class="truncate font-mono text-xs" title={cell.name}>
-            {cell.name.replace(/\.json$/, "")}
-          </span>
-          <span class="flex min-w-0 items-center gap-1.5">
-            <Pill tone={cell.kind === "live" ? "accent" : undefined}>{cell.kind}</Pill>
-            <Pill tone={look.tone}>{look.label}</Pill>
-            <span class="min-w-0 truncate text-xs text-muted" title={cell.names ? `${cell.names.player}, rival ${cell.names.rival}` : undefined}>
-              {cell.names && `${cell.names.player} / ${cell.names.rival} · `}
-              {cell.bot} · {cell.model ?? "no model"}
-            </span>
-          </span>
-          <span class="flex gap-3 text-xs">
-            <Fact label="time" value={clock(cell.frame)} />
-            <Fact label="Milestone" value={cell.milestone ?? "–"} shrink />
-            <Fact label={SPEND_WORDS[cell.spent?.unit ?? "dollars"].name.toLowerCase()} value={cell.spent ? spendText(cell.spent) : "–"} />
-          </span>
-        </button>
-        <span class="absolute top-1.5 right-1.5 flex gap-1 rounded-ctl bg-bg/70">
-          <Popover icon={<FolderOpen size={14} />} label="Record" title="Put a Run record in this cell">
-            <span class="flex w-72 flex-col gap-2">
-              <span class={LABEL}>Replay in this cell</span>
-              <RecordSelect index={index} records={records} send={actions.send} />
-            </span>
-          </Popover>
-          {cell.kind === "replay" && (
-            <IconAction tip="Take the Run record out of the Grid" onClick={() => actions.send({ type: "grid-remove", cell: index })}>
-              <X size={14} />
-            </IconAction>
-          )}
+    <>
+      <span class="truncate font-mono" title={cell.record ?? cell.name}>
+        {cellTitle(cell)}
+      </span>
+      <span class="flex min-w-0 items-center gap-1" title={stateLabel(state)}>
+        <span class="flex shrink-0">
+          <Pill tone={cell.kind === "live" ? "accent" : undefined}>{cell.kind}</Pill>
         </span>
-        {replayRecord && (
-          <span>
-            <Button size="sm" title="Replay the Run record in this cell, with the other replays of the Grid" onClick={() => actions.send({ type: "grid-add", name: replayRecord, cell: index })}>
-              <RotateCcw size={12} />
-              Replay
-            </Button>
+        <span class="flex min-w-0">
+          <Pill tone={look.tone}>{look.label}</Pill>
+        </span>
+      </span>
+      {cell.names && (
+        <span class="truncate" title={`${cell.names.player}, rival ${cell.names.rival}`}>
+          {cell.names.player} / {cell.names.rival}
+        </span>
+      )}
+      <span class="truncate text-muted" title={`${cell.bot} · ${cell.model ?? "no model"}`}>
+        {cell.model ?? `${cell.bot}, no model`}
+      </span>
+      <Fact label="time" value={clock(cell.frame)} />
+      <Fact label="Milestone" value={cell.milestone ?? "–"} />
+      <Fact label="spent" value={cell.spent ? spendText(cell.spent) : "–"} />
+    </>
+  );
+}
+
+function CellActions({ cell, index, records, botsForm, actions }: { cell: GridCell; index: number; records: readonly string[]; botsForm: BotsForm; actions: GridActions }) {
+  const ended = cell.state.kind === "ended";
+  const removeRun = cell.kind === "live" && ended;
+  const { record } = cell;
+  return (
+    <>
+      <span class={`absolute top-1 right-1 flex gap-1 rounded-ctl bg-bg/70 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100 has-[:popover-open]:opacity-100 ${removeRun ? "" : "opacity-0"}`}>
+        <Popover icon={<FolderOpen size={14} />} label={<span class="sr-only">Record</span>} title="Put a Run record in this cell">
+          <span class="flex w-72 flex-col gap-2">
+            <span class={LABEL}>Replay in this cell</span>
+            <RecordSelect index={index} records={records} send={actions.send} />
           </span>
+        </Popover>
+        {cell.kind === "replay" && (
+          <IconAction tip="Take the Run record out of the Grid" onClick={() => actions.send({ type: "grid-remove", cell: index })}>
+            <X size={14} />
+          </IconAction>
         )}
+        {removeRun && (
+          <IconAction tip="Take the ended Run out of the Grid and of the Run select. Its Run record stays." onClick={() => actions.send({ type: "remove-run", runId: cell.runId })}>
+            <X size={14} />
+          </IconAction>
+        )}
+      </span>
+      {ended && record && (
+        <span class="absolute inset-x-1 bottom-1 flex justify-center gap-1">
+          <span class="rounded-ctl bg-bg/70">
+            <IconAction tip="Replay the Run record in this cell, with the other replays of the Grid" onClick={() => actions.send({ type: "grid-add", name: record, cell: index })}>
+              <RotateCcw size={14} />
+            </IconAction>
+          </span>
+          <span class="min-w-0">
+            <Popover icon={<Play size={14} />} label={<span class="@max-[24rem]:sr-only">Continue</span>} title="Play on from the end of this Run record">
+              {botsForm(record)}
+            </Popover>
+          </span>
+        </span>
+      )}
+    </>
+  );
+}
+
+function FilledCell({ cell, index, records, screens, botsForm, actions }: { cell: GridCell; index: number; records: readonly string[]; screens: ScreenFeed; botsForm: BotsForm; actions: GridActions }) {
+  const { state } = cell;
+  const look = STATE_LOOKS[state.kind];
+  const showRun = () => actions.focus(cell);
+  return (
+    <Card interactive size="sm" fill>
+      <div class="group @container-size min-h-0 flex-1">
+        <div class="flex h-full flex-col items-center justify-center gap-2 cell-row:flex-row cell-row:gap-3">
+          <div class="relative aspect-[3/2] w-[min(100cqw,(100cqh-8.75rem)*1.5)] shrink-0 overflow-hidden rounded-sm border border-line cell-row:w-[min(100cqw-9.75rem,150cqh)]">
+            <button type="button" title={`Show ${cell.name} in the Lab tab`} class="block size-full focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-accent/35" onClick={showRun}>
+              <CellScreen runId={cell.runId} screens={screens} />
+            </button>
+            {look.dim && <ScreenState tone={look.tone} label={stateLabel(state)} />}
+            <CellActions cell={cell} index={index} records={records} botsForm={botsForm} actions={actions} />
+          </div>
+          <button type="button" tabIndex={-1} class="flex w-full min-w-0 shrink-0 flex-col gap-0.5 overflow-hidden text-left text-xs leading-4 cell-row:flex-1 cell-row:shrink" onClick={showRun}>
+            <CellFacts cell={cell} />
+          </button>
+        </div>
       </div>
     </Card>
   );
 }
 
-export function GridCellView({ cell, index, records, screens, actions }: { cell: GridCell | null; index: number; records: readonly string[]; screens: ScreenFeed; actions: GridActions }) {
-  if (cell) return <FilledCell cell={cell} index={index} records={records} screens={screens} actions={actions} />;
+export function GridCellView({ cell, index, records, screens, botsForm, actions }: { cell: GridCell | null; index: number; records: readonly string[]; screens: ScreenFeed; botsForm: BotsForm; actions: GridActions }) {
+  if (cell) return <FilledCell cell={cell} index={index} records={records} screens={screens} botsForm={botsForm} actions={actions} />;
   return (
-    <Card size="sm">
-      <div class="flex aspect-[3/2] flex-col items-center justify-center gap-3 rounded-sm border border-dashed border-line">
+    <Card size="sm" fill>
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-sm border border-dashed border-line p-2">
         <span class="text-sm text-muted">empty</span>
         <span class="w-64 max-w-full">
           <RecordSelect index={index} records={records} send={actions.send} />
@@ -168,8 +211,9 @@ export function GridCellView({ cell, index, records, screens, actions }: { cell:
   );
 }
 
-function GridBar({ data, actions }: { data: GridData; actions: GridActions }) {
+function GridBar({ data, botsForm, actions }: { data: GridData; botsForm: BotsForm; actions: GridActions }) {
   const { send } = actions;
+  const ended = data.status?.runs.filter((run) => !run.playing) ?? [];
   const grid = data.status?.grid ?? null;
   const cursor = grid?.cursor ?? null;
   const off = !grid || grid.replays.length === 0;
@@ -180,6 +224,15 @@ function GridBar({ data, actions }: { data: GridData; actions: GridActions }) {
   return (
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-2">
       <Tabs kind="segmented" items={SIZE_TABS} value={String(data.size)} onChange={(id) => actions.setSize(SIZE_OF_TAB.get(id) ?? data.size)} />
+      <Popover icon={<Bot size={14} />} label="Bots" title="Start or stop a Bot">
+        {botsForm()}
+      </Popover>
+      {ended.length > 0 && (
+        <Button title="Take all the ended Runs out of the Grid and of the Run select. Their Run records stay." onClick={() => ended.forEach((run) => send({ type: "remove-run", runId: run.id }))}>
+          <Trash2 size={14} />
+          Remove {ended.length} ended
+        </Button>
+      )}
       <span class="flex items-center gap-2">
         <span class={LABEL}>Replays</span>
         <IconAction tip={cursor?.paused ? "Play" : "Pause"} pressed={cursor?.paused} disabled={off} onClick={() => send({ type: "grid-cursor", paused: !cursor?.paused })}>
@@ -201,18 +254,31 @@ function GridBar({ data, actions }: { data: GridData; actions: GridActions }) {
 function GridView({ data, screens, actions }: { data: Store<GridData>; screens: ScreenFeed; actions: GridActions }) {
   const value = useStore(data);
   const cells = cellsOf(value);
-  const columns = COLUMNS[value.size];
-  const rows = value.size / columns;
-  const maxWidth = `max(20rem, calc((100dvh - 8rem - ${rows * 6}rem) * ${(1.5 * columns) / rows}))`;
+  const { status } = value;
+  const botsForm: BotsForm = (continued) => (
+    <BotsPanel
+      shown={status?.shown ?? null}
+      runs={status?.runs ?? []}
+      bots={value.bots}
+      providers={value.providers}
+      records={value.records}
+      recordFacts={value.facts}
+      places={status?.places ?? { free: 0, limit: 0 }}
+      initial={continued === undefined ? undefined : { from: continued, sameRun: true }}
+      send={actions.send}
+    />
+  );
+  // Fewer columns in a narrow window: under this width, a cell cannot show its screen and its facts.
+  const columns = `repeat(auto-fit, minmax(max(15rem, calc(${100 / COLUMNS[value.size]}% - 0.75rem)), 1fr))`;
   return (
-    <>
-      <GridBar data={value} actions={actions} />
-      <div class="mx-auto grid w-full gap-3 p-4" style={{ maxWidth, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+    <div class="flex flex-col min-[900px]:h-full">
+      <GridBar data={value} botsForm={botsForm} actions={actions} />
+      <div class="grid min-h-0 flex-1 gap-3 p-4 min-[900px]:overflow-y-auto" style={{ gridTemplateColumns: columns, gridAutoRows: "minmax(10.25rem, 1fr)" }}>
         {cells.map((cell, index) => (
-          <GridCellView key={cell ? `${cell.kind} ${cell.runId}` : `empty ${index}`} cell={cell} index={index} records={value.records} screens={screens} actions={actions} />
+          <GridCellView key={cell ? `${cell.kind} ${cell.runId}` : `empty ${index}`} cell={cell} index={index} records={value.records} screens={screens} botsForm={botsForm} actions={actions} />
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -224,7 +290,7 @@ type GridOptions = {
 };
 
 export class GridTab {
-  readonly #data = new Store<GridData>({ status: null, records: [], size: 4, visible: false });
+  readonly #data = new Store<GridData>({ status: null, records: [], facts: {}, bots: [], providers: [], size: 4, visible: false });
   #followed: string | null = null;
 
   constructor(
@@ -239,8 +305,12 @@ export class GridTab {
     this.#patch({ status });
   }
 
-  onRecords(records: readonly string[]): void {
-    this.#patch({ records });
+  onRecords(records: readonly string[], facts: Readonly<Record<string, RecordFacts>>): void {
+    this.#patch({ records, facts });
+  }
+
+  onBots(bots: readonly BotInfo[], providers: readonly ProviderStatus[]): void {
+    this.#patch({ bots, providers });
   }
 
   onTab(visible: boolean): void {

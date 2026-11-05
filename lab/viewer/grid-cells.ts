@@ -33,6 +33,16 @@ export type GridCell = {
   names: TrainerNames | null;
 };
 
+// A Run record has a long name, and the date at its end does not tell the Runs apart in a small cell.
+function shortRecord(name: string): string {
+  return name.replace(/\.json$/, "").replace(/-\d{4}-\d{2}-\d{2}T.*$/, "");
+}
+
+export function cellTitle({ kind, name, record }: GridCell): string {
+  if (kind === "replay") return shortRecord(name);
+  return record ? `${name} · ${shortRecord(record)}` : name;
+}
+
 function liveState(run: RunSummary): CellState {
   if (!run.playing) return { kind: "ended", result: run.error ? `error: ${run.error}` : (run.endReason ?? "unknown") };
   const stopped = stoppedState(run);

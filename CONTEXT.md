@@ -212,7 +212,7 @@ The web page that shows the **Runs**. Its **Grid** shows the screens of several 
 _Avoid_: emulator, web player
 
 **Grid**:
-The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
+The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. An ended live **Run** keeps its cell until a person removes it; its **Run record** stays. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
 _Avoid_: wall, multiview, dashboard
 
 **Race**:

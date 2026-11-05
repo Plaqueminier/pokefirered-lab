@@ -7,7 +7,7 @@ import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
-import { type GridActions, GridCellView } from "./grid";
+import { type BotsForm, type GridActions, GridCellView } from "./grid";
 import type { GridCell } from "./grid-cells";
 import { PokemonCard, PokemonSummary } from "./pokemon";
 import { GhostState } from "./race-cards";
@@ -501,14 +501,18 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
 
 const DEMO_GRID_ACTIONS: GridActions = { send: () => {}, setSize: () => {}, focus: () => {} };
 
+const demoBotsForm: BotsForm = (continued) => (
+  <BotsPanel shown={{ kind: "viewer", replay: null }} runs={[]} bots={DEMO_BOTS} providers={DEMO_PROVIDERS} records={[RECORD, CONTINUED_RECORD]} recordFacts={DEMO_RECORD_FACTS} places={{ free: 6, limit: 9 }} initial={continued === undefined ? undefined : { from: continued, sameRun: true }} send={() => {}} />
+);
+
 export function GridCellDemo() {
   const [state, setState] = useState("plays");
   const [screens] = useState(() => new ScreenFeed());
   return (
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(CELL_STATES).map(([id, { label }]) => ({ id, label }))} value={state} onChange={setState} />
-      <div class="w-[340px] max-w-full">
-        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} actions={DEMO_GRID_ACTIONS} />
+      <div class="flex h-[360px] w-[340px] max-w-full">
+        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} botsForm={demoBotsForm} actions={DEMO_GRID_ACTIONS} />
       </div>
     </div>
   );
