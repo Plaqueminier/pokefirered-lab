@@ -17,7 +17,7 @@ The program that runs the emulator and gives a **Bot** one interface to the game
 _Avoid_: emulator, AI
 
 **Bot**:
-The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
+The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model, and it continues a walk that a wild battle stopped when the party is healthy. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
 **Agent**:
@@ -53,7 +53,7 @@ A **Model call** that the **Viewer** marks with one or more flags: an answer tha
 _Avoid_: bad call, error (an error is only one of the flags)
 
 **Memory tree**:
-The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something. The program removes the sentences with an HP or PP number and a note with nearly the same words as a recent note, and it marks a hedged sentence as a guess. Nobody rewrites a note later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. A **Review turn** can remove sentences from the top nodes: they then stay out of the top nodes and of the next summaries, but `zoom` can still show them in the lower nodes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
+The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something. The program removes the sentences with an HP or PP number, the sentences that say that a place is explored, crossed, exhausted or a dead end (except one that starts with “Guess:” or “A person said:”), the sentences with nearly the same words as one that a **Review turn** removed, and a note with nearly the same words as a recent note, and it marks a hedged sentence as a guess. The prompts and `zoom` also hide such claims about a place in the older nodes of a **Continued Run**; the **Run record** and the Viewer keep them. Nobody rewrites a note later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. A **Review turn** can remove sentences from the top nodes: they then stay out of the top nodes and of the next summaries, but `zoom` can still show them in the lower nodes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
 **Stuck counter**:
@@ -73,11 +73,11 @@ The reasoning level of the **Character turns**, **Reflection turns** and **Revie
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:
-A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
+A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk with a **Model call**. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
 **Review turn**:
-A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
+A **Model call** of a model bot at the first walk with a **Model call** after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
 _Avoid_: review call, check turn
 
 **Summary call**:
@@ -107,6 +107,10 @@ _Avoid_: map (one map of the game), Town Map (an item of the game)
 **Part**:
 The cells of a map that the player can walk to from one cell, on the cells that it saw and with no other map on the way. A floor of a cave can have many **Parts**: the only way between them goes through other maps. The code makes them from the **Atlas** only, so they show only what the player saw.
 _Avoid_: zone, area (an **Area** is a place of the Town Map), region
+
+**What is left**:
+The list that the program gives at a walk on a floor of a cave, a forest or a large building: what the player did not explore in its **Part**, in the other **Parts** of the map and on the floors that the exits reach. It comes from the **Atlas**, so it is right when a note of the **Memory tree** disagrees.
+_Avoid_: todo list, frontier list
 
 **Lead**:
 A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.

@@ -74,6 +74,10 @@ export function fitsScreen({ width, height }: Pick<AtlasMap, "width" | "height">
   return width <= SCREEN.left + SCREEN.right + 1 && height <= SCREEN.up + SCREEN.down + 1;
 }
 
+export function isInnerMap(map: Pick<AtlasMap, "hasEdges" | "width" | "height">): boolean {
+  return !map.hasEdges && !fitsScreen(map);
+}
+
 export function mapNamed(atlas: Atlas, name: string): AtlasMap {
   const map = atlas.maps.find((m) => m.name === name);
   if (!map) throw new Error(`the Atlas has no map ${name}`);

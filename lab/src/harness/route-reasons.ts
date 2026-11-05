@@ -29,8 +29,8 @@ export function noRouteReason(here: Place, destination: Destination, asked: Plac
 
 export function stayingReason(person: RoutePerson & Place, { maps: known }: Atlas): string {
   const seen = known.find((m) => m.name === person.map)?.people.find((p) => p.x === person.x && p.y === person.y);
-  if (!seen) return "a person or an object that you did not see stands on the only way";
-  return `the ${personName(seen)} at ${at(person)} stands on the only way, and it does not leave by itself. Walk next to it and interact with it`;
+  if (!seen) return "a person or an object that you did not see stands on the only way on the cells that you saw";
+  return `the ${personName(seen)} at ${at(person)} stands on the only way on the cells that you saw, and it does not leave by itself. Walk next to it and interact with it, or look for another way`;
 }
 
 export function at(place: Place): string {

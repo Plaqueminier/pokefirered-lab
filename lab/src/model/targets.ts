@@ -1,6 +1,6 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE } from "../cells";
 import type { MapGrid } from "../game";
-import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, personName, seenIn } from "../harness/atlas";
+import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
 import { atlasCells, type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
@@ -52,12 +52,16 @@ type TargetGroup = { title: string; kinds: Target["kind"][]; empty?: string };
 export const EXITS_GROUP: TargetGroup = { title: "Exits of this map:", kinds: ["exit", "edge"], empty: "none seen yet." };
 
 export const TARGET_GROUPS: TargetGroup[] = [
+  { title: "Leads, what you did not explore in other parts and maps:", kinds: ["lead"] },
   EXITS_GROUP,
   { title: "Unseen cells:", kinds: ["frontier"] },
   { title: "People, objects and things to check:", kinds: ["person", "sign"] },
-  { title: "Leads, what you did not explore in other parts and maps:", kinds: ["lead"] },
   { title: "Far maps:", kinds: ["map"] },
 ];
+
+function targetGroup({ kind }: Target): number {
+  return TARGET_GROUPS.findIndex((group) => group.kinds.includes(kind));
+}
 
 export const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -174,9 +178,17 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts,
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map(person),
     ...here.signs.map((s) => located(s, own.touches(s), (place) => signTarget(s, place))),
   ];
-  const group = ({ target }: Located) => TARGET_GROUPS.findIndex((g) => g.kinds.includes(target.kind));
   const steps = ({ target }: Located) => (target.kind === "edge" ? edgeSteps(here, player, target.side) : distance(player, target.cell));
-  return targets.toSorted((a, b) => group(a) - group(b) || Number(b.inPart) - Number(a.inPart) || Number(b.inWay) - Number(a.inWay) || steps(a) - steps(b)).map(({ target }) => target);
+  // Run 00062: a lead had 6 letters in 371 prompts, so these maps sort by cell and not by distance.
+  const cellOrder = ({ target }: Located) => (target.kind === "edge" ? 0 : target.cell.y * here.width + target.cell.x);
+  const order = isInnerMap(here) ? cellOrder : steps;
+  return targets.toSorted((a, b) => targetGroup(a.target) - targetGroup(b.target) || Number(b.inPart) - Number(a.inPart) || Number(b.inWay) - Number(a.inWay) || order(a) - order(b)).map(({ target }) => target);
+}
+
+export function nearestUnseen(targets: Target[], player: Overworld["player"]): string | null {
+  const frontiers = targets.flatMap((target, index) => (target.kind === "frontier" ? [{ cell: target.cell, index }] : []));
+  const nearest = frontiers.toSorted((a, b) => distance(player, a.cell) - distance(player, b.cell))[0];
+  return nearest ? `${whereFrom(player, nearest.cell)} (go ${targetLetter(nearest.index)})` : null;
 }
 
 export function leadTargets(parts: Parts, inWay: InTheWay): Target[] {
@@ -211,7 +223,7 @@ function objectText({ graphics }: AtlasPerson, here: AtlasMap): string {
 function personTarget(p: AtlasPerson, where: string, { behindCounter, unbeatenTrainer, object, inWay }: { behindCounter: boolean; unbeatenTrainer: boolean; object: string; inWay: boolean }): LocalTarget {
   const counter = behindCounter ? ", behind a counter: go talks across it" : "";
   const trainer = unbeatenTrainer ? ", a trainer that you did not beat yet: a talk starts a battle" : "";
-  const way = inWay ? ", in your way: the way past it stays closed while it is here" : "";
+  const way = inWay ? ", in your way: on the cells that you saw, the way past it stays closed while it is here" : "";
   const talked = p.texts.length > 0 ? `: talked, "${p.texts.at(-1)}"` : "";
   return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${object}${way}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
 }

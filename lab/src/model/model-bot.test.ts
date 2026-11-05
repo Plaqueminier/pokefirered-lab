@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { modelBot, unknownScreen } from "../../bots/model";
+import { canWalkAgain, modelBot, unknownScreen, walkGoesOn } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-calls";
+import type { PartyMon } from "../party";
 import type { ModelClient } from "./openrouter";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -149,6 +150,44 @@ describe("the guard of an uncovered screen", () => {
   });
 });
 
+describe("the guard of a walk after a wild battle", () => {
+  const tackle = { power: 35, fixedDamage: false, pp: 10 };
+  const mon = (more: object = {}) => ({ hp: 20, maxHp: 30, status: "none", moves: [tackle], ...more }) as unknown as PartyMon;
+
+  test("the walk goes on with a healthy first Pokémon", () => {
+    expect(walkGoesOn([mon()], 0)).toBe(true);
+    expect(walkGoesOn([mon({ hp: 0 }), mon()], 1)).toBe(true);
+  });
+
+  test("the model chooses after a faint, with a status, with less than half of the HP, or with no damage move with PP", () => {
+    expect(walkGoesOn([mon({ hp: 0 }), mon()], 0)).toBe(false);
+    expect(walkGoesOn([mon({ status: "poison" })], 0)).toBe(false);
+    expect(walkGoesOn([mon({ hp: 14 })], 0)).toBe(false);
+    expect(walkGoesOn([mon({ moves: [{ ...tackle, pp: 0 }] })], 0)).toBe(false);
+    expect(walkGoesOn([mon({ moves: [{ power: null, fixedDamage: false, pp: 40 }] })], 0)).toBe(false);
+  });
+});
+
+describe("the walks that continue after a wild battle", () => {
+  const asked = (kind: string, dark = false) => ({ view: { targets: [{ kind }] }, overworld: { map: { name: "Cave" }, atlas: { maps: [{ name: "Cave", ...(dark ? { dark: {} } : {}) }] } } }) as unknown as Parameters<typeof canWalkAgain>[1];
+  const go = { name: "go", target: 0 } as const;
+
+  test("a target that names its map continues on another map; the other targets and a goTo with no map need the map of the prompt", () => {
+    expect(canWalkAgain(go, asked("lead"), "Other")).toBe(true);
+    expect(canWalkAgain(go, asked("map"), "Other")).toBe(true);
+    expect(canWalkAgain({ name: "goTo", x: 1, y: 1, map: "Far" }, asked("exit"), "Other")).toBe(true);
+    expect(canWalkAgain({ name: "goTo", x: 1, y: 1 }, asked("exit"), "Other")).toBe(false);
+    expect(canWalkAgain(go, asked("exit"), "Other")).toBe(false);
+    expect(canWalkAgain(go, asked("exit"), "Cave")).toBe(true);
+  });
+
+  test("a walk into unseen cells on a dark map stops, and an action that is no walk does not continue", () => {
+    expect(canWalkAgain(go, asked("frontier", true), "Cave")).toBe(false);
+    expect(canWalkAgain(go, asked("frontier"), "Cave")).toBe(true);
+    expect(canWalkAgain({ name: "fight", move: 0 }, asked("exit"), "Cave")).toBe(false);
+  });
+});
+
 describe.skipIf(!ready)("model bot", () => {
   test("with a fake model, it plays past the first rival battle: the code reads the texts, the model chooses at each walk, choice and battle action, and the next Milestone in the prompt moves with the story", async () => {
     const { client, prompts } = fakeModel();
@@ -211,7 +250,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "29", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "30", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {

@@ -16,6 +16,8 @@ export type Lead = { map: AtlasMap; away: number; cell: Cell } & ({ kind: "unsee
 
 export type Beyond = "unseen" | "exit" | "nothing";
 
+export type LeftPlace = { map: AtlasMap; away: number; ownPart: boolean; unseen: number; notTaken: number };
+
 type PartAway = { part: Part; away: number };
 
 type Step = (warp: AtlasWarp) => Part | null;
@@ -95,8 +97,8 @@ function touchingGroups<C extends Cell>(cells: C[]): C[][] {
   return groups;
 }
 
-export function unseenGroups(map: AtlasMap): number {
-  return touchingGroups(unseenFronts(map).map(({ cell }) => cell)).length;
+export function unseenGroups(map: AtlasMap, outsideOf: Part[] = []): number {
+  return touchingGroups(unseenFronts(map).map(({ cell }) => cell).filter((cell) => !outsideOf.some(({ keys }) => keys.has(cellKey(cell))))).length;
 }
 
 export function unseenPlaces({ map, cells, view, from }: Part): { direction: Direction; cell: Cell }[] {
@@ -154,6 +156,12 @@ function partsAfter(part: Part, step: Step): Part[] {
   return part.exits.flatMap((warp) => step(warp) ?? []);
 }
 
+function noSeenWayOf(group: PartAway[]): LeftPlace[] {
+  const { map } = group[0].part;
+  const unseen = fitsScreen(map) ? 0 : unseenGroups(map, group.map(({ part }) => part));
+  return unseen > 0 ? [{ map, away: Number.POSITIVE_INFINITY, ownPart: false, unseen, notTaken: 0 }] : [];
+}
+
 export class Parts {
   readonly own: Part;
   readonly #parts = new Map<string, Part>();
@@ -183,6 +191,15 @@ export class Parts {
     return part && (!part.map.outside || part.map.name === this.own.map.name) ? part : null;
   };
 
+  private partsBeyond(step: Step): PartAway[] {
+    return this.partsFrom(partsAfter(this.own, step), step);
+  }
+
+  private reachable(): PartAway[] {
+    this.#reachable ??= this.partsBeyond(this.partAtArrival);
+    return this.#reachable;
+  }
+
   beyond(warp: AtlasWarp): Beyond | null {
     const next = this.partPast(warp);
     if (!next) return null;
@@ -192,12 +209,31 @@ export class Parts {
   }
 
   leads(): Lead[] {
-    return this.partsFrom(partsAfter(this.own, this.partPast), this.partPast).flatMap(({ part, away }) => leadsOf(part, away)).slice(0, MAX_LEADS);
+    return this.partsBeyond(this.partPast).flatMap(({ part, away }) => leadsOf(part, away)).slice(0, MAX_LEADS);
+  }
+
+  left(): LeftPlace[] {
+    const own = { part: this.own, away: 0 };
+    const onOwnMap = ({ part }: PartAway) => part.map.name === this.own.map.name;
+    const others = [...this.partsBeyond(this.partPast).filter((found) => !onOwnMap(found)), ...this.reachable().filter(onOwnMap)];
+    const byMap = (found: PartAway[]) => [...Map.groupBy(found, ({ part }) => part.map.name).values()];
+    return [...[[own], ...byMap(others)].map((group) => this.placeOf(group)), ...byMap([own, ...others]).flatMap(noSeenWayOf)];
+  }
+
+  private placeOf(group: PartAway[]): LeftPlace {
+    const [{ part, away }] = group;
+    const sum = (count: (part: Part) => number) => group.reduce((total, member) => total + count(member.part), 0);
+    return {
+      map: part.map,
+      away,
+      ownPart: part === this.own,
+      unseen: fitsScreen(part.map) ? 0 : sum((member) => unseenPlaces(member).length),
+      notTaken: sum((member) => member.exits.filter((warp) => !warp.to).length),
+    };
   }
 
   exitsTo(cells: Cell[]): number {
-    this.#reachable ??= this.partsFrom(partsAfter(this.own, this.partAtArrival), this.partAtArrival);
-    return this.#reachable.find(({ part }) => part.map.name === this.own.map.name && cells.some(part.touches))?.away ?? Number.POSITIVE_INFINITY;
+    return this.reachable().find(({ part }) => part.map.name === this.own.map.name && cells.some(part.touches))?.away ?? Number.POSITIVE_INFINITY;
   }
 
   private partsFrom(first: Part[], step: Step): PartAway[] {

@@ -69,6 +69,7 @@ const BLOCK_ICONS: Record<BlockTitle, Icon> = {
   Events: Bell,
   Party: Heart,
   "Known world": Globe,
+  "What is left": Compass,
   "Local view": MapIcon,
   People: Users,
   Atlas: Compass,

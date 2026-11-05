@@ -15,6 +15,7 @@ export function LoopPage() {
         ["Frozen game", "in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot."],
         ["Viewer Run", "no Bot: the keyboard or a replay plays it, in real time."],
         ["`zoom`, `viewAtlas`", "no frames run: the model gets a new call at once, at the same Decision point."],
+        ["Walk after a wild battle", "the model bot can continue a walk with no Model call (page “Stuck, reflection and review”)."],
         ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text.`],
       ]}
     >
@@ -112,7 +113,7 @@ export function ViewerPage() {
           "the Run for a video, in large numbers: the time, the cost or the tokens, the Stuck counter and the prompt tokens at the cursor, what happened since the last heal, the latest Game events, then the chapters (up to each Milestone), the Areas and the charts of the cost or the tokens, the Stuck counter and the prompt tokens, and the counts of the selection (heals, purchases, money spent, catches, fainted Pokémon of the player, trainers beaten, whiteouts, Unusual calls).",
         ],
         ["Stats selection", "a click on a chapter or an Area selects it, and the stats and the charts follow it; a drag on a chart selects a range; “−2 h” shows the 2 hours before the cursor in the charts; “Whole Run” selects the whole Run again and returns the cursor to now. The Model calls of the selection and their actions fold under the stats."],
-        ["Memory tree", "the tree at the cursor, one node at a time: the top nodes as the model sees them, and “(removed)” on a node with no sentence left; a click opens a node, its two halves and the Summary call that made it (its prompt and answer). A tab lists the Summary calls of the selection."],
+        ["Memory tree", "the tree at the cursor, one node at a time: the top nodes as the model sees them, also with the place claims that the prompts hide (page “Memory tree”), and “(removed)” on a node with no sentence left; a click opens a node, its two halves and the Summary call that made it (its prompt and answer). A tab lists the Summary calls of the selection."],
         ["Bag and PC", "the five pockets of the Bag with their items (quantity and description), the items of the PC and the Pokémon of the boxes at the cursor, and the changes of the Bag and the PC with their times; a click on a change goes to it."],
         [
           "Timeline",
@@ -154,7 +155,7 @@ export function ViewerPage() {
           <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer", "colors of the warps, map parts; the other floors"]} />
           <DocCard icon={Bot} title="Model" lines={["the Model calls, with the flags of the Unusual calls", "one call in full: answer, result, cost if any, prompt"]} />
           <DocCard icon={ChartColumn} title="Stats" lines={["large numbers for a video: time, cost or tokens, Stuck counter", "chapters, Areas, charts, the counts of the selection"]} />
-          <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them", "a click opens a node and its Summary call"]} />
+          <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them, also with the place claims that the prompts hide", "a click opens a node and its Summary call"]} />
           <DocCard icon={Backpack} title="Bag and PC" lines={["the five pockets, the PC and its boxes at the cursor", "the changes, with their times"]} />
           <DocCard icon={Shapes} title="Components tab" lines={["the design system (ADR 0004)", "each component in all its states"]} />
         </div>

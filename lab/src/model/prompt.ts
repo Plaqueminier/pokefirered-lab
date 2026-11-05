@@ -22,6 +22,7 @@ const MAX_CALL_LINES = 30;
 export const MAX_TRIES = 20;
 const LOOP_AFTER = 3;
 const MAX_OUTCOME = 200;
+const MIN_CROSSINGS = 6;
 const WAITS: Record<AskedKind, string> = {
   walk: "a walk",
   choice: "a choice",
@@ -84,11 +85,11 @@ export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "s
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map that you cannot remove yet (a cut tree, a rock or a boulder) with the move that removes each one, when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it. A line under the map tells when you saw all the cells of your part: then take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. The leads are what you did not explore in other parts and maps: unseen cells and exits not taken. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map that you cannot remove yet (a cut tree, a rock or a boulder) with the move that removes each one, when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it. A line under the map tells when you saw all the cells that you can reach from where you are: other parts of the map can still have unseen cells, so take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. The leads are what you did not explore in other parts and maps: unseen cells and exits not taken. On a floor of a cave, a forest or a large building, the list What is left counts, from the game, the unseen places and the exits not taken in your part, in the other parts and on the floors that the exits reach. Trust it more than your notes. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
 
 In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
 
@@ -97,7 +98,7 @@ Answer with JSON:
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
-- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. It writes "Guess:" before a sentence with a word like "might" or "likely". Nobody changes a note later, and only a review turn can remove a sentence from your top nodes. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. A note never says that a place is explored, crossed or a dead end: the program removes this sentence, except after "Guess:" or "A person said:", because the list What is left tells it from the game. It also removes a sentence that repeats one that a review turn removed. It writes "Guess:" before a sentence with a word like "might" or "likely". Nobody changes a note later, and only a review turn or these rules can remove a sentence from your top nodes. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
 - "remove": only at a review turn: ${REMOVE_RULE}.
 
 Rules of the program:
@@ -105,7 +106,8 @@ Rules of the program:
 - When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
 - "press" is one button press. Use it only when no other action fits.
 - An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
-- People, objects and things to check are there for you to interact with. "go" walks next to them and interacts, and you read the text. An object can be a thing that you can take. A person or an object "in your way" stays there and no walk can pass it: interact with it. When nothing changes, the story needs another step first, so come back later.
+- People, objects and things to check are there for you to interact with. "go" walks next to them and interacts, and you read the text. An object can be a thing that you can take. A person or an object "in your way" stays there and no walk on the cells that you saw can pass it: interact with it, or look for another way. When nothing changes, the story needs another step first, so come back later.
+- When a wild battle stops a walk, the program continues the walk to the same target after the battle, with no new decision. You choose again if a Pokémon fainted, if a Pokémon has a status, if your first Pokémon that can fight has less than half of its HP or no damage move with PP, if a walk to a cell of this map left it, or after a walk into unseen cells on a dark map. A lead, a far map and a goTo with a map continue on another map too.
 ${offers}- At the question of a nickname, the program answers YES for you.
 
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, interact with the objects, check the signs and other things, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
@@ -204,6 +206,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     partyText(observation.party),
     ...(asked.kind === "walk" ? walkFacts(asked.overworld) : []),
     "",
+    ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
     ...context(asked),
     ...(showsAtlas(turn) && asked.kind === "walk" ? [...fullAtlas(asked.overworld), ...teachDetails(asked)] : []),
     ...(asked.kind === "walk" ? [...darkLine(asked), ...fieldMoveHints(asked)] : []),
@@ -262,6 +265,23 @@ export function errorMessage(error: string, asked: Asked): string {
 
 function chooseAgain(asked: Asked): string {
   return `Answer with JSON again, with one of the actions of the first message: ${alternatives(actionsOf(asked))}.`;
+}
+
+function leftBlock(left: string[], here: string, events: readonly RunEvent[]): string[] {
+  return left.length === 0 ? [] : [...left, ...crossingLine(here, events), ""];
+}
+
+function crossingLine(here: string, events: readonly RunEvent[]): string[] {
+  const maps = events.flatMap((e) => (e.type === "map" ? [e.map] : []));
+  const crossings = new Map<string, number>();
+  for (const [i, map] of maps.entries()) {
+    const next = maps[i + 1];
+    if (next === undefined || (map !== here && next !== here)) continue;
+    const pair = [map, next].toSorted().join(" and ");
+    crossings.set(pair, (crossings.get(pair) ?? 0) + 1);
+  }
+  const [pair, times] = [...crossings].toSorted((a, b) => b[1] - a[1])[0] ?? ["", 0];
+  return times < MIN_CROSSINGS ? [] : [`- You crossed between ${pair} ${times} times.`];
 }
 
 function memoryText(lines: string[]): string {
@@ -437,7 +457,7 @@ function context(asked: Asked): string[] {
       return asked.view.lines;
     case "choice":
       if ("battle" in asked) return battleLines(asked.battle, asked.party);
-      return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld, [])];
+      return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld)];
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
       return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}. ${item.description}`), "", ...buys];

@@ -135,7 +135,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "29", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "30", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -484,7 +484,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
   test("goTo to the cell of Mom, who stays and whom the player did not see, returns blocked at once and does not name her", async () => {
     const harness = await Harness.open();
     const result = await harness.goTo(8, 4, "PalletTown_PlayersHouse_1F");
-    expect(result).toEqual({ status: "blocked", reason: "a person or an object that you did not see stands on the only way", frames: 0 });
+    expect(result).toEqual({ status: "blocked", reason: "a person or an object that you did not see stands on the only way on the cells that you saw", frames: 0 });
     expect(harness.observe()).toMatchObject({ mode: "overworld", map: { name: "PalletTown_PlayersHouse_2F" } });
   });
 

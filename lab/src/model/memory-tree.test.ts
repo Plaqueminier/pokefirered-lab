@@ -69,7 +69,7 @@ describe("the Memory tree", () => {
 
   test("a too long summary is cut at the end of its last full sentence that fits", () => {
     const fits = `Got the Pokédex from Oak. ${"Viridian City is north of Pallet Town. ".repeat(9)}`.trim();
-    expect(readSummary(JSON.stringify({ summary: `${fits} The old man in Viridian City blocks the north road.` }), { from: 1, to: 2 })).toBe(fits);
+    expect(readSummary(JSON.stringify({ summary: `${fits} The old man in Viridian City blocks the north road.` }), { from: 1, to: 2 }, [])).toBe(fits);
   });
 });
 
@@ -91,13 +91,48 @@ describe("the filter of the notes", () => {
     ["The Gym is locked. A person said: you may need a bike.", [], "The Gym is locked. A person said: you may need a bike."],
     ["PROF. OAK may help.", [], "Guess: PROF. OAK may help."],
     ["Empty string", [], ""],
+    ["Mt. Moon is crossed.", [], ""],
+    ["Mt. Moon B2F is fully explored; return via ladder A.", [], ""],
+    ["RockTunnel_B1F is a dead end. Ladder A goes to 1F.", [], "Ladder A goes to 1F."],
+    ["RockTunnel_B1F ladders all loop back to 1F.", [], ""],
+    ["TideRome has just crossed Mt. Moon.", [], ""],
+    ["Walks in the town gave nothing new: talk to the people first.", [], "Walks in the town gave nothing new: talk to the people first."],
+    ["No way to heal here: buy Potions.", [], "No way to heal here: buy Potions."],
+    ["The team is exhausted: heal first.", [], "The team is exhausted: heal first."],
+    ["B1F is not fully explored.", [], "B1F is not fully explored."],
+    ["This is not a dead end.", [], "This is not a dead end."],
+    ["A person said: Route 3 is a dead end.", [], "A person said: Route 3 is a dead end."],
+    ["Visible Mt. Moon routes are exhausted.", [], ""],
   ] as [string, string[], string][])("%s", (written, earlier, kept) => {
-    expect(keptNote(written, earlier)).toBe(kept);
+    expect(keptNote(written, { notes: earlier, removed: [] })).toBe(kept);
+  });
+});
+
+describe("a claim that a place is explored", () => {
+  test("the prompts and the summaries drop it, also from the old nodes of a continued Run, and the tree keeps the note", () => {
+    const events = [call("Mt. Moon is crossed. Mom heals."), call("note 2"), summary(1, 2, "Rock Tunnel is fully explored. The Gym is locked."), call("Route 3 is a dead end.")];
+    const tree = memoryTree(events);
+    expect(tree.notes[0]).toBe("Mt. Moon is crossed. Mom heals.");
+    expect(memoryLines(tree)).toEqual(["#1-2: The Gym is locked."]);
+    expect(reviewMemory(tree).lines).toEqual(["#1-2: [1] The Gym is locked."]);
+    expect(zoomLines(tree, { from: 1, to: 2 })).toEqual(["#1: Mom heals.", "#2: note 2"]);
+    expect(summaryPrompt(memoryTree([call("Mt. Moon is crossed. Mom heals."), call("note 2")]), { from: 1, to: 2 }).user).toContain("#1: Mom heals.");
+    expect(readSummary(JSON.stringify({ summary: "Mt. Moon is crossed. Mom heals." }), { from: 1, to: 2 }, [])).toBe("Mom heals.");
+    expect(() => readSummary(JSON.stringify({ summary: "Mt. Moon is crossed." }), { from: 1, to: 2 }, [])).toThrow("the summary has only sentences that the program removes");
+    expect(dueMerges(memoryTree([call("Mt. Moon is crossed."), call("Route 3 is a dead end.")]))).toEqual([]);
+    expect(dueMerges(memoryTree([call("Mt. Moon is crossed."), call("Mom heals.")]))).toEqual([{ from: 1, to: 2 }]);
   });
 });
 
 describe("the removal of sentences at a Review turn", () => {
   const removal = (from: number, to: number, ...sentences: string[]): RunEvent => ({ ...(call("") as RunEvent & { type: "model" }), removed: sentences.map((sentence) => ({ from, to, sentence })) });
+
+  test("a new note or a new summary does not write a removed sentence again", () => {
+    const tree = memoryTree([call("note 1"), call("note 2"), summary(1, 2, "Ladder B leads to Cerulean. The Gym is locked."), removal(1, 2, "Ladder B leads to Cerulean.")]);
+    expect(tree.removed).toEqual(["Ladder B leads to Cerulean."]);
+    expect(keptNote("Ladder B leads to Cerulean. Mom heals.", tree)).toBe("Mom heals.");
+    expect(readSummary(JSON.stringify({ summary: "Ladder B leads to Cerulean. Mom heals." }), { from: 1, to: 2 }, tree.removed)).toBe("Mom heals.");
+  });
 
   test("the top nodes show numbered sentences, in one count for all the nodes", () => {
     const events = [call("note 1"), call("note 2"), summary(1, 2, "Mt. Moon is east. The Gym is locked."), call("note 3")];

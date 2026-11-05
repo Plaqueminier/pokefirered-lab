@@ -2,7 +2,7 @@
 import type { NodeRange, Prompt, NodeSentence, RunEvent } from "../harness/record";
 import { MAX_SENTENCE, readJson } from "./decision";
 
-export type MemoryTree = { notes: string[]; summaries: Map<string, string> };
+export type MemoryTree = { notes: string[]; summaries: Map<string, string>; removed: string[] };
 
 export type MemoryNode = NodeRange & { text: string };
 
@@ -17,6 +17,15 @@ export function summarySchema(node: NodeRange): object {
 
 const SENTENCE_END = /(?<!\b(?:Mt|Prof|Lt|St|Dr|Mr|Mrs|S\.S)\.)(?<=[.!?])\s+/i;
 const STATE_VALUES = /\b\d+%?\s*(?:HP|PP)\b|\b(?:HP|PP)\s+(?:(?:is|at|of|to)\s+)?\(?\d|\b\d+\s*\/\s*\d{2,}\b/i;
+// Run 00062 kept "Mt. Moon is crossed" for 1,192 prompts, while the Atlas still had unseen cells there.
+const PLACE_CLAIMS = [
+  /(?<!\bnot\s+)\b(?:fully|completely|entirely|all)\s+(?:explored|seen|searched|checked|crossed|looped)\b/i,
+  /\b(?:is|are|was|were|been|has|have)\s+(?:now\s+|just\s+|already\s+)?(?:explored|crossed)\b/i,
+  /\b(?:routes?|paths?|leads?|ways?|exits?|areas?)\s+(?:is|are|was|were)\s+exhausted\b/i,
+  /(?<!\bnot\s+a\s+)\bdead[ -]?ends?\b/i,
+  /\bloops?\s+back\b/i,
+  /\bno\s+way\s+out\b|\bno\s+(?:exit|route)\s+to\b/i,
+];
 const HEDGE = /\b(might|may|maybe|likely|probably|perhaps|possibly|could be)\b/i;
 const MARKED = /^(guess|a person said):/i;
 const NO_NOTE = /^(empty( string)?|none|n\/a)\.?$/i;
@@ -27,11 +36,14 @@ const RECENT_NOTES = 32;
 const SUMMARY_SYSTEM = `You keep the memory of a player of Pokémon FireRed. The memory is the list of the notes that the player wrote, oldest first. Two neighbour parts of the memory get one summary, and the player then sees the summary in place of the two parts.`;
 
 export function memoryTree(events: readonly RunEvent[]): MemoryTree {
-  const tree: MemoryTree = { notes: newNotes(events).map(({ note }) => note), summaries: new Map() };
+  const tree: MemoryTree = { notes: newNotes(events).map(({ note }) => note), summaries: new Map(), removed: [] };
   for (const event of events) {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
     if (event.type === "model") {
-      for (const { sentence, ...node } of event.removed ?? []) removeSentence(tree, node, sentence);
+      for (const { sentence, ...node } of event.removed ?? []) {
+        removeSentence(tree, node, sentence);
+        tree.removed.push(sentence);
+      }
     }
   }
   return tree;
@@ -56,9 +68,29 @@ export function isNewNote(note: string, last: string | undefined): boolean {
 }
 
 // The Run record keeps the result: the summaries of an old record name its notes by number, so a later filter must not change them.
-export function keptNote(written: string, earlier: readonly string[]): string {
-  const note = cut(sentences(written).filter((sentence) => !STATE_VALUES.test(sentence)).map(marked).join(" "), MAX_SENTENCE);
-  return NO_NOTE.test(note) || earlier.slice(-RECENT_NOTES).some((other) => sameFacts(note, other)) ? "" : note;
+export function keptNote(written: string, { notes, removed }: Pick<MemoryTree, "notes" | "removed">): string {
+  const note = cut(sentences(written).filter((sentence) => !STATE_VALUES.test(sentence) && keepsSentence(sentence, removed)).map(marked).join(" "), MAX_SENTENCE);
+  return NO_NOTE.test(note) || notes.slice(-RECENT_NOTES).some((other) => sameFacts(note, other)) ? "" : note;
+}
+
+function isPlaceClaim(sentence: string): boolean {
+  return !MARKED.test(sentence) && PLACE_CLAIMS.some((claim) => claim.test(sentence));
+}
+
+function keepsSentence(sentence: string, removed: readonly string[]): boolean {
+  return !isPlaceClaim(sentence) && !removed.some((other) => sameFacts(sentence, other));
+}
+
+function keptSentences(text: string, keep: (sentence: string) => boolean): string {
+  return sentences(text).filter(keep).join(" ");
+}
+
+function withoutPlaceClaims(node: MemoryNode): MemoryNode {
+  return { ...node, text: keptSentences(node.text, (sentence) => !isPlaceClaim(sentence)) };
+}
+
+function promptNodes(nodes: MemoryNode[]): MemoryNode[] {
+  return withText(nodes.map(withoutPlaceClaims));
 }
 
 function marked(sentence: string): string {
@@ -83,7 +115,7 @@ function sentences(text: string): string[] {
 function removeSentence(tree: MemoryTree, node: NodeRange, removed: string): void {
   const kept = text(tree, node);
   if (kept === null) return;
-  const rest = sentences(kept).filter((sentence) => sentence !== removed).join(" ");
+  const rest = keptSentences(kept, (sentence) => sentence !== removed);
   if (node.from === node.to) tree.notes[node.from - 1] = rest;
   else tree.summaries.set(key(node), rest);
 }
@@ -113,12 +145,12 @@ export function zoomNodes(tree: MemoryTree, node: NodeRange): MemoryNode[] | nul
 }
 
 export function memoryLines(tree: MemoryTree): string[] {
-  return withText(topNodes(tree)).map(nodeLine);
+  return promptNodes(topNodes(tree)).map(nodeLine);
 }
 
 export function reviewMemory(tree: MemoryTree): { lines: string[]; sentences: NodeSentence[] } {
   const numberedSentences: NodeSentence[] = [];
-  const lines = withText(topNodes(tree)).map((node) => {
+  const lines = promptNodes(topNodes(tree)).map((node) => {
     const numbered = sentences(node.text).map((sentence) => {
       numberedSentences.push({ from: node.from, to: node.to, sentence });
       return `[${numberedSentences.length}] ${sentence}`;
@@ -129,15 +161,15 @@ export function reviewMemory(tree: MemoryTree): { lines: string[]; sentences: No
 }
 
 export function zoomLines(tree: MemoryTree, node: NodeRange): string[] | null {
-  return zoomNodes(tree, node)?.map(nodeLine) ?? null;
+  return zoomNodes(tree, node)?.map(withoutPlaceClaims).map(nodeLine) ?? null;
 }
 
 export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
-  const parts = withText(halves(node).flatMap((half) => shown(tree, half))).map(nodeLine);
+  const parts = promptNodes(halves(node).flatMap((half) => shown(tree, half))).map(nodeLine);
   return {
     system: SUMMARY_SYSTEM,
     user: [
-      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When a later note makes a fact false or ends it, drop this fact and keep the later one. Keep "Guess:" before each guess.`,
+      `Write the summary of these two parts of the memory, ${summaryRule(node)}. Keep the facts that help to play: places, people, items, and what works or does not work. When a later note makes a fact false or ends it, drop this fact and keep the later one. Keep "Guess:" before each guess. Do not write that a place is explored, crossed or a dead end: the program tells this.`,
       "",
       ...parts,
       "",
@@ -146,11 +178,13 @@ export function summaryPrompt(tree: MemoryTree, node: NodeRange): Prompt {
   };
 }
 
-export function readSummary(content: string, node: NodeRange): string {
+export function readSummary(content: string, node: NodeRange, removed: readonly string[]): string {
   const value = readJson(content);
   const summary = typeof value === "object" && value !== null ? (value as Record<string, unknown>).summary : undefined;
   if (typeof summary !== "string" || summary.trim() === "") throw new Error('the answer has no "summary"');
-  return cut(summary.trim(), summaryLimit(node));
+  const kept = keptSentences(summary.trim(), (sentence) => keepsSentence(sentence, removed));
+  if (kept === "") throw new Error("the summary has only sentences that the program removes");
+  return cut(kept, summaryLimit(node));
 }
 
 function cut(text: string, limit: number): string {
@@ -187,7 +221,10 @@ function text(tree: MemoryTree, node: NodeRange): string | null {
   const summary = tree.summaries.get(key(node));
   if (summary !== undefined) return summary;
   // Two halves with no sentence left need no Summary call.
-  return halves(node).every((half) => text(tree, half) === "") ? "" : null;
+  return halves(node).every((half) => {
+    const known = text(tree, half);
+    return known !== null && keptSentences(known, (sentence) => !isPlaceClaim(sentence)) === "";
+  }) ? "" : null;
 }
 
 function withText(nodes: MemoryNode[]): MemoryNode[] {

@@ -10,6 +10,7 @@ const BLOCK_TITLES = [
   [/^Something important happened/, "Events"],
   [/^Bag|^Party/, "Party"],
   [/^Known world/, "Known world"],
+  [/^What is left/, "What is left"],
   [/^Map /, "Local view"],
   [/^What the people/, "People"],
   [/^Maps one exit away/, "Atlas"],

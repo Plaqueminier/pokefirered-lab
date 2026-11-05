@@ -7,6 +7,7 @@ import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, rea
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import type { AskOptions, ModelClient, ModelReply } from "../src/model/openrouter";
 import { modelClient, modelSettings, PlanLimitError } from "../src/model/providers";
+import { isDamageMove, type PartyMon } from "../src/party";
 import { darkOfMap } from "../src/model/extract";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
@@ -28,7 +29,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const settings = modelSettings(options);
   return {
     name: "model",
-    version: "29",
+    version: "30",
     model: settings,
     play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
   };
@@ -39,11 +40,43 @@ export function unknownScreen(events: readonly RunEvent[]): boolean {
   return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
+function fainted(party: readonly PartyMon[]): number {
+  return party.filter((mon) => mon.hp === 0).length;
+}
+
+function isReadyToFight(mon: PartyMon): boolean {
+  return mon.hp * 2 >= mon.maxHp && mon.moves.some((move) => isDamageMove(move) && move.pp > 0);
+}
+
+export function walkGoesOn(party: readonly PartyMon[], faintedBefore: number): boolean {
+  const lead = party.find((mon) => mon.hp > 0);
+  return lead !== undefined && isReadyToFight(lead) && fainted(party) <= faintedBefore && party.every((mon) => mon.status === "none");
+}
+
+type WalkAsked = Asked & { kind: "walk" };
+
+function walksInTheDark(target: Target, overworld: Overworld): target is Target & { kind: "frontier" } {
+  return target.kind === "frontier" && darkOfMap(overworld) !== undefined;
+}
+
+export function canWalkAgain(action: PlayedAction, { view, overworld }: Pick<WalkAsked, "view" | "overworld">, currentMap: string | undefined): boolean {
+  const onPromptMap = currentMap === overworld.map.name;
+  if (action.name === "goTo") return action.map !== undefined || onPromptMap;
+  if (action.name !== "go") return false;
+  const target = view.targets[action.target];
+  if (target.kind === "lead" || target.kind === "map") return true;
+  // walkOn starts with a walk back to its first cell, so each battle in the dark would lose the cells past it.
+  return onPromptMap && !walksInTheDark(target, overworld);
+}
+
+type BrokenWalk = { action: PlayedAction; asked: WalkAsked; map: string | undefined; fainted: number };
+
 type Conversation = { system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
 class ModelPlay {
   #conversation: Conversation | null = null;
   #promptObservation: Observation | null = null;
+  #brokenWalk: BrokenWalk | null = null;
   // A continued Run keeps the Model calls of its parent: the answers that the Bot cannot read count from this call.
   #firstCall = 0;
 
@@ -63,6 +96,7 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
+      if (kind === "walk" && (await this.continueWalk(observation))) continue;
       const turn = this.#conversation?.turnKind ?? turnKind(kind, this.harness.events, this.harness.noProgress, observation.party.length);
       const asked = askedOf(observation, this.#conversation?.atlasShown ?? showsAtlas(turn));
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
@@ -84,6 +118,7 @@ class ModelPlay {
         const conversation = this.#conversation;
         this.#conversation = null;
         const result = await this.perform(action, asked);
+        if (asked.kind === "walk") this.#brokenWalk = this.brokenWalk(action, asked, result, fainted(observation.party));
         if (conversation && result?.status === "impossible" && ++conversation.impossible < MAX_IMPOSSIBLE && this.harness.waitingFor().kind === kind) {
           const call = modelEvents(this.harness.events).at(-1)!;
           conversation.turns.push({ assistant: call.answer ?? "", user: impossibleMessage(call.decision?.action ?? "", "reason" in result ? result.reason : "", asked) });
@@ -91,6 +126,23 @@ class ModelPlay {
         }
       }
     }
+  }
+
+  private currentMap(): string | undefined {
+    return this.harness.events.findLast((e) => e.type === "map")?.map;
+  }
+
+  private brokenWalk(action: PlayedAction, asked: WalkAsked, result: ActionResult | null, faintedBefore: number): BrokenWalk | null {
+    if (result?.status !== "interrupted" || result.reason !== "battle" || !canWalkAgain(action, asked, this.currentMap())) return null;
+    return { action, asked, map: this.currentMap(), fainted: faintedBefore };
+  }
+
+  private async continueWalk(now: Observation): Promise<boolean> {
+    const walk = this.#brokenWalk;
+    this.#brokenWalk = null;
+    if (!walk || now.mode !== "overworld" || this.currentMap() !== walk.map || !walkGoesOn(now.party, walk.fainted)) return false;
+    this.#brokenWalk = this.brokenWalk(walk.action, walk.asked, await this.perform(walk.action, { ...walk.asked, overworld: now }), walk.fainted);
+    return true;
   }
 
   private async readText(): Promise<void> {
@@ -120,7 +172,7 @@ class ModelPlay {
         conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
       }
       if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(tree, action, asked) });
-      const decision = { ...written, note: keptNote(written.note, tree.notes) };
+      const decision = { ...written, note: keptNote(written.note, tree) };
       const removed = readRemoved(reply.content, conversation.sentences);
       // The note of this answer can start a merge, and the numbers then name old nodes. This also holds the limit for the whole Review turn.
       conversation.sentences = [];
@@ -158,7 +210,7 @@ class ModelPlay {
     if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
-      return { ...replied, summary: readSummary(reply.content, node), error: null };
+      return { ...replied, summary: readSummary(reply.content, node, tree.removed), error: null };
     } catch (error) {
       return { ...replied, summary: null, error: errorText(error) };
     }
@@ -218,7 +270,7 @@ class ModelPlay {
   }
 
   private async walkTo(target: LocalTarget, overworld: Overworld): Promise<ActionResult | null> {
-    if (target.kind === "frontier" && darkOfMap(overworld)) return this.harness.walkOn(target.cell.x, target.cell.y, target.direction);
+    if (walksInTheDark(target, overworld)) return this.harness.walkOn(target.cell.x, target.cell.y, target.direction);
     let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
       result = await this.harness.goTo(cell.x, cell.y);
