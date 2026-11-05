@@ -572,7 +572,7 @@ export function LeaderboardRowDemo() {
     { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, model: "deepseek/deepseek-v4-flash", cost: "0.31 $", size: 3, got: 1, faded: true },
   ] as const;
   return (
-    <div class="flex w-[436px] max-w-full flex-col">
+    <div class="flex w-[476px] max-w-full flex-col">
       {rows.map(({ rank, id, ghost, model, cost, size, got, faded }, i) => (
         <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} model={model} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
       ))}

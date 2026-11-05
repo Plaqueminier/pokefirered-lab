@@ -59,7 +59,7 @@ export function LeaderboardRow({
           <span class="min-w-0 flex-1">
             <ModelName id={model} short />
           </span>
-          <span class="shrink-0">{state}</span>
+          <span class="w-[128px] shrink-0">{state}</span>
           <span class="w-[9ch] shrink-0 whitespace-nowrap text-right text-muted tabular-nums">{cost}</span>
         </span>
         <span class="flex h-6 items-center justify-between gap-2">

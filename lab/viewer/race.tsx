@@ -19,7 +19,7 @@ const PANEL_REFRESH_MS = 500;
 const SEEK_STEP_FRAMES = 60;
 const DRAG_MIN_PIXELS = 4;
 const DOOR_CARD_INTERIORS = 3;
-const PANEL_CARD_WIDTH = 410;
+const PANEL_CARD_WIDTH = 450;
 const PANEL_CARD_HEIGHT = 200;
 const DOOR_CARD_WIDTH = 270;
 const DOOR_CARD_HEIGHT = 170;
@@ -112,7 +112,7 @@ function RacePanel({ view, tab, onTab }: { view: RaceView; tab: PanelTab; onTab:
     .filter(({ playing }) => playing.length > 0)
     .sort((a, b) => b.playing.length - a.playing.length);
   return (
-    <aside class="flex w-[min(460px,60%)] shrink-0 flex-col gap-3 border-l border-line p-3">
+    <aside class="flex w-[min(500px,60%)] shrink-0 flex-col gap-3 border-l border-line p-3">
       <Tabs
         items={[
           { id: "leaderboard", label: "Leaderboard" },
