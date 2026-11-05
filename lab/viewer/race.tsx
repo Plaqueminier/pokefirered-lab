@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
+import { Eye, EyeOff, PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { GBA_FPS } from "../src/protocol";
@@ -206,6 +206,9 @@ function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
           <span class="hidden min-[1100px]:inline">Frame the Ghosts</span>
         </Button>
       </Tooltip>
+      <IconTip tip={view.showMarks ? "Hide the icons on the map" : "Show the icons on the map"} pressed={view.showMarks} onClick={() => (view.showMarks = !view.showMarks)}>
+        {view.showMarks ? <Eye size={15} /> : <EyeOff size={15} />}
+      </IconTip>
       <IconTip tip={panel ? "Close the panel" : "Open the panel"} pressed={panel} onClick={onPanel}>
         {panel ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
       </IconTip>

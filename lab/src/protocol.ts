@@ -56,6 +56,9 @@ export function hasNoReasoningOff(provider: ModelProvider): boolean {
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 
+// The claude command changes the model of an alias at a new release, so a Run keeps a full id. Run records of before this change hold an alias: these ids are what the alias gave at their date, so an Extended Run stays on the same model and a Race shows the full id.
+export const CLAUDE_MODELS: Record<string, string> = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", fable: "claude-fable-5-1" };
+
 export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "claude-haiku-5-5", codex: "gpt-5.6-luna", grok: "grok-4.7" };
 
 export const MILLION = 1_000_000;

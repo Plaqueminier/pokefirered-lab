@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../harness/harness";
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
+import { CLAUDE_MODELS, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
 import { type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply, NO_OPENROUTER_KEY, openRouter } from "./openrouter";
 
 const DEFAULT_COST_LIMIT = 0.5;
@@ -14,8 +14,6 @@ const EXIT_DRAIN_MS = 1000;
 const KILL_GRACE_MS = 2000;
 // Each tool bills an API key when it finds one, so the subscription pays only with no key in its environment.
 const API_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY"];
-// The claude command changes the model of an alias at a new release, so a Run keeps a full id. Run records of before this change hold an alias: these ids are what the alias gave at their date, so an Extended Run stays on the same model.
-const CLAUDE_MODELS: Record<string, string> = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", fable: "claude-fable-5-1" };
 const CODEX = join(import.meta.dir, "../../node_modules/.bin/codex");
 // The docs of the tools give no format for a quota error, so only its text can tell it.
 const QUOTA_ERROR = /(usage|session|weekly|hourly|5-hour|plan)[ _-]?limit|hit your .*limit|quota/i;

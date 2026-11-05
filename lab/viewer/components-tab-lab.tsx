@@ -548,7 +548,7 @@ export function ModelNameDemo() {
     <div class="flex flex-col gap-2">
       <ModelName id="deepseek/deepseek-v4.1-flash" />
       <ModelName id="deepseek/deepseek-v4.1-flash" short />
-      <ModelName id="haiku" />
+      <ModelName id="claude-haiku-5-5" />
       <ModelName id="gpt-6.1-terra" />
       <ModelName id="grok-4.7" />
       <ModelName id="mistralai/mistral-large" />
