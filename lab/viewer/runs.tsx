@@ -1,7 +1,7 @@
 import { Play, Square } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, modelLabel, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
 import type { SpendLimit } from "../src/harness/record";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
@@ -102,8 +102,8 @@ const FROM_START = "";
 
 function shownModel(run: RunSummary | null): string {
   if (!run?.model) return "";
-  const { id, provider, reasoning, thinking, starter, ownSpent, limit } = run.model;
-  return `Run ${run.id}: model ${id} on ${provider}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, used ${spendText(ownSpent)} of ${spendText(limit)}`;
+  const { provider, reasoning, thinking, starter, ownSpent, limit } = run.model;
+  return `Run ${run.id}: model ${modelLabel(run.model)} on ${provider}, reasoning ${reasoning}, thinking ${thinking}, starter ${starter}, used ${spendText(ownSpent)} of ${spendText(limit)}`;
 }
 
 type Places = { free: number; limit: number };
@@ -122,6 +122,8 @@ function totalLimit(count: number, given: string, byDefault: number | null, unit
 }
 
 const LEVEL_OPTIONS = REASONING.map((level) => ({ value: level, label: level }));
+const AT_THINKING = "";
+const COACH_LEVEL_OPTIONS: { value: ReasoningLevel | typeof AT_THINKING; label: string }[] = [{ value: AT_THINKING, label: "the thinking level" }, ...LEVEL_OPTIONS];
 
 function LockedField({ label, value, hint, error }: { label: string; value: string; hint?: string; error?: string }) {
   return (
@@ -170,6 +172,8 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
   const [tokenLimit, setTokenLimit] = useState("");
   const [reasoning, setReasoning] = useState<ReasoningLevel>(DEFAULT_REASONING);
   const [thinking, setThinking] = useState<ReasoningLevel>(DEFAULT_THINKING);
+  const [coach, setCoach] = useState("");
+  const [coachReasoning, setCoachReasoning] = useState<ReasoningLevel | typeof AT_THINKING>(AT_THINKING);
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
   const [stopAtWhiteout, setStopAtWhiteout] = useState(true);
   const [countText, setCountText] = useState("1");
@@ -192,6 +196,7 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
       ...limitOption(unit, limit),
       reasoning: option(reasoning, DEFAULT_REASONING),
       thinking: option(thinking, DEFAULT_THINKING),
+      coach: coach.trim() ? { id: coach.trim(), reasoning: option(coachReasoning, AT_THINKING) } : undefined,
       starter: option(starter, DEFAULT_STARTER),
       stopAtWhiteout,
     };
@@ -220,6 +225,12 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
         </Field>
         <Field label="Thinking" hint="For the Character, Reflection and Review turns.">
           <Select options={LEVEL_OPTIONS} value={thinking} onChange={setThinking} />
+        </Field>
+        <Field label="Coach" hint="Empty: no Coach. A model of the same provider for the Character, Reflection and Review turns, the summaries and the move to forget.">
+          <Input value={coach} placeholder="no Coach" autocomplete="off" onInput={(event) => setCoach(event.currentTarget.value)} />
+        </Field>
+        <Field label="Coach reasoning" hint="For all the calls of the Coach.">
+          <Select options={COACH_LEVEL_OPTIONS} value={coachReasoning} onChange={setCoachReasoning} disabled={!coach.trim()} />
         </Field>
         <Field label="Starter" hint="free: the character of the model chooses.">
           <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
@@ -271,6 +282,7 @@ function ExtendedRunForm({ facts, onStart, bots, providers, places, startFrom, k
             <LockedField label="Model" value={model.id} />
             <LockedField label="Reasoning" value={model.reasoning} />
             <LockedField label="Thinking" value={model.thinking} />
+            {model.coach && <LockedField label="Coach" value={model.coach.id} hint={`Reasoning ${model.coach.reasoning}.`} />}
             <LockedField label="Starter" value={model.starter} />
             <LockedField label="Stop at a whiteout" value={model.stopAtWhiteout ? "yes" : "no"} />
           </>

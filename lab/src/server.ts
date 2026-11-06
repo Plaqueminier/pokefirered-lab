@@ -6,7 +6,7 @@ import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
-import { type Bot, botInfos, botNames, errorText, loadBot } from "./harness/harness";
+import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
 import { GridPlay } from "./grid";
 import { ScreenFanout } from "./screens";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
@@ -21,6 +21,7 @@ import {
   extendProblem,
   GBA_FPS,
   type Jump,
+  modelLabel,
   type ModelProvider,
   type ReplayModel,
   type ReplayStatus,
@@ -68,18 +69,18 @@ class LivePlay {
   inventory = new InventoryHistory();
 
   constructor(private readonly run: Run) {
-    this.atlas = new AtlasWatch(run.game);
+    this.atlas = new AtlasWatch(run.game, "player");
   }
 
   sight(): Sight {
     return this.atlas.sight();
   }
 
-  async reset(names: TrainerNames | null = null): Promise<void> {
+  async reset(names: TrainerNames | null = null, knowledge: KnowledgeLevel = "player"): Promise<void> {
     this.endReplay();
     await this.run.reset(names);
     this.inventory = new InventoryHistory();
-    this.atlas = new AtlasWatch(this.run.game);
+    this.atlas = new AtlasWatch(this.run.game, knowledge);
     this.resyncClock();
   }
 
@@ -92,7 +93,7 @@ class LivePlay {
 
   async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
     // A save with no place for the names gives a notice through the differences below.
-    await this.reset(record.header.names).catch(() => this.reset());
+    await this.reset(record.header.names, record.header.knowledge).catch(() => this.reset(null, record.header.knowledge));
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) {
       await this.reset();
@@ -446,7 +447,7 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
   for (const run of started) void run.done.then((end) => onBotEnd(run, end));
   const origin = start ? ` from the end of ${start.from.record}${start.from.kind === "extended" ? ", in the same Run" : ""}` : "";
   const runs = count === 1 ? `Run ${started[0].id}: the Bot ${name} plays` : `Runs ${started[0].id} to ${started[count - 1].id}: the Bot ${name} plays ${count} times`;
-  return `${runs}${origin}${model ? ` with the model ${model.id} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
+  return `${runs}${origin}${model ? ` with the model ${modelLabel(model)} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
@@ -522,7 +523,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "view-map": {
       const grid = safely(() => {
         const rom = run.game.gridOf(message.group, message.num);
-        return rom && run.game.withObstacles(rom, run.game.actorsOf(rom));
+        return rom && run.game.withObstacles(rom, run.game.actorsOf(rom).obstacles);
       });
       // The actors are those of the Run of the Viewer: none for a Run of a Bot.
       send({ type: "preview", grid, actors: grid && shown === viewerRun ? safely(() => run.game.actorsOf(grid)) : null }, ws);
@@ -590,6 +591,17 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       if (!poolRun || poolRun.end) break;
       poolRun.stop();
       send({ type: "notice", text: `Run ${poolRun.id}: stop asked. The Run stops after the action that plays, or at once in a Model call.` });
+      break;
+    }
+    case "remove-run": {
+      const poolRun = pool.runs.find((r) => r.id === message.runId);
+      // Before it is settled, its Run record is not written yet.
+      if (!poolRun || !settled.has(poolRun.id)) break;
+      pool.remove(poolRun);
+      settled.delete(poolRun.id);
+      writtenRecords.delete(poolRun.id);
+      screens.forget(poolRun.id);
+      if (shown.id === poolRun.id) show(viewerRun);
       break;
     }
     case "show": {
@@ -751,6 +763,8 @@ Bun.serve({
     return new Response("Not found", { status: 404 });
   },
   websocket: {
+    // The events of a long Run are one message of more than 100 MB. Over the default limit of 16 MB, Bun drops the next messages with no error, and a page then has no list of Run records.
+    backpressureLimit: 2 ** 30,
     open(ws) {
       clients.add(ws);
       screens.add(ws);

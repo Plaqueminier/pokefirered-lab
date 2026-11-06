@@ -1,12 +1,13 @@
 import { type Direction, KIND, LEDGE, WALL } from "../cells";
 import type { FieldMove, Obstacle } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
 import { type Cell, cellKey, kindAt, type MapCells } from "../harness/path";
 import { obstacleRemedy } from "../protocol";
-import { atlasCells, explorableCells, Parts, unseenGroups } from "./parts";
-import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, LETTERS, leadTargets, type LocalTarget, localTargets, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
+import { atlasCells, explorableCells, type LeftPlace, Parts, unseenGroups } from "./parts";
+import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
+export const MAX_FAR_MAPS = 8;
 export const FULL_ATLAS_BUDGET = 100_000;
 const LONG_MARK = "*";
 const BLANK = " ";
@@ -31,10 +32,12 @@ const LEGEND: [signs: string, text: string][] = [
   ...Object.values(FIELD_MOVES).map(({ sign, legend }): [string, string] => [sign, `${sign} ${legend}`]),
   [LONG_MARK, `${LONG_MARK} a target after Z`],
 ];
-const OWN_PART_SEEN = "You saw all the cells of your part of this map. To go on, take an exit or a lead.";
+const OWN_PART_SEEN = "You saw all the cells that you can reach from here on this map. Other parts of it can have unseen cells: to go on, take an exit or a lead.";
 const MAP_SEEN = "You saw all the cells of this map.";
+const LEFT_TITLE = "What is left (from the game, not from your notes: if your Memory tree disagrees, this list is right):";
+const NOTHING_LEFT = "- Nothing that a way that you saw reaches: to go on, take an exit to another map.";
 
-export type AtlasView = { lines: string[]; targets: Target[] };
+export type AtlasView = { lines: string[]; targets: Target[]; left: string[] };
 
 type MapDistance = { map: AtlasMap; distance: number };
 
@@ -49,10 +52,14 @@ function readableWorld({ atlas, bag, party }: WorldFacts): { atlas: Atlas; hasMo
   return { atlas: { ...atlas, maps: atlas.maps.map((map) => ({ ...map, obstacles: map.obstacles.filter((o) => hasMove(o.move)) })) }, hasMove };
 }
 
-/** The current map has what this move works on: FLASH a Dark map, SURF an edge with water, CUT, ROCK SMASH and STRENGTH their Fixed obstacle. */
-export function moveObstacleHere(move: string, { grid, atlas, map }: Overworld): boolean {
-  if (move === "FLASH") return grid.dark;
-  const here = mapNamed(atlas, map.name);
+export function darkOfMap({ atlas, map }: Pick<Overworld, "atlas" | "map">): AtlasMap["dark"] {
+  return mapNamed(atlas, map.name).dark;
+}
+
+/** The current map has what this move works on: FLASH a map that is dark for the model, SURF an edge with water, CUT, ROCK SMASH and STRENGTH their Fixed obstacle. */
+export function moveObstacleHere(move: string, overworld: Overworld): boolean {
+  if (move === "FLASH") return darkOfMap(overworld) !== undefined;
+  const here = mapNamed(overworld.atlas, overworld.map.name);
   return move === "SURF" ? here.edges.some((edge) => edge.blocked === "water") : here.obstacles.some((obstacle) => obstacle.move === move);
 }
 
@@ -61,36 +68,56 @@ export function atlasExtract(overworld: Overworld): AtlasView {
   const here = mapNamed(atlas, overworld.map.name);
   const parts = new Parts(atlas, here, overworld.grid, overworld.player);
   const inWay = peopleInTheWay(overworld, here, parts);
-  const local = localTargets(overworld, here, parts, inWay);
-  const leads = leadTargets(parts, inWay);
-  const view = [...drawnView(overworld, here, hasMove, local), ...seenLines(here, local), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
-  const outside = outsideLine(atlas, here, local);
+  const near = [...leadTargets(parts, inWay), ...localTargets(overworld, here, parts, inWay)];
+  const view = [...drawnView(overworld, here, hasMove, near), ...seenLines(here, near), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
+  const outside = outsideLine(atlas, here, near);
   let neighbours: string[] = [];
-  let targets = [...local, ...leads];
+  let targets = near;
   const lines = () => extractLines(view, neighbours, targets, outside);
   const localSize = lines().join("\n").length;
   for (const { map, distance } of byDistance(atlas, here.name)) {
     const before = { neighbours, targets };
-    if (distance === 1) neighbours = [...neighbours, ...neighbourLines(map, local, parts)];
-    else if (map.entry) targets = [...targets, { kind: "map", label: `${map.name}, ${away(distance)}`, map: map.name, cell: map.entry }];
+    if (distance === 1) neighbours = [...neighbours, ...neighbourLines(map, near, parts)];
+    else if (map.entry && targets.length - near.length < MAX_FAR_MAPS) targets = [...targets, { kind: "map", label: `${map.name}, ${away(distance)}`, map: map.name, cell: map.entry }];
     else continue;
     if (lines().join("\n").length - localSize <= OTHER_MAPS_BUDGET) continue;
     ({ neighbours, targets } = before);
     break;
   }
-  return { lines: lines(), targets };
+  return { lines: lines(), targets, left: leftLines(overworld, here, parts, near) };
 }
 
-export function localView(overworld: Overworld, targets: LocalTarget[]): string[] {
+function leftLines({ player }: Overworld, here: AtlasMap, parts: Parts, targets: Target[]): string[] {
+  if (!isInnerMap(here)) return [];
+  const lines = parts.left().flatMap((place) => leftLine(place, here, place.ownPart ? nearestUnseen(targets, player) : null));
+  return [LEFT_TITLE, ...(lines.length > 0 ? lines : [NOTHING_LEFT])];
+}
+
+function leftLine({ map, away: exits, ownPart, unseen, notTaken }: LeftPlace, here: AtlasMap, nearest: string | null): string[] {
+  const facts = [
+    ...(unseen > 0 ? [`${counted(unseen, "unseen place", "unseen places")}${nearest ? `, the nearest ${nearest}` : ""}`] : []),
+    ...(notTaken > 0 ? [counted(notTaken, "exit not taken", "exits not taken")] : []),
+  ];
+  if (facts.length === 0) return [];
+  const distance = exits === Number.POSITIVE_INFINITY ? "no seen way yet" : away(exits);
+  const where = ownPart ? "your part" : `${map.name === here.name ? "other parts, " : ""}${distance}`;
+  return [`- ${map.name}, ${where}: ${facts.join(", ")}.`];
+}
+
+function counted(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+export function localView(overworld: Overworld): string[] {
   const { atlas, hasMove } = readableWorld(overworld);
-  return drawnView(overworld, mapNamed(atlas, overworld.map.name), hasMove, targets);
+  return drawnView(overworld, mapNamed(atlas, overworld.map.name), hasMove, []);
 }
 
-function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove, targets: LocalTarget[]): string[] {
+function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove, targets: Target[]): string[] {
   const marks = new Map<string, string>();
   targets.forEach((t, i) => {
     const letter = targetLetter(i);
-    if (t.kind !== "edge") marks.set(cellKey(t.cell), letter.length === 1 ? letter : LONG_MARK);
+    if (t.kind !== "edge" && t.kind !== "lead") marks.set(cellKey(t.cell), letter.length === 1 ? letter : LONG_MARK);
   });
   marks.set(cellKey(player), PLAYER_SIGN);
   const sign = cellSigns(here, grid, hasMove);

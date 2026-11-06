@@ -44,7 +44,7 @@ describe("readAction", () => {
     kind: "walk",
     party: mons,
     overworld,
-    view: { lines: [], targets: Array.from({ length: targets }, () => edge) },
+    view: { lines: [], left: [], targets: Array.from({ length: targets }, () => edge) },
     atlasShown: false,
     items: [],
     bagEmpty,
@@ -171,7 +171,7 @@ describe("readAction", () => {
 
   describe("at the Pokémon PC", () => {
     const party = [{ nickname: "SQUIRTLE", hp: 10 }, { nickname: "Sky", hp: 10 }] as PartyMon[];
-    const boxMon = (nickname: string, box: number, position: number): BoxMon => ({ box, boxName: `BOX${box + 1}`, position, species: "PIDGEY", nickname, level: 5 });
+    const boxMon = (nickname: string, box: number, position: number): BoxMon => ({ box, boxName: `BOX${box + 1}`, position, species: "PIDGEY", nickname, level: 5, types: ["NORMAL", "FLYING"], ability: { name: "KEEN EYE", description: "" }, moves: [] });
     const boxes = [boxMon("Rock", 0, 0), boxMon("Twin", 0, 3), boxMon("Twin", 2, 7)];
     const pc: Asked = { kind: "pokemonPc", party, boxes };
 

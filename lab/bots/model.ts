@@ -1,12 +1,15 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
-import type { ModelAnswer, ModelOptions, ModelSettings, NodeRange, Prompt, NodeSentence, RunEvent, SummaryAnswer, Turn, Usage } from "../src/harness/record";
+import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
+import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, withAdvice } from "../src/model/coach";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
-import type { AskOptions, ModelClient, ModelReply } from "../src/model/openrouter";
+import { type AnswerFormat, type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply } from "../src/model/openrouter";
 import { modelClient, modelSettings, PlanLimitError } from "../src/model/providers";
+import { isDamageMove, type PartyMon } from "../src/party";
+import { darkOfMap } from "../src/model/extract";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
@@ -18,38 +21,84 @@ const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
 const MAX_UNCOVERED = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
-const TURN_FORMATS: Partial<Record<TurnKind, AskOptions["format"]>> = {
+const TURN_FORMATS: Record<TurnKind, AnswerFormat> = {
+  normal: DECISION_FORMAT,
   character: { name: "character", schema: CHARACTER_SCHEMA },
+  reflection: DECISION_FORMAT,
   review: { name: "review", schema: REVIEW_SCHEMA },
 };
 
+function turnFormat(turn: TurnKind, advises: boolean): AnswerFormat {
+  const format = TURN_FORMATS[turn];
+  return advises ? { ...format, schema: withAdvice(format.schema) } : format;
+}
+
+type Mind = { settings: ModelSettings; ask: ModelClient };
+
 export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSettings) => ModelClient = modelClient): Bot {
   const settings = modelSettings(options);
+  const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "24",
+    version: "31",
     model: settings,
-    play: (harness) => new ModelPlay(harness, settings, connect(settings)).play(),
+    play: (harness) => {
+      const player = mind(settings);
+      const coach = settings.coach ? mind(coachSettings(settings, settings.coach)) : player;
+      return new ModelPlay(harness, settings, player, coach).play();
+    },
   };
 }
 
 export function unknownScreen(events: readonly RunEvent[]): boolean {
-  const since = events.slice(events.findLastIndex((e) => e.type === "model") + 1);
-  return since.filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
+  return sinceLastCall(events).filter((e) => e.type === "action" && e.action.name === "readText" && e.result.status === "impossible").length >= MAX_UNCOVERED;
 }
 
-type Conversation = { system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
+function fainted(party: readonly PartyMon[]): number {
+  return party.filter((mon) => mon.hp === 0).length;
+}
+
+function isReadyToFight(mon: PartyMon): boolean {
+  return mon.hp * 2 >= mon.maxHp && mon.moves.some((move) => isDamageMove(move) && move.pp > 0);
+}
+
+export function walkGoesOn(party: readonly PartyMon[], faintedBefore: number): boolean {
+  const lead = party.find((mon) => mon.hp > 0);
+  return lead !== undefined && isReadyToFight(lead) && fainted(party) <= faintedBefore && party.every((mon) => mon.status === "none");
+}
+
+type WalkAsked = Asked & { kind: "walk" };
+
+function walksInTheDark(target: Target, overworld: Overworld): target is Target & { kind: "frontier" } {
+  return target.kind === "frontier" && darkOfMap(overworld) !== undefined;
+}
+
+export function canWalkAgain(action: PlayedAction, { view, overworld }: Pick<WalkAsked, "view" | "overworld">, currentMap: string | undefined): boolean {
+  const onPromptMap = currentMap === overworld.map.name;
+  if (action.name === "goTo") return action.map !== undefined || onPromptMap;
+  if (action.name !== "go") return false;
+  const target = view.targets[action.target];
+  if (target.kind === "lead" || target.kind === "map") return true;
+  // walkOn starts with a walk back to its first cell, so each battle in the dark would lose the cells past it.
+  return onPromptMap && !walksInTheDark(target, overworld);
+}
+
+type BrokenWalk = { action: PlayedAction; asked: WalkAsked; map: string | undefined; fainted: number };
+
+type Conversation = { mind: Mind; advises: boolean; advice: string; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
 class ModelPlay {
   #conversation: Conversation | null = null;
   #promptObservation: Observation | null = null;
+  #brokenWalk: BrokenWalk | null = null;
   // A continued Run keeps the Model calls of its parent: the answers that the Bot cannot read count from this call.
   #firstCall = 0;
 
   constructor(
     private readonly harness: Harness,
     private readonly settings: ModelSettings,
-    private readonly ask: ModelClient,
+    private readonly player: Mind,
+    private readonly coach: Mind,
   ) {}
 
   async play(): Promise<void> {
@@ -62,6 +111,7 @@ class ModelPlay {
         continue;
       }
       const observation = this.harness.observe();
+      if (kind === "walk" && (await this.continueWalk(observation))) continue;
       const turn = this.#conversation?.turnKind ?? turnKind(kind, this.harness.events, this.harness.noProgress, observation.party.length);
       const asked = askedOf(observation, this.#conversation?.atlasShown ?? showsAtlas(turn));
       if (!asked) throw new Error(`the model bot does not know this Decision point: ${kind} in the ${observation.mode} mode`);
@@ -83,6 +133,7 @@ class ModelPlay {
         const conversation = this.#conversation;
         this.#conversation = null;
         const result = await this.perform(action, asked);
+        if (asked.kind === "walk") this.#brokenWalk = this.brokenWalk(action, asked, result, fainted(observation.party));
         if (conversation && result?.status === "impossible" && ++conversation.impossible < MAX_IMPOSSIBLE && this.harness.waitingFor().kind === kind) {
           const call = modelEvents(this.harness.events).at(-1)!;
           conversation.turns.push({ assistant: call.answer ?? "", user: impossibleMessage(call.decision?.action ?? "", "reason" in result ? result.reason : "", asked) });
@@ -90,6 +141,23 @@ class ModelPlay {
         }
       }
     }
+  }
+
+  private currentMap(): string | undefined {
+    return this.harness.events.findLast((e) => e.type === "map")?.map;
+  }
+
+  private brokenWalk(action: PlayedAction, asked: WalkAsked, result: ActionResult | null, faintedBefore: number): BrokenWalk | null {
+    if (result?.status !== "interrupted" || result.reason !== "battle" || !canWalkAgain(action, asked, this.currentMap())) return null;
+    return { action, asked, map: this.currentMap(), fainted: faintedBefore };
+  }
+
+  private async continueWalk(now: Observation): Promise<boolean> {
+    const walk = this.#brokenWalk;
+    this.#brokenWalk = null;
+    if (!walk || now.mode !== "overworld" || this.currentMap() !== walk.map || !walkGoesOn(now.party, walk.fainted)) return false;
+    this.#brokenWalk = this.brokenWalk(walk.action, walk.asked, await this.perform(walk.action, { ...walk.asked, overworld: now }), walk.fainted);
+    return true;
   }
 
   private async readText(): Promise<void> {
@@ -100,10 +168,11 @@ class ModelPlay {
 
   private async answer(conversation: Conversation, asked: Asked, signal: AbortSignal): Promise<{ answer: ModelAnswer; action: ModelAction | null }> {
     const prompt: Prompt = { system: conversation.system, user: conversation.user, ...(conversation.turns.length > 0 ? { turns: [...conversation.turns] } : {}) };
-    const request = { model: this.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
-    const reply = await this.tryAsk(prompt, {
-      format: TURN_FORMATS[conversation.turnKind],
-      reasoning: conversation.thinks ? this.settings.thinking : undefined,
+    const { mind } = conversation;
+    const request = { model: mind.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
+    const reply = await this.tryAsk(mind, prompt, {
+      format: turnFormat(conversation.turnKind, conversation.advises),
+      reasoning: conversation.thinks ? mind.settings.thinking : undefined,
       signal,
     });
     if (typeof reply === "string") return { answer: { ...request, answer: null, usage: NO_USAGE, decision: null, error: reply }, action: null };
@@ -119,7 +188,9 @@ class ModelPlay {
         conversation.turns.push({ assistant: reply.content, user: atlasMessage(asked) });
       }
       if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(tree, action, asked) });
-      const decision = { ...written, note: keptNote(written.note, tree.notes) };
+      // A zoom or a retry can write the advice: the last answer of the turn keeps it, so that its age counts from the end of the turn.
+      if (conversation.advises) conversation.advice = readAdvice(reply.content) || conversation.advice;
+      const decision = { ...written, note: keptNote(written.note, tree), ...(conversation.advice ? { advice: conversation.advice } : {}) };
       const removed = readRemoved(reply.content, conversation.sentences);
       // The note of this answer can start a merge, and the numbers then name old nodes. This also holds the limit for the whole Review turn.
       conversation.sentences = [];
@@ -135,8 +206,12 @@ class ModelPlay {
     const happened = importantEvents(this.#promptObservation, observation, events);
     const tree = memoryTree(events);
     const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request: turnRequest(turn, this.settings.starter, this.harness.fixedNames()), memory: memory.lines });
-    return { system: systemPrompt(this.settings, observation.party.length > 0), user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal", sentences: memory.sentences };
+    const coached = this.settings.coach !== undefined;
+    const { plays, advises } = coachRole(coached, turn, asked);
+    const request = [...turnRequest(turn, this.settings.starter, this.harness.fixedNames()), ...(advises ? [ADVICE_REQUEST] : [])];
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice: coached ? adviceLine(events) : [] });
+    const system = systemPrompt(this.settings, observation.party.length > 0);
+    return { mind: plays ? this.coach : this.player, advises, advice: "", system, user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal" || plays, sentences: memory.sentences };
   }
 
   private async summarize(): Promise<void> {
@@ -152,21 +227,21 @@ class ModelPlay {
 
   private async summary(tree: MemoryTree, node: NodeRange, signal: AbortSignal): Promise<SummaryAnswer> {
     const prompt = summaryPrompt(tree, node);
-    const request = { model: this.settings.id, prompt, ...node };
-    const reply = await this.tryAsk(prompt, { format: { name: "summary", schema: summarySchema(node) }, signal });
+    const request = { model: this.coach.settings.id, prompt, ...node };
+    const reply = await this.tryAsk(this.coach, prompt, { format: { name: "summary", schema: summarySchema(node) }, reasoning: this.settings.coach ? this.coach.settings.thinking : undefined, signal });
     if (typeof reply === "string") return { ...request, answer: null, usage: NO_USAGE, summary: null, error: reply };
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
-      return { ...replied, summary: readSummary(reply.content, node), error: null };
+      return { ...replied, summary: readSummary(reply.content, node, tree.removed), error: null };
     } catch (error) {
       return { ...replied, summary: null, error: errorText(error) };
     }
   }
 
   /** The reply of the model, or the text of the error when the request fails. */
-  private async tryAsk(prompt: Prompt, options?: AskOptions): Promise<ModelReply | string> {
+  private async tryAsk(mind: Mind, prompt: Prompt, options?: AskOptions): Promise<ModelReply | string> {
     try {
-      return await this.ask(prompt, options);
+      return await mind.ask(prompt, options);
     } catch (error) {
       if (error instanceof PlanLimitError) this.harness.endAtPlanLimit(error.message);
       return `the request failed: ${errorText(error)}`;
@@ -217,6 +292,7 @@ class ModelPlay {
   }
 
   private async walkTo(target: LocalTarget, overworld: Overworld): Promise<ActionResult | null> {
+    if (walksInTheDark(target, overworld)) return this.harness.walkOn(target.cell.x, target.cell.y, target.direction);
     let result: ActionResult | null = null;
     for (const cell of approaches(target, overworld)) {
       result = await this.harness.goTo(cell.x, cell.y);

@@ -1,5 +1,5 @@
 import type { EventKeys, EventReads } from "../event-reads";
-import type { Game } from "../game";
+import type { FieldMove, Game } from "../game";
 import type { WatchedMon } from "../party";
 import type { StateEntry } from "../protocol";
 import type { RunEvent } from "./record";
@@ -15,9 +15,11 @@ export type StateEvent =
   | { type: "level"; species: string; from: number; level: number; moves: string[]; evolution: string | null }
   | { type: "money"; before: number; after: number; cause: "purchase" | "sale" | "battle" | "whiteout" | "other" }
   | { type: "trainer"; trainer: string; id: number }
+  | { type: "obstacle"; move: FieldMove; map: string; x: number; y: number; species: string }
+  | { type: "flash"; map: string; species: string }
   | { type: "whiteout" };
 
-const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "whiteout"] satisfies StateEvent["type"][]);
+const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "whiteout"] satisfies StateEvent["type"][]);
 
 export function isStateEvent<E extends { type: string }>(event: E): event is Extract<E, { type: StateEvent["type"] }> {
   return STATE_EVENT_TYPES.has(event.type);
@@ -110,7 +112,22 @@ export class StateWatch {
     const used = money === 0 ? (spent[0]?.[0] ?? null) : null;
     events.push(...this.#partyEvents(before.party, after.party, used, moment));
     for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: reads.trainerName(id), id });
+    events.push(...this.#obstacleEvents(flags?.temporary ?? [], after.party));
+    if (flags?.flash) events.push(...this.#flashEvent(after.party));
     return events;
+  }
+
+  #obstacleEvents(flags: number[], party: WatchedMon[]): StateEvent[] {
+    return flags.flatMap((flag): StateEvent[] => {
+      const obstacle = this.#game.obstacleRemovedBy(flag);
+      const user = obstacle && party.find((mon) => mon.moves.includes(obstacle.move));
+      return user ? [{ type: "obstacle", move: obstacle.move, map: this.#game.map().name, x: obstacle.x, y: obstacle.y, species: user.species }] : [];
+    });
+  }
+
+  #flashEvent(party: WatchedMon[]): StateEvent[] {
+    const slot = this.#game.flashUser();
+    return slot === null ? [] : [{ type: "flash", map: this.#game.map().name, species: party[slot].species }];
   }
 
   // A level or an evolution adds the same HP to the HP and to the max HP: that is not a heal.

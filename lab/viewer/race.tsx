@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
+import { Eye, EyeOff, PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { GBA_FPS } from "../src/protocol";
@@ -19,7 +19,7 @@ const PANEL_REFRESH_MS = 500;
 const SEEK_STEP_FRAMES = 60;
 const DRAG_MIN_PIXELS = 4;
 const DOOR_CARD_INTERIORS = 3;
-const PANEL_CARD_WIDTH = 354;
+const PANEL_CARD_WIDTH = 450;
 const PANEL_CARD_HEIGHT = 200;
 const DOOR_CARD_WIDTH = 270;
 const DOOR_CARD_HEIGHT = 170;
@@ -112,7 +112,7 @@ function RacePanel({ view, tab, onTab }: { view: RaceView; tab: PanelTab; onTab:
     .filter(({ playing }) => playing.length > 0)
     .sort((a, b) => b.playing.length - a.playing.length);
   return (
-    <aside class="flex w-[404px] shrink-0 flex-col gap-3 border-l border-line p-3">
+    <aside class="flex w-[min(500px,60%)] shrink-0 flex-col gap-3 border-l border-line p-3">
       <Tabs
         items={[
           { id: "leaderboard", label: "Leaderboard" },
@@ -206,6 +206,9 @@ function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
           <span class="hidden min-[1100px]:inline">Frame the Ghosts</span>
         </Button>
       </Tooltip>
+      <IconTip tip={view.showMarks ? "Hide the icons on the map" : "Show the icons on the map"} pressed={view.showMarks} onClick={() => (view.showMarks = !view.showMarks)}>
+        {view.showMarks ? <Eye size={15} /> : <EyeOff size={15} />}
+      </IconTip>
       <IconTip tip={panel ? "Close the panel" : "Open the panel"} pressed={panel} onClick={onPanel}>
         {panel ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
       </IconTip>

@@ -92,7 +92,7 @@ export function GhostCard({ view, ghost, children }: { view: RaceView; ghost: Gh
           <GhostState ghost={ghost} />
         </span>
       </div>
-      <ModelName id={ghost.model} />
+      <ModelName id={ghost.model} coach={ghost.coach} />
       <span class="text-xs">{ghost.character}</span>
       <span class="truncate text-xs text-muted">{view.titleOf(ghost.map)}</span>
       <BattleLines view={view} ghost={ghost} />

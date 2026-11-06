@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { coachSettings } from "./coach";
 import { modelClient, modelSettings, providerProblem } from "./providers";
 
 const PROMPT = { system: "rules", user: "now" };
@@ -29,6 +30,48 @@ describe("modelSettings of grok", () => {
   test("it refuses a cost limit and a temperature", () => {
     expect(() => modelSettings({ provider: "grok", costLimit: 1 }, {})).toThrow("the provider grok has a token limit, not a cost limit");
     expect(() => modelSettings({ provider: "grok", temperature: 1 }, {})).toThrow("the provider grok has no temperature");
+  });
+});
+
+describe("modelSettings of claude-code", () => {
+  test("it keeps a full model id, so that a later release of the claude command does not change the model of a Run", () => {
+    const idOf = (id?: string) => modelSettings({ provider: "claude-code", id }, {}).id;
+    expect(idOf()).toBe("claude-haiku-5-5");
+    expect(idOf("haiku")).toBe("claude-haiku-5-5");
+    expect(idOf("sonnet")).toBe("claude-sonnet-5-5");
+    expect(idOf("opus")).toBe("claude-opus-5-5");
+    expect(idOf("fable")).toBe("claude-fable-5-1");
+    expect(idOf("claude-sonnet-6-0")).toBe("claude-sonnet-6-0");
+  });
+
+  test("another provider keeps the id that it gets", () => {
+    expect(modelSettings({ id: "sonnet" }, {}).id).toBe("sonnet");
+  });
+});
+
+describe("modelSettings of a Coach", () => {
+  test("the Coach has its own model on the provider of the player, with a full claude-code id, and the thinking level when it has no reasoning", () => {
+    expect(modelSettings({ provider: "claude-code", id: "haiku", thinking: "low", coach: { id: "opus" } }, {})).toMatchObject({ id: "claude-haiku-5-5", provider: "claude-code", coach: { id: "claude-opus-5-5", reasoning: "low" } });
+    expect(modelSettings({ provider: "claude-code", coach: { id: "opus", reasoning: "high" } }, {}).coach).toEqual({ id: "claude-opus-5-5", reasoning: "high" });
+  });
+
+  test("a Coach with the model of the player, or an empty id, is no Coach", () => {
+    expect(modelSettings({ provider: "claude-code", id: "haiku", coach: { id: "claude-haiku-5-5" } }, {})).not.toHaveProperty("coach");
+    expect(modelSettings({ coach: { id: " " } }, {})).not.toHaveProperty("coach");
+  });
+
+  test("a reasoning of the Coach with no Coach is an error", () => {
+    expect(() => modelSettings({ coach: { id: "", reasoning: "high" } }, {})).toThrow("the reasoning of the coach needs a coach");
+  });
+
+  test("the reasoning of the Coach is a level, and a provider with no off plays it as low", () => {
+    expect(() => modelSettings({ coach: { id: "big", reasoning: "huge" } }, {})).toThrow("the reasoning of the coach must be");
+    expect(modelSettings({ provider: "grok", coach: { id: "grok-big", reasoning: "off" } }, {}).coach).toEqual({ id: "grok-big", reasoning: "low" });
+  });
+
+  test("the client of the Coach thinks at its level, and plays at the reasoning level of the Run after an empty answer", () => {
+    const settings = modelSettings({ provider: "claude-code", reasoning: "low", thinking: "medium", coach: { id: "opus", reasoning: "high" } }, {});
+    expect(coachSettings(settings, { id: "claude-opus-5-5", reasoning: "high" })).toMatchObject({ id: "claude-opus-5-5", reasoning: "low", thinking: "high" });
   });
 });
 

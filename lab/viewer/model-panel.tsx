@@ -69,6 +69,7 @@ const BLOCK_ICONS: Record<BlockTitle, Icon> = {
   Events: Bell,
   Party: Heart,
   "Known world": Globe,
+  "What is left": Compass,
   "Local view": MapIcon,
   People: Users,
   Atlas: Compass,
@@ -206,6 +207,7 @@ function Goals({ row }: { row: UnusualCall }) {
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
+    ...(decision.advice ? [{ term: "Coach advice", text: decision.advice, changed: false }] : []),
     ...(removed ? [{ term: "Removed", text: removed.map(({ sentence }) => sentence).join(" "), changed: false }] : []),
   ].filter((goal) => goal.term !== "Note" || goal.text);
   return (

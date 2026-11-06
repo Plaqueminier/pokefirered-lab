@@ -1,5 +1,5 @@
 import type { EndReason } from "../src/harness/harness";
-import { type MonHealth, type SpendUnit, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
+import { CLAUDE_MODELS, type MonHealth, type SpendUnit, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
 import { decodeTrack, type RaceBattle, type RaceFile, type RaceRun } from "../src/race/file";
 import type { Door, WorldMap, WorldPlace } from "../src/race/world";
 import type { CellBox } from "./race-camera";
@@ -12,9 +12,6 @@ const NO_BADGES: boolean[] = new Array(8).fill(false);
 
 export type ModelFamily = "deepseek" | "claude" | "gpt" | "grok";
 
-// The aliases of the claude command: a Race file holds only the id, with no provider.
-const CLAUDE_ALIASES = ["haiku", "sonnet", "opus", "fable"];
-
 export function shortModelId(id: string): string {
   return id.slice(id.lastIndexOf("/") + 1);
 }
@@ -24,7 +21,7 @@ export function modelFamily(id: string): ModelFamily | null {
   if (short.startsWith("deepseek")) return "deepseek";
   if (short.startsWith("gpt-")) return "gpt";
   if (short.startsWith("grok-")) return "grok";
-  return short.startsWith("claude") || CLAUDE_ALIASES.includes(short) ? "claude" : null;
+  return short.startsWith("claude") ? "claude" : null;
 }
 
 export type GhostWorld = { places: readonly WorldPlace[]; maps: readonly Pick<WorldMap, "key" | "warps" | "door">[] };
@@ -41,6 +38,7 @@ export type GhostNow = {
   run: number;
   number: number;
   model: string;
+  coach?: string;
   character: string;
   map: string;
   x: number;
@@ -293,7 +291,7 @@ export class RaceGhosts {
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
     const battle = battleAt(ghost, frame);
-    const now: GhostNow = { run: index, number: run.number, model: run.model, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
+    const now: GhostNow = { run: index, number: run.number, model: CLAUDE_MODELS[run.model] ?? run.model, ...(run.coach ? { coach: CLAUDE_MODELS[run.coach] ?? run.coach } : {}), character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

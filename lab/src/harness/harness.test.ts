@@ -86,7 +86,7 @@ describe.skipIf(!ready)("goTo", () => {
   test("the floors of Mt Moon have thin walls: a walk cannot cross the wall of B2F, and the route from its ladder of B1F to the far ladder stays open", async () => {
     const run = await Run.open();
     const grid = run.game.mapView("MtMoon_B2F")?.grid;
-    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [] } : null);
+    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [], removable: [] } : null);
     expect(findRoute({ map: "MtMoon_B2F", x: 31, y: 11 }, { map: "MtMoon_B2F", x: 31, y: 17 }, floor)).toBeNull();
     expect(findRoute({ map: "MtMoon_B2F", x: 25, y: 22 }, { map: "MtMoon_B2F", x: 5, y: 11 }, floor)).not.toBeNull();
   });
@@ -135,7 +135,7 @@ async function toRivalBattle(harness: Harness) {
 }
 
 test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "24", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "31", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -220,25 +220,26 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     seen.push(harness.availableActions());
     await starter.play(harness);
     const goTo = { name: "goTo" as const };
+    const walkOn = { name: "walkOn" as const };
     const readText = [{ name: "readText" as const }];
     const fights: AvailableAction[] = [
       { name: "fight", move: 0 },
       { name: "fight", move: 1 },
     ];
     expect(seen).toEqual([
-      [goTo, { name: "interact", x: 6, y: 5 }],
-      [goTo],
+      [goTo, walkOn, { name: "interact", x: 6, y: 5 }],
+      [goTo, walkOn],
       readText,
       ...OAK_TEXTS.slice(1).map(() => readText),
-      [goTo, { name: "interact", x: 6, y: 3 }, { name: "interact", x: 5, y: 4 }],
-      [goTo, { name: "interact", x: 9, y: 4 }],
+      [goTo, walkOn, { name: "interact", x: 6, y: 3 }, { name: "interact", x: 5, y: 4 }],
+      [goTo, walkOn, { name: "interact", x: 9, y: 4 }],
       readText,
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
       readText,
       [{ name: "choose", option: "YES" }, { name: "choose", option: "NO" }],
       [{ name: "name" }],
       // BOB stops at (8, 5) after he takes BULBASAUR.
-      [goTo, { name: "interact", x: 8, y: 5 }],
+      [goTo, walkOn, { name: "interact", x: 8, y: 5 }],
       readText,
       readText,
       fights,
@@ -250,7 +251,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
       fights,
       readText,
       readText,
-      [goTo],
+      [goTo, walkOn],
     ]);
     harness.actions.forEach(({ action }, i) => {
       if (action.name === "press") throw new Error("the scripted bot uses a Raw input");
@@ -368,6 +369,11 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe()).toMatchObject({ mode: "overworld", waitingFor: { kind: "walk" }, map: { name: "Route1" } });
   });
 
+  test("observe() at a walk gives the kind of the map and the items of the PC, with no PC open", async () => {
+    const harness = await Harness.open();
+    expect(harness.observe()).toMatchObject({ mode: "overworld", map: { name: "PalletTown_PlayersHouse_2F" }, mapKind: "indoor", pcItems: [{ name: "POTION", quantity: 1 }] });
+  });
+
   test("observe() tells that a REPEL is active; when it wears off in a walk, goTo stops at a script and readText gives its text", async () => {
     const run = await Run.open();
     const harness = await Harness.open({}, run);
@@ -483,7 +489,7 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
   test("goTo to the cell of Mom, who stays and whom the player did not see, returns blocked at once and does not name her", async () => {
     const harness = await Harness.open();
     const result = await harness.goTo(8, 4, "PalletTown_PlayersHouse_1F");
-    expect(result).toEqual({ status: "blocked", reason: "a person or an object that you did not see stands on the only way", frames: 0 });
+    expect(result).toEqual({ status: "blocked", reason: "a person or an object that you did not see stands on the only way on the cells that you saw", frames: 0 });
     expect(harness.observe()).toMatchObject({ mode: "overworld", map: { name: "PalletTown_PlayersHouse_2F" } });
   });
 
@@ -849,13 +855,13 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     const run = await Run.open({ startSave: MART_SAVE });
     const harness = await atPokemonPc(run);
     fillParty(run, await memoryOf(run));
-    const [{ species, nickname, level }] = harness.observe().party;
+    const [{ species, nickname, level, types, ability, moves }] = harness.observe().party;
 
     expect(await harness.withdrawPokemon(0, 0)).toMatchObject({ status: "impossible", frames: 0 });
     must(await harness.depositPokemon(1));
     expect(harness.waitingFor()).toEqual({ kind: "pokemonPc" });
     expect(harness.observe().party).toHaveLength(5);
-    expect(boxesOf(harness)).toEqual([{ box: 0, boxName: "BOX1", position: 0, species, nickname, level }]);
+    expect(boxesOf(harness)).toMatchObject([{ box: 0, boxName: "BOX1", position: 0, species, nickname, level, types, ability, moves: moves.map(({ name, maxPp }) => ({ name, maxPp })) }]);
 
     must(await harness.withdrawPokemon(0, 0));
     expect(harness.waitingFor()).toEqual({ kind: "pokemonPc" });

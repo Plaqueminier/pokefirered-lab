@@ -11,9 +11,10 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   connections: Pick<MapGrid["connections"][number], "direction" | "offset" | "map">[];
   people: RoutePerson[];
   obstacles: Obstacle[];
+  removable: Cell[];
 };
 
-type Move = { direction: Direction; kind: "walk" | "jump" | "push" };
+type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" };
 
 export type Leg = { map: string; moves: Move[] };
 
@@ -23,6 +24,8 @@ export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidt
 
 const WALKABLE = new Set<string>([KIND.open, KIND.grass, ...Object.values(WALL)]);
 const WARP_COST = 4;
+// Measured: one use of CUT takes 545 frames, and one step 16 frames.
+const REMOVE_COST = 34;
 export const MAX_ROUTE_MAPS = 32;
 
 type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
@@ -78,7 +81,7 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
     return maps.get(name)!;
   };
   const target = load(to.map);
-  if (!load(from.map) || !target || !(to.exit || free(target, to))) return null;
+  if (!load(from.map) || !target || !(to.exit || free(target, to) || removableAt(target, to))) return null;
 
   const id = (p: Place) => `${p.map}:${p.x},${p.y}`;
   const estimate = (p: Place) => (p.map === to.map ? Math.abs(p.x - to.x) + Math.abs(p.y - to.y) : 0);
@@ -125,6 +128,10 @@ function* edges(place: Place, load: MapSource): Generator<Edge> {
       if (inside(map, landing) && free(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: 2, leaves: false };
       continue;
     }
+    if (removableAt(map, next)) {
+      yield { to: next, move: { direction, kind: "remove" }, cost: REMOVE_COST, leaves: false };
+      continue;
+    }
     if (!free(map, next)) continue;
     const step = map.warps.find((w) => w.how === "step" && w.x === next.x && w.y === next.y);
     if (step) {
@@ -150,7 +157,11 @@ export function reached(destination: Destination, here: Place): boolean {
   return here.map === destination.map && steps <= (destination.exit ? 1 : 0);
 }
 
-function warpAt(map: RouteMap, { x, y }: Cell): WarpExit | undefined {
+function removableAt(map: RouteMap, { x, y }: Cell): boolean {
+  return map.removable.some((c) => c.x === x && c.y === y);
+}
+
+function warpAt(map: Pick<RouteMap, "warps">, { x, y }: Cell): WarpExit | undefined {
   return map.warps.find((w) => w.how !== "none" && w.x === x && w.y === y);
 }
 
@@ -224,6 +235,40 @@ export function edgeCells(map: Pick<MapCells, "mapWidth" | "mapHeight">, side: D
     if (vertical) return { x: i, y: side === "north" ? 0 : map.mapHeight - 1 };
     return { x: side === "west" ? 0 : map.mapWidth - 1, y: i };
   });
+}
+
+export function onlySeen(map: RouteMap, seen: (cell: Cell) => boolean): RouteMap {
+  const cellOf = (i: number) => ({ x: map.x0 + (i % map.width), y: map.y0 + Math.floor(i / map.width) });
+  return {
+    ...map,
+    kinds: Array.from(map.kinds, (kind, i) => (inside(map, cellOf(i)) && !seen(cellOf(i)) ? KIND.blocked : kind)).join(""),
+    // Each warp keeps its index: `arrivalOf` reads the list by the id of the warp.
+    warps: map.warps.map((warp) => (seen(warp) ? warp : { x: warp.x, y: warp.y, to: warp.to, warpId: warp.warpId, how: "none" })),
+    obstacles: map.obstacles.filter(seen),
+    removable: map.removable.filter(seen),
+  };
+}
+
+export function nextStraightStep(map: MapCells & Pick<RouteMap, "warps"> & { people: Cell[] }, from: Cell, direction: Direction): Cell | null {
+  const [dx, dy] = DIRECTION_STEP[direction];
+  const next = { x: from.x + dx, y: from.y + dy };
+  return inside(map, next) && !wallBetween(map, from, direction) && free(map, next) && !warpAt(map, next) ? next : null;
+}
+
+/** The side of `direction` that a walk from `from` to `to` goes to. Null for a walk straight in `direction`. */
+export function headingAlong(from: Cell, to: Cell, direction: Direction): Direction | null {
+  if (direction === "north" || direction === "south") return to.x === from.x ? null : to.x < from.x ? "west" : "east";
+  return to.y === from.y ? null : to.y < from.y ? "north" : "south";
+}
+
+/** One step along a wall on `side`, while `side` has unseen cells on the next cell or the cell after it: 3 x 3 sight sees one cell ahead. */
+export function nextStepAlong(map: MapCells & Pick<RouteMap, "warps"> & { people: Cell[] }, from: Cell, side: Direction, heading: Direction, seen: (cell: Cell) => boolean): Cell | null {
+  const next = nextStraightStep(map, from, heading);
+  if (!next) return null;
+  const [dx, dy] = DIRECTION_STEP[heading];
+  const [sideX, sideY] = DIRECTION_STEP[side];
+  const unseenAt = ({ x, y }: Cell) => inside(map, { x: x + sideX, y: y + sideY }) && !seen({ x: x + sideX, y: y + sideY });
+  return unseenAt(next) || unseenAt({ x: next.x + dx, y: next.y + dy }) ? next : null;
 }
 
 export function kindAt(map: MapCells, c: Cell): string {

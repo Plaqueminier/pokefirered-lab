@@ -50,7 +50,7 @@ function ghostsOf(...runs: RaceRun[]): RaceGhosts {
 test("the family of a model comes from its id alone", () => {
   for (const id of ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4.1-flash"]) expect(modelFamily(id)).toBe("deepseek");
   for (const id of ["gpt-5.6-terra", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-6.-luna", "openai/gpt-5.5"]) expect(modelFamily(id)).toBe("gpt");
-  for (const id of ["haiku", "sonnet", "opus", "fable", "claude-sonnet-5-5", "anthropic/claude-opus-5.5"]) expect(modelFamily(id)).toBe("claude");
+  for (const id of ["claude-haiku-5-5", "claude-sonnet-5-5", "anthropic/claude-opus-5.5"]) expect(modelFamily(id)).toBe("claude");
   for (const id of ["grok-4.7", "grok-4.7-fast", "x-ai/grok-4"]) expect(modelFamily(id)).toBe("grok");
 });
 
@@ -60,13 +60,13 @@ test("a model of another family, or no model, has no family", () => {
 
 test("the short id of a model has no prefix", () => {
   expect(shortModelId("deepseek/deepseek-v4.1-flash")).toBe("deepseek-v4.1-flash");
-  expect(shortModelId("haiku")).toBe("haiku");
+  expect(shortModelId("claude-haiku-5-5")).toBe("claude-haiku-5-5");
   expect(shortModelId("")).toBe("");
 });
 
-test("a Ghost gives the model of its Run", () => {
+test("a Ghost gives the model of its Run, with the full id of an alias of the claude command", () => {
   const ghosts = ghostsOf(run({ model: "deepseek/deepseek-v4-flash", points: [[0, 3, 0, 5, 5, 0]] }), run({ number: 2, model: "haiku", points: [[0, 3, 0, 5, 5, 0]] }));
-  expect(ghosts.at(0).ghosts.map(({ model }) => model)).toEqual(["deepseek/deepseek-v4-flash", "haiku"]);
+  expect(ghosts.at(0).ghosts.map(({ model }) => model)).toEqual(["deepseek/deepseek-v4-flash", "claude-haiku-5-5"]);
 });
 
 test("a step: the Ghost slides from its cell to the next one in 16 frames, with a walk frame in the first half and its new facing", () => {

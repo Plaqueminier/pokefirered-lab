@@ -37,7 +37,10 @@ export function hasStateEvents(record: Pick<RunRecord, "format">): boolean {
 type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
-export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean } & ModelLimit;
+/** Always on the provider of the player, so that one limit unit counts both models. */
+export type Coach = { id: string; reasoning: ReasoningLevel };
+
+export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean; coach?: Coach } & ModelLimit;
 
 // Run records from before the Model providers have no provider: they played on OpenRouter.
 type ModelLimit = { provider?: "openrouter"; costLimit: number; tokenLimit?: undefined } | { provider: PlanProvider; tokenLimit: number; costLimit?: undefined };
@@ -51,7 +54,7 @@ export function limitOf(settings: ModelLimit): Spend {
 }
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean };
+export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string; reasoning?: string } };
 
 export type SpendLimit = Pick<ModelOptions, "costLimit" | "tokenLimit">;
 
@@ -61,7 +64,7 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; character?: string; starter?: StarterSpecies; names?: TrainerNames };
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string; character?: string; starter?: StarterSpecies; names?: TrainerNames };
 
 export type NodeRange = { from: number; to: number };
 
@@ -114,6 +117,19 @@ export function callTurns(events: readonly RunEvent[]): CallTurn[] {
     else turns[turns.length - 1].events.push(event);
   }
   return turns;
+}
+
+export function sinceLastCall(events: readonly RunEvent[]): readonly RunEvent[] {
+  return events.slice(events.findLastIndex((e) => e.type === "model") + 1);
+}
+
+export function textsOf(events: readonly RunEvent[]): string[] {
+  return events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
+}
+
+/** A decision is a Model call after which the program played an action: a zoom or a viewAtlas is none. */
+export function isDecision(turn: CallTurn): turn is CallTurn & { call: ModelEvent } {
+  return turn.call !== null && turn.events.some((e) => e.type === "action");
 }
 
 export function factsAt(events: readonly RunEvent[], frame: number): { milestone: Milestone | null; battle: boolean; totals: ModelTotals } {
@@ -421,8 +437,8 @@ export async function replayStart(header: RunHeader): Promise<Continuation | nul
 
 export function modelFacts(given: ModelSettings): ModelFacts {
   const settings = currentSettings(given);
-  const { id, reasoning, thinking, starter } = settings;
-  return { id, provider: providerOf(settings), reasoning, thinking, starter, limit: limitOf(settings) };
+  const { id, reasoning, thinking, starter, coach } = settings;
+  return { id, provider: providerOf(settings), reasoning, thinking, starter, ...(coach ? { coach } : {}), limit: limitOf(settings) };
 }
 
 const HEADER_BYTES = 64 * 1024;

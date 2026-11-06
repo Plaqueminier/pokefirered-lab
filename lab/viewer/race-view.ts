@@ -67,6 +67,8 @@ export class RaceView {
   readonly live = new Set<() => void>();
   speed = 20;
   playing = true;
+  /** False: the map shows only the sprites of the Ghosts. */
+  showMarks = true;
   readonly selected = new Store<number | null>(null);
   frame = 0;
   moment: RaceMoment;
@@ -193,6 +195,8 @@ export class RaceView {
     this.#openHits = [...this.#opened].flatMap(([key, building]) => this.#drawOpenBuilding(frame, key, building));
     const { hits, labels } = this.#drawGhosts(frame, this.#outdoorItems(width, height), Math.max(this.camera.zoom, MIN_SPRITE_SCALE), this.camera.zoom);
     this.#ghostHits = [...hits, ...this.#openHits.flatMap((open) => open.hits)];
+    this.#doorHits = [];
+    if (!this.showMarks) return;
     const gyms = this.#drawGyms(frame);
     this.#doorHits = this.moment.doors.flatMap((door) => this.#drawDoor(frame, door));
     this.#drawNames(frame, [...labels, ...gyms, ...this.#doorHits.map((hit) => hit.box)]);
@@ -266,11 +270,11 @@ export class RaceView {
     const labels: Box[] = [];
     for (const { items: members } of groups.sort((a, b) => a.items[0].y - b.items[0].y)) {
       const lead = members.find(({ ghost }) => ghost.run === this.selected.value) ?? members.find(({ ghost }) => ghost.run === leader) ?? members.find(({ ghost }) => !ghost.result) ?? members[0];
-      const label = this.#drawLabel(frame, members, lead, labelY(lead.y), zoom);
-      labels.push(label);
+      const label = this.showMarks ? this.#drawLabel(frame, members, lead, labelY(lead.y), zoom) : null;
+      if (label) labels.push(label);
       const group = members.map(({ ghost }) => ghost);
       const w = Math.max(FRAME_WIDTH * scale, HIT_MIN_WIDTH);
-      const reach = labelY(lead.y) - label.y;
+      const reach = label ? labelY(lead.y) - label.y : 0;
       for (const { ghost, x, y } of members) hits.push({ ghost, group, box: { x: x - w / 2, y: labelY(y) - reach, w, h: y - labelY(y) + reach } });
     }
     return { hits, labels };

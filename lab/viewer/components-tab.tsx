@@ -801,7 +801,7 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "LeaderboardRow",
-    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, state, model and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
+    rule: "A Run in the Leaderboard of a Race: rank, sprite, Run id, model, state and cost or tokens, then the team and the badges, on a fixed height so that a long list shows only the rows on the screen. The state has a fixed column, as wide as its longest text (“unknown screen”), and the cost also has a fixed column, so a change of state moves no text. A click selects. Selected: the accent border all around. A Run that ended is at 45 % opacity.",
     demo: () => <LeaderboardRowDemo />,
   },
   {
@@ -910,7 +910,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. A dim layer shows a wait for the model, a Summary call of the memory or the end. A Run record can go in any cell; an ended live Run can replay its record; an empty cell offers the Run records.",
+    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. The screen takes all the place that the cell gives, and the facts go at its side when the cell is wide. A dim layer shows a wait for the model, a Summary call of the memory or the end. The buttons of a Run that plays show on a hover. A Run record can go in any cell; an ended Run can replay its record or continue it, and an ended live Run can leave the Grid; an empty cell offers the Run records.",
     demo: () => <GridCellDemo />,
   },
   {

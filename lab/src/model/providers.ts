@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../harness/harness";
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
+import { CLAUDE_MODELS, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
 import { type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply, NO_OPENROUTER_KEY, openRouter } from "./openrouter";
 
 const DEFAULT_COST_LIMIT = 0.5;
@@ -56,7 +56,13 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   if (temperature !== null && isPlanProvider(provider)) throw new Error(`the provider ${provider} has no temperature`);
   const starter = STARTERS.find((name) => name === (given.starter ?? DEFAULT_STARTER));
   if (!starter) throw new Error(`the starter must be ${STARTERS.join(", ")}, not "${given.starter}"`);
-  const choice = { id: given.id || DEFAULT_MODELS[provider], reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true };
+  const fullId = (id: string) => (provider === "claude-code" && CLAUDE_MODELS[id]) || id;
+  const id = fullId(given.id || DEFAULT_MODELS[provider]);
+  const coachId = given.coach?.id?.trim() ? fullId(given.coach.id.trim()) : "";
+  if (!coachId && given.coach?.reasoning !== undefined) throw new Error("the reasoning of the coach needs a coach");
+  const coachReasoning = levelFor(levelOf("reasoning of the coach", given.coach?.reasoning, thinking));
+  const coach = coachId && coachId !== id ? { coach: { id: coachId, reasoning: coachReasoning } } : {};
+  const choice = { id, reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true, ...coach };
   if (isPlanProvider(provider)) {
     if (given.costLimit !== undefined) throw new Error(`the provider ${provider} has a token limit, not a cost limit`);
     const tokenLimit = given.tokenLimit ?? DEFAULT_TOKEN_LIMIT;

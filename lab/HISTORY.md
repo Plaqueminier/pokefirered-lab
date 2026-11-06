@@ -325,3 +325,96 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The Model tab shows the character of the Run first, and the card of a Ghost shows it in full (issue #77). A Run with no Character turn shows "Normal trainer": the Viewer shows this text, the model never reads it, and no Run record holds it. The Race file goes to version 3. `bb648e169`
     - Each Ghost shows its model: a dot on the map, the full id on hover, and the short id in the Leaderboard. The dot is blue for DeepSeek, orange for Claude and light grey for GPT, and a Ghost of another model has no dot. `f4b0b6484` Grok came later with no dot, so Run 00052 had none on the map. It now has a black dot.
     - The three floors of Mt Moon are islands on the map of the Race, so the Ghosts walk on them, with no count at a door. `28e64f345`
+
+## 26. A walk removes a Fixed obstacle (2026-11-04)
+
+72. The model bot goes to version 25: a walk removes a cut tree or a rock (issue #79). In Run 00047, the model had HM01 for 250,305 frames and could not use it, so no Run could pass badge 2.
+
+    The rule is one sentence: a Fixed obstacle that the party can remove is a normal open cell for the model. A Pokémon of the party knows the move, and the player has badge 2 for CUT or badge 6 for ROCK SMASH. `go` and `goTo` route through the cell. The walk faces the obstacle, presses A, answers YES, reads the texts and steps. The model gets no question and no text. A in front of the obstacle does the same, so that the model can never see the question. In the route, the cell costs 34 steps, the real time of the move, so a short detour wins.
+
+    An obstacle that the party cannot remove does not change. The HM in the Bag keeps its hint, and when a Pokémon knows the move with no badge, the refusal of `goTo` names the badge.
+
+    The game clears the flag of a removed obstacle when the player leaves the map. So the Atlas does not keep a list of what the player removed: it reads the game. A new Game event, `obstacle`, gives the move, the map, the cell and the Pokémon, for the Timeline and the videos. The model does not see it.
+
+    The tests and the reviews found three facts:
+
+    - The flags are shared: FLAG_TEMP_12 hides a tree on many maps. So a temporary flag now applies only to the map of the player. A permanent flag applies to all maps, because the boulders of Victory Road use one.
+    - In the first frame after a crossing of a west edge, the objects of the new map still have old coordinates. The Atlas read a tree at (-7, 21) and showed its real cell as open. It now reads the cells of the obstacles from the ROM.
+    - The game also sets the flag of an obstacle by itself near a connection (`SetHideObstacleFlag`). So the event comes only from the flag of the object that the player last talked to.
+
+    The proof: a Continued Run of Run 00047 with `gpt-6.1-terra`, Run 00053. Its Memory tree said that CUT blocked the Gym, so we watched for a model that does not trust the open cell. This did not occur. After 2 zooms in its memory and one refusal (Tortuga cannot learn CUT), it taught HM01 to Writney. The next decision was `go A`, the door of the Gym: **1 decision from the `teach` to the walk through the tree**. `goTo(14, 25)` took 997 frames. The record had the `teach`, the event of the tree (CUT, VermilionCity, (19, 24), RATTATA) and the entry in `VermilionCity_Gym`. The same Run then beat Lt. Surge: the first badge 3 of the lab. We then deleted its record, because a Run record that another record names as its parent cannot extend, and Run 00047 plays on from the Viewer as the same Run.
+
+## 27. A Run of Claude keeps the full id of its model (2026-11-04)
+
+73. Runs 00037, 00045, 00048 (`haiku`) and 00051 (`sonnet`) keep only an alias of the claude command, and the provider did not keep the model that answered. We ran one small call with the aliases on the 3 installed versions of the command (2.1.316 to 2.1.318), which cover the dates of these Runs. Each `modelUsage` gave `claude-haiku-5-5` and `claude-sonnet-5-5`. An alias changes at a new release of the command, so `modelSettings` now changes an alias to a full id, and the default of `claude-code` is `claude-haiku-5-5`. The old Run records stay as they are. An Extended Run of one of them holds the full id, which is the same model.
+
+## 28. The next Milestone does not tell the way to the Pokédex (2026-11-04)
+
+74. The model bot goes to version 26. The next Milestone said "Get OAK'S PARCEL in Viridian City and bring it back to Professor Oak.", so the prompt told the model the steps that the game must teach it. It now says "Get the Pokédex." only.
+
+## 29. The Dark maps of Rock Tunnel (2026-11-04)
+
+75. The model bot goes to version 27: it sees on a Dark map what a player sees, and the program uses FLASH (issue #74). In Run 00047, the bot had no FLASH on `RockTunnel_1F`. After 21 steps, its prompt showed 375 seen cells, and the screen in the Viewer stayed dark. With the 3 x 3 sight, the same steps give about 70 cells.
+
+    The rule is one sentence: a Dark map that the party can light is a lit map for the model. It follows #79. The state comes from the game: the map has `cave`, and `FLAG_SYS_FLASH_ACTIVE` is not set. The flag stays on the two floors. The game clears it at a warp to an outdoor map, at Fly, Teleport, Dig and Escape Rope, and at a whiteout.
+
+    With a Pokémon that knows FLASH and badge 1, the program uses the move at the arrival, also in the middle of a walk, and at the end of each action. So a `teach` in the dark and a trainer at the entry also light the map before the next walk prompt. It takes the first Pokémon that knows the move, also a Pokémon that fainted, because the party menu does not test the HP. The model gets no action and no text. A new Game event, `flash`, gives the map and the Pokémon, for the Timeline. After FLASH, the Atlas marks the 15 x 10 cells at once, with no new step.
+
+    With no FLASH, the map is dark for the model:
+
+    - The Atlas marks only the 3 x 3 cells around the player, also for the people and the Fixed obstacles. The `full` Knowledge level keeps 15 x 10.
+    - `goTo` refuses an unseen cell, and its route uses only seen cells, also from another map.
+    - A long group of unseen cells gives one target for each direction, at the cell nearest to the player. The old first cell of the group could be far behind the player.
+    - `go` to such a target continues in the same direction. It stops at a wall, before an exit, before a ledge, at a new person and at a battle. A floor has 48 x 40 cells, and one Model call for each step would cost too much. This walk is one new Macro-action, `walkOn`, so that the prompt shows one line for it and the Stuck counter adds 1 for it. The model cannot choose it.
+    - One line in the prompt tells what the dark means, and it names FLASH. This is an exception to "the Bag does not have it: no new text" of #78, because the model does not see the screen. The line gives no place and no HM number. The hint of #78 now shows only when the map is dark for the model.
+    - A new cell seen is progress for the Stuck counter.
+
+    Rock Tunnel has no ledge, so only a test with no emulator proves the stop before a ledge. The first test of ROCK SMASH walked 2 cells into the dark: the new rule refused it, and the test now walks one cell at a time.
+
+    No Run played this version when this change was made. The proof is a Run of the user: an Extended Run of Run 00047, up to the exit of Rock Tunnel to Lavender Town. Run 00047 has no FLASH, so the emulator tests prove the use of FLASH.
+
+## 30. A walk along a wall in the dark (2026-11-05)
+
+76. The model bot goes to version 28. The user extended Run 00047 on version 27 and stopped it on `RockTunnel_1F`: 22,950 frames, 49 Model calls (21 on 1F, 25 on B1F, 3 before the first walk), 759,114 prompt tokens with the memory summaries, no exit of the tunnel found. The seen cells make strips of 3 cells. The party has no FLASH, so no Run has proved the use of FLASH.
+
+    The Run showed a cost: 12 of the 19 walks that ended with `done` moved 2 cells or fewer. On row 15, `go` asked for unseen cells south of `x:41, 39, 37, 35, 33, 31, 29`, with one Model call each. A walk on row 14 had already seen row 15. With 3 x 3 sight, each stop shows row 16 for 3 cells only, so the next target is 2 cells away. The direction of the target was south, a wall closed it, and the walk stopped.
+
+    `walkOn` now goes along the wall: when the asked direction is closed, it continues in the direction of the walk to the target, while the side of the wall has unseen cells on the next two cells. An opening on that side turns the walk into it. The same test on the same row now walks from `x:41` to `x:28` in one Model call, and stops at the wall at `(27, 15)`. No Run played this version when this change was made.
+
+    The emulator shows the size of the dark circle: radius 24 pixels at the centre of the player's cell, as in `sFlashLevelToRadius`. The 4 cells at the sides are lit at about 100%, and the 4 diagonal cells at 57 to 63%. So 3 x 3 stays, and a player sees part of each diagonal cell.
+
+77. The model bot goes to version 29: the learn-move question tells what each answer leaves. In the 60 Runs, 55 questions had an answer. 13 of the first 46 left the Pokémon with one damage move, all in the line of BULBASAUR: 8 of 10 Runs with this line forgot TACKLE, some with the reason "weak" although VINE WHIP has the same power. Some reasons used the PP of the moment, for example "Sleep Powder has only 3 PP left", as if the PP did not come back. In Run 00060, two Pokémon had the name Postmark, and the question did not say which one learns.
+
+    We asked the models again with the recorded prompts of these questions, with no game. Haiku, Sonnet and DeepSeek V4.1 Flash each gave 33 answers on 11 questions. The share of answers that leave one damage move went from 55% to 9% for Haiku, from 36% to 24% for DeepSeek and from 15% to 9% for Sonnet. One of the 11 questions cannot leave 2 damage moves, so 9% is the lowest possible value. The answers that forget a damage move for a move with no damage while a move with no damage stays went from 36% to 0% for Haiku and from 21% to 12% for DeepSeek. Sonnet stayed at 0%.
+
+    The question now shows the species, the maximum PP of the moves, what each answer leaves, the fact that a Pokémon Center gives back all the PP, and the request to keep at least 2 damage moves. It keeps its last sentence: with no last sentence, the answers of Haiku and DeepSeek were worse. Other tests gave no reason to change more. `power 0` in place of `power ---` gave no gain, and no reason read `---` as an unknown value. A sentence in the question that `keep` can refuse the move added 2 good refusals of 54 and 8 refusals of useful moves of 99. A sentence that a move is the only damage move of its type also made the models refuse useful moves. The Thinking level `medium` gave no clear gain at this question, so this question keeps the reasoning level of the Run.
+
+## 31. What is left (2026-11-05)
+
+78. The model bot goes to version 30: the program tells what is left, and a walk continues after a wild battle. The model did not lack the facts. In Run 00062, all 605 walk prompts in Mt. Moon offered a lead or an exit to unseen cells, and the Run ended in the cave with 1,052 Model calls there. In Run 00060, the 1,020 Model calls of Rock Tunnel never reached Lavender Town, and at frame 2,667,545 the prompt listed 11 unseen places on the floor while the model wrote "The RockTunnel loop taught nothing new".
+
+    The false memory came from a true sentence. At frame 597,884, the prompt of Run 00062 said "You saw all the cells of your part of this map", and the model wrote "Mt. Moon B2F is fully explored". At frame 679,961 it wrote "Mt. Moon has been fully explored", and at frame 956,826 "Mt. Moon is fully crossed". Such a claim stood in the top nodes of 1,192 of 2,286 prompts. A Review turn removed one sentence of it, and 20 notes and 65 summaries wrote it again. Run 00060 had a claim of this kind about the tunnel in 1,080 of 1,241 walk prompts.
+
+    The changes:
+
+    - The list What is left stands just before the map, on a map with no edges that does not fit on the screen. It counts, from the Atlas, the unseen places and the exits not taken of the part of the player, of the other parts and of the floors behind the exits, and it gives the nearest unseen place with its letter. It stands before the map and not before the Memory tree, because a provider caches only the start that two prompts share. It also gives the current map and the map that the player crossed to and from most, from 6 crossings.
+    - The two sentences say what the program knows: "all the cells that you can reach from here", and "on the cells that you saw" for a person in the way. In the dark, the cells that the player saw can make a person look like the only way.
+    - The program removes a sentence that says that a place is explored, crossed, exhausted or a dead end from each new note and summary, except one that starts with "Guess:" or "A person said:". The prompts and the zoom also hide it in the older nodes, so that a Continued Run of Run 00060 or Run 00062 does not read it. The Run record and the Viewer keep them. A new note or summary also loses a sentence with nearly the same words as a removed one. A merge whose two halves have only such claims makes no Summary call.
+    - A `go` or a `goTo` that a wild battle stopped continues after the battle, with no Model call. In Rock Tunnel, Run 00060 had 260 `goTo` stopped by a battle and 134 that ended; in Mt. Moon, 378 of the 598 walks of Run 00062 stopped before the target, and all 5 tries of its last lead. The model chooses again if a Pokémon fainted, if a Pokémon has a status, if the first Pokémon that can fight has less than half of its HP or no damage move with PP, or if a walk to a cell of this map left it, because a `goTo` with no map reads its cell on the map where the player stands. A lead, a far map and a `goTo` with a map continue on another map too. A `walkOn` on a dark map stops too, because it starts with a walk back to its first cell.
+    - The leads are now the first targets: the models chose a lead in 1.0% (DeepSeek V4.1 Flash, Run 00060) to 9.6% (Haiku, Run 00048) of the prompts that had one. The lead north of (13, 17) of Run 00060 was in 207 prompts and was chosen 0 times. On the same maps as the list, the exits, the unseen cells and the people follow the order of their cells, not the distance, because a lead of Run 00062 had 6 letters in 371 prompts. A letter can still change when a target appears or leaves, when a group of unseen cells gets a new nearest cell, or on another floor. The far maps stop at the 8 nearest.
+
+    No Run played this version when this change was made. The first checks are Continued Runs of Runs 00060 and 00062: do they leave the cave, and do they choose the unseen places? On the other maps, the order inside each group does not change.
+
+## 32. A Coach for a small model (2026-11-06)
+
+79. The model bot goes to version 31: a Run can have a Coach, the program tells what a REPEL does, and the character turn gives the trainer a country. The small models lose in other ways than the big ones. Haiku lost all its Pokémon several times, with one Pokémon and no medicine, and the Runs used an item in 0.9% of their decisions. Only Run 00060 used a REPEL, although a wild battle stopped 63% of the walks.
+
+    The changes:
+
+    - A Run can name a **Coach**, a model of the same provider as the player. The Coach plays the character, reflection and review turns, the Summary calls of the Memory tree, and the choice of a move to forget. The player plays the other decisions. Each Model call keeps the model that answered, the header keeps the Coach, and the labels show "<player> + coach <coach>", because the pair is another player than the small model alone. The calls of both models count toward the one limit of the Run. The Coach thinks at its own reasoning level, and after an empty answer a turn plays at the reasoning level of the Run. A plan limit of the Coach ends the Run, so that each Run keeps one pair. A Coach with the model of the player is no Coach, so the same settings can try the model alone.
+    - At its character, reflection and review turns, the Coach writes a **Coach advice**. Each prompt of a Run with a Coach shows the last one, with the turn and the number of decisions since. Its request gives the role only, with no example and no topic: the lab does not tell the Coach which problems the player has.
+    - The reflection and review turns show the items in the PC and the Pokémon in the boxes with their types, ability and moves, and the review counts the Pokémon caught, the box Pokémon and the whiteouts so far in the game. The game keeps no HP for a box Pokémon. The 12 box Pokémon of the highest levels get a line, the others one line by species, and each description shows one time, so that a full box cannot make a very large prompt. Run 00047 had the most box Pokémon of the last 40 Runs: 6.
+    - One text tells what a REPEL does: it stops wild battles with Pokémon of a lower level than the first Pokémon of the party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250), to explore without fights, and not when the Pokémon need experience. The rules, the Poké Mart and the walks on an underground map with a REPEL in the Bag show it. After the text that a REPEL stopped, the next walk tells that the Bag has another one. The rules do not ask to buy REPELS any more.
+    - The character turn picks one of 31 countries, each with its language: 22 outside Europe and the United States, and the United States for English. The country is a fixed line of the request, not a part of the idea that the model can change. The names and the nicknames sound like that language, with only the letters that the game allows, and the other answers stay in English.
+
+    No Run played this version when this change was made. The first checks are Haiku with a Sonnet or Opus Coach against Haiku alone: does the pair leave Mt. Moon, and does it have fewer whiteouts?

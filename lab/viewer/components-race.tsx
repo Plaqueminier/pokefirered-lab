@@ -11,13 +11,14 @@ export function MonIcon({ src, species, level }: { src: string | null; species: 
   );
 }
 
-export function ModelName({ id, short }: { id: string; short?: boolean }) {
+export function ModelName({ id, coach, short }: { id: string; coach?: string; short?: boolean }) {
   if (!id) return null;
   const family = modelFamily(id);
+  const name = (model: string) => (short ? shortModelId(model) : model);
   return (
     <span class="flex min-w-0 items-center gap-1.5 text-xs text-muted">
       {family && <span class="size-2 shrink-0 rounded-full border border-black" style={{ backgroundColor: `var(--color-model-${family})` }} />}
-      <span class="truncate">{short ? shortModelId(id) : id}</span>
+      <span class="truncate">{coach ? `${name(id)} + coach ${name(coach)}` : name(id)}</span>
     </span>
   );
 }
@@ -33,6 +34,7 @@ export function LeaderboardRow({
   cost,
   state,
   model,
+  coach,
   faded,
   selected,
   onClick,
@@ -45,6 +47,7 @@ export function LeaderboardRow({
   cost: string;
   state: ComponentChildren;
   model: string;
+  coach?: string;
   faded?: boolean;
   selected?: boolean;
   onClick: () => void;
@@ -55,12 +58,12 @@ export function LeaderboardRow({
       <span class="shrink-0">{face}</span>
       <span class="flex min-w-0 flex-1 flex-col gap-1">
         <span class="flex items-center gap-2">
-          <span class="font-mono font-semibold">{id}</span>
-          {state}
+          <span class="shrink-0 font-mono font-semibold">{id}</span>
           <span class="min-w-0 flex-1">
-            <ModelName id={model} short />
+            <ModelName id={model} coach={coach} short />
           </span>
-          <span class="shrink-0 text-muted tabular-nums">{cost}</span>
+          <span class="w-[128px] shrink-0">{state}</span>
+          <span class="w-[9ch] shrink-0 whitespace-nowrap text-right text-muted tabular-nums">{cost}</span>
         </span>
         <span class="flex h-6 items-center justify-between gap-2">
           <span class="flex min-w-0 items-center gap-0.5">{team}</span>

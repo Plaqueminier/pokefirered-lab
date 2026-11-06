@@ -11,13 +11,14 @@ const ROM_START = 0x08000000;
 const RAM_START = 0x02000000;
 const RAM_SIZE = 0x01010000;
 const SPECIES_BULBASAUR = 1;
+const SPECIES_IVYSAUR = 2;
 const PERSONALITY = 24;
 const OT_ID = 0x1234abcd;
 
 const decode = (bytes: Uint8Array) => bytes.join(",");
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(ELF_FILE))("the party of the Game events", () => {
-  test("a box that the game decrypts in place has a bad checksum: the read gives no party", async () => {
+  test("a box that the game decrypts in place reads as it is, and a box with a bad checksum gives no party", async () => {
     const rom = new Uint8Array(await Bun.file(ROM_FILE).arrayBuffer());
     const ram = new Uint8Array(RAM_SIZE);
     const read = (memory: Uint8Array, start: number) => (address: number, length: number) => memory.subarray(address - start, address - start + length);
@@ -37,6 +38,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(ELF_FILE))("the party of th
 
     expect(readWatchedParty(mem, decode, "gPlayerParty", 1)?.map((mon) => mon.species)).toEqual([nameAt(mem, "gSpeciesNames", SPECIES_BULBASAUR, decode)]);
     ram.set(plain, secure);
+    expect(readWatchedParty(mem, decode, "gPlayerParty", 1)?.map((mon) => mon.species)).toEqual([nameAt(mem, "gSpeciesNames", SPECIES_BULBASAUR, decode)]);
+    view.setUint16(secure, SPECIES_IVYSAUR, true);
     expect(readWatchedParty(mem, decode, "gPlayerParty", 1)).toBeNull();
   });
 });

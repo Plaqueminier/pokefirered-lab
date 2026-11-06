@@ -20,7 +20,7 @@ import {
   readBattle,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
-import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
+import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
 import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
@@ -150,7 +150,7 @@ export type MapGrid = {
   /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), . open. */
   kinds: string;
   outside: boolean;
-  dark: boolean;
+  cave: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
   /** Metatile behavior id per cell; names in behaviorNames. */
@@ -171,6 +171,10 @@ const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
 };
 
 export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
+
+const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["ROCK SMASH", 6]]);
+
+const FLASH_BADGE = 1;
 
 export type Obstacle = { x: number; y: number; name: string; move: FieldMove };
 
@@ -658,6 +662,11 @@ export class Game {
     return { group, num, name: this.mapName(group, num) };
   }
 
+  mapKindHere(): MapKind {
+    const { group, num } = this.location();
+    return this.mapKind(group, num);
+  }
+
   state(): GameState {
     const player = this.player();
     return {
@@ -822,17 +831,58 @@ export class Game {
       const grid = this.grid();
       if (grid) {
         const actors = this.buildActors(grid, this.mem.global("gMapHeader"), true);
-        return { grid: this.withObstacles(grid, actors), actors };
+        return { grid: this.withObstacles(grid, actors.obstacles), actors };
       }
     }
     const grid = this.gridOf(id.group, id.num);
     if (!grid) return null;
     const actors = this.actorsOf(grid);
-    return { grid: this.withObstacles(grid, actors), actors };
+    return { grid: this.withObstacles(grid, actors.obstacles), actors };
   }
 
-  /** The grid with the cells of the fixed obstacles as blocked cells: a route, a target and the Atlas then see them as walls. */
-  withObstacles(grid: MapGrid, { obstacles }: MapActors): MapGrid {
+  usableFieldMoves(): ReadonlySet<FieldMove> {
+    const known = this.partyMoves();
+    return new Set([...WALK_MOVE_BADGE].flatMap(([move, badge]) => (known.has(move) && this.flag(badgeFlag(badge)) ? [move] : [])));
+  }
+
+  // The game keeps this flag between floors, and clears it at a warp outdoors, at Fly, Teleport, Dig, Escape Rope and a whiteout.
+  flashActive(): boolean {
+    return this.flag(FLAG_SYS_FLASH_ACTIVE);
+  }
+
+  // A Pokémon that fainted can use it: the party menu of the game does not test the HP.
+  flashUser(): number | null {
+    if (!this.flag(badgeFlag(FLASH_BADGE))) return null;
+    const slot = this.party().findIndex((mon) => !mon.isEgg && mon.moves.some((move) => move.name === "FLASH"));
+    return slot < 0 ? null : slot;
+  }
+
+  flashBadgeMissing(): number | null {
+    return !this.flag(badgeFlag(FLASH_BADGE)) && this.partyMoves().has("FLASH") ? FLASH_BADGE : null;
+  }
+
+  missingBadge(move: FieldMove): number | null {
+    const badge = WALK_MOVE_BADGE.get(move);
+    return badge !== undefined && !this.flag(badgeFlag(badge)) && this.partyMoves().has(move) ? badge : null;
+  }
+
+  private partyMoves(): Set<string> {
+    return new Set(this.party().flatMap((mon) => (mon.isEgg ? [] : mon.moves.map((move) => move.name))));
+  }
+
+  // The game also sets this flag by itself, for an obstacle near a connection (SetHideObstacleFlag): only the script of the obstacle has it as the last talked object.
+  obstacleRemovedBy(flag: number): Obstacle | null {
+    const talked = this.mem.global("gSpecialVar_LastTalked").int();
+    for (const template of this.eventList(this.mem.global("gMapHeader"), "objectEvents", "objectEventCount")) {
+      if (template.field("kind").int() !== OBJ_KIND_NORMAL || template.field("flagId").int() !== flag || template.field("localId").int() !== talked) continue;
+      const obstacle = OBSTACLES[this.graphicsNames.get(template.field("graphicsId").int()) ?? ""];
+      if (obstacle) return { x: template.field("x").int(), y: template.field("y").int(), ...obstacle };
+    }
+    return null;
+  }
+
+  /** The grid with the cells of these fixed obstacles as blocked cells: a route, a target and the Atlas then see them as walls. */
+  withObstacles(grid: MapGrid, obstacles: Obstacle[]): MapGrid {
     const kinds = [...grid.kinds];
     for (const { x, y } of obstacles) kinds[(y - grid.y0) * grid.width + (x - grid.x0)] = KIND.blocked;
     return { ...grid, kinds: kinds.join("") };
@@ -933,7 +983,7 @@ export class Game {
       mapWidth: layout.field("width").int(),
       mapHeight: layout.field("height").int(),
       outside: this.mapKind(group, num) === "outdoor",
-      dark: header.field("cave").int() !== 0,
+      cave: header.field("cave").int() !== 0,
       kinds,
       blocks,
       behaviors,
@@ -983,6 +1033,11 @@ export class Game {
     return this.buildActors(grid, this.mem.global("gMapHeader"), true);
   }
 
+  /** The obstacles of a map at their cells in the ROM: a frame after an edge crossing can have the live objects at old coordinates. */
+  obstaclesOf(grid: MapGrid): Obstacle[] {
+    return this.buildActors(grid, this.mapHeader(grid.group, grid.num), false).obstacles;
+  }
+
   /** The same for any map, from the story state in the save: people at their start position. */
   actorsOf(grid: MapGrid): MapActors {
     const here = this.location();
@@ -990,12 +1045,19 @@ export class Game {
     return this.buildActors(grid, this.mapHeader(grid.group, grid.num), isHere);
   }
 
-  private buildActors(grid: MapGrid, header: Ref, isPlayerMap: boolean): MapActors {
+  // A temporary flag belongs to the map of the player: another map uses the same flag ids, and the game clears them when the player arrives there.
+  private hiddenBy(flag: number, onPlayerMap: boolean): boolean {
+    return flag !== 0 && (!isTemporaryFlag(flag) || onPlayerMap) && this.flag(flag);
+  }
+
+  private buildActors(grid: MapGrid, header: Ref, readLive: boolean): MapActors {
     const objects = this.mem.global("gObjectEvents");
     const playerId = this.mem.global("gPlayerAvatar").field("objectEventId").int();
     const live = new Map<number, Ref>();
+    const here = this.location();
+    const onPlayerMap = here.group === grid.group && here.num === grid.num;
     let player: MapActors["player"] = null;
-    for (let i = 0; i < (isPlayerMap ? objects.length : 0); i++) {
+    for (let i = 0; i < (readLive ? objects.length : 0); i++) {
       const obj = objects.at(i);
       if (!obj.field("active").int()) continue;
       if (i === playerId) {
@@ -1020,7 +1082,7 @@ export class Game {
       const localId = template.field("localId").int();
       const obj = live.get(localId);
       const hideFlag = template.field("flagId").int();
-      if (!obj && hideFlag !== 0 && this.flag(hideFlag)) continue;
+      if (!obj && this.hiddenBy(hideFlag, onPlayerMap)) continue;
       const normal = template.field("objUnion").field("normal");
       const x = obj ? obj.field("currentCoords").field("x").int() - MAP_OFFSET : template.field("x").int();
       const y = obj ? obj.field("currentCoords").field("y").int() - MAP_OFFSET : template.field("y").int();

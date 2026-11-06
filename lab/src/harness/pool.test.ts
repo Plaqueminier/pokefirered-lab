@@ -53,6 +53,16 @@ describe.skipIf(!ready)("RunPool", () => {
     expect(notModel).toEqual({ record: null, error: `Error: ${STARTER} is not a model bot: it does not export modelBot(model)` });
   });
 
+  test("a Run that plays stays in the pool, and a Run that ended can leave it", async () => {
+    const pool = new RunPool(1);
+    const run = pool.start({ bot: "nobody" });
+    pool.remove(run);
+    expect(pool.runs).toEqual([run]);
+    await run.done;
+    pool.remove(run);
+    expect(pool.runs).toEqual([]);
+  });
+
   test("stop ends a Run of a scripted Bot at its next decision, with the end reason user stop and a Run record", async () => {
     const run = new RunPool().start({ bot: STARTER });
     expect(run.stopAsked).toBe(false);

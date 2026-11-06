@@ -13,11 +13,11 @@ The ROM built with the lab flag. It has the same gameplay as the vanilla build. 
 _Avoid_: debug build, mod, hack
 
 **Harness**:
-The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do.
+The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The one exception is FLASH on a **Dark map** (see **Field move**).
 _Avoid_: emulator, AI
 
 **Bot**:
-The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model. The AI model sees text only, and it does not call the **Harness** itself.
+The thing that decides what to do in a **Run**, through the **Harness** only. A scripted bot is code. A model bot is code that asks an AI model what to do when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget, and then calls the **Harness**. The code of a model bot reads the texts and waits while the game is busy, with no request to the AI model, and it continues a walk that a wild battle stopped when the party is healthy. The AI model sees text only, and it does not call the **Harness** itself.
 _Avoid_: player, agent, AI
 
 **Agent**:
@@ -45,7 +45,7 @@ A short sentence that a model bot sets itself: what it does now for its **Missio
 _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 
 **Model call**:
-One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
+One request of a model bot to its AI model, or to its **Coach** for the turns that the **Coach** plays, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
 **Unusual call**:
@@ -53,40 +53,52 @@ A **Model call** that the **Viewer** marks with one or more flags: an answer tha
 _Avoid_: bad call, error (an error is only one of the flags)
 
 **Memory tree**:
-The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something. The program removes the sentences with an HP or PP number and a note with nearly the same words as a recent note, and it marks a hedged sentence as a guess. Nobody rewrites a note later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. A **Review turn** can remove sentences from the top nodes: they then stay out of the top nodes and of the next summaries, but `zoom` can still show them in the lower nodes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
+The memory that a model bot writes itself. Each note is one short line that the AI model adds when it learns something. The program removes the sentences with an HP or PP number, the sentences that say that a place is explored, crossed, exhausted or a dead end (except one that starts with “Guess:” or “A person said:”), the sentences with nearly the same words as one that a **Review turn** removed, and a note with nearly the same words as a recent note, and it marks a hedged sentence as a guess. The prompts and `zoom` also hide such claims about a place in the older nodes of a **Continued Run**; the **Run record** and the Viewer keep them. Nobody rewrites a note later. Two neighbour nodes of the same size get a parent node: a short summary of the two, with the newest facts first. A node of more notes has more characters. The AI model sees only the top nodes, and it can open a node to see its two halves, down to the notes. A **Review turn** can remove sentences from the top nodes: they then stay out of the top nodes and of the next summaries, but `zoom` can still show them in the lower nodes. It keeps the conclusions of the AI model; what the game showed is in the **Atlas** and in the history of the **Model calls**.
 _Avoid_: notes (the old text that the AI model wrote again at each call), memory (too wide)
 
 **Stuck counter**:
-The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is not progress.
+The number of **Decision points** of a **Run** since its last progress. Progress is a new map, a new **Milestone**, a new exit in the **Atlas**, a level up of a Pokémon of the party, a text of a person that the player did not hear before, a trainer that the player beats, an item that the player finds (an item ball or a hidden item), or a new species caught (the Pokédex marks it owned). A new cell is progress only on a map that is dark for the model (see **Dark map**).
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Character turn**:
-The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker who collects old maps. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and a style of the nicknames; the request asks that this style mixes the job and the hobby of the idea. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
+The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker who collects old maps, from Japan. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and a style of the nicknames; the request asks that this style mixes the job, the hobby and the language of the **Trainer origin**. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
 _Avoid_: persona call, personality turn
+
+**Trainer origin**:
+The country and its language that a **Character turn** picks at random from 31, for example Kenya and Swahili. The names of the trainer and of the rival, and the nicknames, sound like this language, but use only the letters that the game allows. The other answers of the AI model stay in English.
+_Avoid_: nationality, language mode
 
 **Normal trainer**:
 The character that the Viewer shows for a **Run** with no **Character turn**, for example a **Run** of an older version of the model bot. All these **Runs** have the same text. A **Race** also gives it to a **Run** with no readable character, so each **Ghost** has a text. The AI model never reads it, and no **Run record** holds it.
 _Avoid_: default persona, neutral character
 
 **Thinking**:
-The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer.
+The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer. In a **Run** with a **Coach**, the **Coach** plays these turns, its summaries and its moves to forget at its own reasoning level, which is this level when the **Run** gives none.
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:
-A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
+A **Model call** of a model bot at each 20 more **Decision points** on the **Stuck counter**, at the first walk with a **Model call**. Its prompt adds the full **Atlas** and asks the AI model to write a lesson in its **Memory tree** and to set a new **Objective**. It is not a separate request.
 _Avoid_: stuck message, reflection call
 
 **Review turn**:
-A **Model call** of a model bot at the first walk after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
+A **Model call** of a model bot at the first walk with a **Model call** after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
 _Avoid_: review call, check turn
 
 **Summary call**:
-One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
+One request of a model bot to its AI model, or to its **Coach** when the **Run** has one, that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
 
 **Model provider**:
-The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code`, `codex` or `grok`. A **Run** has one Model provider and one AI model.
+The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code`, `codex` or `grok`. A **Run** has one Model provider and one AI model, and also a **Coach** on the same Model provider when it has one. On `claude-code`, a **Run** always holds the full id of its AI model, for example `claude-sonnet-5-5`, because the model of an alias such as `sonnet` changes at a new release of the claude command.
 _Avoid_: backend, mode, API
+
+**Coach**:
+A second AI model of a **Run** of a model bot, on the **Model provider** of the **Run**. It plays the **Character turn**, the **Reflection turns**, the **Review turns**, the **Summary calls** and the choice of a move to forget; the AI model of the **Run** plays the other **Model calls**. Its calls count toward the one limit of the **Run**. A **Coach** with the AI model of the **Run** is no **Coach**. A **Run** with a **Coach** is another player than its AI model alone, so its label names both, for example `claude-haiku-5-5 + coach claude-opus-5-5`. In such a **Run**, "the AI model" of the **Character turn**, the **Reflection turn** and the **Review turn** is the **Coach**.
+_Avoid_: mentor, teacher, big model, thinker
+
+**Coach advice**:
+What the **Coach** writes at its **Character turn**, **Reflection turns** and **Review turns** for the next decisions. Each prompt of a **Run** with a **Coach** shows the last one, with its turn and the number of decisions since; an empty advice keeps the last one. It is not the **Mission**, not the **Objective** and not a note of the **Memory tree**.
+_Avoid_: tip, hint, coach note
 
 **Plan provider**:
 A **Model provider** that a person's subscription pays for: `claude-code`, `codex` or `grok`. The calls of a **Run** on a Plan provider use the quota of the subscription and cost no money, so the cost of this **Run** is 0 and a **Token limit** replaces its cost limit.
@@ -101,12 +113,16 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell, the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way: a removed one returns to the **Atlas** when the player leaves the map. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route, and if each map is dark for the model (see **Dark map**). On a map in the dark, the player sees only the 3 x 3 cells around the player.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
 The cells of a map that the player can walk to from one cell, on the cells that it saw, with no other map and no **Spin tile** on the way. A floor of a cave can have many **Parts**: the only way between them goes through other maps. A map with **Spin tiles** also has many **Parts**: a **Slide** goes from one **Part** to another **Part** of the same map, in one direction only. The code makes them from the **Atlas** only, so they show only what the player saw.
 _Avoid_: zone, area (an **Area** is a place of the Town Map), region
+
+**What is left**:
+The list that the program gives at a walk on a floor of a cave, a forest or a large building: what the player did not explore in its **Part**, in the other **Parts** of the map and on the floors that the exits reach. It comes from the **Atlas**, so it is right when a note of the **Memory tree** disagrees.
+_Avoid_: todo list, frontier list
 
 **Lead**:
 A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits and **Slides** to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
@@ -128,15 +144,15 @@ The forced walk of the player from a **Spin tile** to the cell where it stops. I
 _Avoid_: spin, glide, push
 
 **Known world**:
-A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows. The code makes it from the **Atlas** only, so it shows only what the player saw.
+A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows and that the party cannot remove yet. The code makes it from the **Atlas** only, so it shows only what the player saw.
 _Avoid_: world map, overview, Town Map (an item of the game)
 
 **Dark map**:
-A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game.
+A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again at the next entry. At the `player` **Knowledge level**, a **Dark map** is dark for the model when it is not lit and the party cannot use FLASH.
 _Avoid_: cave (Mt. Moon is a cave but it is not dark, and the game code gives the name `cave` to this property of a map)
 
 **Field move**:
-A move that a Pokémon uses outside a battle, for example FLASH, CUT or FLY. CUT, ROCK SMASH and STRENGTH remove a **Fixed obstacle**, and SURF crosses water: a walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move.
+A move that a Pokémon uses outside a battle, for example FLASH, CUT or FLY. CUT, ROCK SMASH and STRENGTH remove a **Fixed obstacle**, and SURF crosses water: a walk prompt shows the obstacle or the water only when the Bag has the HM of the move or a Pokémon knows the move. For CUT and ROCK SMASH, the model does not use the move: when a Pokémon of the party knows it and the player has its badge, the obstacle is an open cell and a walk through it uses the move. For FLASH, the model also does not use the move: when a Pokémon of the party knows it and the player has its badge, a **Dark map** is a lit map for the model. STRENGTH and SURF do not use a move in a walk yet.
 _Avoid_: HM move (DIG and TELEPORT are **Field moves**, but they are not HM moves)
 
 **Object**:
@@ -152,11 +168,11 @@ What the prompt says of a person or an **Object** whose movement type does not l
 _Avoid_: blocker
 
 **Map part**:
-A tint of the Whole map of the Viewer: the cells of the full map that a walk connects, with a ledge that links both sides and the people who stay as walls. It does not read what the player saw, so it is not a **Part**.
+A tint of the Whole map of the Viewer: the cells of the full map that a walk connects, with a ledge that links both sides, and the people who stay and all the **Fixed obstacles** as walls. It does not read what the player saw, so it is not a **Part**.
 _Avoid_: part, zone, region
 
 **Fixed obstacle**:
-An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it. A walk prompt shows it as a blocked cell with no text until the Bag has its HM or a Pokémon knows its move; the **Atlas** keeps it all the time.
+An object of the game that never moves by itself and that only a move removes: the cut tree (CUT), the rock of ROCK SMASH and the boulder of STRENGTH. It is not a person and not a target. For a route, its cell is blocked, and the **Harness** never waits for it. A walk prompt shows it as a blocked cell with no text until the Bag has its HM or a Pokémon knows its move; the **Atlas** keeps it while it closes a way. The exception: a cut tree or a rock that the party can remove is an open cell for the model, a walk removes it, and it returns when the player leaves the map.
 _Avoid_: person, tree (a tree of the map is a blocked metatile)
 
 **Area**:
@@ -195,7 +211,7 @@ The file that keeps one **Run**: the version of its format, its build, seed, **S
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
-A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
+A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a **Fixed obstacle** removed, a use of FLASH, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
@@ -223,7 +239,7 @@ The web page that shows the **Runs**. Its **Grid** shows the screens of several 
 _Avoid_: emulator, web player
 
 **Grid**:
-The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
+The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each in its own cell: a live **Run**, or a replay of a **Run record**. The replays of a **Grid** share one cursor of game frames: they start at frame 0 together, so they race on their game time. A replay that a person adds later goes to the frame of the cursor. A live **Run** has no shared cursor: its cell shows its own last frame, and it stops while its game waits for a **Model call**. An ended live **Run** keeps its cell until a person removes it; its **Run record** stays. The **Grid** shows the screen and a few facts of each **Run**; the panels are for the shown **Run** only. The **Grid** has no sound.
 _Avoid_: wall, multiview, dashboard
 
 **Race**:
@@ -231,7 +247,7 @@ A file that a command makes from a set of **Run records**: the track and the **S
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
-One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok. A **Ghost** of another model and a group of **Ghosts** have no dot.
+One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok; for a **Run** with a **Coach**, the family of the AI model of the **Run**, and the name shows both models. A **Run record** of an older date holds an alias of the claude command, and the **Race** shows the full id of that alias. A **Ghost** whose **Run** ends with a whiteout stays on the cell where it lost: it does not go to the Pokémon Center. A **Ghost** of another model and a group of **Ghosts** have no dot.
 _Avoid_: player, avatar
 
 **State track**:
@@ -253,6 +269,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
 - Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit or its **Token limit**, at a `plan limit`, at a whiteout (an option, on by default) and at an unknown screen.
+- A **Run** of a model bot has one AI model, and at most one **Coach** on the same **Model provider**. Only the **Coach** writes a **Coach advice**.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - An **Extended Run** has one **Run record**: each new part replaces the file, and only an **Extended Run** changes a **Run record** after its **Run** ended (`bun run migrate` adds only data from the replay).
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.

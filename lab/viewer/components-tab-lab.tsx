@@ -7,7 +7,7 @@ import { Badges, Button, Tabs } from "./components";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
-import { type GridActions, GridCellView } from "./grid";
+import { type BotsForm, type GridActions, GridCellView } from "./grid";
 import type { GridCell } from "./grid-cells";
 import { PokemonCard, PokemonSummary } from "./pokemon";
 import { GhostState } from "./race-cards";
@@ -242,7 +242,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
-  { name: "model", kind: "model", version: "24", goal: null, costLimit: 0.5 },
+  { name: "model", kind: "model", version: "29", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
 
@@ -417,7 +417,7 @@ const TIMELINE_STATES = {
 
 export function TimelineDemo() {
   const [state, setState] = useState<keyof typeof TIMELINE_STATES>("live");
-  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place"]));
+  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place", "obstacle", "flash"]));
   const [cursor, setCursor] = useState<number | null>(null);
   const [selection, setSelection] = useState<Span | null>(null);
   const { events, end, now, reached, ended, available } = TIMELINE_STATES[state];
@@ -476,7 +476,7 @@ const RECORD_STATES = {
     label: "A Run on a Plan provider",
     replay: {
       ...DEMO_REPLAY,
-      model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, id: "haiku", provider: "claude-code" as const, limit: { unit: "tokens" as const, amount: 1_000_000 }, spent: { unit: "tokens" as const, amount: 412_000 }, totalSpent: { unit: "tokens" as const, amount: 980_000 } },
+      model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, id: "claude-haiku-5-5", provider: "claude-code" as const, limit: { unit: "tokens" as const, amount: 1_000_000 }, spent: { unit: "tokens" as const, amount: 412_000 }, totalSpent: { unit: "tokens" as const, amount: 980_000 } },
     },
   },
   ended: { label: "A replay that ended", replay: { ...DEMO_REPLAY, ended: true, reached: 457065, model: DEMO_REPLAY.model && { ...DEMO_REPLAY.model, calls: 717, spent: { unit: "dollars" as const, amount: 10.02 } } } },
@@ -501,14 +501,18 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
 
 const DEMO_GRID_ACTIONS: GridActions = { send: () => {}, setSize: () => {}, focus: () => {} };
 
+const demoBotsForm: BotsForm = (continued) => (
+  <BotsPanel shown={{ kind: "viewer", replay: null }} runs={[]} bots={DEMO_BOTS} providers={DEMO_PROVIDERS} records={[RECORD, CONTINUED_RECORD]} recordFacts={DEMO_RECORD_FACTS} places={{ free: 6, limit: 9 }} initial={continued === undefined ? undefined : { from: continued, sameRun: true }} send={() => {}} />
+);
+
 export function GridCellDemo() {
   const [state, setState] = useState("plays");
   const [screens] = useState(() => new ScreenFeed());
   return (
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(CELL_STATES).map(([id, { label }]) => ({ id, label }))} value={state} onChange={setState} />
-      <div class="w-[340px] max-w-full">
-        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} actions={DEMO_GRID_ACTIONS} />
+      <div class="flex h-[360px] w-[340px] max-w-full">
+        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} botsForm={demoBotsForm} actions={DEMO_GRID_ACTIONS} />
       </div>
     </div>
   );
@@ -544,7 +548,7 @@ export function ModelNameDemo() {
     <div class="flex flex-col gap-2">
       <ModelName id="deepseek/deepseek-v4.1-flash" />
       <ModelName id="deepseek/deepseek-v4.1-flash" short />
-      <ModelName id="haiku" />
+      <ModelName id="claude-haiku-5-5" />
       <ModelName id="gpt-6.1-terra" />
       <ModelName id="grok-4.7" />
       <ModelName id="mistralai/mistral-large" />
@@ -564,11 +568,11 @@ export function LeaderboardRowDemo() {
     { rank: 1, id: "00017", ghost: { result: null, battle: null }, model: "deepseek/deepseek-v4.1-flash", cost: "1.24 $", size: 6, got: 8, faded: false },
     { rank: 2, id: "00003", ghost: { result: null, battle: inBattle }, model: "gpt-6.1-terra", cost: "12.08 $", size: 3, got: 2, faded: false },
     { rank: 3, id: "00041", ghost: { result: null, battle: null }, model: "mistralai/mistral-large", cost: "0.00 $", size: 0, got: 0, faded: false },
-    { rank: 4, id: "00052", ghost: { result: null, battle: null }, model: "haiku", cost: "412.0k tok", size: 2, got: 0, faded: false },
+    { rank: 4, id: "00052", ghost: { result: null, battle: null }, model: "claude-haiku-5-5", cost: "412.0k tok", size: 2, got: 0, faded: false },
     { rank: 142, id: "01000", ghost: { result: "whiteout", battle: null }, model: "deepseek/deepseek-v4-flash", cost: "0.31 $", size: 3, got: 1, faded: true },
   ] as const;
   return (
-    <div class="flex w-[380px] max-w-full flex-col">
+    <div class="flex w-[476px] max-w-full flex-col">
       {rows.map(({ rank, id, ghost, model, cost, size, got, faded }, i) => (
         <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} model={model} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
       ))}

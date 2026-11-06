@@ -180,10 +180,11 @@ function onMessage(message: ServerMessage): void {
       break;
     case "records":
       lab.onRecords(message.names, message.facts);
-      gridTab.onRecords(message.names);
+      gridTab.onRecords(message.names, message.facts);
       break;
     case "bots":
       lab.onBots(message.bots, message.providers);
+      gridTab.onBots(message.bots, message.providers);
       bots.set(message.bots);
       break;
     case "events":

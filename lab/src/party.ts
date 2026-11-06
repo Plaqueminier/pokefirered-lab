@@ -77,12 +77,10 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     const mon = party.at(i);
     const box = mon.field("box");
     const personality = box.field("personality").int();
-    const { substructs, growth, attacks, misc } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
-    const ppBonuses = substructs.getUint8(growth + GROWTH_PP_BONUSES);
-    const moves = readMoves(mem, decode, ppBonuses, (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
+    const { substructs, growth, attacks, misc } = decryptBox(box);
+    const ivWord = substructs.getUint32(misc + MISC_IV_WORD, true);
     const species = substructs.getUint16(growth, true);
     const info = mem.global("gSpeciesInfo").at(species);
-    const ability = info.field("abilities").at((substructs.getUint32(misc + MISC_IV_WORD, true) >>> ABILITY_NUM_BIT) & 1).int();
     const item = substructs.getUint16(growth + GROWTH_HELD_ITEM, true);
     const level = mon.field("level").int();
     const exp = substructs.getUint32(growth + GROWTH_EXPERIENCE, true);
@@ -92,9 +90,9 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(box.field("nickname").bytes()),
       types: speciesTypes(mem, species, decode),
-      ability: { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) },
+      ability: monAbility(mem, decode, species, ivWord),
       heldItem: item === ITEM_NONE ? null : decode(mem.global("gItems").at(item).field("name").bytes()),
-      isEgg: ((substructs.getUint32(misc + MISC_IV_WORD, true) >>> IS_EGG_BIT) & 1) === 1,
+      isEgg: ((ivWord >>> IS_EGG_BIT) & 1) === 1,
       nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
       level,
       exp,
@@ -104,24 +102,31 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       maxHp: mon.field("maxHP").int(),
       status: statusOf(mon.field("status").int()),
       stats: readStats(mon),
-      moves,
+      moves: monMoves(mem, decode, substructs, growth, attacks),
     };
   });
 }
 
 export function canLearnTmHm(mem: Memory, slot: number, tm: number): boolean {
   const box = mem.global("gPlayerParty").at(slot).field("box");
-  const personality = box.field("personality").int();
-  const { substructs, growth } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
+  const { substructs, growth } = decryptBox(box);
   const word = mem.global("sTMHMLearnsets").at(substructs.getUint16(growth, true)).at(Math.floor(tm / TMHM_WORD_BITS)).int();
   return ((word >>> (tm % TMHM_WORD_BITS)) & 1) === 1;
 }
 
-export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number };
+export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number } & Pick<PartyMon, "types" | "ability" | "moves">;
+
+function monMoves(mem: Memory, decode: Decode, substructs: DataView, growth: number, attacks: number): PartyMove[] {
+  return readMoves(mem, decode, substructs.getUint8(growth + GROWTH_PP_BONUSES), (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
+}
+
+function monAbility(mem: Memory, decode: Decode, species: number, ivWord: number): PartyMon["ability"] {
+  const ability = mem.global("gSpeciesInfo").at(species).field("abilities").at((ivWord >>> ABILITY_NUM_BIT) & 1).int();
+  return { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) };
+}
 
 export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
-// GetBoxMonData and SetBoxMonData decrypt a box in place, and a frame can end before they encrypt it again.
 export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerParty" | "gEnemyParty", count: number): WatchedMon[] | null {
   const party = mem.global(global);
   const watched: WatchedMon[] = [];
@@ -129,8 +134,8 @@ export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerPa
     const mon = party.at(i);
     const box = mon.field("box");
     const personality = box.field("personality").int();
-    const { substructs, growth, attacks } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
-    if (checksum(substructs) !== box.field("checksum").int()) return null;
+    const { substructs, growth, attacks, valid } = decryptBox(box);
+    if (!valid) return null;
     const species = substructs.getUint16(growth, true);
     if (species === SPECIES_NONE) continue;
     const moves = Array.from({ length: MAX_MON_MOVES }, (_, slot) => substructs.getUint16(attacks + slot * 2, true)).filter((move) => move !== MOVE_NONE);
@@ -159,7 +164,7 @@ export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
   const boxes = storage.field("boxes");
   const first = boxes.at(0).at(0);
   const offset = (name: string) => first.field(name).addr - first.addr;
-  const [personalityAt, otIdAt, secureAt, nicknameAt] = [offset("personality"), offset("otId"), offset("secure"), offset("nickname")];
+  const [personalityAt, otIdAt, checksumAt, secureAt, nicknameAt] = [offset("personality"), offset("otId"), offset("checksum"), offset("secure"), offset("nickname")];
   const nicknameSize = first.field("nickname").size;
   const boxNames = storage.field("boxNames");
   const expTables = mem.global("gExperienceTables");
@@ -172,7 +177,7 @@ export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
   const mons: BoxMon[] = [];
   for (let mon = 0; mon < raw.byteLength; mon += first.size) {
     const personality = view.getUint32(mon + personalityAt, true);
-    const { substructs, growth } = decryptMon(personality, view.getUint32(mon + otIdAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
+    const { substructs, growth, attacks, misc } = decryptMon(personality, view.getUint32(mon + otIdAt, true), view.getUint16(mon + checksumAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
     const species = substructs.getUint16(growth, true);
     if (species === SPECIES_NONE) continue;
     const index = mon / first.size;
@@ -184,6 +189,9 @@ export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
       species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(raw.slice(mon + nicknameAt, mon + nicknameAt + nicknameSize)),
       level: levelFromExp(expView, mem.global("gSpeciesInfo").at(species).field("growthRate").int() * expRowSize, substructs.getUint32(growth + GROWTH_EXPERIENCE, true)),
+      types: speciesTypes(mem, species, decode),
+      ability: monAbility(mem, decode, species, substructs.getUint32(misc + MISC_IV_WORD, true)),
+      moves: monMoves(mem, decode, substructs, growth, attacks),
     });
   }
   return mons;
@@ -198,6 +206,10 @@ function levelFromExp(expTables: DataView, table: number, exp: number): number {
 
 export function statLabel(stat: string): string {
   return STAT_LABELS[stat] ?? stat;
+}
+
+export function isDamageMove({ power, fixedDamage }: Pick<PartyMove, "power" | "fixedDamage">): boolean {
+  return power !== null || fixedDamage === true;
 }
 
 export function isHmMove(move: string): boolean {
@@ -240,13 +252,28 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
   };
 }
 
-/** The decrypted substructs of a Pokémon (`secure` is changed in place) and the offsets of the growth, attacks and misc substructs. */
-function decryptMon(personality: number, otId: number, secure: Uint8Array): { substructs: DataView; growth: number; attacks: number; misc: number } {
+/** The decrypted substructs of a Pokémon and the offsets of the growth, attacks and misc substructs. */
+export function decryptBox(box: Ref): DecryptedMon {
+  return decryptMon(box.field("personality").int(), box.field("otId").int(), box.field("checksum").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
+}
+
+/** `valid`: the substructs give the checksum of the box. SetBoxMonData changes a box before it writes the new checksum. */
+type DecryptedMon = { substructs: DataView; growth: number; attacks: number; misc: number; valid: boolean };
+
+// `secure` is changed in place. GetBoxMonData and SetBoxMonData (pokemon.c) decrypt a box in place, and a frame can end before they encrypt it again: then the bytes are already plain.
+function decryptMon(personality: number, otId: number, boxChecksum: number, secure: Uint8Array): DecryptedMon {
   const key = (personality ^ otId) >>> 0;
   const substructs = new DataView(secure.buffer, secure.byteOffset, secure.byteLength);
-  for (let offset = 0; offset < secure.byteLength; offset += 4) substructs.setUint32(offset, (substructs.getUint32(offset, true) ^ key) >>> 0, true);
+  const plain = checksum(substructs) === boxChecksum;
+  xorSecure(substructs, key);
+  if (plain && checksum(substructs) !== boxChecksum) xorSecure(substructs, key);
+  const valid = plain || checksum(substructs) === boxChecksum;
   const positions = SUBSTRUCT_POSITIONS[personality % SUBSTRUCT_POSITIONS.length];
-  return { substructs, growth: Number(positions[0]) * SUBSTRUCT_SIZE, attacks: Number(positions[1]) * SUBSTRUCT_SIZE, misc: Number(positions[3]) * SUBSTRUCT_SIZE };
+  return { substructs, growth: Number(positions[0]) * SUBSTRUCT_SIZE, attacks: Number(positions[1]) * SUBSTRUCT_SIZE, misc: Number(positions[3]) * SUBSTRUCT_SIZE, valid };
+}
+
+function xorSecure(substructs: DataView, key: number): void {
+  for (let offset = 0; offset < substructs.byteLength; offset += 4) substructs.setUint32(offset, (substructs.getUint32(offset, true) ^ key) >>> 0, true);
 }
 
 export function statusOf(status1: number): Status {

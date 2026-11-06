@@ -5,7 +5,7 @@ import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { RunCall } from "./harness/pool";
-import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
+import type { Coach, Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
 
 /** GBA key bits, as setKeys expects them. */
@@ -32,6 +32,10 @@ export function obstacleRemedy(move: string): string {
   return `Only a Pokémon that knows ${move} can remove it`;
 }
 
+export function badgeNeeded(move: string, badge: number): string {
+  return `A Pokémon of your party knows ${move}, but its use on the map needs badge ${badge}`;
+}
+
 export const MODEL_PROVIDERS = ["openrouter", "claude-code", "codex", "grok"] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
@@ -52,7 +56,10 @@ export function hasNoReasoningOff(provider: ModelProvider): boolean {
 /** The model of a model bot when the Run gives none. */
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 
-export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "haiku", codex: "gpt-5.6-luna", grok: "grok-4.7" };
+// The claude command changes the model of an alias at a new release, so a Run keeps a full id. Run records of before this change hold an alias: these ids are what the alias gave at their date, so an Extended Run stays on the same model and a Race shows the full id.
+export const CLAUDE_MODELS: Record<string, string> = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", fable: "claude-fable-5-1" };
+
+export const DEFAULT_MODELS: Record<ModelProvider, string> = { openrouter: DEFAULT_MODEL, "claude-code": "claude-haiku-5-5", codex: "gpt-5.6-luna", grok: "grok-4.7" };
 
 export const MILLION = 1_000_000;
 
@@ -137,7 +144,11 @@ type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; limit: Spend };
+export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
+
+export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string {
+  return coach ? `${id} + coach ${coach.id}` : id;
+}
 
 /** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
 export type RunFrom = { record: string; kind: "continued" | "extended" };
@@ -261,6 +272,7 @@ export type ClientMessage =
   | { type: "start-bot"; name: string; model: ModelOptions; parent?: string; count: number }
   | { type: "extend-run"; record: string; limit: SpendLimit }
   | { type: "stop-run"; runId: number }
+  | { type: "remove-run"; runId: number }
   | { type: "show"; runId: number | null }
   /** The server also sends the screens of the shown Run. */
   | { type: "follow"; runIds: number[]; size: GridSize }
@@ -294,6 +306,10 @@ export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
 
 /** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
 export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });
+
+export function callKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
+  return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
+}
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
   return events.filter((e): e is ModelEvent => e.type === "model");

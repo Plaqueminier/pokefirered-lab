@@ -28,6 +28,7 @@ const START_MENU_BAG = "BAG";
 const TM_CASE_ITEM = "TM CASE";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
+const FLASH_ACTION = "FLASH";
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
 // Decomp MoveCursorToOKButton: the OK button is in the third row of the button column, the column after the keys.
@@ -196,6 +197,18 @@ export class MenuDriver {
     };
     const moved = this.moveCursor(target, cursor, choiceKey(target, choice.columns));
     return moved.status === "done" ? this.input(Keys.A) : moved;
+  }
+
+  useFieldMove(): Outcome {
+    if (this.tap(Keys.A)) return BATTLE_INTERRUPTION;
+    for (let screens = 0; screens < MAX_TEXT_PRESSES; screens++) {
+      const { kind } = this.game.waitingFor();
+      if (kind === "walk") return DONE;
+      const outcome = kind === "choice" ? this.choose("YES") : this.readText();
+      if (outcome.status === "interrupted") return { status: "interrupted", reason: outcome.reason };
+      if (outcome.status !== "done") throw new Error(`the script of the obstacle stops: ${outcome.reason}`);
+    }
+    throw new Error(`the script of the obstacle still runs after ${MAX_TEXT_PRESSES} screens`);
   }
 
   fight(move: number): Outcome & Partial<Texts> {
@@ -508,6 +521,16 @@ export class MenuDriver {
     if (moved.status !== "done") return moved;
     const swapped = this.menuInput(Keys.A, () => this.pickMenu()?.swapping === false);
     return swapped.status === "done" ? this.closeStartMenu() : swapped;
+  }
+
+  useFlash(slot: number): Outcome {
+    const { game } = this;
+    const opened = this.openStartMenu(START_MENU_POKEMON, () => this.pickMenu() !== null);
+    if (opened.status !== "done") return opened;
+    const actions = this.openPartyActions(slot);
+    if (actions.status !== "done") return actions;
+    const chosen = this.selectPartyAction((options) => options.indexOf(FLASH_ACTION), () => game.flashActive());
+    return chosen.status === "done" ? this.untilReady(() => game.waitingFor().kind === "walk") : chosen;
   }
 
   private namingScreen() {

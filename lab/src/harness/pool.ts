@@ -191,6 +191,13 @@ export class RunPool {
     return this.startAll(spec, 1, continued)[0];
   }
 
+  /** A Run that plays stays: it holds a place and writes its Run record at its end. */
+  remove(run: PoolRun): void {
+    if (run.end === null) return;
+    const index = this.runs.indexOf(run);
+    if (index >= 0) this.runs.splice(index, 1);
+  }
+
   view(id: number): ReplayView | undefined {
     return this.runs.find((run) => run.id === id)?.view ?? [...this.#replays].find((replay) => replay.id === id)?.view;
   }
