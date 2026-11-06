@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { modelBot } from "../../bots/model";
 import { atlasExtract } from "../model/extract";
 import type { ModelClient } from "../model/openrouter";
-import { decryptMon } from "../party";
+import { decryptBox } from "../party";
 import { ROM_FILE, Run, SAVES_DIR } from "../run";
 import { cellAt, mapNamed } from "./atlas";
 import { type ActionEntry, type Bot, Harness, must } from "./harness";
@@ -73,7 +73,7 @@ function patchSecure(run: Run, slot: number, part: "growth" | "attacks", offset:
   const box = run.game.mem.global("gPlayerParty").at(slot).field("box");
   const personality = box.field("personality").int();
   const otId = box.field("otId").int();
-  const decrypted = decryptMon(personality, otId, box.field("secure").bytes());
+  const decrypted = decryptBox(box);
   const at = decrypted[part] + offset;
   const before = decrypted.substructs.getUint16(at, true);
   run.core.patch16(box.field("secure").addr + at, value ^ ((personality ^ otId) & 0xffff));
