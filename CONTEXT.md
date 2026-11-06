@@ -105,16 +105,27 @@ What a **Run** knows of the world: the maps that the player visited, the cells o
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
-The cells of a map that the player can walk to from one cell, on the cells that it saw and with no other map on the way. A floor of a cave can have many **Parts**: the only way between them goes through other maps. The code makes them from the **Atlas** only, so they show only what the player saw.
+The cells of a map that the player can walk to from one cell, on the cells that it saw, with no other map and no **Spin tile** on the way. A floor of a cave can have many **Parts**: the only way between them goes through other maps. A map with **Spin tiles** also has many **Parts**: a **Slide** goes from one **Part** to another **Part** of the same map, in one direction only. The code makes them from the **Atlas** only, so they show only what the player saw.
 _Avoid_: zone, area (an **Area** is a place of the Town Map), region
 
 **Lead**:
-A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
+A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits and **Slides** to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
 _Avoid_: frontier (the unseen cells of the **Part** of the player), hint
 
 **Thin wall**:
 An open cell with a wall on one side: the player cannot step across that side, in either direction. Its metatile behaviour is `MB_IMPASSABLE_*`, with no collision bit. It is not a **Fixed obstacle**.
 _Avoid_: one-way wall, directional collision
+
+**Spin tile**:
+A cell with an arrow on the floor. When the player steps on it, the player slides in the direction of the arrow, and cannot stop, until a **Stop tile** or a cell that the player cannot enter. A **Spin tile** on the way changes the direction. Its metatile behaviour is `MB_SPIN_*`. The Rocket Hideout and the Viridian City Gym have them.
+_Avoid_: arrow tile, spinner, ledge (a ledge is a jump of one cell)
+
+**Stop tile**:
+A cell that ends the **Slide** of a **Spin tile**. Its metatile behaviour is `MB_STOP_SPINNING`.
+
+**Slide**:
+The forced walk of the player from a **Spin tile** to the cell where it stops. It goes from one **Part** to another **Part** of the same map, in one direction only. Before the player takes it, the code can tell its end from the cells that the player saw, or it cannot when the way crosses an unseen cell. After the player takes it, the **Atlas** keeps its real end.
+_Avoid_: spin, glide, push
 
 **Known world**:
 A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows. The code makes it from the **Atlas** only, so it shows only what the player saw.
