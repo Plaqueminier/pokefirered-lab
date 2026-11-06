@@ -32,6 +32,15 @@ const TRAINER_HOBBIES = [
   "studies family histories", "practises a victory speech", "plans trips that never happen",
   "keeps bees", "watches the stars", "collects rocks",
 ];
+const TRAINER_ORIGINS = [
+  ["Japan", "Japanese"], ["South Korea", "Korean"], ["China", "Mandarin"], ["Mongolia", "Mongolian"],
+  ["Vietnam", "Vietnamese"], ["Thailand", "Thai"], ["Indonesia", "Indonesian"], ["the Philippines", "Tagalog"],
+  ["India", "Hindi"], ["Iran", "Persian"], ["Turkey", "Turkish"],
+  ["Egypt", "Arabic"], ["Ethiopia", "Amharic"], ["Kenya", "Swahili"], ["Nigeria", "Yoruba"], ["Senegal", "Wolof"], ["South Africa", "Zulu"],
+  ["Brazil", "Portuguese"], ["Mexico", "Spanish"], ["Peru", "Quechua"], ["the United States", "English"],
+  ["Russia", "Russian"], ["Poland", "Polish"], ["Finland", "Finnish"], ["Greece", "Greek"], ["Italy", "Italian"], ["France", "French"], ["Germany", "German"], ["Ireland", "Irish"],
+  ["Samoa", "Samoan"], ["New Zealand", "Maori"],
+] as const;
 const NICKNAME_QUESTION = /give a nickname to/i;
 const STARTER_QUESTION = new RegExp(`\\b(${STARTER_SPECIES.join("|")}) is your choice`);
 
@@ -39,7 +48,7 @@ export const CHARACTER_SCHEMA = {
   ...DECISION_SCHEMA,
   properties: {
     ...DECISION_SCHEMA.properties,
-    character: { type: "string", description: `The style of your nicknames, then the trainer that you play, in ${MAX_CHARACTER} characters at most.` },
+    character: { type: "string", description: `The style of your nicknames, then the trainer that you play with the country of the trainer, in ${MAX_CHARACTER} characters at most.` },
     starter: { type: "string", enum: STARTER_SPECIES, description: "The first Pokémon of your trainer." },
     name: { type: "string", description: `The name of your trainer, in ${MAX_NAME} characters at most.` },
     rival: { type: "string", description: `The name of the rival of your trainer, in ${MAX_NAME} characters at most.` },
@@ -54,18 +63,20 @@ function picked<T>(list: readonly T[], random: () => number): T {
 export function characterTurn(starter: ModelSettings["starter"], gameNames: TrainerNames | null, random: () => number = Math.random): string[] {
   const first = picked(STARTER_SPECIES, random);
   const names = [first, ...STARTER_SPECIES.filter((name) => name !== first)];
+  const [country, language] = picked(TRAINER_ORIGINS, random);
   return [
     "Character turn: invent the trainer that you play, before you act.",
     `- Start from this idea, and make it your own: a ${picked(TRAINER_TRAITS, random)} ${picked(TRAINER_JOBS, random)} who ${picked(TRAINER_HOBBIES, random)}.`,
+    `- This trainer comes from ${country}. ${gameNames ? "The nicknames" : "The names of this trainer and of the rival, and the nicknames,"} sound ${language}. Write them only with the letters that the game allows: no accents. All your other answers stay in English.`,
     "- Give this trainer a clear taste: what the trainer likes, fears and wants, and how the trainer plays.",
     starter === "free"
       ? `- Choose the first Pokémon of this trainer: ${alternatives(names)}. Each of the three can become the Champion. Choose the one that fits this trainer, not the one that is easy for the first Gym. Write it in "starter".`
       : `- The first Pokémon of this trainer is ${starter}. Write it in "starter".`,
-    "- Choose a style for the nicknames of this trainer, that mixes the job and the hobby.",
+    `- Choose a style for the nicknames of this trainer, that mixes the job, the hobby and the ${language} language.`,
     gameNames
       ? `- The game already has your names: write ${gameNames.player} in "name" and ${gameNames.rival} in "rival".`
       : `- Choose the name of this trainer and the name of the rival of this trainer. Write them in "name" and "rival": ${MAX_NAME} characters at most for each one, no space at the start or the end, and only these characters: ${NAME_KEYS}`,
-    `- Write in "character", in at most ${MAX_CHARACTER} characters: the style of the nicknames, then the trainer. You keep it for the whole Run. Then choose your action as usual.`,
+    `- Write in "character", in at most ${MAX_CHARACTER} characters: the style of the nicknames, then the trainer and its country. You keep it for the whole Run. Then choose your action as usual.`,
   ];
 }
 

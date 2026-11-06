@@ -5,7 +5,7 @@ import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { RunCall } from "./harness/pool";
-import type { Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
+import type { Coach, Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
 
 /** GBA key bits, as setKeys expects them. */
@@ -144,7 +144,11 @@ type BotKind = "scripted" | "model";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; limit: Spend };
+export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
+
+export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string {
+  return coach ? `${id} + coach ${coach.id}` : id;
+}
 
 /** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
 export type RunFrom = { record: string; kind: "continued" | "extended" };
@@ -302,6 +306,10 @@ export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
 
 /** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
 export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });
+
+export function callKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
+  return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
+}
 
 export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
   return events.filter((e): e is ModelEvent => e.type === "model");

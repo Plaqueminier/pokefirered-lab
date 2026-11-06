@@ -10,7 +10,9 @@ const CALL_TIMEOUT_MS = 10 * 60_000;
 
 export type ModelReply = { content: string; usage: Usage; reasoning?: string };
 
-type AnswerFormat = { name: "decision" | "character" | "review" | "summary"; schema: object };
+export type JsonSchema = { type: "object"; properties: object; required: readonly string[]; additionalProperties?: boolean };
+
+export type AnswerFormat = { name: "decision" | "character" | "review" | "summary"; schema: JsonSchema };
 
 export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 

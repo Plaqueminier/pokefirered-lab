@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
 import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import { modelEvents, type ShownRun } from "../src/protocol";
+import { callKind, modelEvents, type ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -63,12 +63,8 @@ function callView(call: ModelEvent, index: number): CallView {
   };
 }
 
-function turnKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
-  return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
-}
-
 function turnText(call: ModelEvent): string | undefined {
-  const kind = turnKind(call);
+  const kind = callKind(call);
   return kind && `${kind} turn`;
 }
 
@@ -82,7 +78,7 @@ function stuckText(stuck: number | undefined, turn: string | undefined): string[
 }
 
 function answerFields(decision: Decision): Record<string, string> {
-  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–" };
+  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...(decision.advice ? { "Coach advice": decision.advice } : {}) };
 }
 
 function messageBlocks(message: string): { title: BlockTitle; text: string }[] {

@@ -14,6 +14,7 @@ export type RaceRun = {
   record: string;
   bot: string;
   model: string;
+  coach?: string;
   character: string;
   /** Frames and cells as the difference with the point before. */
   track: number[];

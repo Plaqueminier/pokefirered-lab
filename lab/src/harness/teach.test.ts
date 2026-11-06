@@ -145,4 +145,16 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(LEARN_MOVE_SAVE))("teach, o
     expect(users[1]).toContain("SQUIRTLE wants to learn ICE BEAM");
     expect(moveNames(harness)).toEqual(["TACKLE", "TAIL WHIP", "ICE BEAM", "WATER GUN"]);
   });
+
+  test("in a Run with a Coach, the Coach chooses the move to forget, and the player teaches at the walk", async () => {
+    const harness = await withTms(LEARN_MOVE_SAVE, ITEM_TM13);
+    const answer = (user: string) => (user.includes("The game waits for a move to forget.") ? "forget WITHDRAW" : user.includes("- teach <TM or HM> on <Pokémon>") ? "teach TM13 on 1" : "I do not know");
+    const connect = (): ModelClient => async ({ user }) => ({ content: JSON.stringify({ reason: "r", action: answer(user), mission: "m", objective: "o", note: "" }), usage: { promptTokens: 1, cachedTokens: 0, completionTokens: 1, reasoningTokens: 0, cost: 0 } });
+    await expect(harness.play(modelBot({ id: "small", coach: { id: "big" }, costLimit: 1 }, connect))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const calls = harness.events.flatMap((e) => (e.type === "model" ? [e] : []));
+    expect(calls.slice(0, 2).map((call) => [call.model, call.decision?.action])).toEqual([
+      ["small", "teach TM13 on 1"],
+      ["big", "forget WITHDRAW"],
+    ]);
+  });
 });

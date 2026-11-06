@@ -3,10 +3,12 @@ import { type Battle, enemyView } from "../battle";
 import { battleTurn, fightFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
+import type { BoxMon } from "../party";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
-import { askedOf, readAction } from "./decision";
+import { type Asked, askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
+import { adviceLine, coachRole } from "./coach";
 import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
@@ -38,7 +40,7 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [], memory: [] };
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [], memory: [], advice: [] };
 const SYSTEM = { starter: "free", stopAtWhiteout: false } as const;
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
@@ -50,12 +52,14 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     waitingFor: { kind: "walk" },
     party: [{ nickname: "SQUIRTLE", species: "SQUIRTLE", types: ["WATER"], level: 6, hp, maxHp: 22, status: "none", moves: [], ability: { name: "TORRENT", description: "" }, nature: "BOLD", stats, exp: 0, levelExp: 0, expToNextLevel: 1 }],
     boxes: [],
+    pcItems: [],
     repelActive: false,
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     teachables: [],
     milestones: [],
     map: { group: 0, num: 0, name: "Route1" },
+    mapKind: "outdoor",
     player: { x: 1, y: 1, facing: "north" },
     grid: { name: "Route1", x0: 0, y0: 0, width: 3, height: 3, mapWidth: 3, mapHeight: 3, kinds: map.cells, connections: [], signs: [] },
     people: [],
@@ -364,6 +368,122 @@ describe("a REPEL", () => {
   });
 });
 
+describe("the REPEL facts", () => {
+  const REPEL = { name: "REPEL", quantity: 2, description: "Prevents weak wild POKéMON from appearing for 100 steps.", price: 350, battle: null, walk: "alone" };
+  const FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";
+  const on = (mapKind: string, items: object[], repelActive = false) => ({ ...route1(22, items), mapKind, repelActive }) as Observation;
+  const prompt = (observation: Observation, events: RunEvent[] = []) => userPrompt(observation, askedOf(observation, false)!, events, NO_TURN);
+
+  test("in a cave, with a REPEL in the Bag and none active, the walk tells what a REPEL does", () => {
+    expect(prompt(on("underground", [REPEL]))).toContain(`You have REPEL ×2. ${FACTS}`);
+    expect(prompt(on("outdoor", [REPEL]))).not.toContain("You have REPEL");
+    expect(prompt(on("underground", [POTION]))).not.toContain("You have REPEL");
+    const active = prompt(on("underground", [REPEL], true));
+    expect(active).toContain("A REPEL is active.");
+    expect(active).not.toContain("You have REPEL");
+  });
+
+  test("after a REPEL wore off, the next walk tells that another REPEL is in the Bag", () => {
+    const woreOff = [call("go A"), played({ name: "readText" }, { status: "done", frames: 10, text: ["REPEL's effect wore off…"] })];
+    expect(prompt(on("outdoor", [REPEL]), woreOff)).toContain("You can use another REPEL.");
+    expect(prompt(on("outdoor", [REPEL]), [...woreOff, call("go B")])).not.toContain("You can use another REPEL.");
+    expect(prompt(on("outdoor", [POTION]), woreOff)).not.toContain("You can use another REPEL.");
+    const cave = prompt(on("underground", [REPEL]), woreOff);
+    expect(cave).toContain(`You have REPEL ×2. ${FACTS}\nYou can use another REPEL.`);
+  });
+
+  test("the Poké Mart and the rules tell the same facts, and the rules do not ask to buy REPELS", () => {
+    const shop = { ...route1(22, []), waitingFor: { kind: "shopMenu", items: [{ name: "POKé BALL", price: 200, description: "A BALL." }, { name: "SUPER REPEL", price: 500, description: "Prevents weak wild POKéMON from appearing for 200 steps." }] } } as unknown as Observation;
+    const mart = prompt(shop);
+    expect(mart).toContain(`- SUPER REPEL: 500. Prevents weak wild POKéMON from appearing for 200 steps. ${FACTS}`);
+    expect(mart).toContain("- POKé BALL: 200. A BALL.\n");
+    expect(systemPrompt(SYSTEM, true)).toContain(`- ${FACTS}`);
+    expect(systemPrompt(SYSTEM, true)).toContain("- Buy Poké Balls and Potions at a Poké Mart.");
+  });
+});
+
+describe("the Coach advice", () => {
+  const advised = (advice: string, turn: "character" | "reflection" | "review" = "reflection"): ModelEvent => {
+    const event = call("go A");
+    return { ...event, [turn]: true, decision: { ...event.decision!, advice } } as ModelEvent;
+  };
+
+  const decided = (event: ModelEvent): RunEvent[] => [event, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+
+  test("each prompt shows the last advice and the number of decisions after it, and a turn with no advice keeps it", () => {
+    expect(adviceLine(decided(call("go A")))).toEqual([]);
+    expect(adviceLine([...decided(advised("Catch a second Pokémon.")), ...decided(call("go A")), ...decided(call("go B"))])).toEqual(["Coach advice (reflection turn, 2 decisions ago): Catch a second Pokémon."]);
+    expect(adviceLine([...decided(advised("Old.")), ...decided(advised("New.", "review"))])).toEqual(["Coach advice (review turn, 0 decisions ago): New."]);
+    expect(adviceLine([...decided(advised("Kept.", "character")), ...decided(advised("", "review")), ...decided(call("go A"))])).toEqual(["Coach advice (character turn, 2 decisions ago): Kept."]);
+  });
+
+  test("a zoom or a viewAtlas after the advice is no decision", () => {
+    expect(adviceLine([...decided(advised("Heal first.")), call("zoom 1-2"), call("viewAtlas"), ...decided(call("go A"))])).toEqual(["Coach advice (reflection turn, 1 decision ago): Heal first."]);
+  });
+
+  test("the advice shows in every prompt of a Run with a Coach, and in none of a Run with no Coach", () => {
+    const walk = route1(22, []);
+    const learning = { ...walk, party: [{ ...walk.party[0], moves: [move("TACKLE", "NORMAL", 35, 35, 35, "")] }], waitingFor: { kind: "learnMove", slot: 0, move: move("BITE", "DARK", 60, 25, 25, "") } } as Observation;
+    const events = decided(advised("Heal first."));
+    for (const shown of [walk, learning]) expect(userPrompt(shown, askedOf(shown, false)!, events, { ...NO_TURN, advice: adviceLine(events) })).toContain("Coach advice (reflection turn, 0 decisions ago): Heal first.\nDecision points since");
+    expect(userPrompt(walk, askedOf(walk, false)!, events, NO_TURN)).not.toContain("Coach advice");
+  });
+
+  test("in a Run with a Coach, the Coach plays the turns that think and the move to forget, and advises only at the turns that think", () => {
+    const walk = { kind: "walk" } as Asked;
+    for (const turn of ["character", "reflection", "review"] as const) expect(coachRole(true, turn, walk)).toEqual({ plays: true, advises: true });
+    expect(coachRole(true, "normal", { kind: "learnMove" } as Asked)).toEqual({ plays: true, advises: false });
+    expect(coachRole(true, "normal", walk)).toEqual({ plays: false, advises: false });
+    expect(coachRole(false, "review", walk)).toEqual({ plays: false, advises: false });
+  });
+
+  test("the rules name the Coach only in a Run with a Coach", () => {
+    expect(systemPrompt({ ...SYSTEM, coach: { id: "big", reasoning: "high" } }, true)).toContain("A Coach, a bigger model, plays the character, reflection and review turns");
+    expect(systemPrompt(SYSTEM, true)).not.toContain("A Coach, a bigger model");
+  });
+});
+
+describe("the team at the reflection and review turns", () => {
+  const tackle = move("TACKLE", "NORMAL", 35, 35, 35, "A full-body charge.");
+  const boxMon = (species: string, level: number, moves = [tackle]): BoxMon => ({ box: 0, boxName: "BOX1", position: level, species, nickname: species, level, types: ["NORMAL"], ability: { name: "RUN AWAY", description: "Makes escape easier." }, moves });
+  const strong = Array.from({ length: 12 }, (_, i) => boxMon(`MON${i}`, 20 + i));
+  const boxes = [boxMon("RATTATA", 3), ...strong, boxMon("RATTATA", 4, [move("BITE", "DARK", 60, 25, 25, "Bites with sharp fangs.")])];
+  const observation = { ...route1(22, []), boxes, pcItems: [{ name: "POTION", quantity: 1 }] } as Observation;
+  const partyKnows = { ...observation, party: [{ ...observation.party[0], moves: [tackle] }] } as Observation;
+  const prompt = (turn: "normal" | "reflection" | "review", events: RunEvent[] = [], shown = partyKnows) => userPrompt(shown, askedOf(shown, turn !== "normal")!, events, { ...NO_TURN, turn });
+
+  test("the turn shows the items of the PC, and 12 box Pokémon of the highest levels with their moves, then the others by species", () => {
+    const review = prompt("review");
+    expect(review).toContain("The items in the PC: POTION ×1.");
+    expect(review).toContain("The Pokémon in the boxes, the 12 of the highest levels:\n- MON11 level 31, BOX1: type NORMAL, ability RUN AWAY. Moves: TACKLE (NORMAL, power 35, accuracy 100, PP 35/35).");
+    expect(review).toContain("- MON0 level 20, BOX1");
+    expect(review).toContain("- And 2 more: RATTATA ×2 (levels 3, 4).");
+    expect(review.indexOf("The items in the PC")).toBeLessThan(review.indexOf("Objective:"));
+    expect(review).not.toContain("In the boxes:");
+    expect(prompt("reflection")).toContain("The items in the PC: POTION ×1.");
+  });
+
+  test("each description shows one time, and none that the party already shows", () => {
+    const review = prompt("review");
+    expect(review).toContain("What these moves and abilities do:\n- RUN AWAY: Makes escape easier.");
+    expect(review.split("Makes escape easier.").length).toBe(2);
+    expect(review).not.toContain("- TACKLE: A full-body charge.");
+    expect(review).not.toContain("Bites with sharp fangs.");
+  });
+
+  test("the review counts the Pokémon caught, the box Pokémon and the whiteouts, and asks nothing about them", () => {
+    const events = [{ type: "catch", frame: 1, species: "PIDGEY" }, { type: "whiteout", frame: 2 }] as RunEvent[];
+    expect(prompt("review", events)).toContain("So far in the game: 1 Pokémon caught, 14 Pokémon in the boxes, 1 whiteout.");
+    expect(prompt("reflection", events)).not.toContain("So far in the game:");
+  });
+
+  test("a usual walk keeps the short line of the boxes, and no PC items", () => {
+    const walk = prompt("normal");
+    expect(walk).toContain("In the boxes: RATTATA level 3, BOX1;");
+    expect(walk).not.toContain("The items in the PC");
+  });
+});
+
 describe("the Poké Mart", () => {
   test("at the shop menu, the prompt shows the items for sale with their prices, the money, the items of the Bag that the Mart buys, and the actions buy, sell and leave, with no press", () => {
     const observation = {
@@ -489,14 +609,27 @@ describe("the rules and the character turn", () => {
   });
 
   describe("the idea of a character turn", () => {
-    const idea = (trait: number, job: number, hobby: number) => {
-      const draws = [0, trait, job, hobby];
-      return characterTurn("free", null, () => draws.shift() ?? 0).find((line) => line.includes("Start from this idea"));
+    const turn = (trait: number, job: number, hobby: number, origin = 0) => {
+      const draws = [0, origin, trait, job, hobby];
+      return characterTurn("free", null, () => draws.shift() ?? 0);
     };
+    const idea = (trait: number, job: number, hobby: number, origin = 0) => turn(trait, job, hobby, origin).find((line) => line.includes("Start from this idea"));
 
     test("the idea has a trait, a job and a hobby", () => {
       expect(idea(0, 0, 0)).toBe("- Start from this idea, and make it your own: a shy baker who collects old maps.");
       expect(idea(0.999, 0.999, 0.999)).toBe("- Start from this idea, and make it your own: a generous gym teacher who collects rocks.");
+    });
+
+    test("the names and the nicknames sound in the language of the country, with no accents, and the other answers stay in English", () => {
+      const lines = turn(0, 0, 0, 0.7);
+      expect(lines).toContain("- This trainer comes from Russia. The names of this trainer and of the rival, and the nicknames, sound Russian. Write them only with the letters that the game allows: no accents. All your other answers stay in English.");
+      expect(lines).toContain("- Choose a style for the nicknames of this trainer, that mixes the job, the hobby and the Russian language.");
+      expect(characterTurn("free", { player: "RED", rival: "BLUE" }, () => 0).join("\n")).toContain("- This trainer comes from Japan. The nicknames sound Japanese.");
+    });
+
+    test("the program selects from 31 countries, each with its language", () => {
+      const countries = new Set(Array.from({ length: 1000 }, (_, i) => turn(0, 0, 0, (i + 0.5) / 1000).find((line) => line.startsWith("- This trainer comes from"))));
+      expect(countries.size).toBe(31);
     });
 
     test("the program selects from 100 jobs, 12 traits and 33 hobbies, with no word two times", () => {
@@ -507,8 +640,9 @@ describe("the rules and the character turn", () => {
     });
   });
 
-  test("the nicknames of a character turn mix the job and the hobby", () => {
-    expect(characterTurn("free", null, () => 0.5)).toContain("- Choose a style for the nicknames of this trainer, that mixes the job and the hobby.");
+  test("the character keeps the country of the trainer", () => {
+    expect(characterTurn("free", null, () => 0.5).join("\n")).toContain("the trainer and its country");
+    expect(CHARACTER_SCHEMA.properties.character.description).toContain("the country of the trainer");
   });
 
   test("the character has 400 characters at most", () => {

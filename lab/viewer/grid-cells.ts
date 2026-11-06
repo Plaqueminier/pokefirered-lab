@@ -1,5 +1,5 @@
 import type { Milestone } from "../src/game";
-import type { GridReplay, GridSize, RunSummary, Spend } from "../src/protocol";
+import { type GridReplay, type GridSize, modelLabel, type RunSummary, type Spend } from "../src/protocol";
 import type { TrainerNames } from "../src/save-file";
 import type { Tone } from "./components";
 
@@ -52,7 +52,7 @@ function liveState(run: RunSummary): CellState {
 
 function liveCell(run: RunSummary): GridCell {
   const { id, bot, model, frame, milestone, record, names } = run;
-  return { kind: "live", runId: id, name: `Run ${id}`, bot, model: model?.id ?? null, frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names };
+  return { kind: "live", runId: id, name: `Run ${id}`, bot, model: model ? modelLabel(model) : null, frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names };
 }
 
 function replayCell(replay: GridReplay, cursor: number): GridCell {

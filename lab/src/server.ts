@@ -21,6 +21,7 @@ import {
   extendProblem,
   GBA_FPS,
   type Jump,
+  modelLabel,
   type ModelProvider,
   type ReplayModel,
   type ReplayStatus,
@@ -446,7 +447,7 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
   for (const run of started) void run.done.then((end) => onBotEnd(run, end));
   const origin = start ? ` from the end of ${start.from.record}${start.from.kind === "extended" ? ", in the same Run" : ""}` : "";
   const runs = count === 1 ? `Run ${started[0].id}: the Bot ${name} plays` : `Runs ${started[0].id} to ${started[count - 1].id}: the Bot ${name} plays ${count} times`;
-  return `${runs}${origin}${model ? ` with the model ${model.id} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
+  return `${runs}${origin}${model ? ` with the model ${modelLabel(model)} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
 }
 
 async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {

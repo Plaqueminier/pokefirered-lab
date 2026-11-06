@@ -1,12 +1,13 @@
 // Follows OptMem: https://github.com/rafmyr/OptMem
 import type { NodeRange, Prompt, NodeSentence, RunEvent } from "../harness/record";
 import { MAX_SENTENCE, readJson } from "./decision";
+import type { JsonSchema } from "./openrouter";
 
 export type MemoryTree = { notes: string[]; summaries: Map<string, string>; removed: string[] };
 
 export type MemoryNode = NodeRange & { text: string };
 
-export function summarySchema(node: NodeRange): object {
+export function summarySchema(node: NodeRange): JsonSchema {
   return {
     type: "object",
     properties: { summary: { type: "string", description: `The summary of the two parts, ${summaryRule(node)}.` } },

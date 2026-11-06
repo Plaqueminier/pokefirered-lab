@@ -78,11 +78,9 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
     const box = mon.field("box");
     const personality = box.field("personality").int();
     const { substructs, growth, attacks, misc } = decryptMon(personality, box.field("otId").int(), box.field("secure").bytes(SUBSTRUCT_SIZE * 4));
-    const ppBonuses = substructs.getUint8(growth + GROWTH_PP_BONUSES);
-    const moves = readMoves(mem, decode, ppBonuses, (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
+    const ivWord = substructs.getUint32(misc + MISC_IV_WORD, true);
     const species = substructs.getUint16(growth, true);
     const info = mem.global("gSpeciesInfo").at(species);
-    const ability = info.field("abilities").at((substructs.getUint32(misc + MISC_IV_WORD, true) >>> ABILITY_NUM_BIT) & 1).int();
     const item = substructs.getUint16(growth + GROWTH_HELD_ITEM, true);
     const level = mon.field("level").int();
     const exp = substructs.getUint32(growth + GROWTH_EXPERIENCE, true);
@@ -92,9 +90,9 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(box.field("nickname").bytes()),
       types: speciesTypes(mem, species, decode),
-      ability: { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) },
+      ability: monAbility(mem, decode, species, ivWord),
       heldItem: item === ITEM_NONE ? null : decode(mem.global("gItems").at(item).field("name").bytes()),
-      isEgg: ((substructs.getUint32(misc + MISC_IV_WORD, true) >>> IS_EGG_BIT) & 1) === 1,
+      isEgg: ((ivWord >>> IS_EGG_BIT) & 1) === 1,
       nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
       level,
       exp,
@@ -104,7 +102,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       maxHp: mon.field("maxHP").int(),
       status: statusOf(mon.field("status").int()),
       stats: readStats(mon),
-      moves,
+      moves: monMoves(mem, decode, substructs, growth, attacks),
     };
   });
 }
@@ -117,7 +115,16 @@ export function canLearnTmHm(mem: Memory, slot: number, tm: number): boolean {
   return ((word >>> (tm % TMHM_WORD_BITS)) & 1) === 1;
 }
 
-export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number };
+export type BoxMon = { box: number; boxName: string; position: number; species: string; nickname: string; level: number } & Pick<PartyMon, "types" | "ability" | "moves">;
+
+function monMoves(mem: Memory, decode: Decode, substructs: DataView, growth: number, attacks: number): PartyMove[] {
+  return readMoves(mem, decode, substructs.getUint8(growth + GROWTH_PP_BONUSES), (slot) => ({ move: substructs.getUint16(attacks + slot * 2, true), pp: substructs.getUint8(attacks + ATTACKS_PP + slot) }));
+}
+
+function monAbility(mem: Memory, decode: Decode, species: number, ivWord: number): PartyMon["ability"] {
+  const ability = mem.global("gSpeciesInfo").at(species).field("abilities").at((ivWord >>> ABILITY_NUM_BIT) & 1).int();
+  return { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) };
+}
 
 export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
 
@@ -172,7 +179,7 @@ export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
   const mons: BoxMon[] = [];
   for (let mon = 0; mon < raw.byteLength; mon += first.size) {
     const personality = view.getUint32(mon + personalityAt, true);
-    const { substructs, growth } = decryptMon(personality, view.getUint32(mon + otIdAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
+    const { substructs, growth, attacks, misc } = decryptMon(personality, view.getUint32(mon + otIdAt, true), raw.slice(mon + secureAt, mon + secureAt + SUBSTRUCT_SIZE * 4));
     const species = substructs.getUint16(growth, true);
     if (species === SPECIES_NONE) continue;
     const index = mon / first.size;
@@ -184,6 +191,9 @@ export function readBoxMons(mem: Memory, decode: Decode): BoxMon[] {
       species: nameAt(mem, "gSpeciesNames", species, decode),
       nickname: decode(raw.slice(mon + nicknameAt, mon + nicknameAt + nicknameSize)),
       level: levelFromExp(expView, mem.global("gSpeciesInfo").at(species).field("growthRate").int() * expRowSize, substructs.getUint32(growth + GROWTH_EXPERIENCE, true)),
+      types: speciesTypes(mem, species, decode),
+      ability: monAbility(mem, decode, species, substructs.getUint32(misc + MISC_IV_WORD, true)),
+      moves: monMoves(mem, decode, substructs, growth, attacks),
     });
   }
   return mons;

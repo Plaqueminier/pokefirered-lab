@@ -3,17 +3,18 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { canWalkAgain, modelBot, unknownScreen, walkGoesOn } from "../../bots/model";
 import { Harness } from "../harness/harness";
-import { type ModelEvent, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
+import { type ModelEvent, type ModelSettings, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
 import { modelPanelView } from "../../viewer/model-calls";
 import type { PartyMon } from "../party";
 import type { ModelClient } from "./openrouter";
+import { PlanLimitError } from "./providers";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
 const COST = 0.001;
 const AFTER_RIVAL = ["go A", "go C"];
-const DECISIONS = ["go A", "go B", "go B", "go D", "go B", "go E", "name Shelly", "go A", "fight 1", "fight 0", "fight 0", "fight 0"];
+const DECISIONS = ["go A", "go B", "go B", "go D", "go B", "go K", "name Shelly", "go A", "fight 1", "fight 0", "fight 0", "fight 0"];
 
 const CHARACTER = "Spices as nicknames. A loud fan of water.";
 
@@ -250,7 +251,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "30", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "31", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -284,11 +285,97 @@ describe.skipIf(!ready)("model bot", () => {
       return { ...reply("goTo 8 6"), reasoning: "I think." };
     };
     await harness.play(modelBot({ costLimit: 3 * COST - COST / 2 }, () => client));
-    expect(asks).toEqual([{ format: "character", reasoning: "medium" }, { format: undefined, reasoning: undefined }, { format: undefined, reasoning: undefined }]);
+    expect(asks).toEqual([{ format: "character", reasoning: "medium" }, { format: "decision", reasoning: undefined }, { format: "decision", reasoning: undefined }]);
     const [first, second] = modelEvents(harness);
     expect(first.decision?.character).toBe(CHARACTER);
     expect(first.reasoning).toBe("I think.");
     expect(second.prompt.user).toContain(`Your character: ${CHARACTER} Your first Pokémon: SQUIRTLE.`);
+  });
+
+  describe("a Run with a Coach", () => {
+    type Ask = { model: string; format?: string; reasoning?: string; advice: boolean };
+
+    function coached(advice: string, client: (settings: ModelSettings) => ModelClient = (settings) => async () => {
+      const { content, usage } = reply("goTo 8 6");
+      return { content: JSON.stringify({ ...JSON.parse(content), advice: `${advice} ${settings.id}` }), usage };
+    }) {
+      const asks: Ask[] = [];
+      const connect = (settings: ModelSettings): ModelClient => {
+        const answer = client(settings);
+        return async (prompt, options) => {
+          asks.push({ model: settings.id, format: options?.format?.name, reasoning: options?.reasoning, advice: JSON.stringify(options?.format?.schema ?? {}).includes('"advice"') });
+          return answer(prompt, options);
+        };
+      };
+      return { asks, connect };
+    }
+
+    test("the Coach plays the character turn at its reasoning and writes an advice; the player plays the next decisions and gets the advice", async () => {
+      const harness = await Harness.open();
+      const { asks, connect } = coached("Catch a second Pokémon.");
+      await harness.play(modelBot({ id: "small", coach: { id: "big", reasoning: "high" }, costLimit: 3 * COST - COST / 2 }, connect));
+      expect(asks).toEqual([
+        { model: "big", format: "character", reasoning: "high", advice: true },
+        { model: "small", format: "decision", reasoning: undefined, advice: false },
+        { model: "small", format: "decision", reasoning: undefined, advice: false },
+      ]);
+      const [first, second] = modelEvents(harness);
+      expect(first).toMatchObject({ model: "big", decision: { advice: "Catch a second Pokémon. big" } });
+      expect(first.prompt.user).toContain('- A smaller model plays the next decisions. Write in "advice" what it must do until your next turn.');
+      expect(first.prompt.system).toContain("A Coach, a bigger model");
+      expect(second.model).toBe("small");
+      expect(second.decision).not.toHaveProperty("advice");
+      expect(second.prompt.user).toContain("Coach advice (character turn, 0 decisions ago): Catch a second Pokémon. big");
+      expect(harness.record().header.bot.model?.coach).toEqual({ id: "big", reasoning: "high" });
+    });
+
+    test("the Coach writes the summaries of the Memory tree, and a Coach with the model of the player is no Coach", async () => {
+      const summaries = async (coach: string) => {
+        const notes = noteTaker("goTo 8 6");
+        const harness = await Harness.open();
+        const { asks, connect } = coached("", () => notes.client);
+        await harness.play(modelBot({ id: "small", coach: { id: coach }, costLimit: 3.5 * COST }, connect)).catch(() => {});
+        return { asks, events: harness.events.filter((e): e is SummaryEvent => e.type === "summary") };
+      };
+      const withCoach = await summaries("big");
+      expect(withCoach.events[0]).toMatchObject({ model: "big" });
+      expect(withCoach.asks.find((ask) => ask.format === "summary")).toMatchObject({ model: "big", reasoning: "medium" });
+      const alone = await summaries("small");
+      expect(new Set(alone.asks.map((ask) => ask.model))).toEqual(new Set(["small"]));
+      expect(alone.asks.some((ask) => ask.advice)).toBe(false);
+    });
+
+    test("a conversation keeps its model: the retry after an impossible action of the Coach goes to the Coach, and of the player to the player", async () => {
+      const harness = await Harness.open();
+      const { asks, connect } = coached("", () => {
+        let calls = 0;
+        return async () => reply(calls++ === 0 ? "goTo 0 0" : "goTo 8 6");
+      });
+      await harness.play(modelBot({ id: "small", coach: { id: "big" }, costLimit: 4 * COST - COST / 2 }, connect));
+      const impossible = harness.actions.filter(({ result }) => result.status === "impossible").length;
+      expect(impossible).toBe(2);
+      expect(asks.map((ask) => ask.model)).toEqual(["big", "big", "small", "small"]);
+      expect(modelEvents(harness)[1].prompt.turns?.[0].user).toContain('Your action "goTo 0 0" is impossible');
+    });
+
+    test("each Reflection or Review turn goes to the Coach with the advice schema, and the other walks go to the player", async () => {
+      const harness = await Harness.open();
+      const { asks, connect } = coached("Look north.");
+      await harness.play(modelBot({ id: "small", coach: { id: "big" }, costLimit: 30 * COST - COST / 2 }, connect));
+      const calls = modelEvents(harness);
+      const thinking = calls.filter((call) => call.character || call.reflection || call.review);
+      expect(thinking.some((call) => call.reflection || call.review)).toBe(true);
+      expect(calls.map((call, i) => [call.model, asks[i].advice])).toEqual(calls.map((call) => (thinking.includes(call) ? ["big", true] : ["small", false])));
+    });
+
+    test("a plan limit of the Coach ends the Run", async () => {
+      const harness = await Harness.open();
+      const { connect } = coached("", (settings) => async () => {
+        if (settings.id === "big") throw new PlanLimitError("You hit your usage limit");
+        return reply("goTo 8 6");
+      });
+      expect(await harness.play(modelBot({ id: "small", coach: { id: "big" }, costLimit: 1 }, connect))).toMatchObject({ endReason: "plan limit" });
+    });
   });
 
   describe("the names of the character turn", () => {

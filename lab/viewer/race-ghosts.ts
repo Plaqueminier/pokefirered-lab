@@ -38,6 +38,7 @@ export type GhostNow = {
   run: number;
   number: number;
   model: string;
+  coach?: string;
   character: string;
   map: string;
   x: number;
@@ -290,7 +291,7 @@ export class RaceGhosts {
     const y = track[at + TRACK_FIELD.y];
     const result = frame >= run.end.frame ? run.end.result : null;
     const battle = battleAt(ghost, frame);
-    const now: GhostNow = { run: index, number: run.number, model: CLAUDE_MODELS[run.model] ?? run.model, character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
+    const now: GhostNow = { run: index, number: run.number, model: CLAUDE_MODELS[run.model] ?? run.model, ...(run.coach ? { coach: CLAUDE_MODELS[run.coach] ?? run.coach } : {}), character: run.character, map, x, y, facing: track[at + TRACK_FIELD.facing], walk: 0, battle, result, place: this.#placeOf(map, x, y, doors[point]), team: ghost.team.last(frame)?.mons ?? [], unit: run.unit ?? "dollars", stats: statsAt(ghost, frame) };
     return battle || result ? now : this.#slid(now, track, point, frame);
   }
 

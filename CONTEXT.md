@@ -45,7 +45,7 @@ A short sentence that a model bot sets itself: what it does now for its **Missio
 _Avoid_: goal (the **Milestone** that ends a **Run**), quest
 
 **Model call**:
-One request of a model bot to its AI model, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
+One request of a model bot to its AI model, or to its **Coach** for the turns that the **Coach** plays, and its answer: one action, with a short reason. The code of the Bot plays this action with one or more **Macro-actions**, or with one **Raw input**. The actions `viewAtlas` and `zoom` play neither: the Bot makes a new model call at once, at the same **Decision point**. A model bot makes a model call only when the game waits for a walk, a choice, a battle action, a Pokémon to send out, the shop menu of a Poké Mart, the item PC, the **Pokémon PC**, a name or a move to forget. Thus a **Run** usually has fewer model calls than **Decision points**.
 _Avoid_: prompt, turn, step
 
 **Unusual call**:
@@ -61,15 +61,19 @@ The number of **Decision points** of a **Run** since its last progress. Progress
 _Avoid_: no-progress count, walk count (the two old counts that it replaces)
 
 **Character turn**:
-The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker who collects old maps. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and a style of the nicknames; the request asks that this style mixes the job and the hobby of the idea. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
+The first **Model call** of a **Run** of a model bot with no Pokémon. It starts from an idea that the program selects at random, for example a shy baker who collects old maps, from Japan. The AI model invents the trainer that it plays, with its name, the name of the rival, the first Pokémon and a style of the nicknames; the request asks that this style mixes the job, the hobby and the language of the **Trainer origin**. The **Run** then boots again from a copy of the **Starting save** with these names, at the same frame. A continued **Run** with an action in its parent keeps the names of its game, and the AI model gets them. The prompt of each later **Model call** shows this character. At a Poké Ball of Professor Oak, the program answers for the AI model: YES to this Pokémon, NO to another. It is not a separate request.
 _Avoid_: persona call, personality turn
+
+**Trainer origin**:
+The country and its language that a **Character turn** picks at random from 31, for example Kenya and Swahili. The names of the trainer and of the rival, and the nicknames, sound like this language, but use only the letters that the game allows. The other answers of the AI model stay in English.
+_Avoid_: nationality, language mode
 
 **Normal trainer**:
 The character that the Viewer shows for a **Run** with no **Character turn**, for example a **Run** of an older version of the model bot. All these **Runs** have the same text. A **Race** also gives it to a **Run** with no readable character, so each **Ghost** has a text. The AI model never reads it, and no **Run record** holds it.
 _Avoid_: default persona, neutral character
 
 **Thinking**:
-The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer.
+The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer. In a **Run** with a **Coach**, the **Coach** plays these turns, its summaries and its moves to forget at its own reasoning level, which is this level when the **Run** gives none.
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:
@@ -81,12 +85,20 @@ A **Model call** of a model bot at the first walk with a **Model call** after 20
 _Avoid_: review call, check turn
 
 **Summary call**:
-One request of a model bot to its AI model that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
+One request of a model bot to its AI model, or to its **Coach** when the **Run** has one, that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
 _Avoid_: Model call (a **Model call** gives an action)
 
 **Model provider**:
-The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code`, `codex` or `grok`. A **Run** has one Model provider and one AI model. On `claude-code`, a **Run** always holds the full id of its AI model, for example `claude-sonnet-5-5`, because the model of an alias such as `sonnet` changes at a new release of the claude command.
+The service that answers the **Model calls** and the **Summary calls** of a **Run**: `openrouter` (the default), `claude-code`, `codex` or `grok`. A **Run** has one Model provider and one AI model, and also a **Coach** on the same Model provider when it has one. On `claude-code`, a **Run** always holds the full id of its AI model, for example `claude-sonnet-5-5`, because the model of an alias such as `sonnet` changes at a new release of the claude command.
 _Avoid_: backend, mode, API
+
+**Coach**:
+A second AI model of a **Run** of a model bot, on the **Model provider** of the **Run**. It plays the **Character turn**, the **Reflection turns**, the **Review turns**, the **Summary calls** and the choice of a move to forget; the AI model of the **Run** plays the other **Model calls**. Its calls count toward the one limit of the **Run**. A **Coach** with the AI model of the **Run** is no **Coach**. A **Run** with a **Coach** is another player than its AI model alone, so its label names both, for example `claude-haiku-5-5 + coach claude-opus-5-5`. In such a **Run**, "the AI model" of the **Character turn**, the **Reflection turn** and the **Review turn** is the **Coach**.
+_Avoid_: mentor, teacher, big model, thinker
+
+**Coach advice**:
+What the **Coach** writes at its **Character turn**, **Reflection turns** and **Review turns** for the next decisions. Each prompt of a **Run** with a **Coach** shows the last one, with its turn and the number of decisions since; an empty advice keeps the last one. It is not the **Mission**, not the **Objective** and not a note of the **Memory tree**.
+_Avoid_: tip, hint, coach note
 
 **Plan provider**:
 A **Model provider** that a person's subscription pays for: `claude-code`, `codex` or `grok`. The calls of a **Run** on a Plan provider use the quota of the subscription and cost no money, so the cost of this **Run** is 0 and a **Token limit** replaces its cost limit.
@@ -224,7 +236,7 @@ A file that a command makes from a set of **Run records**: the track and the **S
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
-One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok. A **Run record** of an older date holds an alias of the claude command, and the **Race** shows the full id of that alias. A **Ghost** whose **Run** ends with a whiteout stays on the cell where it lost: it does not go to the Pokémon Center. A **Ghost** of another model and a group of **Ghosts** have no dot.
+One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok; for a **Run** with a **Coach**, the family of the AI model of the **Run**, and the name shows both models. A **Run record** of an older date holds an alias of the claude command, and the **Race** shows the full id of that alias. A **Ghost** whose **Run** ends with a whiteout stays on the cell where it lost: it does not go to the Pokémon Center. A **Ghost** of another model and a group of **Ghosts** have no dot.
 _Avoid_: player, avatar
 
 **State track**:
@@ -246,6 +258,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
 - Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** has a limit for it. The **Run** of a model bot also ends at its cost limit or its **Token limit**, at a `plan limit`, at a whiteout (an option, on by default) and at an unknown screen.
+- A **Run** of a model bot has one AI model, and at most one **Coach** on the same **Model provider**. Only the **Coach** writes a **Coach advice**.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - An **Extended Run** has one **Run record**: each new part replaces the file, and only an **Extended Run** changes a **Run record** after its **Run** ended (`bun run migrate` adds only data from the replay).
 - The lab has one model bot. The scripted bot is a tool to test the **Harness**: it does not grow with the story.

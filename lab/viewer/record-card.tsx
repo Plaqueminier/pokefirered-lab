@@ -1,7 +1,7 @@
 import { Fragment } from "preact";
 import type { ReplayStatus } from "../src/protocol";
 import { LABEL, Pill } from "./components";
-import { SPEND_WORDS, spendText } from "../src/protocol";
+import { modelLabel, SPEND_WORDS, spendText } from "../src/protocol";
 import { clock } from "./stats-format";
 import { NO_GAME_EVENTS } from "./timeline-events";
 
@@ -16,7 +16,8 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
     { label: "Frames", value: clock(replay.frames), detail: replay.frames.toLocaleString("en-US") },
     ...(model
       ? [
-          { label: "Model", value: model.id },
+          { label: "Model", value: modelLabel(model) },
+          ...(model.coach ? [{ label: "Coach reasoning", value: model.coach.reasoning }] : []),
           { label: "Provider", value: model.provider },
           { label: "Reasoning", value: model.reasoning },
           { label: "Thinking", value: model.thinking },

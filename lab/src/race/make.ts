@@ -70,6 +70,7 @@ function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
     record: name,
     bot: `${header.bot.name} ${header.bot.version}`,
     model: header.bot.model?.id ?? "",
+    ...(header.bot.model?.coach ? { coach: header.bot.model.coach.id } : {}),
     character: shownCharacter(modelEvents(events)) ?? NORMAL_TRAINER,
     track: encodeTrack(track),
     battles: battlesOf(events, lastFrame),

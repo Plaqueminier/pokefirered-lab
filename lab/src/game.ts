@@ -662,6 +662,11 @@ export class Game {
     return { group, num, name: this.mapName(group, num) };
   }
 
+  mapKindHere(): MapKind {
+    const { group, num } = this.location();
+    return this.mapKind(group, num);
+  }
+
   state(): GameState {
     const player = this.player();
     return {

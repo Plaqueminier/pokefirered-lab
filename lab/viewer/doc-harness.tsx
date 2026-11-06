@@ -122,7 +122,7 @@ export function MacroPage() {
         ["Results", RESULT_ROWS.map(([status, { text }]) => `\`${status}\` ${text}`).join(" · ")],
         [
           "`observe()`",
-          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place) whether a REPEL is active, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save.",
+          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the kind of the map (outdoor, underground or indoor), the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place, types, ability, and the moves as for the party), the items of the PC, whether a REPEL is active, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save.",
         ],
         [
           "Battle facts",
@@ -157,7 +157,7 @@ export function MacroPage() {
       </div>
       <Block label="👁️ observe()" sub="What the game waits for, and the state of the game.">
         <div class={GRID3}>
-          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the grid, the people, the fixed obstacles, the Pokémon in the boxes, whether a REPEL is active, each TM and HM of the Bag with who can learn it"]} />
+          <DocCard title="World" lines={["the Milestones, the Atlas", "on the map: the kind of the map, the grid, the people, the fixed obstacles, the Pokémon in the boxes with their moves, the items of the PC, whether a REPEL is active, each TM and HM of the Bag with who can learn it"]} />
           <DocCard title="Party and Bag" lines={["the party as the Summary screen shows it", "the Bag (quantity, effect, price) and the money"]} />
           <DocCard title="Battle" lines={["the enemy as the player sees it, with its types and states", "each move: effect, STAB, damage estimate"]} />
         </div>

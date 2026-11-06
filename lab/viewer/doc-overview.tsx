@@ -194,7 +194,7 @@ export function GridPage() {
               ["Screen", "the game of the Run; dim when it waits for the model, when it writes its memory or when the Run ended"],
               ["Kind", "live or replay"],
               ["State", "plays, waits for the model, writes its memory, in battle, or ended with its Run result"],
-              ["Facts", "the name, the names of the character, the Bot, the model, the game time, the last Milestone, the cost or the tokens"],
+              ["Facts", "the name, the names of the character, the Bot, the model (and its Coach: `claude-haiku-5-5 + coach claude-opus-5-5`), the game time, the last Milestone, the cost or the tokens"],
               ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
             ]}
           />
@@ -233,10 +233,10 @@ export function RacePage() {
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest Run id. The crown goes to the first."],
         ["Sprite", "a hash of the Run id on 5 digits chooses a head and a body among 55 sprites of the ROM, and its colours in 8 families. The Race, the rank and the Bot do not change it, so a Run has the same face in every Race, and more Runs give more faces. The model does not change it either: a dot shows the model."],
-        ["Dot of the model", "a round dot of 8 px, the same size at every zoom, above the number or in its place when the number does not show: blue for DeepSeek, orange for Claude, light grey for GPT, black for Grok. It comes from the model id alone. A Run record of an older date holds an alias of the claude command (“haiku”): the Race shows its full id. A Ghost that ended keeps its dot. A Ghost of another model has no dot, and a group and a count at a door have none, because they can mix models."],
+        ["Dot of the model", "a round dot of 8 px, the same size at every zoom, above the number or in its place when the number does not show: blue for DeepSeek, orange for Claude, light grey for GPT, black for Grok. It comes from the model id alone; in a Run with a Coach, from the model of the Run and not from the Coach. A Run record of an older date holds an alias of the claude command (“haiku”): the Race shows its full id. A Ghost that ended keeps its dot. A Ghost of another model has no dot, and a group and a count at a door have none, because they can mix models."],
         ["World", "the maps and the tiles come from the ROM, with no emulator. The ROM has no connections for the real Saffron City, so the map uses the place of its stand-in. Viridian Forest, the Safari Zone and the three floors of Mt Moon are islands on the map: the Ghosts walk on them, with no count at a door."],
         ["Hover on a door", "the first 3 interiors, each with its count of Ghosts."],
-        ["Hover on Ghosts", "the Run id, its state, the dot and the full id of its model, its names and its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
+        ["Hover on Ghosts", "the Run id, its state, the dot and the full id of its model (and of its Coach: `model + coach coach`), its names and its character, its map and its team with the level, the health, the status and the moves of each Pokémon. In a battle, also the trainer, its Pokémon and the foe. For a group, the Run ids and their teams."],
         ["Hover on a row", "the same card, and the battles, the trainers beaten, the faints, the money and the Model calls. A Run with no change of its money shows a dash."],
         ["Icons of the map", "the eye button of the bar hides the numbers, the dots, the crown, the battle and result icons, the gyms, the counts at the doors and the names of the places, so only the Ghosts that walk stay. Ghosts inside a building do not show then. A hover or a click on a Ghost still works, and the ring of the selected Ghost and an open building stay."],
         ["Counts", "in a wide window, the bar gives the Ghosts, those in battle, those inside and those that ended."],

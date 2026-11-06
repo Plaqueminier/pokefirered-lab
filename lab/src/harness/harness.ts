@@ -5,8 +5,9 @@ import { type BagPocket, battleItems, depositableItems, sellableItems, type Teac
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
-import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
+import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
 import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
+import type { PcItem } from "../pc";
 import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
@@ -71,7 +72,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; repelActive: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -416,7 +417,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), player, grid, people, boxes: game.boxMons(), repelActive: game.repelActive(), teachables: game.teachables() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), teachables: game.teachables() };
   }
 
   availableActions(): AvailableAction[] {

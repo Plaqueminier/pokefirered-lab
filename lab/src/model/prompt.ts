@@ -4,12 +4,13 @@ import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
-import { type CallTurn, callTurns, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent } from "../harness/record";
+import { type CallTurn, callTurns, isDecision, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
 import { type BoxMon, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
+import { COACH_RULE } from "./coach";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
 import { darkOfMap, fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
@@ -60,6 +61,10 @@ const TRANSFERS = [
 const LEAVE_PC = "- leave: go back to the menu of the PC, where you can turn the PC off.";
 const ZOOM = "- zoom <a-b>: see the two halves of the node #a-b of your Memory tree, then choose again. The game does not move.";
 const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Right, L or R.";
+const REPEL_ITEMS = ["REPEL", "SUPER REPEL", "MAX REPEL"];
+const REPEL_FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";
+const REPEL_WORE_OFF = /REPEL's effect wore off/;
+const MAX_BOX_LINES = 12;
 
 const WHITEOUT_ENDS =
   "If all your Pokémon faint, the Run ends. But a Run that plays too safe also makes no progress: do not wait for a perfect team, accept fair battles and explore. Before a difficult battle, heal your Pokémon. When a battle goes very badly, switch or `run`.";
@@ -77,15 +82,15 @@ function characterLine(events: readonly RunEvent[]): string[] {
   return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.`];
 }
 
-export function systemPrompt({ starter, stopAtWhiteout }: Pick<ModelSettings, "starter" | "stopAtWhiteout">, hasPokemon: boolean): string {
-  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES].join("\n");
+export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean): string {
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...(coach ? [COACH_RULE] : [])].join("\n");
   const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
   return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
 
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -122,8 +127,8 @@ Advice of a good player:
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
 - To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
-- Buy Poké Balls, Potions and REPELS at a Poké Mart.
-- A REPEL stops wild Pokémon with a level below your first healthy Pokémon for 100 steps. Use it to cross a cave when your team is ready: a battle that you avoid gives no experience.
+- Buy Poké Balls and Potions at a Poké Mart.
+- ${REPEL_FACTS}
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
 - ${TEACH_RULE}
 - Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
@@ -153,7 +158,7 @@ const REVIEW = [
 
 export type TurnKind = "normal" | "character" | "reflection" | "review";
 
-export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[] };
+export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[]; advice: string[] };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
 export function turnRequest(turn: TurnKind, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
@@ -182,10 +187,10 @@ function reflectionDue(events: readonly RunEvent[], { stuck, since }: NoProgress
 function reviewDue(events: readonly RunEvent[]): boolean {
   const turns = callTurns(events);
   const last = turns.findLastIndex((turn) => turn.call?.review || turn.call?.reflection);
-  return turns.slice(last + 1).filter((turn) => turn.call && turn.events.some((e) => e.type === "action")).length >= REVIEW_EVERY;
+  return turns.slice(last + 1).filter(isDecision).length >= REVIEW_EVERY;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory }: PromptState): string {
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory, advice }: PromptState): string {
   const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
   const answers = answeredTurns(events);
   const calls = pastCalls(answers);
@@ -204,7 +209,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party),
-    ...(asked.kind === "walk" ? walkFacts(asked.overworld) : []),
+    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events)] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
     ...context(asked),
@@ -214,6 +219,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     waitLine(asked, events),
     missionLine(events),
     `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
+    ...advice,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, ${lastProgressKinds(asked)}): ${noProgress.stuck}.`,
     ...request,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
@@ -406,8 +412,57 @@ function boxMonText(mon: BoxMon): string {
   return `${monName(mon)} level ${mon.level}, ${mon.boxName}`;
 }
 
-function walkFacts({ boxes, repelActive }: Overworld): string[] {
-  return [...(boxes.length > 0 ? [`In the boxes: ${boxes.map(boxMonText).join("; ")}.`] : []), ...(repelActive ? ["A REPEL is active."] : [])];
+function itemText({ name, quantity }: { name: string; quantity: number }): string {
+  return `${name} ×${quantity}`;
+}
+
+function boxFacts({ overworld: { boxes, pcItems }, party }: WalkAsked, detailed: boolean): string[] {
+  if (!detailed) return boxes.length === 0 ? [] : [`In the boxes: ${boxes.map(boxMonText).join("; ")}.`];
+  return [pcItems.length === 0 ? "The PC has no items." : `The items in the PC: ${pcItems.map(itemText).join(", ")}.`, ...boxLines(boxes, party)];
+}
+
+function gameCounts(boxes: BoxMon[], events: readonly RunEvent[]): string {
+  const whiteouts = events.filter((e) => e.type === "whiteout").length;
+  return `So far in the game: ${events.filter((e) => e.type === "catch").length} Pokémon caught, ${boxes.length} Pokémon in the boxes, ${whiteouts} whiteout${whiteouts === 1 ? "" : "s"}.`;
+}
+
+function repelLines({ mapKind, repelActive }: Overworld, bag: BagPocket[], events: readonly RunEvent[]): string[] {
+  if (repelActive) return ["A REPEL is active."];
+  const repels = bag.flatMap(({ items }) => items).filter((item) => REPEL_ITEMS.includes(item.name));
+  if (repels.length === 0) return [];
+  const woreOff = textsOf(sinceLastCall(events)).some((text) => REPEL_WORE_OFF.test(text)) ? ["You can use another REPEL."] : [];
+  return [...(mapKind === "underground" ? [`You have ${repels.map(itemText).join(", ")}. ${REPEL_FACTS}`] : []), ...woreOff];
+}
+
+function boxLines(boxes: BoxMon[], party: PartyMon[]): string[] {
+  if (boxes.length === 0) return ["The boxes are empty."];
+  const sorted = boxes.toSorted((a, b) => b.level - a.level);
+  const shown = sorted.slice(0, MAX_BOX_LINES);
+  const line = (mon: BoxMon) => `- ${boxMonText(mon)}: type ${mon.types.join(", ")}, ability ${mon.ability.name}. Moves: ${mon.moves.map((move) => `${move.name} (${moveText(move)})`).join(", ")}.`;
+  const title = sorted.length > MAX_BOX_LINES ? `The Pokémon in the boxes, the ${MAX_BOX_LINES} of the highest levels:` : "The Pokémon in the boxes:";
+  return [title, ...shown.map(line), ...othersLine(sorted.slice(MAX_BOX_LINES)), ...boxDescriptions(shown, party)];
+}
+
+function othersLine(others: BoxMon[]): string[] {
+  if (others.length === 0) return [];
+  const groups = [...Map.groupBy(others, (mon) => mon.species)].map(([species, mons]) => `${species} ×${mons.length} (level${mons.length === 1 ? "" : "s"} ${levelsText(mons.map((mon) => mon.level))})`);
+  return [`- And ${others.length} more: ${groups.join(", ")}.`];
+}
+
+function levelsText(levels: number[]): string {
+  const rows: number[][] = [];
+  for (const level of levels.toSorted((a, b) => a - b)) {
+    const row = rows.at(-1);
+    if (row && level - (row.at(-1) ?? level) <= 1) row.push(level);
+    else rows.push([level]);
+  }
+  return rows.map((row) => (row.length >= 3 ? `${row[0]}–${row.at(-1)}` : row.join(", "))).join(", ");
+}
+
+function boxDescriptions(shown: BoxMon[], party: PartyMon[]): string[] {
+  const known = new Set(party.flatMap((mon) => [mon.ability.name, ...mon.moves.map((move) => move.name)]));
+  const descriptions = new Map(shown.flatMap((mon) => [mon.ability, ...mon.moves]).filter(({ name }) => !known.has(name)).map(({ name, description }) => [name, description]));
+  return descriptions.size === 0 ? [] : ["What these moves and abilities do:", ...[...descriptions].map(([name, description]) => `- ${name}: ${description}`)];
 }
 
 function partyText(party: PartyMon[]): string {
@@ -429,7 +484,7 @@ function partyText(party: PartyMon[]): string {
 
 function bagText(bag: BagPocket[]): string {
   if (bag.length === 0) return "Bag: empty.";
-  const pocket = ({ pocket, items }: BagPocket) => `- ${pocket}: ${items.map((i) => `${i.name} ×${i.quantity} (${i.description})`).join(", ")}`;
+  const pocket = ({ pocket, items }: BagPocket) => `- ${pocket}: ${items.map((i) => `${itemText(i)} (${i.description})`).join(", ")}`;
   return ["Bag:", ...bag.map(pocket)].join("\n");
 }
 
@@ -459,12 +514,12 @@ function context(asked: Asked): string[] {
       if ("battle" in asked) return battleLines(asked.battle, asked.party);
       return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld)];
     case "shopMenu": {
-      const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${item.name} ×${item.quantity}: ${item.price / 2}`)];
-      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}. ${item.description}`), "", ...buys];
+      const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${itemText(item)}: ${item.price / 2}`)];
+      return ["The Poké Mart sells (the price of one item):", ...asked.forSale.map((item) => `- ${item.name}: ${item.price}. ${item.description}${REPEL_ITEMS.includes(item.name) ? ` ${REPEL_FACTS}` : ""}`), "", ...buys];
     }
     case "itemPc": {
-      const stored = asked.pcItems.length === 0 ? ["The PC has no items."] : ["The items in the PC:", ...asked.pcItems.map((item) => `- ${item.name} ×${item.quantity}`)];
-      const bag = asked.depositable.length === 0 ? ["The ITEMS pocket of your Bag is empty."] : ["The items of the ITEMS pocket of your Bag (only these go into the PC):", ...asked.depositable.map((item) => `- ${item.name} ×${item.quantity}`)];
+      const stored = asked.pcItems.length === 0 ? ["The PC has no items."] : ["The items in the PC:", ...asked.pcItems.map((item) => `- ${itemText(item)}`)];
+      const bag = asked.depositable.length === 0 ? ["The ITEMS pocket of your Bag is empty."] : ["The items of the ITEMS pocket of your Bag (only these go into the PC):", ...asked.depositable.map((item) => `- ${itemText(item)}`)];
       return [...stored, "", ...bag];
     }
     case "pokemonPc":

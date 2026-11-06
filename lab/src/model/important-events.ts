@@ -1,6 +1,6 @@
 import { mapNamed, personName } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
-import { callTurns, type RunEvent } from "../harness/record";
+import { callTurns, type RunEvent, textsOf } from "../harness/record";
 import type { PartyMon } from "../party";
 
 export function importantEvents(before: Observation | null, now: Observation, events: readonly RunEvent[]): string[] {
@@ -22,10 +22,6 @@ export function importantEvents(before: Observation | null, now: Observation, ev
 function whiteoutFact(before: Observation | null, now: Observation): string {
   const lost = before ? `${before.money - now.money} money` : "some money";
   return `all your Pokémon fainted: you lost ${lost}, your party is healed, and you are back at the last Pokémon Center that you entered, or your home`;
-}
-
-function textsOf(events: readonly RunEvent[]): string[] {
-  return events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
 }
 
 function healed(before: Observation, now: Observation, recent: readonly RunEvent[]): boolean {
