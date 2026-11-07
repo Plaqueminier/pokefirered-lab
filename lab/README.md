@@ -42,6 +42,22 @@ The default models are `deepseek/deepseek-v4.1-flash`, `claude-haiku-5-5`, `gpt-
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, keep the same **Run** (the checkbox "Keep the same Run": an **Extended Run** replaces the file of its **Run record**, with the same name, so the version in the name can be older than the version in the header), and replay a **Run record** (the Select of the top bar).
 
+## Test the learn-move prompt
+
+`bun run learn-lab` asks models again at the learn-move questions of the **Run records**, with the recorded prompt or with a changed prompt. No game runs. The files go to `evals/learn-move/`, which Git ignores.
+
+```
+bun run learn-lab extract
+bun run learn-lab show <moment> [--variants <variant>]
+bun run learn-lab run --models <provider>:<id>[@<reasoning>],... [--variants <variant>,...] [--only <regex>] [--repeats <n>] [--cost-limit <dollars>] [--concurrency <n>]
+bun run learn-lab report [--variants <variant>,...]
+```
+
+- `extract` reads `runs/` and writes each question to `moments.json`, and a table of the moves, the answer and the reason to `moments.md`.
+- A variant is `base`, the recorded prompt, or edits with `+` between them: `two` asks to keep at least 2 damage moves, `types` tells when a move is the only damage move of its type, `refuse` tells in the question that `keep` can refuse the move, `zero` writes power 0 for a move with no damage and power varies for a move with no fixed power, `maxpp` shows the maximum PP in the list, `after` tells the damage moves that each answer leaves, `nohint` removes the last line of the question, and `guide` replaces it with advice.
+- `--only` selects the moments by their id, species and new move. `run` adds each answer to `results.jsonl`. A next `run` does not make a call again when the prompt is the same, so you can add a variant or a model and pay only for the new calls.
+- `report` gives, for each model and variant, the share of answers that keep the moves, leave one damage move, lose the last damage move with the type of the Pokémon, or forget a damage move for a move with no damage while a move with no damage stays. Then it gives the answers at each moment.
+
 ## Make a Race
 
 A **Race** plays many **Run records** on a map of Kanto, in the Race tab of the Viewer. It needs the track and the State track of each record, and a record below format 3 does not have them.

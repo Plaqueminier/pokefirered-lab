@@ -163,6 +163,10 @@ _Avoid_: item
 A sign event of a map: a sign, a poster, a trash can, a statue, a door or an elevator panel. The player reads it with an interaction.
 _Avoid_: sign, for all of them
 
+**Elevator**:
+A map whose exit leads to the floor that the player chose at its panel. The **Atlas** knows one destination of this exit for each floor that the player reached by it or came from. The player chooses the floor; a walk takes the exit only to the floor chosen now.
+_Avoid_: lift
+
 **In your way**:
 What the prompt says of a person or an **Object** whose movement type does not leave its cell and whose cell closes a way, on the cells that the player saw.
 _Avoid_: blocker
