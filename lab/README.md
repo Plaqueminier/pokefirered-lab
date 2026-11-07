@@ -79,4 +79,4 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.
 
-`saves/`, `runs/`, `races/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.
+`saves/`, `runs/`, `races/`, `evals/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.

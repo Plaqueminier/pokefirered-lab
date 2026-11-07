@@ -67,7 +67,7 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level), the exits taken with their destination and arrival cell (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the edges blocked by water, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level), the exits taken with their destination and arrival cell (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
@@ -103,10 +103,10 @@ export function ViewerPage() {
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
         ["Decision line", "the last action of the Bot; a hover shows the answer of the call, with no character."],
-        ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer. In a fight or a menu, it keeps the last map of the Run. Map parts have a tint, except the largest. Inside a building or a cave, both ends of a warp have one color. At a large zoom, each warp on any map shows the short name of its map (switch Exits). The other floors stand next to the floor shown, with no people (switch Floors), and a pointer on a warp shows both ends and its arrival cell."],
+        ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer. In a fight or a menu, it keeps the last map of the Run. When 2 or more Map parts have an exit, each of them has a tint, except the largest. Inside a building or a cave, both ends of a warp have one color. At a large zoom, each warp on any map shows the short name of its map. The switch Exits turns off these colors and names. The other floors stand next to the floor shown, with no people (switch Floors), and a pointer on a warp shows both ends and its arrival cell."],
         [
           "Model",
-          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
+          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the Coach advice in a Run with a Coach, and the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
         ],
         [
           "Stats",
@@ -117,7 +117,7 @@ export function ViewerPage() {
         ["Bag and PC", "the five pockets of the Bag with their items (quantity and description), the items of the PC and the Pokémon of the boxes at the cursor, and the changes of the Bag and the PC with their times; a click on a change goes to it."],
         [
           "Timeline",
-          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
+          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, FLASH used, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
@@ -155,7 +155,7 @@ export function ViewerPage() {
           <DocCard icon={MapIcon} title="Whole map" lines={["the canvas, the Exits and “What can stop you”", "a search of the maps, a card at the pointer", "colors of the warps, map parts; the other floors"]} />
           <DocCard icon={Bot} title="Model" lines={["the Model calls, with the flags of the Unusual calls", "one call in full: answer, result, cost if any, prompt"]} />
           <DocCard icon={ChartColumn} title="Stats" lines={["large numbers for a video: time, cost or tokens, Stuck counter", "chapters, Areas, charts, the counts of the selection"]} />
-          <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with a mark when the model sees them, also with the place claims that the prompts hide", "a click opens a node and its Summary call"]} />
+          <DocCard icon={ListTree} title="Memory tree" lines={["the top nodes at the cursor, with the mark “in the prompt”, also with the place claims that the prompts hide", "a top node with only place claims keeps the mark, but the prompt drops it", "a click opens a node and its Summary call"]} />
           <DocCard icon={Backpack} title="Bag and PC" lines={["the five pockets, the PC and its boxes at the cursor", "the changes, with their times"]} />
           <DocCard icon={Shapes} title="Components tab" lines={["the design system (ADR 0004)", "each component in all its states"]} />
         </div>
@@ -273,7 +273,7 @@ export function RacePage() {
           <DocCard icon={Gauge} title="Time" lines={["play and pause, ×1 to ×200", "a slider of game time"]} />
           <DocCard icon={Camera} title="Camera" lines={["it frames the Ghosts that still play, until a wheel or a drag", "a click on a row follows one Ghost, and a second click ends it", "the button “Frame the Ghosts” gives it back"]} />
           <DocCard icon={DoorOpen} title="Doors" lines={["a count tells how many Ghosts are inside", "a hover shows the interiors, a click opens the building on the map"]} />
-          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, model with no prefix, state, cost or tokens, team and badges of each Run"]} />
+          <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, model with no prefix (and its Coach: `model + coach coach`), state, cost or tokens, team and badges of each Run"]} />
           <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
         </div>

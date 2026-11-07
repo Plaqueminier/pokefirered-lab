@@ -389,6 +389,8 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     The question now shows the species, the maximum PP of the moves, what each answer leaves, the fact that a Pokémon Center gives back all the PP, and the request to keep at least 2 damage moves. It keeps its last sentence: with no last sentence, the answers of Haiku and DeepSeek were worse. Other tests gave no reason to change more. `power 0` in place of `power ---` gave no gain, and no reason read `---` as an unknown value. A sentence in the question that `keep` can refuse the move added 2 good refusals of 54 and 8 refusals of useful moves of 99. A sentence that a move is the only damage move of its type also made the models refuse useful moves. The Thinking level `medium` gave no clear gain at this question, so this question keeps the reasoning level of the Run.
 
+    The command of these tests is `bun run learn-lab` (`lab/README.md`, "Test the learn-move prompt"). It reads the learn-move questions of the Run records, asks the models again with the recorded prompt or with named edits of it, and does not ask a model again when it already answered the same prompt. No game runs. `dae6b0eaa`
+
 ## 31. What is left (2026-11-05)
 
 78. The model bot goes to version 30: the program tells what is left, and a walk continues after a wild battle. The model did not lack the facts. In Run 00062, all 605 walk prompts in Mt. Moon offered a lead or an exit to unseen cells, and the Run ended in the cave with 1,052 Model calls there. In Run 00060, the 1,020 Model calls of Rock Tunnel never reached Lavender Town, and at frame 2,667,545 the prompt listed 11 unseen places on the floor while the model wrote "The RockTunnel loop taught nothing new".
@@ -450,3 +452,22 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - From the Elevator, a `goTo` to another map with no route says "choose another floor at the panel first".
 
     A replay of Run 00060 to its end in `RocketHideout_Elevator` checked it. The exit mat led to `RocketHideout_B2F`, the last floor that the bot chose, and the Atlas had this floor with its arrival (28, 16). `goTo 20 22 RocketHideout_B4F` gave the reason with the floor of now, and `goTo 2 5` took the player to `RocketHideout_B2F` (28, 17) in 190 frames.
+
+## 35. Smaller changes of the Viewer and the Race (2026-11-05)
+
+82. Six changes with no effect on the decisions of the model:
+
+    - An ended live Run keeps its cell of the Grid until a person removes it: the X of its cell, or "Remove N ended" in the bar. It also leaves the Run select, and its Run record stays. The button "Continue" of an ended Run opens the form "Bots" on its Run record, with "Keep the same Run" on, and the bar of the Grid has the form "Bots" too. The screen and the facts of a cell fit the size of the cell, and a wide cell puts the facts next to the screen. `b27cc76d7`
+    - After the events of a long Run, a page had no list of Run records. These events are one message of more than 100 MB. Over the default limit of 16 MB, Bun drops the next messages with no error. The limit of the server is now 1 GiB. `b27cc76d7`
+    - A Run record of an older date holds an alias of the claude command, for example `haiku`. The Race now shows the full id of that alias, the id of step 73. `bcd2085a8`
+    - The eye button of the Race bar hides the numbers, the dots, the crown, the battle and result icons, the gyms, the counts at the doors and the names of the places, so only the Ghosts that walk stay. `bcd2085a8`
+    - After a whiteout, the game warps the player to a Pokémon Center and heals the party. A Race now cuts this warp and this heal from a Run that ends with the whiteout, so its Ghost stays on the cell where it lost. A Run that plays on after a whiteout keeps them. `7920f9f72`
+    - In a Leaderboard row, the state comes after the model, in a fixed column of 128 px, as wide as its longest text "unknown screen". The cost also has a fixed column. So a change of state moves no text. The panel of the Race is 500 px wide, and at most 60% of a narrow window. `637ea8761`, `5f8eb9ddc`
+
+## 36. Truer Game events (2026-11-06 to 11-07)
+
+83. Three reads of the game state were wrong, and Runs showed them. The bot version does not change.
+
+    - In Run 00068, on the S.S. Anne, the party read stopped with "unknown extended control code 0x92". `GetBoxMonData` and `SetBoxMonData` (`pokemon.c`) decrypt the box of a Pokémon in place. When a frame ends before the game encrypts the box again, the read decrypted the plain bytes a second time. It read a false species and false moves, and the decoder stopped on the false description of a move. The read now compares the checksum of the box: when the plain bytes give this checksum, it keeps them. The Game events used the same check, and they skipped such a frame. They now read it, and they still skip a box with a bad checksum. `1d1aa270f`
+    - This better read then stopped the Continued Runs. The replay of Run 00068 gave 7 heals more than its Run record, with the same maps, battles and Milestones, and the Harness refused to start: "the Run record does not replay the same game". Now the replay must give only the maps, the battles and the Milestones of the record. The other Game events come from the replay, as for a record from before format 1, so a Continued Run and an Extended Run keep the better read. ADR 0006 tells the same. `eb18089f6`
+    - Run 00061 had about 30 heals with the source "other" after each SUPER POTION. The item sets the new HP. Then `Task_PartyMenuModifyHP` (`party_menu.c`) sets the HP back to the old HP and adds 1 at each frame, up to the new HP. The watch read each of these frames as a heal with no item. It now keeps the HP of each item heal, and a rise up to this HP with no item is no heal. The start and the end of a battle clear it. So an item heal on a walk gives one heal event. `3a742d8a0`

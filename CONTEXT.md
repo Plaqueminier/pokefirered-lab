@@ -65,7 +65,7 @@ The first **Model call** of a **Run** of a model bot with no Pokémon. It starts
 _Avoid_: persona call, personality turn
 
 **Trainer origin**:
-The country and its language that a **Character turn** picks at random from 31, for example Kenya and Swahili. The names of the trainer and of the rival, and the nicknames, sound like this language, but use only the letters that the game allows. The other answers of the AI model stay in English.
+The country and its language that a **Character turn** picks at random from 31, for example Kenya and Swahili. The nicknames sound like this language, and also the names of the trainer and of the rival when the game has no names yet. They use only the letters that the game allows. The other answers of the AI model stay in English.
 _Avoid_: nationality, language mode
 
 **Normal trainer**:
@@ -113,7 +113,7 @@ The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The 
 _Avoid_: mode (used for overworld or battle), cheat mode
 
 **Atlas**:
-What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell (the exit of an **Elevator** has one destination for each floor that the player reached by it or came from; at the `full` level, for each map with a warp to the **Elevator** that the player can take), the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each **Slide** that the player took with a `goTo`, from its **Spin tile** to the cell where the player stopped, each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way: a removed one returns to the **Atlas** when the player leaves the map. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route, and if each map is dark for the model (see **Dark map**). On a map in the dark, the player sees only the 3 x 3 cells around the player.
+What a **Run** knows of the world: the maps that the player visited, the cells of these maps that the player saw on the screen, each exit that the player took, in one direction or in the other, with its destination and its arrival cell (the exit of an **Elevator** has one destination for each floor that the player reached by it or came from; at the `full` level, for each map with a warp to the **Elevator** that the player can take), the exits that the player saw but did not take (the neighbour cells of a wide exit that lead to the same map are one exit), the kind of place that a player sees for each exit of an outdoor map and for an entrance from inside (a Pokémon Center, a house, a cave entrance; the name of the destination map only after the player took the exit), the text of each **Thing to check** that the player read, each **Slide** that the player took with a `goTo`, from its **Spin tile** to the cell where the player stopped, a number for each **Part** of a map where the player saw a **Spin tile** (the numbers stay the same while the player sees more cells), each person that the player saw, at the cell where the player last saw it on the screen, all the different texts that each person said when the player talked to them, or right after a battle with them, and each **Fixed obstacle** that the player saw. A person keeps its texts when it moves. An edge that the player cannot cross now (water) has its reason in the **Atlas**. The **Atlas** also knows the person of the last talk. At the `player` **Knowledge level**, it grows only with what the player saw in the **Run**; at the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw. The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way. An obstacle that the party can remove does not close a way, so a removed one returns to the **Atlas** when the player leaves the map only if the party cannot remove it now. It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route, and if each map is dark for the model (see **Dark map**). On a map in the dark, the player sees only the 3 x 3 cells around the player.
 _Avoid_: map (one map of the game), Town Map (an item of the game)
 
 **Part**:
@@ -125,7 +125,7 @@ The list that the program gives at a walk on a floor of a cave, a forest or a la
 _Avoid_: todo list, frontier list
 
 **Lead**:
-A target of a walk prompt of a model bot: unseen cells or an exit not taken in another **Part** or another map, by the number of exits and **Slides** to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
+A target of a walk prompt of a model bot: unseen cells, an exit not taken, or a **Spin tile** whose **Slide** has an unknown end, in another **Part** or another map, by the number of exits and **Slides** to it. A walk through exits stops at an outdoor map, except the map of the player. It is not the **Known world**, which tells the outdoor maps.
 _Avoid_: frontier (the unseen cells of the **Part** of the player), hint
 
 **Thin wall**:
@@ -140,7 +140,7 @@ _Avoid_: arrow tile, spinner, ledge (a ledge is a jump of one cell)
 A cell that ends the **Slide** of a **Spin tile**. Its metatile behaviour is `MB_STOP_SPINNING`.
 
 **Slide**:
-The forced walk of the player from a **Spin tile** to the cell where it stops. It goes from one **Part** to another **Part** of the same map, in one direction only. Before the player takes it, the code can tell its end from the cells that the player saw, or it cannot when the way crosses an unseen cell. After the player takes it, the **Atlas** keeps its real end.
+The forced walk of the player from a **Spin tile** to the cell where it stops. It goes from one **Part** to another **Part** of the same map, in one direction only. Before the player takes it, the code can tell its end from the cells that the player saw, or it cannot when the way crosses an unseen cell. After the player takes it with a `goTo`, the **Atlas** keeps its real end.
 _Avoid_: spin, glide, push
 
 **Known world**:
@@ -148,7 +148,7 @@ A part of each walk prompt of a model bot: one line for each outdoor map of the 
 _Avoid_: world map, overview, Town Map (an item of the game)
 
 **Dark map**:
-A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again at the next entry. At the `player` **Knowledge level**, a **Dark map** is dark for the model when it is not lit and the party cannot use FLASH.
+A map where the player sees only a small area around the player until a Pokémon uses FLASH. The two floors of Rock Tunnel are the only **Dark maps** of the game. FLASH lights the two floors until the player goes outside or all the party faints. A lit map stays a **Dark map**, and it is dark again when the player enters it from outside. At the `player` **Knowledge level**, a **Dark map** is dark for the model when it is not lit and the party cannot use FLASH.
 _Avoid_: cave (Mt. Moon is a cave but it is not dark, and the game code gives the name `cave` to this property of a map)
 
 **Field move**:
