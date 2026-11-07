@@ -12,7 +12,7 @@ import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
-import { withoutFormat } from "./game-events";
+import { isStateEvent, withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type Leg, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
@@ -21,7 +21,6 @@ import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
   ButtonTrack,
   GameWatch,
-  hasStateEvents,
   isGameEvent,
   type ModelAnswer,
   type ModelEvent,
@@ -771,10 +770,9 @@ export class Harness {
       this.advance(player.next());
     }
     actionsEnded();
-    const current = hasStateEvents(record);
-    const watched = current ? this.#events : withoutFormat(this.#events);
-    if (!Bun.deepEquals(watched, record.events.filter(isGameEvent))) throw new Error("the Run record does not replay the same game: its Game events are different");
-    this.#events.splice(0, this.#events.length, ...(current ? record.events : withStateEvents(record.events, this.#events)));
+    // The maps, the battles and the Milestones tell that it is the same game. The state events come from the replay: a better read of the game can change them (run 68: a party read that skipped frames lost 7 heals).
+    if (!Bun.deepEquals(withoutFormat(this.#events), withoutFormat(record.events.filter(isGameEvent)))) throw new Error("the Run record does not replay the same game: its maps, battles or Milestones are different");
+    this.#events.splice(0, this.#events.length, ...withStateEvents(record.events.filter((event) => !isStateEvent(event)), this.#events));
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 

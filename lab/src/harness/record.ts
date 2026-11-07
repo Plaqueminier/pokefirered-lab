@@ -91,7 +91,7 @@ function withTrainer(event: RunEvent, trainers: ReadonlyMap<number, boolean>): R
   return trainer === undefined ? event : { ...event, trainer };
 }
 
-// A record from before format 1 gets the Game events of the whole Run: a Continued Run and the migration use this.
+// Puts the state events of a replay into events with none: for a record from before format 1 (the migration), and for a Continued Run, which reads them again.
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
   const trainers = new Map(replayed.flatMap((event) => (event.type === "battle" && event.state === "start" && event.trainer !== undefined ? [[event.frame, event.trainer]] : [])));

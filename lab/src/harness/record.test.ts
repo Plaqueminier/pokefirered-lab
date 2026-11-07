@@ -252,6 +252,22 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(await readdir(dir)).toHaveLength(4);
   });
 
+  test("a continued Run takes the state events of the replay, as a better read of the game gives them; it refuses a parent with other maps, battles or Milestones", async () => {
+    const { harness } = await playStarter();
+    const record = harness.record();
+    const heals = record.events.filter((e) => e.type === "heal");
+    expect(heals.length).toBeGreaterThan(0);
+    const oldRead: RunRecord = { ...record, events: record.events.filter((e) => e.type !== "heal") };
+    const continued = await Harness.open({ parent: { name: "old-read.json", record: oldRead } });
+    await continued.play({ name: "idle", version: "1", play: async () => {} });
+    expect(continued.record().events).toEqual(record.events);
+    continued.close();
+    for (const lost of ["map", "battle", "milestone"]) {
+      const other: RunRecord = { ...record, events: record.events.filter((e) => e.type !== lost) };
+      await expect(Harness.open({ parent: { name: "other.json", record: other } })).rejects.toThrow("the Run record does not replay the same game");
+    }
+  });
+
   test("the Run record has the State track: the team and its health at each change, and the battle from its start; a replay gives the same list", async () => {
     const { harness } = await playStarter();
     const record = harness.record();

@@ -219,7 +219,7 @@ A change in the game that the **Harness** reads from the game state and writes i
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
-A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** boots with the names of the parent, replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
+A **Run** that starts at the end of a stopped **Run**, its parent: the **Harness** boots with the names of the parent, replays the buttons of the parent **Run record** and keeps its events, so the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. The replay must give the maps, the battles and the **Milestones** of the parent, or the **Harness** refuses to start; the other **Game events** come from the replay, so a better read of the game replaces those of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
 _Avoid_: resumed run, restart, savestate
 
 **Extended Run**:
