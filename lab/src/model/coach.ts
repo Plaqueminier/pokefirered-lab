@@ -1,5 +1,5 @@
 import { type Coach, callTurns, isDecision, type ModelSettings, type RunEvent } from "../harness/record";
-import { ADVICE_ORDER, ADVICE_PARTS, adviceEntries, type CoachAdvice, callKind } from "../protocol";
+import { ADVICE_ORDER, ADVICE_PARTS, addAdvice, type CoachAdvice, callKind } from "../protocol";
 import { type Asked, readFields } from "./decision";
 import type { JsonSchema } from "./openrouter";
 import type { TurnKind } from "./prompt";
@@ -60,16 +60,14 @@ export function readAdvice(content: string): CoachAdvice {
 /** The last text of each part, with the turn that wrote it and the number of decisions after it. */
 export function adviceLine(events: readonly RunEvent[]): string[] {
   const turns = callTurns(events);
-  const latest = new Map<string, { text: string; at: number }>();
-  turns.forEach((turn, at) => {
-    for (const { label, text } of adviceEntries(turn.call?.decision?.advice)) latest.set(label, { text, at });
-  });
+  const latest = new Map<string, { text: string; from: number }>();
+  turns.forEach((turn, at) => addAdvice(latest, turn.call?.decision?.advice, at));
   if (latest.size === 0) return [];
   const lines = ADVICE_ORDER.flatMap((label) => {
     const part = latest.get(label);
-    const call = part && turns[part.at].call;
+    const call = part && turns[part.from].call;
     if (!part || !call) return [];
-    const after = turns.slice(part.at + 1).filter(isDecision).length;
+    const after = turns.slice(part.from + 1).filter(isDecision).length;
     return [`- ${label} (${callKind(call) ?? "coach"} turn, ${after} decision${after === 1 ? "" : "s"} ago): ${part.text}`];
   });
   return ["Coach advice, the last one of your Coach for each part:", ...lines];

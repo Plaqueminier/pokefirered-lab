@@ -441,8 +441,10 @@ describe("the Coach advice", () => {
     ]);
   });
 
-  test("the one advice of a Run record before bot version 34 shows as one part", () => {
-    expect(adviceLine([...decided(advised("Heal first.")), ...decided(call("go A"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Advice (reflection turn, 1 decision ago): Heal first."]);
+  test("the one advice of a Run record before bot version 34 shows as one part, until the first advice in parts of an Extended Run", () => {
+    const old = decided(advised("Heal first."));
+    expect(adviceLine([...old, ...decided(call("go A"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Advice (reflection turn, 1 decision ago): Heal first."]);
+    expect(adviceLine([...old, ...decided(advised({ team: "Catch a PIDGEY." }, "review"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Team (review turn, 0 decisions ago): Catch a PIDGEY."]);
   });
 
   test("a zoom or a viewAtlas after the advice is no decision", () => {

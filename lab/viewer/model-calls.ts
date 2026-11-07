@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
 import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import { ADVICE_ORDER, adviceEntries, callKind, modelEvents, type ShownRun } from "../src/protocol";
+import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -174,7 +174,7 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
   const advice = new Map<string, { text: string; from: number }>();
   return rows.map(({ call, played }, index) => {
     const { decision } = call;
-    for (const { label, text } of adviceEntries(decision?.advice)) advice.set(label, { text, from: index });
+    addAdvice(advice, decision?.advice, index);
     const before = calls.slice(Math.max(0, index - REPEATS + 1), index);
     const missionChanged = !!decision && !!last && decision.mission !== last.mission;
     const objectiveChanged = !!decision && !!last && decision.objective !== last.objective;

@@ -321,6 +321,12 @@ export function adviceEntries(advice: string | CoachAdvice | undefined): { label
   return ADVICE_PARTS.flatMap((part) => (advice?.[part] ? [{ label: ADVICE_LABELS[part], text: advice[part] }] : []));
 }
 
+/** Adds an advice to the advice in force: each part replaces its last text. The first advice in parts of an Extended Run ends the one advice of its older part. */
+export function addAdvice(inForce: Map<string, { text: string; from: number }>, advice: string | CoachAdvice | undefined, from: number): void {
+  if (advice !== undefined && typeof advice !== "string") inForce.delete("Advice");
+  for (const { label, text } of adviceEntries(advice)) inForce.set(label, { text, from });
+}
+
 export function callKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
   return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
 }
