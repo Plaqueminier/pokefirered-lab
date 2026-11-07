@@ -1,6 +1,7 @@
 import { isDecisionPoint } from "../src/game";
 import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
+import { spinDirection } from "../src/harness/slides";
 import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
 import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, withAdvice } from "../src/model/coach";
@@ -40,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "31",
+    version: "32",
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -75,12 +76,17 @@ function walksInTheDark(target: Target, overworld: Overworld): target is Target 
 
 export function canWalkAgain(action: PlayedAction, { view, overworld }: Pick<WalkAsked, "view" | "overworld">, currentMap: string | undefined): boolean {
   const onPromptMap = currentMap === overworld.map.name;
-  if (action.name === "goTo") return action.map !== undefined || onPromptMap;
+  if (action.name === "goTo") return (action.map !== undefined || onPromptMap) && !isSpinGoTo(action, overworld);
   if (action.name !== "go") return false;
   const target = view.targets[action.target];
   if (target.kind === "lead" || target.kind === "map") return true;
   // walkOn starts with a walk back to its first cell, so each battle in the dark would lose the cells past it.
   return onPromptMap && !walksInTheDark(target, overworld);
+}
+
+// After a battle, a goTo to a spin tile would walk back and slide again from the cell where the slide stopped.
+function isSpinGoTo({ x, y, map }: Cell & { map?: string }, { grid, map: here }: Overworld): boolean {
+  return (map ?? here.name) === here.name && spinDirection(grid, { x, y }) !== null;
 }
 
 type BrokenWalk = { action: PlayedAction; asked: WalkAsked; map: string | undefined; fainted: number };

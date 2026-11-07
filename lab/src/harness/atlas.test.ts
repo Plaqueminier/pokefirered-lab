@@ -246,3 +246,27 @@ describe("the arrival of an exit", () => {
     expect(mapNamed(atlas, "B").warps).toMatchObject([{ to: null, arrival: null }]);
   });
 });
+
+describe("the slides that the player took", () => {
+  test("a goTo that slid keeps the slide, from its spin tile to the cell where the player stopped, also after a later goTo", () => {
+    const room = { ...grid("Hideout", 0, []), width: 4, mapWidth: 4, kinds: "→..." };
+    const game = {
+      mode: () => "overworld",
+      battleUnderway: () => false,
+      player: () => ({ x: 3, y: 0, facing: "east" }),
+      map: () => room,
+      gridOf: () => room,
+      usableFieldMoves: () => new Set(),
+      actorsOf: () => ({ people: [], obstacles: [] }),
+      obstaclesOf: () => [],
+      mapView: () => ({ grid: room, actors: { people: [], obstacles: [] } }),
+    };
+    const watch = new AtlasWatch(game as unknown as Game, "player");
+    watch.onFrame();
+    watch.onAction({ action: { name: "goTo", x: 0, y: 0 }, result: { status: "done", slidTo: { x: 3, y: 0 }, frames: 40 } });
+    watch.onAction({ action: { name: "goTo", x: 2, y: 0 }, result: { status: "done", frames: 8 } });
+    const hideout = mapNamed(watch.atlas(), "Hideout");
+    expect(hideout.slides).toEqual([{ from: { x: 0, y: 0 }, to: { x: 3, y: 0 } }]);
+    expect(hideout.parts).toEqual([0, 1, 1, 1]);
+  });
+});

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { MapGrid } from "../game";
-import { type AtlasMap, atlasWarps } from "../harness/atlas";
+import { type AtlasMap, atlasCells, atlasWarps } from "../harness/atlas";
+import { walkable } from "../harness/path";
+import { hasSpinTiles, numberParts } from "../harness/slides";
 import type { Person } from "../harness/harness";
 import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, knownWorld, MAX_FAR_MAPS, OTHER_MAPS_BUDGET } from "./extract";
 import type { Overworld } from "./targets";
@@ -22,6 +24,8 @@ const LAB: AtlasMap = {
   obstacles: [],
   entry: { x: 2, y: 2 },
   stepExits: [],
+  slides: [],
+  parts: [],
 };
 
 function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 }, people: Person[] = []): Overworld {
@@ -67,6 +71,8 @@ function chain(routes: number): AtlasMap[] {
     obstacles: [],
     entry: { x: 5, y: 5 },
     stepExits: [],
+    slides: [],
+    parts: [],
   }));
 }
 
@@ -467,6 +473,8 @@ describe("the extract of the Atlas", () => {
       obstacles: [],
       entry: { x: 6, y: 2 },
       stepExits: [],
+      slides: [],
+      parts: [],
     };
     const upstairs: AtlasMap = { ...house, name: "House_2F", cells: "#".repeat(48), warps: [{ x: 1, y: 1, behavior: "MB_DOWN_LEFT_STAIR_WARP", place: null, to: "House", arrival: null }], signs: [], people: [] };
     const view = atlasExtract(overworld(house, [upstairs], { x: 3, y: 1 }, [{ localId: 1, x: 5, y: 3, graphics: "MOM", loaded: true, stays: false }]));
@@ -636,5 +644,64 @@ describe("the extract of the Atlas", () => {
       "- Route1: edges: south to Town. Passages: door at (5, 4), to Route1_Gate, a passage through Route1_Gate_2F to Forest. 1 group of open cells next to unseen cells.",
       "- Forest: edges: none seen. Passages: door at (1, 4), to Route1_Gate_2F, a passage through Route1_Gate to Route1. 1 group of open cells next to unseen cells.",
     ]);
+  });
+});
+
+describe("a map with spin tiles", () => {
+  const maze = (cells: string[], more: Partial<AtlasMap> = {}): AtlasMap => {
+    const view = atlasCells({ cells: cells.join(""), width: 8, height: 4 });
+    return {
+      ...LAB,
+      name: "Hideout",
+      width: 8,
+      height: 4,
+      cells: cells.join(""),
+      warps: [{ x: 6, y: 3, behavior: "MB_UP_RIGHT_STAIR_WARP", place: null, to: null, arrival: null }],
+      entry: { x: 1, y: 1 },
+      parts: hasSpinTiles(cells.join("")) ? numberParts(view, (c) => walkable(view, c), []) : [],
+      ...more,
+    };
+  };
+  const ROWS = ["########", "#..→...#", "#..#...#", "####...#"];
+  const after = (lines: string[], first: string) => lines.slice(lines.indexOf(first));
+
+  test("the grid shows the spin tiles, the legend and the rule tell what they do, and the Parts tell where each slide ends", () => {
+    const { lines } = atlasExtract(overworld(maze(ROWS), []));
+    expect(lines).toContain("y= 2  #@.#...#");
+    expect(lines).toContain("y= 1  #..→...#");
+    expect(lines.find((line) => line.startsWith("Legend:"))).toContain("↑ ↓ ← → a spin tile");
+    expect(lines).toContain(
+      "Spin tiles: when you step on a spin tile, you slide in the direction of its arrow and you cannot stop. Another spin tile on the way changes your direction to its arrow. You stop on a stop tile (o), or on the last cell before a blocked cell or a person. A stop tile that you walk on, with no slide, is normal floor.",
+    );
+    expect(after(lines, "Parts of this map: the cells of a part connect on foot, with no spin tile, and slides link the parts. The numbers of the parts stay the same on this map.").slice(1, 5)).toEqual([
+      "Part 1 (you): 4 cells, x 1-2, y 1-2.",
+      "  - spin tile → at (3, 1): slides to (6, 1), in Part 2",
+      "Part 2: 9 cells, x 4-6, y 1-3.",
+      "  - no slide to another part",
+    ]);
+    expect(lines).toContain("B. stairs at (6, 3), in Part 2, 1 exit or slide away: not taken");
+  });
+
+  test("a slide that the player took and a Part where the player was have their marks", () => {
+    const { lines } = atlasExtract(overworld(maze(ROWS, { slides: [{ from: { x: 3, y: 1 }, to: { x: 6, y: 1 } }] }), []));
+    expect(lines).toContain("  - spin tile → at (3, 1): slides to (6, 1), in Part 2, taken");
+    expect(lines).toContain("Part 2 (visited): 9 cells, x 4-6, y 1-3.");
+  });
+
+  test("a slide through a cell that the player did not see has no known end", () => {
+    const { lines } = atlasExtract(overworld(maze(["########", "#..→.??#", "#..#.??#", "####.??#"], { warps: [] }), []));
+    expect(lines).toContain("  - spin tile → at (3, 1): its way goes through a cell that you did not see, so its end is unknown");
+    expect(lines.some((line) => line.startsWith("You saw all the cells"))).toBe(false);
+  });
+
+  test("a slide that stops on a spin tile says it, and leads to no Part", () => {
+    const { lines } = atlasExtract(overworld(maze(["########", "#..→↑..#", "#..#...#", "####...#"], { warps: [] }), []));
+    expect(lines).toContain("  - spin tile → at (3, 1): slides to (4, 1), a spin tile where you stop");
+    expect(lines.some((line) => line.startsWith("Part 2"))).toBe(false);
+  });
+
+  test("a map with no spin tile has no Parts block", () => {
+    const { lines } = atlasExtract(overworld(maze(["########", "#.....##", "#.....##", "########"], { warps: [] }), []));
+    expect(lines.some((line) => line.startsWith("Parts of this map"))).toBe(false);
   });
 });

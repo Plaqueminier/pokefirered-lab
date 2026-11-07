@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, OPPOSITE, WALL } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, OPPOSITE, STOP, WALL } from "../cells";
 import type { MapGrid, Obstacle, WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
@@ -22,7 +22,7 @@ export type MapSource = (name: string) => RouteMap | null;
 
 export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight">;
 
-const WALKABLE = new Set<string>([KIND.open, KIND.grass, ...Object.values(WALL)]);
+const WALKABLE = new Set<string>([KIND.open, KIND.grass, STOP, ...Object.values(WALL)]);
 const WARP_COST = 4;
 // Measured: one use of CUT takes 545 frames, and one step 16 frames.
 const REMOVE_COST = 34;

@@ -418,3 +418,23 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The character turn picks one of 31 countries, each with its language: 22 outside Europe and the United States, and the United States for English. The country is a fixed line of the request, not a part of the idea that the model can change. The names and the nicknames sound like that language, with only the letters that the game allows, and the other answers stay in English.
 
     No Run played this version when this change was made. The first checks are Haiku with a Sonnet or Opus Coach against Haiku alone: does the pair leave Mt. Moon, and does it have fewer whiteouts?
+
+## 33. The spin tiles of the Rocket Hideout (2026-11-06)
+
+80. The model bot goes to version 32: the model sees the spin tiles, and `goTo` can slide. In Run 00060, the bot came to the Rocket Hideout after Rock Tunnel. Its floors have arrows: a step on one slides the player until a stop tile or a wall. The grid showed each arrow as an open cell `.`, and the route of `goTo` went over them. So the model did not know why its walks ended at another cell, and it could not plan a way.
+
+    Before the change, a test gave a copy of the B2F floor to `deepseek/deepseek-v4.1-flash`, the model of Run 00060, with 3 problems and 5 tries for each prompt. With the arrows in the grid only, it reached 0 of 15 goals. A list of the slides gave 0 of 15, and the Parts with their slides 7 of 15. The Parts with the reason of a failed `goTo` gave 10 of 15. The same prompt with numbers that stay the same on the map, and the marks "taken" and "visited", gave 12 of 15 in 10 decisions. A line that gave the chain of slides to the goal gave 15 of 15, but it solves the maze for the model, so the program never gives it.
+
+    The changes:
+
+    - The grid shows a spin tile as `→ ← ↑ ↓` and a stop tile as `o`, and a rule line under the legend tells how a slide works (TryUpdatePlayerSpinDirection and DoForcedMovement in `field_player_avatar.c`).
+    - A route never steps on a spin tile. A `goTo` to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide. Its result tells "you stepped on the spin tile and slid to (x, y)".
+    - On a map with spin tiles, the extract lists the Parts that the slides reach from the Part of the player. The Atlas keeps the number of each Part while the player sees more cells: a new Part takes the next number, and two Parts that join keep the lower one. Each spin tile next to a Part shows the end of its slide and its Part, from the seen cells, or "unknown" when the way goes through a cell that the player did not see. The targets and the leads in another Part give its number and the exits or slides to it.
+    - The Atlas keeps each slide that the player took, with the real end, and the extract marks it "taken". A Part where the player was is "visited". A slide with an unknown end is a lead, and What is left counts it.
+    - A `goTo` to a cell of another Part fails with "(x, y) is in Part N, and you are in Part M: no way on foot. Only a slide leaves Part M: goTo one of its spin tiles".
+    - The Viewer draws the spin tiles and the stop tiles.
+
+    A replay of Run 00060 to its end on `RocketHideout_B2F` checked it. `goTo 12 13` slid to (10, 15) and `goTo 11 12` to (13, 10), the ends that the prompt predicted, and `goTo 1 4` gave the reason with the two Parts. The first try stopped on the spin tile: the game starts the slide one frame after the step on the tile, and in that frame it waits for a walk. The Harness now waits until the player stops moving.
+
+    A slide after a `press` is not in the Atlas: only `goTo` gives the end of a slide.
+

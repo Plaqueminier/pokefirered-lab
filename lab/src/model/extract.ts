@@ -1,10 +1,11 @@
-import { type Direction, KIND, LEDGE, WALL } from "../cells";
+import { type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "../cells";
 import type { FieldMove, Obstacle } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, atlasCells, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
 import { type Cell, cellKey, kindAt, type MapCells } from "../harness/path";
+import type { Slide } from "../harness/slides";
 import { obstacleRemedy } from "../protocol";
-import { atlasCells, explorableCells, type LeftPlace, Parts, unseenGroups } from "./parts";
-import { away, EXITS_GROUP, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
+import { explorableCells, type LeftPlace, type Part, Parts, unknownSlides, unseenGroups } from "./parts";
+import { away, EXITS_GROUP, type Hops, hopsOf, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
 export const MAX_FAR_MAPS = 8;
@@ -19,6 +20,10 @@ const FIELD_MOVES: Record<FieldMove, { hm: string; sign: string; legend: string 
   STRENGTH: { hm: "HM04", sign: "b", legend: "a boulder that STRENGTH pushes" },
   SURF: { hm: "HM03", sign: "w", legend: "water" },
 };
+const SPIN_SIGNS = Object.values(SPIN);
+const SPIN_RULE =
+  "Spin tiles: when you step on a spin tile, you slide in the direction of its arrow and you cannot stop. Another spin tile on the way changes your direction to its arrow. You stop on a stop tile (o), or on the last cell before a blocked cell or a person. A stop tile that you walk on, with no slide, is normal floor.";
+const PARTS_TITLE = "Parts of this map: the cells of a part connect on foot, with no spin tile, and slides link the parts. The numbers of the parts stay the same on this map.";
 const LEGEND: [signs: string, text: string][] = [
   [KIND.blocked, `${KIND.blocked} blocked`],
   [KIND.open, `${KIND.open} open`],
@@ -30,6 +35,8 @@ const LEGEND: [signs: string, text: string][] = [
   [LETTERS, "letters the targets"],
   ...Object.entries(WALL).map(([side, sign]): [string, string] => [sign, `${sign} an open cell with a thin wall on its ${side} side: you cannot step across that side`]),
   ...Object.values(FIELD_MOVES).map(({ sign, legend }): [string, string] => [sign, `${sign} ${legend}`]),
+  [SPIN_SIGNS.join(""), `${SPIN_SIGNS.join(" ")} a spin tile`],
+  [STOP, `${STOP} a stop tile`],
   [LONG_MARK, `${LONG_MARK} a target after Z`],
 ];
 const OWN_PART_SEEN = "You saw all the cells that you can reach from here on this map. Other parts of it can have unseen cells: to go on, take an exit or a lead.";
@@ -37,7 +44,7 @@ const MAP_SEEN = "You saw all the cells of this map.";
 const LEFT_TITLE = "What is left (from the game, not from your notes: if your Memory tree disagrees, this list is right):";
 const NOTHING_LEFT = "- Nothing that a way that you saw reaches: to go on, take an exit to another map.";
 
-export type AtlasView = { lines: string[]; targets: Target[]; left: string[] };
+export type AtlasView = { lines: string[]; targets: Target[]; left: string[]; spinTiles: boolean };
 
 type MapDistance = { map: AtlasMap; distance: number };
 
@@ -66,10 +73,10 @@ export function moveObstacleHere(move: string, overworld: Overworld): boolean {
 export function atlasExtract(overworld: Overworld): AtlasView {
   const { atlas, hasMove } = readableWorld(overworld);
   const here = mapNamed(atlas, overworld.map.name);
-  const parts = new Parts(atlas, here, overworld.grid, overworld.player);
+  const parts = new Parts(atlas, here, overworld.grid, overworld.player, overworld.people.filter((p) => p.stays));
   const inWay = peopleInTheWay(overworld, here, parts);
   const near = [...leadTargets(parts, inWay), ...localTargets(overworld, here, parts, inWay)];
-  const view = [...drawnView(overworld, here, hasMove, near), ...seenLines(here, near), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
+  const view = [...drawnView(overworld, here, hasMove, near), ...seenLines(here, near, parts), ...partLines(parts), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
   const outside = outsideLine(atlas, here, near);
   let neighbours: string[] = [];
   let targets = near;
@@ -84,22 +91,22 @@ export function atlasExtract(overworld: Overworld): AtlasView {
     ({ neighbours, targets } = before);
     break;
   }
-  return { lines: lines(), targets, left: leftLines(overworld, here, parts, near) };
+  return { lines: lines(), targets, left: leftLines(overworld, here, parts, near), spinTiles: parts.hasSlides };
 }
 
 function leftLines({ player }: Overworld, here: AtlasMap, parts: Parts, targets: Target[]): string[] {
   if (!isInnerMap(here)) return [];
-  const lines = parts.left().flatMap((place) => leftLine(place, here, place.ownPart ? nearestUnseen(targets, player) : null));
+  const lines = parts.left().flatMap((place) => leftLine(place, here, place.ownPart ? nearestUnseen(targets, player) : null, hopsOf(parts)));
   return [LEFT_TITLE, ...(lines.length > 0 ? lines : [NOTHING_LEFT])];
 }
 
-function leftLine({ map, away: exits, ownPart, unseen, notTaken }: LeftPlace, here: AtlasMap, nearest: string | null): string[] {
+function leftLine({ map, away: exits, ownPart, unseen, notTaken }: LeftPlace, here: AtlasMap, nearest: string | null, hops: Hops): string[] {
   const facts = [
     ...(unseen > 0 ? [`${counted(unseen, "unseen place", "unseen places")}${nearest ? `, the nearest ${nearest}` : ""}`] : []),
     ...(notTaken > 0 ? [counted(notTaken, "exit not taken", "exits not taken")] : []),
   ];
   if (facts.length === 0) return [];
-  const distance = exits === Number.POSITIVE_INFINITY ? "no seen way yet" : away(exits);
+  const distance = exits === Number.POSITIVE_INFINITY ? "no seen way yet" : away(exits, hops);
   const where = ownPart ? "your part" : `${map.name === here.name ? "other parts, " : ""}${distance}`;
   return [`- ${map.name}, ${where}: ${facts.join(", ")}.`];
 }
@@ -122,7 +129,32 @@ function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove
   marks.set(cellKey(player), PLAYER_SIGN);
   const sign = cellSigns(here, grid, hasMove);
   const rows = cellRows(here, (c) => marks.get(cellKey(c)) ?? sign(c));
-  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows), ...gridLines(here, rows)];
+  const rule = here.parts.length > 0 ? [SPIN_RULE] : [];
+  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows), ...rule, ...gridLines(here, rows)];
+}
+
+function partLines(parts: Parts): string[] {
+  if (!parts.hasSlides) return [];
+  const slideLine = ({ from, direction, to, onSpin, taken }: Slide) => {
+    const tile = `  - spin tile ${SPIN[direction]} at (${from.x}, ${from.y})`;
+    if (!to) return `${tile}: its way goes through a cell that you did not see, so its end is unknown`;
+    const part = parts.partName(to);
+    const where = onSpin ? ", a spin tile where you stop" : part ? `, in ${part}` : "";
+    return `${tile}: slides to (${to.x}, ${to.y})${where}${taken ? ", taken" : ""}`;
+  };
+  const partBlock = ({ part, number }: { part: Part; number: number }) => {
+    const tags = part === parts.own ? " (you)" : parts.visited(part) ? " (visited)" : "";
+    const xs = part.cells.map((c) => c.x);
+    const ys = part.cells.map((c) => c.y);
+    const box = `x ${Math.min(...xs)}-${Math.max(...xs)}, y ${Math.min(...ys)}-${Math.max(...ys)}`;
+    const slides = part.slides.length === 0 ? ["  - no slide to another part"] : part.slides.map(slideLine);
+    return [`Part ${number}${tags}: ${part.cells.length} cells, ${box}.`, ...slides];
+  };
+  const numbered = parts.slideParts().flatMap((part) => {
+    const number = parts.numberOf(part.from);
+    return number === null ? [] : [{ part, number }];
+  });
+  return ["", PARTS_TITLE, ...numbered.toSorted((a, b) => a.number - b.number).flatMap(partBlock)];
 }
 
 function cellSigns(map: AtlasMap, view: MapCells, hasMove: HasMove): (c: Cell) => string {
@@ -142,8 +174,8 @@ function legendOf(rows: string[]): string {
   return `Legend: ${LEGEND.flatMap(([signs, text]) => ([...signs].some((sign) => drawn.has(sign)) ? [text] : [])).join("; ")}.`;
 }
 
-function seenLines(here: AtlasMap, targets: Target[]): string[] {
-  if (targets.some((t) => t.kind === "frontier")) return [];
+function seenLines(here: AtlasMap, targets: Target[], parts: Parts): string[] {
+  if (targets.some((t) => t.kind === "frontier") || unknownSlides(parts.own).length > 0) return [];
   return [here.cells.includes(UNSEEN) ? OWN_PART_SEEN : MAP_SEEN];
 }
 

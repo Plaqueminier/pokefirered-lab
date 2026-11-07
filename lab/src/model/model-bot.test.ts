@@ -251,7 +251,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "31", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "32", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {

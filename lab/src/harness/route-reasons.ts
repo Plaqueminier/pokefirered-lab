@@ -1,7 +1,8 @@
 import { KIND } from "../cells";
 import type { FieldMove } from "../game";
-import { type Atlas, blockedText, cellAt, personName, seenIn, WATER_RULE } from "./atlas";
-import { type BlockOf, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
+import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, personName, seenIn, WATER_RULE } from "./atlas";
+import { allCells, type BlockOf, type Cell, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
+import { partAt, partNear, slidesLeaving } from "./slides";
 
 export function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, blockOf: BlockOf): string | null {
   if (!map || inside(map, cell)) return null;
@@ -24,6 +25,8 @@ export function noRouteReason(here: Place, destination: Destination, asked: Plac
   if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${WATER_RULE}`;
   if (kind === KIND.blocked) return `(${asked.x}, ${asked.y}) is a blocked cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
   if (map?.dark) return `no way to ${at(asked)} on the cells that you saw: on a dark map, you walk only on these`;
+  const parts = map && here.map === asked.map ? noFootWayReason(map, here, asked) : null;
+  if (parts) return parts;
   return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
 }
 
@@ -35,4 +38,14 @@ export function stayingReason(person: RoutePerson & Place, { maps: known }: Atla
 
 export function at(place: Place): string {
   return `${place.map} (${place.x}, ${place.y})`;
+}
+
+export function noFootWayReason(map: AtlasMap, here: Cell, asked: Cell): string | null {
+  const own = partNear(map, here);
+  const to = partNear(map, asked);
+  if (!own || !to || own === to) return null;
+  const view = atlasCells(map);
+  const cells = allCells(view).filter((c) => partAt(map, c) === own);
+  const leaves = slidesLeaving(view, cells, seenIn(map), map.slides, () => false).length > 0;
+  return leaves ? `(${asked.x}, ${asked.y}) is in Part ${to}, and you are in Part ${own}: no way on foot. Only a slide leaves Part ${own}: goTo one of its spin tiles` : null;
 }

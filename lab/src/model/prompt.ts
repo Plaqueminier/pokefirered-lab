@@ -94,7 +94,7 @@ At each decision, you get your Milestones, the next Milestone (the next big step
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
-At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map that you cannot remove yet (a cut tree, a rock or a boulder) with the move that removes each one, when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it. A line under the map tells when you saw all the cells that you can reach from where you are: other parts of the map can still have unseen cells, so take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. The leads are what you did not explore in other parts and maps: unseen cells and exits not taken. On a floor of a cave, a forest or a large building, the list What is left counts, from the game, the unseen places and the exits not taken in your part, in the other parts and on the floors that the exits reach. Trust it more than your notes. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
+At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map that you cannot remove yet (a cut tree, a rock or a boulder) with the move that removes each one, when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it on foot; a slide can go through it. A line under the map tells when you saw all the cells that you can reach from where you are: other parts of the map can still have unseen cells, so take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. On a map with spin tiles, the extract also gives the parts of the map, the slides that leave each part and where each slide ends, and a target in another part shows its part and the number of exits or slides to it. The leads are what you did not explore in other parts and maps: unseen cells, exits not taken, and slides whose end you did not see. On a floor of a cave, a forest or a large building, the list What is left counts, from the game, the unseen places and the exits not taken in your part, in the other parts and on the floors that the exits reach. Trust it more than your notes. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
 
 In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
 
@@ -375,8 +375,13 @@ function loopWarning(answers: AnsweredTurn[]): string[] {
     : [];
 }
 
+function statusText(result: Try["result"]): string {
+  if (result.status !== "done") return `${result.status} (${result.reason})`;
+  return result.slidTo ? `done, you stepped on the spin tile and slid to (${result.slidTo.x}, ${result.slidTo.y})` : "done";
+}
+
 function outcome({ result, texts }: Try): string {
-  const status = result.status === "done" ? (texts.length > 0 ? "" : "done") : `${result.status}${"reason" in result ? ` (${result.reason})` : ""}`;
+  const status = result.status === "done" && !result.slidTo && texts.length > 0 ? "" : statusText(result);
   const text = [status, texts.map((t) => `"${t}"`).join(" ")].filter(Boolean).join(", ");
   return text.length > MAX_OUTCOME ? `${text.slice(0, MAX_OUTCOME - 1)}…` : text;
 }
@@ -387,9 +392,8 @@ function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
   switch (event.type) {
     case "action": {
       const { action, result } = event;
-      const reason = "reason" in result ? ` (${result.reason})` : "";
       const texts = "text" in result ? result.text.map((text) => `  "${text}"`) : [];
-      const lines = [`${actionText(action)}: ${result.status}${reason}, ${result.frames} frames`, ...texts];
+      const lines = [`${actionText(action)}: ${statusText(result)}, ${result.frames} frames`, ...texts];
       if (result.leftWordScreen) lines.push(WORD_SCREEN_LEFT);
       // The Bot reads only at a text or when the game is busy: there, readText is impossible only on an unknown screen.
       return action.name === "readText" && result.status === "impossible" ? [...lines, UNKNOWN_SCREEN] : lines;
@@ -562,6 +566,8 @@ function pcLine(storage: string): string {
   return `This is a PC: the PC with your name has ITEM STORAGE, which keeps your items. ${storage} opens the boxes, which keep your Pokémon.`;
 }
 
+const SLIDE_GOTO = "  On this map, goTo never steps on a spin tile on the way. A goTo to a spin tile next to your part walks next to it, then steps on it, and you slide.";
+
 function actionLines(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk": {
@@ -569,6 +575,7 @@ function actionLines(asked: Asked): string[] {
       return [
         ...(asked.view.targets.length === 0 ? [] : [`- go <letter>: walk to the target, for example go B. At an exit, take it. At a person, an object or something you can check, walk next to it, then interact with it.${darkOfMap(asked.overworld) ? DARK_GO_RULE : ""}`]),
         `- goTo <x> <y>: walk to a cell of this map, x from 0 to ${grid.mapWidth - 1}, y from 0 to ${grid.mapHeight - 1}, or cross an edge of the list of edges. Prefer go: use goTo only for a cell that you read in the grid.`,
+        ...(asked.view.spinTiles ? [SLIDE_GOTO] : []),
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
         ...teachLine(asked),

@@ -1,9 +1,9 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE, SPIN } from "../cells";
 import type { MapGrid } from "../game";
-import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
+import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, atlasCells, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
-import { atlasCells, type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
+import { type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
 
 const ITEM_BALL = "ITEM_BALL";
 const OBJECTS = new Set([ITEM_BALL, "FOSSIL", "OLD_AMBER", "CLIPBOARD", "POKEDEX", "TOWN_MAP", "LAPRAS_DOLL", "METEORITE", "RUBY", "SAPPHIRE", "SNORLAX", "MEWTWO", "ARTICUNO", "ZAPDOS", "MOLTRES", "LUGIA", "HO_OH"]);
@@ -155,7 +155,9 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts,
   const { own } = parts;
   const elsewhere = (cells: Cell[], direction: string) => {
     const exits = parts.exitsTo(cells);
-    return exits === Number.POSITIVE_INFINITY ? `${direction}, no seen way there yet` : `in another part of this map, ${away(exits)}`;
+    const part = cells.map((c) => parts.partName(c)).find((name) => name !== null);
+    if (exits === Number.POSITIVE_INFINITY) return `${direction}${part ? `, in ${part}` : ""}, no seen way there yet`;
+    return `in ${part ?? "another part of this map"}, ${away(exits, hopsOf(parts))}`;
   };
   const where = (cell: Cell, inPart: boolean) => (inPart ? whereFrom(player, cell) : elsewhere([cell], whereFrom(player, cell)));
   const present = new Map(people.map((p) => [p.localId, p]));
@@ -192,17 +194,30 @@ export function nearestUnseen(targets: Target[], player: Overworld["player"]): s
 }
 
 export function leadTargets(parts: Parts, inWay: InTheWay): Target[] {
-  return parts.leads().map((lead) => ({ kind: "lead", map: lead.map.name, cell: lead.cell, label: `${leadLabel(lead, parts.own.map)}${lead.map.name === parts.own.map.name ? pastThe(inWay, lead.cell) : ""}` }));
+  return parts.leads().map((lead) => ({ kind: "lead", map: lead.map.name, cell: lead.cell, label: `${leadLabel(lead, parts)}${lead.map.name === parts.own.map.name ? pastThe(inWay, lead.cell) : ""}` }));
 }
 
-export function away(distance: number): string {
-  return distance === Number.POSITIVE_INFINITY ? "no known route" : `${distance} exit${distance === 1 ? "" : "s"} away`;
+export type Hops = readonly [one: string, many: string];
+
+const EXIT_HOPS: Hops = ["exit", "exits"];
+const SLIDE_HOPS: Hops = ["exit or slide", "exits or slides"];
+
+export function hopsOf(parts: Parts): Hops {
+  return parts.hasSlides ? SLIDE_HOPS : EXIT_HOPS;
 }
 
-function leadLabel(lead: Lead, here: AtlasMap): string {
-  const place = lead.map.name === here.name ? "in another part of this map" : `on ${lead.map.name}`;
-  if (lead.kind === "unseen") return `unseen cells ${lead.direction} of (${lead.cell.x}, ${lead.cell.y}) ${place}, ${away(lead.away)}`;
-  return `${exitAt(lead.warp)} ${place}, ${warpFacts(lead.warp)}, ${away(lead.away)}: go walks next to it`;
+export function away(distance: number, [one, many]: Hops = EXIT_HOPS): string {
+  return distance === Number.POSITIVE_INFINITY ? "no known route" : `${distance} ${distance === 1 ? one : many} away`;
+}
+
+function leadLabel(lead: Lead, parts: Parts): string {
+  const here = parts.own.map;
+  const part = lead.map.name === here.name ? parts.partName(lead.kind === "slide" ? lead.from : lead.cell) : null;
+  const place = lead.map.name !== here.name ? `on ${lead.map.name}` : part ? `in ${part} of this map` : "in another part of this map";
+  const distance = away(lead.away, hopsOf(parts));
+  if (lead.kind === "unseen") return `unseen cells ${lead.direction} of (${lead.cell.x}, ${lead.cell.y}) ${place}, ${distance}`;
+  if (lead.kind === "slide") return `spin tile ${SPIN[lead.direction]} at (${lead.cell.x}, ${lead.cell.y}) ${place}, a slide whose end you did not see, ${distance}`;
+  return `${exitAt(lead.warp)} ${place}, ${warpFacts(lead.warp)}, ${distance}: go walks next to it`;
 }
 
 function exitTarget(w: AtlasWarp, where: string, parts: Parts): LocalTarget {

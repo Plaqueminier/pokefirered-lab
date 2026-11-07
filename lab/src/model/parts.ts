@@ -1,6 +1,7 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, LEDGE, WALL } from "../cells";
-import { type Atlas, type AtlasMap, type AtlasWarp, fitsScreen, seenIn } from "../harness/atlas";
+import { type Atlas, type AtlasMap, type AtlasWarp, atlasCells, fitsScreen, seenIn } from "../harness/atlas";
 import { allCells, type Cell, cellKey, inside, kindAt, type MapCells, walkable, walkGroups, wallBetween } from "../harness/path";
+import { partNear, type Slide, slidesLeaving } from "../harness/slides";
 
 export type Part = {
   map: AtlasMap;
@@ -8,11 +9,12 @@ export type Part = {
   cells: Cell[];
   keys: Set<string>;
   exits: AtlasWarp[];
+  slides: Slide[];
   touches(cell: Cell): boolean;
   view: MapCells;
 };
 
-export type Lead = { map: AtlasMap; away: number; cell: Cell } & ({ kind: "unseen"; direction: Direction } | { kind: "exit"; warp: AtlasWarp });
+export type Lead = { map: AtlasMap; away: number; cell: Cell } & ({ kind: "unseen"; direction: Direction } | { kind: "exit"; warp: AtlasWarp } | { kind: "slide"; direction: Direction; from: Cell });
 
 export type Beyond = "unseen" | "exit" | "nothing";
 
@@ -22,13 +24,17 @@ type PartAway = { part: Part; away: number };
 
 type Step = (warp: AtlasWarp) => Part | null;
 
+type Blocked = (cell: Cell) => boolean;
+
+const NO_ONE: Blocked = () => false;
+
 const MAX_LEADS = 4;
 
 function isStepExit(map: AtlasMap, { x, y }: Cell): boolean {
   return map.stepExits.some((c) => c.x === x && c.y === y);
 }
 
-function partOf(map: AtlasMap, view: MapCells, from: Cell): Part {
+function partOf(map: AtlasMap, view: MapCells, from: Cell, blocked: Blocked): Part {
   const seen = seenIn(map);
   const cells = [{ x: from.x, y: from.y }];
   const keys = new Set([cellKey(from)]);
@@ -48,7 +54,8 @@ function partOf(map: AtlasMap, view: MapCells, from: Cell): Part {
     }
   }
   const touches = (c: Cell) => keys.has(cellKey(c)) || (!walkable(view, c) && Object.values(DIRECTION_STEP).some(([dx, dy]) => keys.has(cellKey({ x: c.x + dx, y: c.y + dy }))));
-  return { map, from, cells, keys, exits: map.warps.filter(touches), touches, view };
+  const slides = slidesLeaving(view, cells, seen, map.slides, blocked);
+  return { map, from, cells, keys, exits: map.warps.filter(touches), slides, touches, view };
 }
 
 function unseenPast(map: AtlasMap, view: MapCells, c: Cell, direction: Direction): Cell | null {
@@ -141,19 +148,16 @@ function leadsOf(part: Part, away: number): Lead[] {
     const cell = part.cells.find((c) => Math.abs(c.x - warp.x) + Math.abs(c.y - warp.y) === 1 && !isStepExit(part.map, c));
     if (cell) leads.push({ kind: "exit", map: part.map, away, cell, warp });
   }
+  for (const { from, direction } of unknownSlides(part)) leads.push({ kind: "slide", map: part.map, away, cell: from, direction, from: part.from });
   return leads;
+}
+
+export function unknownSlides(part: Part): Slide[] {
+  return part.slides.filter((s) => !s.to);
 }
 
 export function explorableCells(map: AtlasMap): Set<string> {
   return new Set(unseenFronts(map).map(({ far }) => cellKey(far)));
-}
-
-export function atlasCells(map: AtlasMap): MapCells {
-  return { kinds: map.cells, x0: 0, y0: 0, width: map.width, mapWidth: map.width, mapHeight: map.height };
-}
-
-function partsAfter(part: Part, step: Step): Part[] {
-  return part.exits.flatMap((warp) => step(warp) ?? []);
 }
 
 function noSeenWayOf(group: PartAway[]): LeftPlace[] {
@@ -164,7 +168,9 @@ function noSeenWayOf(group: PartAway[]): LeftPlace[] {
 
 export class Parts {
   readonly own: Part;
+  readonly hasSlides: boolean;
   readonly #parts = new Map<string, Part>();
+  readonly #blocked: Blocked;
   #reachable: PartAway[] | null = null;
 
   constructor(
@@ -172,17 +178,53 @@ export class Parts {
     here: AtlasMap,
     grid: MapCells,
     player: Cell,
+    people: Cell[],
   ) {
-    this.own = partOf(here, grid, player);
+    const stand = new Set(people.map(cellKey));
+    this.#blocked = (c) => stand.has(cellKey(c));
+    this.own = partOf(here, grid, player, this.#blocked);
+    this.hasSlides = here.parts.length > 0;
+  }
+
+  numberOf(cell: Cell): number | null {
+    return partNear(this.own.map, cell);
+  }
+
+  partName(cell: Cell): string | null {
+    const number = this.numberOf(cell);
+    return number === null ? null : `Part ${number}`;
+  }
+
+  visited(part: Part): boolean {
+    const { entry, slides } = part.map;
+    const stood = [entry, ...slides.map((s) => s.to)].some((c) => c !== null && part.keys.has(cellKey(c)));
+    return stood || part.exits.some((w) => w.to !== null) || part.slides.some((s) => s.taken);
+  }
+
+  slideParts(): Part[] {
+    const noExit: Step = () => null;
+    return [this.own, ...this.partsFrom(this.partsAfter(this.own, noExit), noExit).map(({ part }) => part)];
+  }
+
+  private partsAfterSlides(part: Part): Part[] {
+    return part.slides.flatMap(({ to, onSpin }) => (to && !onSpin ? [this.partAt(part.map, part.view, to)] : []));
+  }
+
+  private partsAfter(part: Part, step: Step): Part[] {
+    return [...part.exits.flatMap((warp) => step(warp) ?? []), ...this.partsAfterSlides(part)];
+  }
+
+  private partAt(map: AtlasMap, view: MapCells, cell: Cell): Part {
+    const key = `${map.name} ${cellKey(cell)}`;
+    const part = this.#parts.get(key) ?? partOf(map, view, cell, map.name === this.own.map.name ? this.#blocked : NO_ONE);
+    this.#parts.set(key, part);
+    return part;
   }
 
   private readonly partAtArrival: Step = ({ to, arrival }) => {
     const map = this.atlas.maps.find((m) => m.name === to);
     if (!map || !arrival) return null;
-    const key = `${map.name} ${cellKey(arrival)}`;
-    const part = this.#parts.get(key) ?? partOf(map, atlasCells(map), arrival);
-    this.#parts.set(key, part);
-    return part;
+    return this.partAt(map, atlasCells(map), arrival);
   };
 
   /** Null for an exit not taken, and for an exit to an outdoor map other than the map of the player: the Known world tells these maps. */
@@ -192,7 +234,7 @@ export class Parts {
   };
 
   private partsBeyond(step: Step): PartAway[] {
-    return this.partsFrom(partsAfter(this.own, step), step);
+    return this.partsFrom(this.partsAfter(this.own, step), step);
   }
 
   private reachable(): PartAway[] {
@@ -204,7 +246,7 @@ export class Parts {
     const next = this.partPast(warp);
     if (!next) return null;
     const leads = this.partsFrom([next], this.partPast).flatMap(({ part, away }) => leadsOf(part, away));
-    if (leads.some((lead) => lead.kind === "unseen")) return "unseen";
+    if (leads.some((lead) => lead.kind !== "exit")) return "unseen";
     return leads.length > 0 ? "exit" : "nothing";
   }
 
@@ -227,7 +269,7 @@ export class Parts {
       map: part.map,
       away,
       ownPart: part === this.own,
-      unseen: fitsScreen(part.map) ? 0 : sum((member) => unseenPlaces(member).length),
+      unseen: (fitsScreen(part.map) ? 0 : sum((member) => unseenPlaces(member).length)) + sum((member) => unknownSlides(member).length),
       notTaken: sum((member) => member.exits.filter((warp) => !warp.to).length),
     };
   }
@@ -244,7 +286,7 @@ export class Parts {
       for (const part of level) {
         if (known(part)) continue;
         found.push({ part, away });
-        next.push(...partsAfter(part, step));
+        next.push(...this.partsAfter(part, step));
       }
       level = next;
     }

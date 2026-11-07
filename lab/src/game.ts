@@ -1,7 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { DIRECTION_STEP, type Direction, KIND, LEDGE, WALL } from "./cells";
+import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "./cells";
 import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag, readTeachables, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   type Battle,
@@ -54,6 +54,9 @@ const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle
 const MB_TALL_GRASS = 0x02;
 const MB_WALL: Record<number, string> = { 0x30: WALL.east, 0x31: WALL.west, 0x32: WALL.north, 0x33: WALL.south };
 const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
+const MB_SPIN: Record<number, string> = { 0x54: SPIN.east, 0x55: SPIN.west, 0x56: SPIN.north, 0x57: SPIN.south };
+const MB_STOP_SPINNING = 0x58;
+const PLAYER_AVATAR_FLAG_FORCED = 1 << 6;
 // From IsWarpMetatileBehavior, TryArrowWarp and TryDoorWarp in field_control_avatar.c.
 const STEP_WARPS = new Set(["MB_CAVE_DOOR", "MB_LADDER", "MB_UP_ESCALATOR", "MB_DOWN_ESCALATOR", "MB_REGULAR_WARP", "MB_UNION_ROOM_WARP", "MB_FALL_WARP", "MB_LAVARIDGE_1F_WARP"]);
 const PUSH_WARPS: Record<string, { direction: Direction; from: "cell" | "below" }> = {
@@ -147,7 +150,7 @@ export type MapGrid = {
   /** Size of the map itself, inside the border. */
   mapWidth: number;
   mapHeight: number;
-  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), . open. */
+  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), ↑ ↓ ← → spin tile, o stop tile, . open. */
   kinds: string;
   outside: boolean;
   cave: boolean;
@@ -387,9 +390,11 @@ export class Game {
   // DoCB1_Overworld (overworld.c) reads the player input only while the field controls are unlocked.
   // ProcessPlayerFieldInput starts a waiting frame script of the map instead of reading the input.
   private canWalk(): boolean {
+    const avatar = this.mem.global("gPlayerAvatar");
     return (
       !this.fieldLocked() &&
-      this.mem.global("gPlayerAvatar").field("tileTransitionState").int() === T_NOT_MOVING &&
+      avatar.field("tileTransitionState").int() === T_NOT_MOVING &&
+      !(avatar.field("flags").int() & PLAYER_AVATAR_FLAG_FORCED) &&
       !this.mem.global("gPaletteFade").field("active").int() &&
       !this.frameScriptWaits()
     );
@@ -946,6 +951,8 @@ export class Game {
         MB_JUMP[behavior] ??
         (block === 0x03ff || block & 0x0c00 ? KIND.blocked
         : MB_WALL[behavior] ? MB_WALL[behavior]
+        : MB_SPIN[behavior] ? MB_SPIN[behavior]
+        : behavior === MB_STOP_SPINNING ? STOP
         : behavior < surfable.length && surfable.at(behavior).int() & 1 ? KIND.water
         : behavior === MB_TALL_GRASS ? KIND.grass
         : KIND.open);

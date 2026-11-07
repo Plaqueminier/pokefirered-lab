@@ -14,9 +14,10 @@ import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, destinationOf, findRoute, headingAlong, type Leg, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
+import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type Leg, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { RunEnd, RunLimits } from "./run-limits";
+import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
   ButtonTrack,
   GameWatch,
@@ -39,6 +40,7 @@ import {
 
 const STEP_FRAME_LIMIT = 60;
 const SETTLE_FRAME_LIMIT = 600;
+const SLIDE_START_FRAMES = 4;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
@@ -85,10 +87,12 @@ export type Interruption = GameInterruption | "map";
 
 type LegResult = "done" | "stuck" | "no move" | "no warp" | Interruption;
 
-export type ActionResult = Outcome & {
+export type ActionResult = Outcome & Slid & {
   frames: number;
   leftWordScreen?: true;
 };
+
+type Slid = { slidTo?: Cell };
 
 export type TextResult = ActionResult & Texts;
 
@@ -473,7 +477,42 @@ export class Harness {
   }
 
   async goTo(x: number, y: number, map?: string): Promise<ActionResult> {
-    return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => this.walkTo({ map: map ?? this.place().map, x, y }, map === undefined));
+    return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
+      const asked = { map: map ?? this.place().map, x, y };
+      const target = this.routeMaps()(asked.map);
+      return target && spinDirection(target, asked) ? this.slideFrom(asked) : this.walkTo(asked, map === undefined);
+    });
+  }
+
+  private slideFrom(tile: Place): Outcome & Slid {
+    const here = this.place();
+    const opened = withOpenTile(this.routeMaps(), tile);
+    const approach = routeOntoSpin(here, tile, opened);
+    if (!approach) return this.noRouteOutcome(here, tile, tile, opened) ?? { status: "blocked", reason: `a person who walks stands on the way to the spin tile at ${at(tile)}` };
+    const walked = this.walkTo(approach.from, false);
+    return walked.status === "done" ? this.slide(approach.direction) : walked;
+  }
+
+  private noRouteOutcome(here: Place, destination: Destination, asked: Place, maps: MapSource): Outcome | null {
+    const why = whyNoRoute(here, destination, maps);
+    if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(), (move) => this.obstacleRemedyNow(move)) };
+    if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas()) };
+    return null;
+  }
+
+  private slide(direction: Direction): Outcome & Slid {
+    const before = this.place();
+    const stepped = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => at(this.place()) !== at(before));
+    if (stepped === "limit") return { status: "impossible", reason: `the player does not step ${direction} from ${at(before)} on the spin tile` };
+    if (stepped !== "done") return { status: "interrupted", reason: stepped };
+    // The game starts the slide one player_step after the step on the tile ends, and the game can wait for a walk in that frame.
+    for (let last = before; at(this.place()) !== at(last); ) {
+      last = this.place();
+      const interruption = this.wait(SLIDE_START_FRAMES) ?? this.settle();
+      if (interruption) return { status: "interrupted", reason: interruption };
+    }
+    const { map, x, y } = this.place();
+    return map === before.map ? { status: "done", slidTo: { x, y } } : { status: "done" };
   }
 
   // One Model call for each step would cost too much on a floor of 48 x 40 cells (#74).
@@ -516,11 +555,8 @@ export class Harness {
       if (reached(destination, here)) return { status: "done" };
       const maps = this.routeMaps();
       const route = findRoute(here, destination, maps);
-      if (!route) {
-        const why = whyNoRoute(here, destination, maps);
-        if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(), (move) => this.obstacleRemedyNow(move)) };
-        if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas()) };
-      }
+      const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
+      if (failed) return failed;
       const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
       switch (result) {
         case "done":

@@ -44,7 +44,7 @@ describe("readAction", () => {
     kind: "walk",
     party: mons,
     overworld,
-    view: { lines: [], left: [], targets: Array.from({ length: targets }, () => edge) },
+    view: { lines: [], left: [], spinTiles: false, targets: Array.from({ length: targets }, () => edge) },
     atlasShown: false,
     items: [],
     bagEmpty,

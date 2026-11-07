@@ -1,5 +1,6 @@
 // Draws a map grid and its actors on a canvas, at any scale. Used by the overlay on
 // the game screen and by the whole-map view.
+import { type Direction, LEDGE, SPIN, STOP } from "../src/cells";
 import type { Camera, ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
 import type { Cell } from "../src/harness/path";
 import { obstacleRemedy } from "../src/protocol";
@@ -14,11 +15,15 @@ export type MapExtras = { mapParts: Uint8Array | null; exits: WarpColor | null }
 type WarpColor = (grid: MapGrid, index: number) => string;
 
 const OVERLAY_FILL = { "#": "rgba(224, 70, 70, 0.45)", "~": "rgba(60, 130, 230, 0.45)", '"': "rgba(80, 200, 110, 0.3)" };
+const DIRECTIONS = Object.keys(SPIN) as Direction[];
 const KIND_FILL: Record<Style, Record<string, string | null>> = {
   overlay: OVERLAY_FILL,
-  map: { "#": "#1c1f25", "~": "#2d6cc0", '"': "#3d8a52", ".": "#4a515c", "^": "#4a515c", v: "#4a515c", "<": "#4a515c", ">": "#4a515c", "-": "#4a515c", _: "#4a515c", "[": "#4a515c", "]": "#4a515c" },
+  map: { "#": "#1c1f25", "~": "#2d6cc0", '"': "#3d8a52", ".": "#4a515c", "^": "#4a515c", v: "#4a515c", "<": "#4a515c", ">": "#4a515c", "-": "#4a515c", _: "#4a515c", "[": "#4a515c", "]": "#4a515c", ...Object.fromEntries([...Object.values(SPIN), STOP].map((sign) => [sign, "#4a515c"])) },
 };
-const LEDGE_ARROW: Record<string, string> = { "^": "↑", v: "↓", "<": "←", ">": "→" };
+const CELL_GLYPH: Record<string, string> = {
+  ...Object.fromEntries(DIRECTIONS.flatMap((d) => [[LEDGE[d], SPIN[d]], [SPIN[d], SPIN[d]]])),
+  [STOP]: STOP,
+};
 const FACING_STEP: Record<number, [number, number]> = { 1: [0, 1], 2: [0, -1], 3: [-1, 0], 4: [1, 0] };
 
 const MAP_PART_TINTS = ["rgba(240, 170, 60, 0.28)", "rgba(190, 110, 230, 0.28)", "rgba(90, 200, 220, 0.28)", "rgba(240, 110, 130, 0.28)", "rgba(170, 210, 80, 0.28)", "rgba(255, 255, 255, 0.16)"];
@@ -68,7 +73,7 @@ export function draw(ctx: CanvasRenderingContext2D, grid: MapGrid, actors: MapAc
         ctx.fillStyle = fill;
         ctx.fillRect(px(x), py(y), c, c);
       }
-      const arrow = LEDGE_ARROW[kind];
+      const arrow = CELL_GLYPH[kind];
       if (arrow && c >= 8) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
         ctx.font = `bold ${Math.round(c * 0.7)}px ui-sans-serif, system-ui`;
@@ -358,7 +363,7 @@ export const MAP_SWATCHES = [
 
 const SIDE_ARROW: Record<ConnectionSide, string> = { north: "↑", south: "↓", west: "←", east: "→", dive: "", emerge: "" };
 const DIRECTION_LABEL: Record<number, string> = { 0: "?", 1: "south", 2: "north", 3: "west", 4: "east" };
-const KIND_LABEL: Record<string, string> = { "#": "blocked", "~": "water (Surf)", '"': "tall grass", ".": "open", "^": "ledge (jump north)", v: "ledge (jump south)", "<": "ledge (jump west)", ">": "ledge (jump east)", "-": "open, thin wall on the north side", _: "open, thin wall on the south side", "[": "open, thin wall on the west side", "]": "open, thin wall on the east side" };
+const KIND_LABEL: Record<string, string> = { "#": "blocked", "~": "water (Surf)", '"': "tall grass", ".": "open", "^": "ledge (jump north)", v: "ledge (jump south)", "<": "ledge (jump west)", ">": "ledge (jump east)", "-": "open, thin wall on the north side", _: "open, thin wall on the south side", "[": "open, thin wall on the west side", "]": "open, thin wall on the east side", ...Object.fromEntries(DIRECTIONS.map((d) => [SPIN[d], `spin tile (slide ${d})`])), [STOP]: "stop tile (ends a slide)" };
 
 export function howLabel(w: Warp): string {
   switch (w.how) {

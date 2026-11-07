@@ -46,7 +46,7 @@ const POTION = { name: "POTION", quantity: 5, description: "It restores the HP o
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
   const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
-  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, obstacles: [], entry: null, stepExits: [] };
+  const map = { name: "Route1", width: 3, height: 3, cells: "...".repeat(3), warps: [], edges: [], hasEdges: false, signs: [], people, obstacles: [], entry: null, stepExits: [], slides: [], parts: [] };
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
@@ -102,12 +102,30 @@ describe("the tries since the last progress", () => {
     expect(tries(progressInText, 4)).toEqual([]);
   });
 
+  test("a goTo to a spin tile tells where the player stopped", () => {
+    const events = [call("goTo 3 1"), played({ name: "goTo", x: 3, y: 1 }, { status: "done", slidTo: { x: 6, y: 1 }, frames: 40 })];
+    expect(tries(events, 0)).toEqual(["- goTo(3, 1) ×1: done, you stepped on the spin tile and slid to (6, 1)"]);
+  });
+
   test(`past ${MAX_TRIES} different tries, it keeps the last ones`, () => {
     const events = Array.from({ length: MAX_TRIES + 5 }, (_, i) => [call(`goTo ${i} 0`), played({ name: "goTo", x: i, y: 0 }, { status: "blocked", reason: "a person", frames: 60 })]).flat();
     const lines = tries(events, 0);
     expect(lines).toHaveLength(MAX_TRIES + 1);
     expect(lines[0]).toBe("- … and 5 other tries before");
     expect(lines.at(-1)).toBe(`- goTo(${MAX_TRIES + 4}, 0) ×1: blocked (a person)`);
+  });
+});
+
+describe("goTo on a map with spin tiles", () => {
+  const SLIDE_LINE = "  On this map, goTo never steps on a spin tile on the way. A goTo to a spin tile next to your part walks next to it, then steps on it, and you slide.";
+
+  test("the action tells how goTo and the spin tiles work, only on a map with spin tiles", () => {
+    const plain = route1(22, []);
+    const cells = "→..".repeat(3);
+    const spin = route1(22, []) as Observation & { mode: "overworld" };
+    const withSpin = { ...spin, grid: { ...spin.grid, kinds: cells }, atlas: { ...spin.atlas, maps: [{ ...spin.atlas.maps[0], cells, parts: [0, 1, 1, 0, 1, 1, 0, 1, 1] }] } } as Observation;
+    expect(userPrompt(withSpin, askedOf(withSpin, false)!, [], NO_TURN)).toContain(SLIDE_LINE);
+    expect(userPrompt(plain, askedOf(plain, false)!, [], NO_TURN)).not.toContain(SLIDE_LINE);
   });
 });
 
