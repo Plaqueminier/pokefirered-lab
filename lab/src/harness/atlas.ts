@@ -15,7 +15,7 @@ const RIVAL_GRAPHICS = "BLUE";
 /** What a player sees of an exit, before it takes the exit. */
 export type ExitPlace = "center" | "mart" | "departmentStore" | "gym" | "house" | "gate" | "cave" | "path" | "harbor" | "building" | "outside";
 
-export type AtlasWarp = { x: number; y: number; behavior: string; place: ExitPlace | null; to: string | null; arrival: Cell | null };
+export type AtlasWarp = { x: number; y: number; behavior: string; place: ExitPlace | null; to: string | null; arrival: Cell | null; elevator?: true };
 
 export type TakenWarp = { to: string; arrival: Cell | null };
 
@@ -102,6 +102,8 @@ type Visit = {
   entry: Cell | null;
   /** The destination of each warp taken, by cellKey. */
   warpsTaken: Map<string, TakenWarp>;
+  /** The arrival cell on each floor of the Elevator exit, by floor. One for the map: all its dynamic warps share the one dynamic warp of the game. */
+  floors: Map<string, Cell | null>;
   edgesTaken: Map<Direction, string>;
   /** The text of each sign read, by cellKey. */
   signTexts: Map<string, string>;
@@ -144,6 +146,7 @@ export class AtlasWatch {
         ...visit,
         seen: visit.seen.slice(),
         warpsTaken: new Map(visit.warpsTaken),
+        floors: new Map(visit.floors),
         edgesTaken: new Map(visit.edgesTaken),
         signTexts: new Map(visit.signTexts),
         slidesTaken: new Map(visit.slidesTaken),
@@ -239,12 +242,16 @@ export class AtlasWatch {
     const lastTalk = this.#lastTalk;
     const closed = this.closedNow();
     if (this.knowledge === "player") return { maps: [...this.#visits.values()].map((visit) => atlasMap(visit, blocked, closed, this.darkOf(visit.grid))), lastTalk };
-    const maps = this.game.allMapNames.flatMap((names, group) =>
-      names.flatMap((name, num) => {
-        const grid = this.grid(name, group, num);
-        return grid ? [atlasMap(fullVisit(grid, this.#visits.get(name), (w) => this.arrivalOf(w)), blocked, closed, undefined)] : [];
-      }),
-    );
+    const grids = this.game.allMapNames.flatMap((names, group) => names.flatMap((name, num) => this.grid(name, group, num) ?? []));
+    const floorsOf = (elevator: string) => {
+      const floors = new Map<string, Cell>();
+      for (const g of grids) for (const w of g.warps) if (w.to === elevator && w.how !== "none" && !floors.has(g.name)) floors.set(g.name, { x: w.x, y: w.y });
+      return floors;
+    };
+    const maps = grids.map((grid) => {
+      const floors = grid.warps.some((w) => w.dynamic) ? floorsOf(grid.name) : new Map<string, Cell>();
+      return atlasMap(fullVisit(grid, this.#visits.get(grid.name), (w) => this.arrivalOf(w), floors), blocked, closed, undefined);
+    });
     return { maps, lastTalk };
   }
 
@@ -336,7 +343,7 @@ export class AtlasWatch {
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Map() };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Map() };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -360,10 +367,12 @@ export class AtlasWatch {
   private crossed(from: Place, to: Place): void {
     const left = this.#visits.get(from.map);
     const arrived = this.#visits.get(to.map);
-    if (left) take(left, from, { to: to.map, arrival: { x: to.x, y: to.y } }, warpOn(left.grid, from) ?? pressWarpFrom(left.grid, from, to.map));
+    const exit = left && (warpOn(left.grid, from) ?? pressWarpFrom(left.grid, from, to.map));
+    if (left) take(left, from, { to: to.map, arrival: { x: to.x, y: to.y } }, exit);
     if (!arrived) return;
     const pair = warpOn(arrived.grid, to);
     if (!pair) take(arrived, to, { to: from.map, arrival: null }, pair);
+    else if (pair.dynamic) take(arrived, to, { to: from.map, arrival: exit ? { x: exit.x, y: exit.y } : null }, pair);
     else if (pair.to === from.map) take(arrived, to, { to: from.map, arrival: this.arrivalOf(pair) }, pair);
   }
 
@@ -396,6 +405,10 @@ function told(talk: Talk, part: string): void {
 }
 
 function take(visit: Visit, cell: Cell, taken: TakenWarp, warp: Warp | undefined): void {
+  if (warp?.dynamic) {
+    visit.floors.set(taken.to, taken.arrival);
+    return;
+  }
   if (warp) {
     visit.warpsTaken.set(cellKey(warp), taken);
     return;
@@ -453,17 +466,22 @@ export function placeFromInside({ behavior, toKind }: Pick<Warp, "behavior" | "t
   return toKind === "outdoor" ? "outside" : "cave";
 }
 
-export function atlasWarps({ warps, outside }: Pick<MapGrid, "warps" | "outside">, taken: ReadonlyMap<string, TakenWarp>, isSeen: (cell: Cell) => boolean): AtlasWarp[] {
+export function atlasWarps({ warps, outside }: Pick<MapGrid, "warps" | "outside">, taken: ReadonlyMap<string, TakenWarp>, isSeen: (cell: Cell) => boolean, floors: ReadonlyMap<string, Cell | null>): AtlasWarp[] {
   return exitCells(warps.filter((w) => w.how !== "none")).flatMap((cells) => {
     const shown = cells.find((w) => taken.has(cellKey(w))) ?? cells.find(isSeen);
     if (!shown) return [];
+    const exit = { x: shown.x, y: shown.y, behavior: shown.behavior, place: outside ? placeFromOutside(shown) : placeFromInside(shown) };
+    if (shown.dynamic) {
+      const known = floors.size === 0 ? [{ to: null, arrival: null }] : [...floors].map(([to, arrival]) => ({ to, arrival }));
+      return known.map((floor) => ({ ...exit, ...floor, elevator: true as const }));
+    }
     const { to = null, arrival = null } = taken.get(cellKey(shown)) ?? {};
-    return [{ x: shown.x, y: shown.y, behavior: shown.behavior, place: outside ? placeFromOutside(shown) : placeFromInside(shown), to, arrival }];
+    return [{ ...exit, to, arrival }];
   });
 }
 
 function seenWarps(visit: Visit): AtlasWarp[] {
-  return atlasWarps(visit.grid, visit.warpsTaken, seenOn(visit));
+  return atlasWarps(visit.grid, visit.warpsTaken, seenOn(visit), visit.floors);
 }
 
 function seenEdges(visit: Visit): Edge[] {
@@ -501,14 +519,13 @@ function atlasMap(visit: Visit, blocked: BlockOf, isClosed: IsClosed, dark: Atla
 }
 
 /** At the full level, the player knows a map as if it saw all its cells and took all its exits. */
-function fullVisit(grid: AtlasGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null): Visit {
+function fullVisit(grid: AtlasGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null, floors: Map<string, Cell>): Visit {
   const full: Visit = {
     grid,
     seen: new Uint8Array(grid.mapWidth * grid.mapHeight).fill(1),
     entry: visit?.entry ?? entryOf(grid),
-    warpsTaken: new Map(
-      grid.warps.map((w) => [cellKey(w), { to: w.to, arrival: arrivalOf(w) }]),
-    ),
+    warpsTaken: new Map(grid.warps.flatMap((w) => (w.dynamic ? [] : [[cellKey(w), { to: w.to, arrival: arrivalOf(w) }]]))),
+    floors,
     edgesTaken: new Map(edgesOf(grid).map((c) => [c.direction, c.map])),
     signTexts: visit?.signTexts ?? new Map(),
     slidesTaken: visit?.slidesTaken ?? new Map(),

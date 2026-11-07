@@ -36,6 +36,7 @@ const REPO_DIR = join(import.meta.dir, "..", "..");
 /** Cells around the visible map: the map grid adds this border on each side. */
 const MAP_OFFSET = 7;
 const NUM_METATILES_IN_PRIMARY = 640;
+const MAP_DYNAMIC = 0x7f;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
 // EndRivalBattle sets it after the first rival battle, won or lost.
@@ -126,11 +127,16 @@ export type PlayerPosition = { x: number; y: number; facing: Direction };
 
 type WarpHow = { how: "step"; from?: { x: number; y: number } } | { how: "press"; from: { x: number; y: number }; direction: Direction } | { how: "none" };
 
-export type WarpExit = { x: number; y: number; to: string; warpId: number } & WarpHow;
+/** `dynamic`: the warp aims at MAP_DYNAMIC, the floor chosen at the panel of an Elevator; "known" when `to` is that floor. */
+export type WarpExit = { x: number; y: number; to: string; warpId: number; dynamic?: "unknown" | "known" } & WarpHow;
 
 export type MapKind = "outdoor" | "underground" | "indoor";
 
 export type Warp = WarpExit & { group: number; num: number; behavior: string; toKind: MapKind };
+
+export function destinationNow(warp: Pick<WarpExit, "to" | "dynamic">): string | null {
+  return warp.dynamic === "unknown" ? null : warp.to;
+}
 
 export type GameInterruption = "trigger" | "trainer" | "script" | "battle";
 
@@ -914,7 +920,27 @@ export class Game {
     const height = vmap.field("Ysize").int();
     const bytes = this.mem.bus.read(vmap.field("map").pointer(), width * height * 2);
     const { group, num } = this.location();
-    return this.buildGrid(group, num, this.mem.global("gMapHeader"), bytes, width, height, MAP_OFFSET);
+    return this.withDynamicDestination(this.buildGrid(group, num, this.mem.global("gMapHeader"), bytes, width, height, MAP_OFFSET));
+  }
+
+  private withDynamicDestination(grid: MapGrid): MapGrid {
+    if (!grid.warps.some((w) => w.dynamic)) return grid;
+    const destination = this.dynamicDestination();
+    return destination ? { ...grid, warps: grid.warps.map((w) => (w.dynamic ? { ...w, ...destination, dynamic: "known" as const } : w)) } : grid;
+  }
+
+  private dynamicDestination(): Pick<Warp, "to" | "group" | "num" | "warpId" | "toKind"> | null {
+    const data = this.saveBlock1.field("dynamicWarp");
+    const group = data.field("mapGroup").int();
+    const num = data.field("mapNum").int();
+    if (!this.mapNames[group]?.[num]) return null;
+    const warps = this.eventList(this.mapHeader(group, num), "warps", "warpCount");
+    const id = data.field("warpId").int();
+    const x = data.field("x").int();
+    const y = data.field("y").int();
+    // setdynamicwarp passes WARP_ID_NONE with the arrival cell; every Elevator floor in the ROM has its warp back on that cell.
+    const warpId = id >= 0 && id < warps.length ? id : warps.findIndex((w) => w.field("x").int() === x && w.field("y").int() === y);
+    return warpId < 0 ? null : { to: this.mapName(group, num), group, num, warpId, toKind: this.mapKind(group, num) };
   }
 
   /** The grid of any map, from ROM: no border, and as the map is before its scripts run. */
@@ -1005,6 +1031,7 @@ export class Game {
         const toGroup = w.field("mapGroup").int();
         const toNum = w.field("mapNum").int();
         const warp = { x, y, to: this.mapName(toGroup, toNum), group: toGroup, num: toNum, warpId: w.field("warpId").int(), behavior, toKind: this.mapKind(toGroup, toNum) };
+        if (toGroup === MAP_DYNAMIC && toNum === MAP_DYNAMIC) return { ...warp, dynamic: "unknown" as const, ...warpHow(x, y, behavior) };
         return { ...warp, ...warpHow(x, y, behavior) };
       }),
       connections,

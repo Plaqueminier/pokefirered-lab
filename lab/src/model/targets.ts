@@ -1,5 +1,5 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE, SPIN } from "../cells";
-import type { MapGrid } from "../game";
+import { destinationNow, type MapGrid } from "../game";
 import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, atlasCells, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
@@ -107,9 +107,16 @@ function placeText({ place }: AtlasWarp): string[] {
   return place ? [PLACE_TEXT[place]] : [];
 }
 
+function withArrival(text: string, arrival: Cell | null): string {
+  return arrival ? `${text} (${arrival.x}, ${arrival.y})` : text;
+}
+
+function beyondText(beyond: Beyond | null): string {
+  return beyond ? `; beyond it: ${BEYOND_TEXT[beyond]}` : "";
+}
+
 function warpFacts(w: AtlasWarp): string {
-  const { to, arrival } = w;
-  return [...placeText(w), arrival ? `${destination(to)} (${arrival.x}, ${arrival.y})` : destination(to)].join(", ");
+  return [...placeText(w), withArrival(destination(w.to), w.arrival)].join(", ");
 }
 
 function edgeName(side: Direction): string {
@@ -126,6 +133,20 @@ export function exitSight(w: AtlasWarp): string {
 
 export function warpLabel(w: AtlasWarp): string {
   return `${exitAt(w)}, ${warpFacts(w)}`;
+}
+
+/** The labels of the exits of a map, with the rows of an Elevator exit as one exit. */
+export function exitLabels(warps: AtlasWarp[]): string[] {
+  const [first, ...more] = warps.filter((w) => w.elevator);
+  const elevator = first ? [`${exitAt(first)}, ${ELEVATOR_TEXT}${floorsKnown([first, ...more]).map((known) => `; ${known}`).join("") || ", not taken"}`] : [];
+  return [...warps.filter((w) => !w.elevator).map(warpLabel), ...elevator];
+}
+
+const ELEVATOR_TEXT = "an Elevator, to the floor chosen at the panel";
+
+function floorsKnown(floors: AtlasWarp[]): string[] {
+  const known = floors.flatMap((w) => (w.to ? [withArrival(w.to, w.arrival)] : []));
+  return known.length > 0 ? [`floors known: ${known.join(", ")}`] : [];
 }
 
 export function edgeLabel(e: AtlasEdge, map: string): string {
@@ -173,8 +194,15 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts,
     const closes = inWay.has(cellKey(p));
     return { ...located(p, own.touches(p) || counter, (w) => personTarget(p, w, { behindCounter: counter, unbeatenTrainer: present.get(p.localId)?.unbeatenTrainer === true, object: objectText(p, here), inWay: closes })), inWay: closes };
   };
+  const elevator = (floors: AtlasWarp[]): Located[] => {
+    const [first] = floors;
+    if (!first) return [];
+    const live = grid.warps.find((w) => w.dynamic);
+    return [located(first, own.touches(first), (place) => elevatorTarget(first, floors, live ? destinationNow(live) : null, place, parts))];
+  };
   const targets = [
-    ...here.warps.map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
+    ...here.warps.filter((w) => !w.elevator).map((w) => located(w, own.touches(w), (place) => exitTarget(w, place, parts))),
+    ...elevator(here.warps.filter((w) => w.elevator)),
     ...here.edges.filter((e) => !e.blocked).map(edge),
     ...unseenPlaces(own).map(({ direction, cell }) => located(cell, true, (place): LocalTarget => ({ kind: "frontier", label: `unseen cells ${direction} of (${cell.x}, ${cell.y}), ${place}${pastThe(inWay, cell)}`, cell, direction }))),
     ...here.people.filter((p) => present.has(p.localId) && seen(p)).map(person),
@@ -222,7 +250,14 @@ function leadLabel(lead: Lead, parts: Parts): string {
 
 function exitTarget(w: AtlasWarp, where: string, parts: Parts): LocalTarget {
   const beyond = parts.beyond(w);
-  return { kind: "exit", name: exitName(w.behavior), label: `${exitAt(w)}, ${where}: ${warpFacts(w)}${w.to ? ", taken" : ""}${beyond ? `; beyond it: ${BEYOND_TEXT[beyond]}` : ""}`, cell: { x: w.x, y: w.y }, to: w.to, warp: w };
+  return { kind: "exit", name: exitName(w.behavior), label: `${exitAt(w)}, ${where}: ${warpFacts(w)}${w.to ? ", taken" : ""}${beyondText(beyond)}`, cell: { x: w.x, y: w.y }, to: w.to, warp: w };
+}
+
+function elevatorTarget(first: AtlasWarp, floors: AtlasWarp[], now: string | null, where: string, parts: Parts): LocalTarget {
+  const facts = [...(now ? [`now ${now}`] : []), ...floorsKnown(floors)].join("; ");
+  const current = floors.find((w) => w.to !== null && w.to === now);
+  const label = `${exitAt(first)}, ${where}: ${ELEVATOR_TEXT}, ${facts || "not taken"}${beyondText(current ? parts.beyond(current) : null)}`;
+  return { kind: "exit", name: exitName(first.behavior), label, cell: { x: first.x, y: first.y }, to: now, warp: current ?? { ...first, to: now, arrival: null } };
 }
 
 function edgeTarget(e: AtlasEdge, where: string): LocalTarget {

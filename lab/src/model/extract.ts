@@ -5,7 +5,7 @@ import { type Cell, cellKey, kindAt, type MapCells } from "../harness/path";
 import type { Slide } from "../harness/slides";
 import { obstacleRemedy } from "../protocol";
 import { explorableCells, type LeftPlace, type Part, Parts, unknownSlides, unseenGroups } from "./parts";
-import { away, EXITS_GROUP, type Hops, hopsOf, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
+import { away, EXITS_GROUP, type Hops, hopsOf, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, exitLabels, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
 export const OTHER_MAPS_BUDGET = 1500;
 export const MAX_FAR_MAPS = 8;
@@ -221,7 +221,7 @@ function neighbourLines(map: AtlasMap, targets: Target[], parts: Parts): string[
   targets.forEach((t, i) => {
     if (!isExit(t) || t.to !== map.name) return;
     const part = t.kind === "exit" ? parts.partPast(t.warp) : null;
-    const exits = part?.exits.length ? `From there you can walk to: ${part.exits.map(warpLabel).join("; ")}.` : all;
+    const exits = part?.exits.length ? `From there you can walk to: ${exitLabels(part.exits).join("; ")}.` : all;
     const line = lines.get(exits) ?? { by: [], exits };
     lines.set(exits, { ...line, by: [...line.by, `${targetLetter(i)} (${t.name})`] });
   });
@@ -272,7 +272,7 @@ function gridLines(map: AtlasMap, rows: string[]): string[] {
 }
 
 function exitsText(map: AtlasMap): string {
-  return [...map.warps.map(warpLabel), ...map.edges.map((e) => edgeLabel(e, map.name))].join("; ") || "none";
+  return [...exitLabels(map.warps), ...map.edges.map((e) => edgeLabel(e, map.name))].join("; ") || "none";
 }
 
 function signsText(map: AtlasMap): string {

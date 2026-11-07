@@ -438,3 +438,15 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     A slide after a `press` is not in the Atlas: only `goTo` gives the end of a slide.
 
+## 34. The Elevator of the Rocket Hideout (2026-11-07)
+
+81. The model bot goes to version 33: the exit of an Elevator leads to the floor chosen at its panel. In Run 00060, the bot had the LIFT KEY and chose floors at the panel, but it never left `RocketHideout_Elevator`: 159 Decision points with no progress, and `go` to the exit mat 61 times. The exit mat at (2, 5) aims at MAP_DYNAMIC: the game sends the player to its dynamic warp, which `setdynamicwarp` writes at each choice of a floor. The Harness read MAP_DYNAMIC as a map with no name, so the route had no arrival, `goTo` stopped on the mat, and the prompt said "not taken".
+
+    The changes:
+
+    - The grid of the player's map reads the dynamic warp of the game: the exit of an Elevator leads to the floor chosen now. Each floor has its warp to the Elevator on the cell that `setdynamicwarp` gives.
+    - The Atlas keeps one destination of the exit for each floor that the player reached by it or came from. At the `full` level, the floors are the maps with a warp to the Elevator that the player can take. A new floor is a new exit, so it is progress.
+    - The prompt shows the exit of an Elevator as one target: "an Elevator, to the floor chosen at the panel, now B2F; floors known: …". It is also one exit in the lines of the other maps, and a lead never goes through it. The model chooses the floor at the panel; the program does not.
+    - From the Elevator, a `goTo` to another map with no route says "choose another floor at the panel first".
+
+    A replay of Run 00060 to its end in `RocketHideout_Elevator` checked it. The exit mat led to `RocketHideout_B2F`, the last floor that the bot chose, and the Atlas had this floor with its arrival (28, 16). `goTo 20 22 RocketHideout_B4F` gave the reason with the floor of now, and `goTo 2 5` took the player to `RocketHideout_B2F` (28, 17) in 190 frames.

@@ -81,10 +81,10 @@ describe("the exits of the Atlas", () => {
   const seen = () => true;
 
   test("the neighbour cells of a wide exit are one exit, and a walk through one cell takes the whole exit; other maps and far cells stay other exits", () => {
-    expect(atlasWarps({ warps: [cell(4), cell(5), cell(6)], outside: false }, new Map(), seen)).toEqual([{ x: 4, y: 9, behavior: "MB_CAVE_DOOR", place: null, to: null, arrival: null }]);
-    expect(atlasWarps({ warps: [cell(4), cell(5), cell(6)], outside: false }, new Map([["5,9", { to: "Gate", arrival: { x: 3, y: 3 } }]]), seen)).toEqual([{ x: 5, y: 9, behavior: "MB_CAVE_DOOR", place: null, to: "Gate", arrival: { x: 3, y: 3 } }]);
-    expect(atlasWarps({ warps: [cell(4, "Gate"), cell(5, "House")], outside: false }, new Map(), seen)).toHaveLength(2);
-    expect(atlasWarps({ warps: [cell(4), cell(8)], outside: false }, new Map(), seen)).toHaveLength(2);
+    expect(atlasWarps({ warps: [cell(4), cell(5), cell(6)], outside: false }, new Map(), seen, new Map())).toEqual([{ x: 4, y: 9, behavior: "MB_CAVE_DOOR", place: null, to: null, arrival: null }]);
+    expect(atlasWarps({ warps: [cell(4), cell(5), cell(6)], outside: false }, new Map([["5,9", { to: "Gate", arrival: { x: 3, y: 3 } }]]), seen, new Map())).toEqual([{ x: 5, y: 9, behavior: "MB_CAVE_DOOR", place: null, to: "Gate", arrival: { x: 3, y: 3 } }]);
+    expect(atlasWarps({ warps: [cell(4, "Gate"), cell(5, "House")], outside: false }, new Map(), seen, new Map())).toHaveLength(2);
+    expect(atlasWarps({ warps: [cell(4), cell(8)], outside: false }, new Map(), seen, new Map())).toHaveLength(2);
   });
 });
 
@@ -414,6 +414,32 @@ describe("what the prompt tells of the exits and of the unseen cells", () => {
     const inside: AtlasMap = { ...LAB, name: "Town_PokemonCenter_1F", width: 3, height: 1, cells: "...", warps: [], stepExits: [] };
     const taken = { ...center, to: inside.name, arrival: { x: 1, y: 0 } };
     expect(atlasExtract(overworld(town([taken], open), [inside], { x: 8, y: 1 })).lines).toContain("A. door at (8, 0), adjacent north, you face it: a Pokémon Center, to Town_PokemonCenter_1F (1, 0), taken; beyond it: nothing new");
+  });
+
+  test("the exit of an Elevator is one target: the floor chosen at the panel now, and the floors known", () => {
+    const floor = (to: string | null, arrival: { x: number; y: number } | null) => ({ x: 2, y: 3, behavior: "MB_SOUTH_ARROW_WARP", place: null, to, arrival, elevator: true as const });
+    const elevator: AtlasMap = { ...LAB, name: "Elevator", warps: [floor("B1F", { x: 24, y: 25 }), floor("B2F", { x: 28, y: 16 })] };
+    const live = (to: string, dynamic: "known" | "unknown", map = elevator) => {
+      const view = overworld(map, []);
+      return { ...view, grid: { ...view.grid, warps: [{ x: 2, y: 3, to, group: 1, num: 1, warpId: 0, dynamic, behavior: "MB_SOUTH_ARROW_WARP", toKind: "indoor", how: "press", from: { x: 2, y: 3 }, direction: "south" }] } } as Overworld;
+    };
+    const exits = (view: ReturnType<typeof atlasExtract>) => view.targets.filter((t) => t.kind === "exit").map((t) => t.label);
+    expect(exits(atlasExtract(live("B2F", "known")))).toEqual(["exit mat at (2, 3), 1 south, 1 east: an Elevator, to the floor chosen at the panel, now B2F; floors known: B1F (24, 25), B2F (28, 16)"]);
+    expect(exits(atlasExtract(live("B4F", "known")))).toEqual(["exit mat at (2, 3), 1 south, 1 east: an Elevator, to the floor chosen at the panel, now B4F; floors known: B1F (24, 25), B2F (28, 16)"]);
+    const unknown = { ...elevator, warps: [floor(null, null)] };
+    expect(exits(atlasExtract(live("127.127", "unknown", unknown)))).toEqual(["exit mat at (2, 3), 1 south, 1 east: an Elevator, to the floor chosen at the panel, not taken"]);
+  });
+
+  test("a lead never goes through an Elevator, and its floors are one exit in the lines of the other maps", () => {
+    const door = (x: number, y: number, to: string, arrival: { x: number; y: number }) => ({ x, y, behavior: "MB_WARP_DOOR", place: null, to, arrival });
+    const floor = (to: string, arrival: { x: number; y: number }) => ({ x: 1, y: 1, behavior: "MB_SOUTH_ARROW_WARP", place: null, to, arrival, elevator: true as const });
+    const here: AtlasMap = { ...LAB, name: "B2F", cells: "#####" + "#...#" + "#...#" + "##.##", warps: [door(2, 3, "Elevator", { x: 1, y: 0 })] };
+    const elevator: AtlasMap = { ...LAB, name: "Elevator", width: 3, height: 2, cells: "......", warps: [floor("B2F", { x: 2, y: 3 }), floor("B4F", { x: 2, y: 9 })], entry: { x: 1, y: 0 } };
+    const row = (inner: string) => `#${inner}#`;
+    const b4f: AtlasMap = { ...LAB, name: "B4F", width: 16, height: 11, cells: "#".repeat(16) + row(".".repeat(14)).repeat(4) + row(`${".".repeat(13)}?`) + row(".".repeat(14)).repeat(4) + "##.#############", warps: [door(2, 10, "Elevator", { x: 1, y: 0 })], entry: { x: 2, y: 9 } };
+    const view = atlasExtract(overworld(here, [elevator, b4f]));
+    expect(view.targets.filter((t) => t.kind === "lead")).toEqual([]);
+    expect(view.lines).toContainEqual(expect.stringContaining("exit mat at (1, 1), an Elevator, to the floor chosen at the panel; floors known: B2F (2, 3), B4F (2, 9)"));
   });
 
   test("each kind of cell of an exit has its own word", () => {
