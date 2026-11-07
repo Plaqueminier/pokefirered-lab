@@ -689,7 +689,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     expect(harness.observe().party.map((m) => m.nickname)).not.toContain("Bird");
   });
 
-  test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon, and the game refuses it at full HP each time", async () => {
+  test("on a walk, use lists only the items that work outside a battle; use POTION heals a hurt Pokémon with one heal event, and the game refuses it at full HP each time", async () => {
     const harness = await Harness.open({ startSave: TEST_BAG });
     expect(harness.availableActions()).toContainEqual({ name: "use", item: "POTION" });
     expect(harness.availableActions()).not.toContainEqual({ name: "use", item: "POKé BALL" });
@@ -709,8 +709,11 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
       await (hurt.waitingFor().kind === "battleAction" ? hurt.run() : hurt.readText());
     }
     const { hp, maxHp } = hurt.observe().party[0];
+    const healsBefore = hurt.events.filter((e) => e.type === "heal").length;
     const result = await hurt.use("POTION", 0);
     expect(result).toMatchObject({ status: "done", text: [`SQUIRTLE's HP was restored by ${Math.min(20, maxHp - hp)} point(s).`] });
+    expect(maxHp - hp).toBeGreaterThan(1);
+    expect(hurt.events.filter((e) => e.type === "heal").slice(healsBefore).map(({ frame, ...heal }) => heal)).toEqual([{ type: "heal", source: "item", item: "POTION", party: [{ species: "SQUIRTLE", before: hp, after: Math.min(maxHp, hp + 20), maxHp }] }]);
     expect(hurt.observe()).toMatchObject({ waitingFor: { kind: "walk" }, party: [{ hp: Math.min(maxHp, hp + 20) }], bag: [{ items: [{ name: "POTION", quantity: 4 }] }, expect.anything()] });
     expect(hurt.rawInputs).toBe(0);
   });
