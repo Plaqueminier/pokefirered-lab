@@ -10,7 +10,7 @@ import { type BoxMon, isDamageMove, isHmMove, type PartyMon, type PartyMove, sta
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
-import { COACH_RULE } from "./coach";
+import { COACH_DUTY, COACH_INTRO, COACH_RULE } from "./coach";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
 import { darkOfMap, fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
@@ -82,10 +82,12 @@ function characterLine(events: readonly RunEvent[]): string[] {
   return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.`];
 }
 
-export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean): string {
-  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...(coach ? [COACH_RULE] : [])].join("\n");
+export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
+  const coachLine = role === "coach" ? [COACH_DUTY] : coach ? [COACH_RULE] : [];
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...coachLine].join("\n");
+  const intro = role === "coach" ? COACH_INTRO : "You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.";
   const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
-  return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
+  return `${intro}
 
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}

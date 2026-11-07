@@ -8,7 +8,8 @@ import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
 import { type Asked, askedOf, readAction } from "./decision";
 import { importantEvents } from "./important-events";
-import { adviceLine, coachRole } from "./coach";
+import { adviceLine, coachRole, MAX_ADVICE_PART, readAdvice, withAdvice } from "./coach";
+import type { CoachAdvice } from "../protocol";
 import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
@@ -421,29 +422,47 @@ describe("the REPEL facts", () => {
 });
 
 describe("the Coach advice", () => {
-  const advised = (advice: string, turn: "character" | "reflection" | "review" = "reflection"): ModelEvent => {
+  const advised = (advice: CoachAdvice | string, turn: "character" | "reflection" | "review" = "reflection"): ModelEvent => {
     const event = call("go A");
     return { ...event, [turn]: true, decision: { ...event.decision!, advice } } as ModelEvent;
   };
 
   const decided = (event: ModelEvent): RunEvent[] => [event, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
 
-  test("each prompt shows the last advice and the number of decisions after it, and a turn with no advice keeps it", () => {
+  test("each prompt shows the last advice of each part, in the order of the parts, and the number of decisions after it; a turn with no text for a part keeps the last one", () => {
     expect(adviceLine(decided(call("go A")))).toEqual([]);
-    expect(adviceLine([...decided(advised("Catch a second Pokémon.")), ...decided(call("go A")), ...decided(call("go B"))])).toEqual(["Coach advice (reflection turn, 2 decisions ago): Catch a second Pokémon."]);
-    expect(adviceLine([...decided(advised("Old.")), ...decided(advised("New.", "review"))])).toEqual(["Coach advice (review turn, 0 decisions ago): New."]);
-    expect(adviceLine([...decided(advised("Kept.", "character")), ...decided(advised("", "review")), ...decided(call("go A"))])).toEqual(["Coach advice (character turn, 2 decisions ago): Kept."]);
+    const first = advised({ team: "Catch a PIDGEY on Route 1.", battles: "Use WATER GUN on Geodude." }, "character");
+    const second = advised({ progress: "Go north to Pewter.", team: "Train the PIDGEY to level 10." }, "review");
+    expect(adviceLine([...decided(first), ...decided(call("go A")), ...decided(second), ...decided(call("go B"))])).toEqual([
+      "Coach advice, the last one of your Coach for each part:",
+      "- Team (review turn, 1 decision ago): Train the PIDGEY to level 10.",
+      "- Progress (review turn, 1 decision ago): Go north to Pewter.",
+      "- Battles (character turn, 3 decisions ago): Use WATER GUN on Geodude.",
+    ]);
+  });
+
+  test("the one advice of a Run record before bot version 34 shows as one part", () => {
+    expect(adviceLine([...decided(advised("Heal first.")), ...decided(call("go A"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Advice (reflection turn, 1 decision ago): Heal first."]);
   });
 
   test("a zoom or a viewAtlas after the advice is no decision", () => {
-    expect(adviceLine([...decided(advised("Heal first.")), call("zoom 1-2"), call("viewAtlas"), ...decided(call("go A"))])).toEqual(["Coach advice (reflection turn, 1 decision ago): Heal first."]);
+    expect(adviceLine([...decided(advised({ shopping: "Buy 5 POTIONS." })), call("zoom 1-2"), call("viewAtlas"), ...decided(call("go A"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Shopping (reflection turn, 1 decision ago): Buy 5 POTIONS."]);
+  });
+
+  test("the Coach writes the 4 parts, and the program keeps a part with text, cut at its limit", () => {
+    const long = "x".repeat(MAX_ADVICE_PART + 20);
+    expect(readAdvice(JSON.stringify({ advice: { team: " Catch a PIDGEY. ", shopping: "", progress: long, battles: "" } }))).toEqual({ team: "Catch a PIDGEY.", progress: "x".repeat(MAX_ADVICE_PART) });
+    expect(readAdvice(JSON.stringify({ advice: "one text" }))).toEqual({});
+    const schema = withAdvice({ type: "object", properties: {}, required: [] });
+    expect(schema.required).toContain("advice");
+    expect(schema.properties).toMatchObject({ advice: { type: "object", required: ["team", "shopping", "progress", "battles"], additionalProperties: false } });
   });
 
   test("the advice shows in every prompt of a Run with a Coach, and in none of a Run with no Coach", () => {
     const walk = route1(22, []);
     const learning = { ...walk, party: [{ ...walk.party[0], moves: [move("TACKLE", "NORMAL", 35, 35, 35, "")] }], waitingFor: { kind: "learnMove", slot: 0, move: move("BITE", "DARK", 60, 25, 25, "") } } as Observation;
-    const events = decided(advised("Heal first."));
-    for (const shown of [walk, learning]) expect(userPrompt(shown, askedOf(shown, false)!, events, { ...NO_TURN, advice: adviceLine(events) })).toContain("Coach advice (reflection turn, 0 decisions ago): Heal first.\nDecision points since");
+    const events = decided(advised({ team: "Catch a PIDGEY." }));
+    for (const shown of [walk, learning]) expect(userPrompt(shown, askedOf(shown, false)!, events, { ...NO_TURN, advice: adviceLine(events) })).toContain("- Team (reflection turn, 0 decisions ago): Catch a PIDGEY.\nDecision points since");
     expect(userPrompt(walk, askedOf(walk, false)!, events, NO_TURN)).not.toContain("Coach advice");
   });
 
@@ -455,9 +474,15 @@ describe("the Coach advice", () => {
     expect(coachRole(false, "review", walk)).toEqual({ plays: false, advises: false });
   });
 
-  test("the rules name the Coach only in a Run with a Coach", () => {
-    expect(systemPrompt({ ...SYSTEM, coach: { id: "big" } }, true)).toContain("A Coach, a bigger model, plays the character, reflection and review turns");
+  test("the rules name the Coach only in a Run with a Coach, and the Coach gets its own rules", () => {
+    const player = systemPrompt({ ...SYSTEM, coach: { id: "big" } }, true);
+    expect(player).toStartWith("You play Pokémon FireRed.");
+    expect(player).toContain("A Coach, a bigger model, plays the character, reflection and review turns");
     expect(systemPrompt(SYSTEM, true)).not.toContain("A Coach, a bigger model");
+    const coach = systemPrompt({ ...SYSTEM, coach: { id: "big" } }, true, "coach");
+    expect(coach).toStartWith("You are the Coach of a smaller model that plays Pokémon FireRed.");
+    expect(coach).not.toContain("A Coach, a bigger model");
+    expect(coach).toContain("it rarely catches a Pokémon");
   });
 });
 

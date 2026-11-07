@@ -37,7 +37,7 @@ import type { ActionEvent, ModelEvent } from "../src/harness/record";
 import { shownCharacter } from "../src/model/character";
 import { actionText } from "../src/protocol";
 import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText, useKeepInView } from "./components";
-import { type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
+import { adviceTerm, type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
 import { milliDollars, seconds } from "./runs";
 import { clock, stuckTone } from "./stats-format";
@@ -207,7 +207,7 @@ function Goals({ row }: { row: UnusualCall }) {
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
-    ...(decision.advice ? [{ term: "Coach advice", text: decision.advice, changed: false }] : []),
+    ...row.advice.map(({ label, text, from }) => ({ term: adviceTerm(label), text: from === row.index ? text : `${text} (call ${from + 1})`, changed: false })),
     ...(removed ? [{ term: "Removed", text: removed.map(({ sentence }) => sentence).join(" "), changed: false }] : []),
   ].filter((goal) => goal.term !== "Note" || goal.text);
   return (

@@ -106,7 +106,7 @@ export function ViewerPage() {
         ["Whole map", "the canvas, with the Exits and “What can stop you” at its right (a click on an exit shows its map, a click on a trainer or a trigger centres the map on it), a search of the maps, and the data of a cell in a card at the pointer. In a fight or a menu, it keeps the last map of the Run. When 2 or more Map parts have an exit, each of them has a tint, except the largest. Inside a building or a cave, both ends of a warp have one color. At a large zoom, each warp on any map shows the short name of its map. The switch Exits turns off these colors and names. The other floors stand next to the floor shown, with no people (switch Floors), and a pointer on a warp shows both ends and its arrival cell."],
         [
           "Model",
-          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the Coach advice in a Run with a Coach, and the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
+          "the Model calls with the flags of the Unusual calls (unreadable, impossible, Reflection, Review, expensive, more turns, new Mission, repeated) and a filter chip for each flag. One call in full: the answer (with the Coach advice in force, part by part, in a Run with a Coach, and the sentences that a Review turn removed), what it played, the cost (none on a Plan provider), then the character of the Run and the blocks of its prompt, in colors, that fold.",
         ],
         [
           "Stats",

@@ -169,7 +169,7 @@ const PROMPT_PARTS = [
   ["The game waits for", "a walk, a choice, a battle action…"],
   ["Mission", "the story step, kept until it is reached"],
   ["Objective", "what the model does now"],
-  ["Coach advice", "in a Run with a Coach: the last advice, its turn and the decisions since"],
+  ["Coach advice", "in a Run with a Coach: the last text of each part (Team, Shopping, Progress, Battles), its turn and the decisions since"],
   ["Stuck counter", "the Decision points since the last progress"],
   ["Tries", "the tries since the last progress, with their results"],
   ["Last decisions", "with the texts of the game"],
@@ -182,7 +182,7 @@ const ANSWER = [
   ["starter", '"CHARMANDER"', "only at the Character turn: the first Pokémon"],
   ["name", '"Mira"', "only at the Character turn: the name of the trainer, 7 characters at most"],
   ["rival", '"Crumb"', "only at the Character turn: the name of the rival, 7 characters at most"],
-  ["advice", '"Catch a second Pokémon."', "only at a turn of the Coach (Character, Reflection, Review): what the player must do until the next turn of the Coach, 200 characters at most; empty keeps the last advice"],
+  ["advice", '{"team": "Catch a PIDGEY on Route 1, then train it to level 10.", "shopping": "Buy 5 POTIONS.", "progress": "", "battles": "Use WATER GUN on rock types."}', "only at a turn of the Coach (Character, Reflection, Review): what the player must do until the next turn of the Coach, in 4 parts of 150 characters at most; an empty part keeps the last text of this part"],
   ["action", '"goTo 20 45"', "one action of the screen"],
   ["reason", '"The unseen area west…"', "why, in one or two sentences"],
   ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached"],
@@ -386,7 +386,7 @@ export function ProgressPage() {
         ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run; the other Model calls use the reasoning level of the Run. In a Run with a Coach, all the calls of the Coach use the thinking level, also the summaries and the move to forget, and the player uses only the reasoning level. After an empty answer, when the reasoning took all the tokens, the next calls of the same turn use the reasoning level. The panel “Model” shows the text of the reasoning in a block."],
         [
           "Coach",
-          "an option of the Run (`--coach <model id>`, or the Coach field of the form): a second model on the same provider. It plays the Character, Reflection and Review turns, the Summary calls and the choice of a move to forget, at the thinking level of the Run; the model of the Run plays the other decisions. After an empty answer, the next calls of the same turn use the reasoning level of the Run. A Coach with the model of the Run is no Coach. At its Character, Reflection and Review turns, the request gives it its role only, and it writes an `advice`: each later prompt shows “Coach advice (review turn, 3 decisions ago): …”, and the panel “Model” shows it under the note. Its calls count toward the one limit of the Run, and its plan limit ends the Run. The labels of a Run name both models: `claude-haiku-5-5 + coach claude-opus-5-5`.",
+          "an option of the Run (`--coach <model id>`, or the Coach field of the form): a second model on the same provider. It plays the Character, Reflection and Review turns, the Summary calls and the choice of a move to forget, at the thinking level of the Run; the model of the Run plays the other decisions. After an empty answer, the next calls of the same turn use the reasoning level of the Run. A Coach with the model of the Run is no Coach. Its calls get their own rules: it is the Coach of a smaller model that follows its advice to the letter but does not plan the team, the shopping or the way. At its Character, Reflection and Review turns, it writes an `advice` in 4 parts: `team` (the most important: Pokémon to catch, to train and to switch with the PC), `shopping`, `progress` and `battles`. Each later prompt shows the last text of each part, for example “- Team (review turn, 3 decisions ago): …”, and the panel “Model” shows the advice in force on each call, under the note. Its calls count toward the one limit of the Run, and its plan limit ends the Run. The labels of a Run name both models: `claude-haiku-5-5 + coach claude-opus-5-5`.",
         ],
         ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review`, `reasoning` (the text of the reasoning) and `removed` (the sentences that a Review turn removed, with their nodes). In a Run with a Coach, `model` names the Coach on its calls and on the Summary calls, and the decision of a Coach turn has `advice`. The panel “Model” shows `reflection` and `review` as flags, `stuck` as a chip of the shown call, and `removed` in a “Removed” line under the note."],
       ]}

@@ -307,6 +307,20 @@ export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
 /** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
 export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });
 
+export const ADVICE_PARTS = ["team", "shopping", "progress", "battles"] as const;
+
+export type CoachAdvice = Partial<Record<(typeof ADVICE_PARTS)[number], string>>;
+
+const ADVICE_LABELS = { team: "Team", shopping: "Shopping", progress: "Progress", battles: "Battles" } as const;
+
+/** The labels in the order that the prompt and the Viewer show them. "Advice" is the one text that the Coach wrote before bot version 34. */
+export const ADVICE_ORDER = ["Advice", ...ADVICE_PARTS.map((part) => ADVICE_LABELS[part])];
+
+export function adviceEntries(advice: string | CoachAdvice | undefined): { label: string; text: string }[] {
+  if (typeof advice === "string") return advice ? [{ label: "Advice", text: advice }] : [];
+  return ADVICE_PARTS.flatMap((part) => (advice?.[part] ? [{ label: ADVICE_LABELS[part], text: advice[part] }] : []));
+}
+
 export function callKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
   return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
 }

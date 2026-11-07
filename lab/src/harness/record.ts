@@ -1,5 +1,6 @@
 // From the same origin, the buttons alone replay a Run: the game reads no input while it is frozen (ADR 0002).
 import { mkdir, open, readdir, rename } from "node:fs/promises";
+import type { CoachAdvice } from "../protocol";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
@@ -64,7 +65,7 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string; character?: string; starter?: StarterSpecies; names?: TrainerNames };
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string | CoachAdvice; character?: string; starter?: StarterSpecies; names?: TrainerNames };
 
 export type NodeRange = { from: number; to: number };
 
