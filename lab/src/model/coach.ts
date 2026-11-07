@@ -13,9 +13,9 @@ export function coachRole(coached: boolean, turn: TurnKind, asked: Asked): { pla
   return { plays: coached && (turn !== "normal" || asked.kind === "learnMove"), advises: coached && turn !== "normal" };
 }
 
-/** All the calls of the Coach think at its level. After an empty answer, a turn plays at the reasoning level of the Run, as for the player. */
+/** All the calls of the Coach think at the thinking level of the Run: with a Coach, the player never uses it. After an empty answer, a turn plays at the reasoning level of the Run, as for the player. */
 export function coachSettings(settings: ModelSettings, coach: Coach): ModelSettings {
-  return { ...settings, id: coach.id, thinking: coach.reasoning };
+  return { ...settings, id: coach.id };
 }
 
 // Required: a strict JSON schema of the providers has no optional field.

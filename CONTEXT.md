@@ -73,7 +73,7 @@ The character that the Viewer shows for a **Run** with no **Character turn**, fo
 _Avoid_: default persona, neutral character
 
 **Thinking**:
-The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer. In a **Run** with a **Coach**, the **Coach** plays these turns, its summaries and its moves to forget at its own reasoning level, which is this level when the **Run** gives none.
+The reasoning level of the **Character turns**, **Reflection turns** and **Review turns** of a **Run** of a model bot. The other **Model calls** use the reasoning level of the **Run**, and also the next calls of such a turn after an empty answer. In a **Run** with a **Coach**, the **Coach** plays these turns, its summaries and its moves to forget at this level, and the player never uses it.
 _Avoid_: thinking mode, deep reasoning
 
 **Reflection turn**:

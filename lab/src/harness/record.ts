@@ -38,7 +38,7 @@ type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
 /** Always on the provider of the player, so that one limit unit counts both models. */
-export type Coach = { id: string; reasoning: ReasoningLevel };
+export type Coach = { id: string };
 
 export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean; coach?: Coach } & ModelLimit;
 
@@ -54,7 +54,7 @@ export function limitOf(settings: ModelLimit): Spend {
 }
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string; reasoning?: string } };
+export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string } };
 
 export type SpendLimit = Pick<ModelOptions, "costLimit" | "tokenLimit">;
 

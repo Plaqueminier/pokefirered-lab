@@ -456,7 +456,7 @@ describe("the Coach advice", () => {
   });
 
   test("the rules name the Coach only in a Run with a Coach", () => {
-    expect(systemPrompt({ ...SYSTEM, coach: { id: "big", reasoning: "high" } }, true)).toContain("A Coach, a bigger model, plays the character, reflection and review turns");
+    expect(systemPrompt({ ...SYSTEM, coach: { id: "big" } }, true)).toContain("A Coach, a bigger model, plays the character, reflection and review turns");
     expect(systemPrompt(SYSTEM, true)).not.toContain("A Coach, a bigger model");
   });
 });

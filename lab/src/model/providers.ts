@@ -59,9 +59,7 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   const fullId = (id: string) => (provider === "claude-code" && CLAUDE_MODELS[id]) || id;
   const id = fullId(given.id || DEFAULT_MODELS[provider]);
   const coachId = given.coach?.id?.trim() ? fullId(given.coach.id.trim()) : "";
-  if (!coachId && given.coach?.reasoning !== undefined) throw new Error("the reasoning of the coach needs a coach");
-  const coachReasoning = levelFor(levelOf("reasoning of the coach", given.coach?.reasoning, thinking));
-  const coach = coachId && coachId !== id ? { coach: { id: coachId, reasoning: coachReasoning } } : {};
+  const coach = coachId && coachId !== id ? { coach: { id: coachId } } : {};
   const choice = { id, reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true, ...coach };
   if (isPlanProvider(provider)) {
     if (given.costLimit !== undefined) throw new Error(`the provider ${provider} has a token limit, not a cost limit`);

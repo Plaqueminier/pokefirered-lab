@@ -17,7 +17,6 @@ function RecordFacts({ replay }: { replay: ReplayStatus }) {
     ...(model
       ? [
           { label: "Model", value: modelLabel(model) },
-          ...(model.coach ? [{ label: "Coach reasoning", value: model.coach.reasoning }] : []),
           { label: "Provider", value: model.provider },
           { label: "Reasoning", value: model.reasoning },
           { label: "Thinking", value: model.thinking },
