@@ -57,9 +57,9 @@ const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x
 const MB_SPIN: Record<number, string> = { 0x54: SPIN.east, 0x55: SPIN.west, 0x56: SPIN.north, 0x57: SPIN.south };
 const MB_STOP_SPINNING = 0x58;
 const PLAYER_AVATAR_FLAG_FORCED = 1 << 6;
-// PLAYER_AVATAR_FLAG_MACH_BIKE and PLAYER_AVATAR_FLAG_ACRO_BIKE: FireRed has one bicycle, and it sets both.
 const PLAYER_AVATAR_FLAG_BICYCLE = (1 << 1) | (1 << 2);
-const FLAG_SYS_B_DASH = 0x82f;
+const PLAYER_AVATAR_FLAG_ON_WATER = (1 << 3) | (1 << 4);
+export const FLAG_SYS_B_DASH = 0x82f;
 const FLAG_SYS_ON_CYCLING_ROAD = 0x830;
 // From IsWarpMetatileBehavior, TryArrowWarp and TryDoorWarp in field_control_avatar.c.
 const STEP_WARPS = new Set(["MB_CAVE_DOOR", "MB_LADDER", "MB_UP_ESCALATOR", "MB_DOWN_ESCALATOR", "MB_REGULAR_WARP", "MB_UNION_ROOM_WARP", "MB_FALL_WARP", "MB_LAVARIDGE_1F_WARP"]);
@@ -353,6 +353,12 @@ export class Game {
     if (id >= objects.length) return null;
     const obj = objects.at(id);
     return obj.field("active").int() ? obj : null;
+  }
+
+  playerPlace(): { map: string; x: number; y: number } {
+    const player = this.player();
+    if (!player) throw new Error("the player is not on the overworld");
+    return { map: this.map().name, x: player.x, y: player.y };
   }
 
   player(): PlayerPosition | null {
@@ -862,9 +868,10 @@ export class Game {
     return (this.mem.global("gPlayerAvatar").field("flags").int() & PLAYER_AVATAR_FLAG_BICYCLE) !== 0;
   }
 
-  // As FieldUseFunc_Bike (item_use.c). No metatile of FireRed forbids a bicycle or is a rail.
+  // No metatile of FireRed forbids a bicycle, so the cell under the player does not count.
   canChangeBicycle(): boolean {
-    return this.mem.global("gMapHeader").field("bikingAllowed").int() !== 0 && !this.flag(FLAG_SYS_ON_CYCLING_ROAD);
+    const onWater = (this.mem.global("gPlayerAvatar").field("flags").int() & PLAYER_AVATAR_FLAG_ON_WATER) !== 0;
+    return this.mem.global("gMapHeader").field("bikingAllowed").int() !== 0 && !this.flag(FLAG_SYS_ON_CYCLING_ROAD) && !onWater;
   }
 
   registeredItem(): number {

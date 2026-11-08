@@ -144,15 +144,15 @@ The forced walk of the player from a **Spin tile** to the cell where it stops. I
 _Avoid_: spin, glide, push
 
 **Running**:
-The walk of a player with the Running Shoes: 8 frames for each cell, not 16. A **Bot** does not choose it: the **Harness** runs on each walk.
+The walk of a player with the Running Shoes: 8 frames for each cell, not 16. A **Bot** does not choose it: the **Harness** holds B on each step. The game does not run on a map that does not allow it, for example a house or a gym.
 _Avoid_: dash, sprint
 
 **Ride choice**:
-The choice of a **Bot** to ride the BICYCLE or to walk. It stays until the **Bot** changes it. The **Harness** puts the player in the state of this choice before each walk, where the game allows it. Riding takes 6 frames for each cell. The game puts a rider on foot on a map that does not allow the BICYCLE, and the next walk on a map that allows it gets on again.
+The choice of a **Bot** to ride the BICYCLE or to walk. It stays until the **Bot** changes it. The **Harness** puts the player in the state of this choice before each walk, where the game allows it. Riding takes 6 frames for each cell. The game puts a rider on foot on a map that does not allow the BICYCLE, and the next walk on a map that allows it rides again.
 _Avoid_: bike mode
 
 **Cycling Road**:
-The Routes 16, 17 and 18 between their two gates. A gate stops a person with no BICYCLE, and the game puts each other person on the BICYCLE. The player cannot get off before a gate. The story does not need it.
+The Routes 16, 17 and 18 between their two gates. A gate stops a person with no BICYCLE, and the game puts each other person on the BICYCLE. The player must ride until a gate. The story does not need it.
 _Avoid_: Route 17 (only one part of it), bike path
 
 **Slope**:

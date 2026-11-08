@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { modelBot } from "../../bots/model";
 import { atlasExtract } from "../model/extract";
 import type { ModelClient } from "../model/openrouter";
+import { FLAG_SYS_B_DASH } from "../game";
 import { decryptBox } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { cellAt, mapNamed } from "./atlas";
@@ -394,9 +395,9 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a Fixed obsta
   });
 });
 
-const FLAG_SYS_B_DASH = 0x82f;
 const FLAG_GOT_BICYCLE = 0x271;
 const VARS_START = 0x4000;
+const PLAYER_AVATAR_FLAG_SURFING = 1 << 3;
 const TRAINER_FLAGS_START = 0x500;
 const TRAINER_FLAGS_END = 0x800;
 const VAR_MAP_SCENE_ROUTE16 = 0x405e;
@@ -459,11 +460,11 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE",
     const first = await harness.use("BICYCLE");
     expect(first).toMatchObject({ status: "done", text: [] });
     expect(first.frames).toBeGreaterThan(30);
-    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
+    expect(overworld(harness)).toMatchObject({ riding: true, rideChosen: true });
     expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 2 });
-    expect(overworld(harness)).toMatchObject({ riding: false, rideWanted: false });
+    expect(overworld(harness)).toMatchObject({ riding: false, rideChosen: false });
     expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 2 });
-    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
+    expect(overworld(harness)).toMatchObject({ riding: true, rideChosen: true });
     expect(await harness.use("BICYCLE", 0)).toMatchObject({ status: "impossible", reason: "BICYCLE does not work on a Pokémon" });
     harness.close();
   });
@@ -475,9 +476,9 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE",
     must(await harness.goTo(6, 8, "PalletTown"));
     expect(overworld(harness)).toMatchObject({ riding: true });
     must(await harness.goTo(6, 7));
-    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown_PlayersHouse_1F" }, riding: false, rideWanted: true });
+    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown_PlayersHouse_1F" }, riding: false, rideChosen: true });
     must(await harness.goTo(12, 8, "PalletTown"));
-    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown" }, riding: true, rideWanted: true });
+    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown" }, riding: true, rideChosen: true });
     expect(harness.actions.filter(({ action }) => action.name === "use")).toHaveLength(1);
     harness.close();
   });
@@ -488,11 +489,30 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE",
     must(await harness.goTo(6, 8, "PalletTown"));
     must(await harness.goTo(6, 7));
     expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 0 });
-    expect(overworld(harness)).toMatchObject({ riding: false, rideWanted: true });
+    expect(overworld(harness)).toMatchObject({ riding: false, rideChosen: true });
     must(await harness.goTo(12, 8, "PalletTown"));
     expect(overworld(harness)).toMatchObject({ riding: true });
     must(await harness.swap(0, 1));
     expect(overworld(harness)).toMatchObject({ riding: true });
+    harness.close();
+  });
+
+  test("on water a use keeps the choice and presses no Select, because the game refuses the BICYCLE there", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    giveBicycle(run);
+    const flags = run.game.mem.global("gPlayerAvatar").field("flags");
+    run.core.patch16(flags.addr, flags.int() | PLAYER_AVATAR_FLAG_SURFING);
+    expect(run.game.canChangeBicycle()).toBe(false);
+    expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 0 });
+    expect(overworld(harness)).toMatchObject({ riding: false, rideChosen: true });
+    harness.close();
+  });
+
+  test("a use with no BICYCLE in the Bag does not change the choice", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    expect(await harness.use("BICYCLE")).toMatchObject({ status: "impossible" });
+    expect(overworld(harness)).toMatchObject({ rideChosen: false });
+    expect(run.game.registeredItem()).toBe(0);
     harness.close();
   });
 
@@ -517,13 +537,12 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE",
     parent.close();
     const second = await opened();
     const continued = await Harness.open({ onFrame: second.frame, parent: { name: "parent", record } }, second.run);
-    expect(overworld(continued)).toMatchObject({ riding: true, rideWanted: true });
+    expect(overworld(continued)).toMatchObject({ riding: true, rideChosen: true });
     continued.close();
   });
 });
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling Road", () => {
-  /** On a cell of Route 16 west of its gate: the scene variable of the road makes the game put the player on the BICYCLE. */
   async function openOnRoad(x: number, y: number): Promise<{ harness: Harness; run: Run; leave: () => void }> {
     const run = await Run.open({ startSave: PARTY_SAVE });
     const { onFrame } = warpPatch(run, { map: "Route16", x, y }, false);
@@ -562,7 +581,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling R
     expect(await harness.interact(8, 5)).toMatchObject({ status: "impossible", reason: "nothing at (8, 5) starts a script" });
     expect(overworld(harness)).toMatchObject({ player: { x: 8, y: 4, facing: "south" } });
     expect(await harness.interact(9, 4)).toMatchObject({ status: "impossible", reason: "the player walked to Route17 (9, 4) when it turned east" });
-    // A step into a sign reads it (TrySetUpWalkIntoSignScript), as on foot.
     expect(await harness.goTo(12, 52)).toMatchObject({ status: "interrupted", reason: "script" });
     expect(await harness.readText()).toMatchObject({ text: ["It's a notice. Watch out for discarded items."] });
     must(await harness.goTo(12, 52));
@@ -576,8 +594,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling R
     must(await harness.goTo(8, 30, "Route17"));
     expect(run.game.canChangeBicycle()).toBe(false);
     expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 0 });
-    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
-    // The trainer at (7, 38) turns left and right: a walk on its row is in its sight when it faces right.
+    expect(overworld(harness)).toMatchObject({ riding: true, rideChosen: true });
+    // The trainer of this row turns left and right, so the player is in its sight only some of the time.
     let walk = await harness.goTo(12, 38);
     for (let tries = 0; walk.status === "done" && tries < 40; tries++) walk = await harness.goTo(tries % 2 === 0 ? 8 : 12, 38);
     expect(walk).toMatchObject({ status: "interrupted", reason: "trainer" });
@@ -589,7 +607,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling R
 
   test("a walk gets off in the gate when the Bot did not choose to ride, and the trigger of the gate stops the walk", async () => {
     const { harness, run, leave } = await openOnRoad(19, 13);
-    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: false });
+    expect(overworld(harness)).toMatchObject({ riding: true, rideChosen: false });
     leave();
     must(await harness.goTo(4, 12, "Route16_NorthEntrance_1F"));
     expect(run.game.canChangeBicycle()).toBe(true);

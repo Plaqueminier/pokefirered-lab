@@ -64,7 +64,7 @@ const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Righ
 const REPEL_ITEMS = ["REPEL", "SUPER REPEL", "MAX REPEL"];
 const REPEL_FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";
 const REPEL_WORE_OFF = /REPEL's effect wore off/;
-const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: you stay on it after a door.";
+const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: your choice stays after a door.";
 const MAX_BOX_LINES = 12;
 
 const WHITEOUT_ENDS =
@@ -431,9 +431,9 @@ function gameCounts(boxes: BoxMon[], events: readonly RunEvent[]): string {
   return `So far in the game: ${events.filter((e) => e.type === "catch").length} Pokémon caught, ${boxes.length} Pokémon in the boxes, ${whiteouts} whiteout${whiteouts === 1 ? "" : "s"}.`;
 }
 
-function bicycleLines({ riding, rideWanted }: Overworld, bag: BagPocket[]): string[] {
+function bicycleLines({ riding, rideChosen }: Overworld, bag: BagPocket[]): string[] {
   if (!bag.some(({ items }) => items.some((item) => item.name === BICYCLE))) return [];
-  const state = rideWanted ? "You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again." : riding ? "This road keeps you on the BICYCLE until its gate." : "You walk. Use BICYCLE to ride.";
+  const state = rideChosen ? "You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again." : riding ? "You did not choose to ride: the next walk leaves the BICYCLE where the game allows it. Use BICYCLE to keep it." : "You walk. Use BICYCLE to ride.";
   return [`${BICYCLE_FACTS} ${state}`];
 }
 

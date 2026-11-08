@@ -14,7 +14,7 @@ import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type Leg, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
+import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
@@ -37,14 +37,11 @@ import {
   type SummaryEvent,
   withStateEvents,
 } from "./record";
+import { type Slid, WalkDriver } from "./walk-driver";
 
-const STEP_FRAME_LIMIT = 60;
-const SETTLE_FRAME_LIMIT = 600;
-const SLIDE_START_FRAMES = 4;
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
-const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   walk: ["goTo", "walkOn", "interact", "swap", "use", "teach"],
@@ -74,7 +71,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideWanted: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -85,14 +82,10 @@ export type NoProgress = { stuck: number; since: number };
 
 export type Interruption = GameInterruption | "map";
 
-type LegResult = "done" | "stuck" | "no move" | "no warp" | Interruption;
-
 export type ActionResult = Outcome & Slid & {
   frames: number;
   leftWordScreen?: true;
 };
-
-type Slid = { slidTo?: Cell };
 
 export type TextResult = ActionResult & Texts;
 
@@ -228,8 +221,7 @@ export class Harness {
   readonly #events: RunEvent[] = [];
   readonly #menus: MenuDriver;
   readonly #parent: string | null;
-  /** The choice of the Bot with `use BICYCLE`. The Harness keeps the player in this state where the game allows it. */
-  #rideWanted = false;
+  readonly #walk: WalkDriver;
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
   #playStart: { frame: number; rawInputs: number } | null = null;
   #phase: Phase = { kind: "ready" };
@@ -248,7 +240,9 @@ export class Harness {
     this.#parent = options.parent?.name ?? null;
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game, this.#knowledge);
-    this.#menus = new MenuDriver(run.game, { advance: (keys) => this.advance(keys) });
+    const frames = { advance: (keys: number) => this.advance(keys) };
+    this.#menus = new MenuDriver(run.game, frames);
+    this.#walk = new WalkDriver(run.game, frames, this.#menus);
   }
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
@@ -265,7 +259,7 @@ export class Harness {
         harness.replayParent(options.parent.record);
         return harness;
       }
-      const interruption = harness.settle();
+      const interruption = harness.#walk.settle();
       if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
       return harness;
     } catch (error) {
@@ -423,7 +417,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideWanted: this.#rideWanted, teachables: game.teachables() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, teachables: game.teachables() };
   }
 
   availableActions(): AvailableAction[] {
@@ -480,19 +474,19 @@ export class Harness {
 
   async goTo(x: number, y: number, map?: string): Promise<ActionResult> {
     return this.act({ name: "goTo", x, y, ...(map ? { map } : {}) }, () => {
-      const asked = { map: map ?? this.place().map, x, y };
+      const asked = { map: map ?? this.#run.game.playerPlace().map, x, y };
       const target = this.routeMaps()(asked.map);
       return target && spinDirection(target, asked) ? this.slideFrom(asked) : this.walkTo(asked, map === undefined);
     });
   }
 
   private slideFrom(tile: Place): Outcome & Slid {
-    const here = this.place();
+    const here = this.#run.game.playerPlace();
     const opened = withOpenTile(this.routeMaps(), tile);
     const approach = routeOntoSpin(here, tile, opened);
     if (!approach) return this.noRouteOutcome(here, tile, tile, opened) ?? { status: "blocked", reason: `a person who walks stands on the way to the spin tile at ${at(tile)}` };
     const walked = this.walkTo(approach.from, false);
-    return walked.status === "done" ? this.slide(approach.direction) : walked;
+    return walked.status === "done" ? this.#walk.slide(approach.direction) : walked;
   }
 
   private noRouteOutcome(here: Place, destination: Destination, asked: Place, maps: MapSource): Outcome | null {
@@ -502,25 +496,10 @@ export class Harness {
     return null;
   }
 
-  private slide(direction: Direction): Outcome & Slid {
-    const before = this.place();
-    const stepped = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => at(this.place()) !== at(before));
-    if (stepped === "limit") return { status: "impossible", reason: `the player does not step ${direction} from ${at(before)} on the spin tile` };
-    if (stepped !== "done") return { status: "interrupted", reason: stepped };
-    // The game starts the slide one player_step after the step on the tile ends, and the game can wait for a walk in that frame.
-    for (let last = before; at(this.place()) !== at(last); ) {
-      last = this.place();
-      const interruption = this.wait(SLIDE_START_FRAMES) ?? this.settle();
-      if (interruption) return { status: "interrupted", reason: interruption };
-    }
-    const { map, x, y } = this.place();
-    return map === before.map ? { status: "done", slidTo: { x, y } } : { status: "done" };
-  }
-
   // One Model call for each step would cost too much on a floor of 48 x 40 cells (#74).
   async walkOn(x: number, y: number, direction: Direction): Promise<ActionResult> {
     return this.act({ name: "walkOn", x, y, direction }, () => {
-      const start = this.place();
+      const start = this.#run.game.playerPlace();
       const { map } = start;
       const heading = headingAlong(start, { x, y }, direction);
       this.#atlas.lookAround();
@@ -536,7 +515,7 @@ export class Harness {
   }
 
   private nextDarkStep(map: string, peopleBefore: number, direction: Direction, heading: Direction | null): Cell | null {
-    if (this.#run.game.waitingFor().kind !== "walk" || this.place().map !== map) return null;
+    if (this.#run.game.waitingFor().kind !== "walk" || this.#run.game.playerPlace().map !== map) return null;
     this.#atlas.lookAround();
     if (this.#atlas.peopleSeen(map) > peopleBefore) return null;
     const { player, grid, actors } = this.overworld();
@@ -553,33 +532,33 @@ export class Harness {
     let tries = 0;
     let stuckAt: Place | null = null;
     for (let legs = 0; legs < MAX_LEGS; legs++) {
-      const here = this.place();
+      const here = this.#run.game.playerPlace();
       if (reached(destination, here)) return { status: "done" };
-      const changed = this.matchBicycle();
+      const changed = this.#walk.matchRide();
       if (changed.status !== "done") return changed;
       const maps = this.routeMaps();
       const route = findRoute(here, destination, maps);
       const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
       if (failed) return failed;
-      const result = route ? this.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
+      const result = route ? this.#walk.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
       switch (result) {
         case "done":
           tries = 0;
           this.lightDarkMap();
           break;
         case "stuck": {
-          const now = this.place();
+          const now = this.#run.game.playerPlace();
           tries = stuckAt && at(stuckAt) === at(now) ? tries + 1 : 1;
           stuckAt = now;
           if (tries >= BLOCKED_TRIES) return { status: "blocked", reason: `a person or an object stays in the way after ${tries} tries; the player is at ${at(now)}` };
-          const interruption = this.wait(BLOCKED_WAIT_FRAMES);
+          const interruption = this.#walk.wait(BLOCKED_WAIT_FRAMES);
           if (interruption) return { status: "interrupted", reason: interruption };
           break;
         }
         case "no move":
-          return { status: "impossible", reason: `the player cannot move from ${at(this.place())}` };
+          return { status: "impossible", reason: `the player cannot move from ${at(this.#run.game.playerPlace())}` };
         case "no warp":
-          return { status: "impossible", reason: `the warp does not start from ${at(this.place())}` };
+          return { status: "impossible", reason: `the warp does not start from ${at(this.#run.game.playerPlace())}` };
         default:
           return { status: "interrupted", reason: result };
       }
@@ -590,12 +569,12 @@ export class Harness {
   async interact(x: number, y: number): Promise<ActionResult> {
     return this.act({ name: "interact", x, y }, () => {
       const game = this.#run.game;
-      const here = this.place();
+      const here = this.#run.game.playerPlace();
       const direction = neighbours(here).find((n) => n.x === x && n.y === y)?.direction;
       if (!direction) return { status: "impossible", reason: `(${x}, ${y}) is not next to the player at ${at(here)}` };
-      const turned = this.face(direction);
+      const turned = this.#walk.face(direction);
       if (turned.status !== "done") return turned;
-      const battle = this.#menus.tap(Keys.A, this.stayKeys());
+      const battle = this.#walk.tap(Keys.A);
       if (battle) return { status: "interrupted", reason: battle };
       // ScriptContext_SetupScript locks the field controls, so an unlocked field means A started no script.
       if (!game.fieldLocked()) return { status: "impossible", reason: `nothing at (${x}, ${y}) starts a script` };
@@ -620,30 +599,7 @@ export class Harness {
   }
 
   async use(item: string, on?: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => (item === BICYCLE && this.#run.game.waitingFor().kind === "walk" ? this.chooseRide(on) : this.#menus.use(item, on)), { text: [] });
-  }
-
-  private chooseRide(on?: number): Outcome {
-    if (on !== undefined) return { status: "impossible", reason: `${BICYCLE} does not work on a Pokémon` };
-    if (!this.#run.game.findInBag(BICYCLE)) return { status: "impossible", reason: `there is no ${BICYCLE} in the Bag` };
-    this.#rideWanted = !this.#rideWanted;
-    return this.matchBicycle();
-  }
-
-  // Select has no fade and no text, so a walk gets on after each door. Only the first time needs the Bag.
-  private matchBicycle(): Outcome {
-    const game = this.#run.game;
-    if (this.#rideWanted === game.riding() || !game.canChangeBicycle() || game.waitingFor().kind !== "walk") return { status: "done" };
-    const bicycle = game.findInBag(BICYCLE);
-    if (!bicycle) return { status: "done" };
-    if (game.registeredItem() !== bicycle.item) {
-      const registered = this.#menus.register(BICYCLE);
-      if (registered.status !== "done") return registered;
-    }
-    const battle = this.#menus.tap(Keys.Select);
-    if (battle) return { status: "interrupted", reason: battle };
-    const interruption = this.settle();
-    return interruption ? { status: "interrupted", reason: interruption } : { status: "done" };
+    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => (item === BICYCLE && this.#run.game.waitingFor().kind === "walk" ? this.#walk.chooseRide(on) : this.#menus.use(item, on)), { text: [] });
   }
 
   async buy(item: string, quantity: number): Promise<ActionResult> {
@@ -776,11 +732,16 @@ export class Harness {
     this.#battles.onAction(outcome.status === "impossible" ? null : turnStart, outcome.text ?? [], game.battle(), isDecisionPoint(game.waitingFor()));
     // The action event goes before the game events of its frames.
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
-    this.#atlas.onAction(entry);
+    this.actionEnded(entry);
     this.#onAction?.(entry, this);
     if (this.#phase.kind === "playing") this.#phase.limits.atAction(this.#run.game.milestones(), this.progress(), isDecisionPoint(this.#run.game.waitingFor()), this.#events.length);
     this.stopIfAsked();
     return result;
+  }
+
+  private actionEnded(entry: ActionEntry): void {
+    this.#walk.onAction(entry);
+    this.#atlas.onAction(entry);
   }
 
   // The watches see the same frames and the same actions as in the parent Run, so the Atlas and the Memory tree go on from where the parent stopped.
@@ -791,11 +752,7 @@ export class Harness {
     const actions = record.events.filter((e) => e.type === "action");
     let next = 0;
     const actionsEnded = () => {
-      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) {
-        const { action, result } = actions[next];
-        if (action.name === "use" && action.item === BICYCLE && result.status !== "impossible") this.#rideWanted = !this.#rideWanted;
-        this.#atlas.onAction(actions[next]);
-      }
+      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) this.actionEnded(actions[next]);
     };
     while (!player.ended) {
       actionsEnded();
@@ -872,12 +829,6 @@ export class Harness {
     return started;
   }
 
-  private place(): Place {
-    const player = this.#run.game.player();
-    if (!player) throw new Error("the player is not on the overworld");
-    return { map: this.#run.game.map().name, x: player.x, y: player.y };
-  }
-
   private obstacleRemedyNow(move: FieldMove): string {
     const badge = this.#run.game.missingBadge(move);
     return badge === null ? obstacleRemedy(move) : badgeNeeded(move, badge);
@@ -901,34 +852,6 @@ export class Harness {
     };
   }
 
-  private walkLeg(leg: Leg, next: string): LegResult {
-    for (const move of leg.moves) {
-      const result = this.playMove(move);
-      if (result !== "done") return result;
-      if (this.#run.game.map().name !== leg.map) break;
-    }
-    const interruption = this.stopWalking();
-    if (interruption) return interruption;
-    return this.#run.game.map().name === next ? "done" : "map";
-  }
-
-  private playMove({ direction, kind }: Leg["moves"][number]): LegResult {
-    switch (kind) {
-      case "push":
-        return this.push(direction);
-      case "remove":
-        return this.removeObstacle(direction);
-      case "jump":
-        return this.step(direction, 2);
-      case "walk":
-        return this.step(direction, 1);
-    }
-  }
-
-  private stopWalking(): Interruption | null {
-    return (this.#run.game.stepStarts() ? this.wait(1) : null) ?? this.settle();
-  }
-
   private facesUsableObstacle(): boolean {
     if (this.#run.game.waitingFor().kind !== "walk") return false;
     const { player, actors } = this.overworld();
@@ -941,32 +864,6 @@ export class Harness {
     return { usable: obstacles.filter((o) => moves.has(o.move)), closed: obstacles.filter((o) => !moves.has(o.move)) };
   }
 
-  private removeObstacle(direction: Direction): LegResult {
-    const interruption = this.stopWalking();
-    if (interruption) return interruption;
-    const turned = this.face(direction);
-    if (turned.status !== "done") return turned.status === "interrupted" ? turned.reason : "no move";
-    const used = this.#menus.useFieldMove();
-    return used.status === "interrupted" ? used.reason : this.step(direction, 1);
-  }
-
-  // Hold the direction: a short press only turns a player who faces another way. A jump moves the
-  // player two times (InitJump, then the jump halfway), so a step ends on its arrival cell.
-  private step(direction: Direction, cells: number): LegResult {
-    const game = this.#run.game;
-    const before = this.place();
-    const [dx, dy] = DIRECTION_STEP[direction];
-    const path = Array.from({ length: cells }, (_, i) => ({ x: before.x + dx * (i + 1), y: before.y + dy * (i + 1) }));
-    const arrival = path.at(-1)!;
-    const result = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => {
-      const now = game.player();
-      return !now || game.map().name !== before.map || (now.x === arrival.x && now.y === arrival.y);
-    });
-    if (result !== "limit") return result;
-    const people = game.mapView(before.map)?.actors.people ?? [];
-    return people.some((p) => path.some((c) => c.x === p.x && c.y === p.y)) ? "stuck" : "no move";
-  }
-
   private interactions(): AvailableAction[] {
     const { player, grid, actors } = this.overworld();
     return neighbours(player)
@@ -976,66 +873,6 @@ export class Harness {
           grid.signs.some((s) => s.kind === "sign" && s.x === x && s.y === y && (s.playerFacing === "any" || s.playerFacing === direction)),
       )
       .map(({ x, y }) => ({ name: "interact" as const, x, y }));
-  }
-
-  private face(direction: Direction): Outcome {
-    const game = this.#run.game;
-    if (game.player()?.facing === direction) return { status: "done" };
-    const before = this.place();
-    const turned = this.hold(DIRECTION_KEYS[direction] | this.stayKeys(), STEP_FRAME_LIMIT, () => game.player()?.facing === direction);
-    if (turned === "limit") return { status: "impossible", reason: `the player does not turn ${direction}` };
-    if (turned !== "done") return { status: "interrupted", reason: turned };
-    const interruption = this.settle();
-    if (interruption) return { status: "interrupted", reason: interruption };
-    if (at(this.place()) !== at(before)) return { status: "impossible", reason: `the player walked to ${at(this.place())} when it turned ${direction}` };
-    return { status: "done" };
-  }
-
-  private push(direction: Direction): LegResult {
-    const result = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => this.#run.game.fieldLocked());
-    return result === "limit" ? "no warp" : result;
-  }
-
-  // The walk moves at the best speed that the game allows: B runs on foot. On a slope of the Cycling Road, B slows the way south.
-  private stepKeys(direction: Direction): number {
-    const game = this.#run.game;
-    const key = DIRECTION_KEYS[direction];
-    if (game.riding()) return direction === "south" ? key : key | this.stayKeys();
-    return game.hasRunningShoes() ? key | Keys.B : key;
-  }
-
-  // As BikeInputHandler_Normal (bike.c): a slope pulls a rider who holds no B to the south. B does nothing else to a rider,
-  // and the game reads the cell under the player in the same frame as the keys, so the Harness does not read the cell.
-  private stayKeys(): number {
-    return this.#run.game.riding() ? Keys.B : 0;
-  }
-
-  private settle(): Interruption | null {
-    const result = this.hold(() => this.stayKeys(), SETTLE_FRAME_LIMIT, () => this.#run.game.waitingFor().kind === "walk");
-    if (result === "limit") throw new Error(`the game waits for no input for more than ${SETTLE_FRAME_LIMIT} frames`);
-    return result === "done" ? null : result;
-  }
-
-  private hold(keys: number | (() => number), limit: number, done: () => boolean): "done" | "limit" | Interruption {
-    for (let frames = 0; ; frames++) {
-      if (done()) return "done";
-      if (frames === limit) return "limit";
-      const interruption = this.frameOrInterruption(typeof keys === "number" ? keys : keys());
-      if (interruption) return interruption;
-    }
-  }
-
-  private wait(frames: number): Interruption | null {
-    for (let i = 0; i < frames; i++) {
-      const interruption = this.frameOrInterruption(this.stayKeys());
-      if (interruption) return interruption;
-    }
-    return null;
-  }
-
-  private frameOrInterruption(keys: number): Interruption | null {
-    this.advance(keys);
-    return this.#run.game.interruption();
   }
 }
 

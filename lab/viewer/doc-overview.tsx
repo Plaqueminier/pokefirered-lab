@@ -121,7 +121,7 @@ export function ViewerPage() {
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
-        ["Doc", "the fourth tab: 14 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
+        ["Doc", "the fourth tab: 16 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
         [
           "Components",
           "the fifth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",

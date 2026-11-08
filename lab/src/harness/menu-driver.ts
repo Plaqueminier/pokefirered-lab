@@ -164,6 +164,11 @@ class MessageReader {
   }
 }
 
+// JOY_NEW sees a press only after a frame with the button up.
+export function tap(frames: Input, keys: number): "battle" | null {
+  return frames.advance(keys) || frames.advance(0) ? "battle" : null;
+}
+
 export class MenuDriver {
   private leftWordScreen = false;
 
@@ -171,11 +176,6 @@ export class MenuDriver {
     private readonly game: Game,
     private readonly frames: Input,
   ) {}
-
-  // JOY_NEW sees a press only after a frame with the button up.
-  tap(keys: number, held = 0): "battle" | null {
-    return this.frames.advance(keys | held) || this.frames.advance(held) ? "battle" : null;
-  }
 
   input(keys: number, watch?: () => void): Outcome {
     const pressed = this.pressUntilRead(keys);
@@ -201,7 +201,7 @@ export class MenuDriver {
   }
 
   useFieldMove(): Outcome {
-    if (this.tap(Keys.A)) return BATTLE_INTERRUPTION;
+    if (tap(this.frames, Keys.A)) return BATTLE_INTERRUPTION;
     for (let screens = 0; screens < MAX_TEXT_PRESSES; screens++) {
       const { kind } = this.game.waitingFor();
       if (kind === "walk") return DONE;
@@ -247,7 +247,6 @@ export class MenuDriver {
     return walk ? this.useOnWalk(item, place.item, before) : this.useInBattle(item, place.item, before);
   }
 
-  /** REGISTER in the menu of the item, in the Bag: then Select uses the item on the field. */
   register(item: string): Outcome {
     const { game } = this;
     const place = game.findInBag(item);
@@ -459,7 +458,7 @@ export class MenuDriver {
     const after = this.untilReady(
       () => game.tmCaseRow() !== null || game.learnMoveBox() !== null,
       () => {
-        if (game.teachSceneRuns() || game.waitingTexts().length > 0) this.tap(Keys.A);
+        if (game.teachSceneRuns() || game.waitingTexts().length > 0) tap(this.frames, Keys.A);
       },
     );
     if (after.status !== "done" || game.learnMoveBox()) return after;
@@ -496,7 +495,7 @@ export class MenuDriver {
       const outcome = this.untilDecision(() => reader.update());
       if (outcome.status !== "done" || this.game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
       if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
-      const battle = this.tap(Keys.A);
+      const battle = tap(this.frames, Keys.A);
       if (battle) return { status: "interrupted", reason: battle, text: reader.text };
       reader.pressed();
     }
@@ -601,7 +600,7 @@ export class MenuDriver {
   }
 
   /** The place of the item in the Bag, or why the item cannot be used now. */
-  private usablePlace(item: string, on: number | undefined, walk: boolean): BagPlace | Outcome {
+  usablePlace(item: string, on: number | undefined, walk: boolean): BagPlace | Outcome {
     const { game } = this;
     const place = game.findInBag(item);
     if (!place || place.pocket >= BATTLE_POCKETS) return impossible(`there is no ${item} in the Bag${walk ? "" : " of a battle"}`);
@@ -963,7 +962,7 @@ export class MenuDriver {
   // B opens a menu to quit with its cursor on NO (easy_chat_3.c): Up, then A, chooses YES.
   private leaveWordScreen({ quitMenu }: WordScreen): "battle" | null {
     this.leftWordScreen = true;
-    for (const keys of quitMenu ? [Keys.Up, Keys.A] : [Keys.B]) if (this.tap(keys)) return "battle";
+    for (const keys of quitMenu ? [Keys.Up, Keys.A] : [Keys.B]) if (tap(this.frames, keys)) return "battle";
     return null;
   }
 }
