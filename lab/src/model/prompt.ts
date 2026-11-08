@@ -67,7 +67,7 @@ const REPEL_WORE_OFF = /REPEL's effect wore off/;
 const MAX_BOX_LINES = 12;
 
 const WHITEOUT_ENDS =
-  "If all your Pokémon faint, the Run ends. But a Run that plays too safe also makes no progress: do not wait for a perfect team, accept fair battles and explore. Before a difficult battle, heal your Pokémon. When a battle goes very badly, switch or `run`.";
+  "If all your Pokémon faint, the Run ends. So before a difficult battle, train your team and heal your Pokémon. When a battle goes very badly, switch or `run`. But a Run that plays too safe also makes no progress: train up to a level that you choose, then continue.";
 const WHITEOUT_CONTINUES =
   "If all your Pokémon faint, the Run continues: you lose some money (more with more badges and a higher level), your party is healed, and you are back at the last Pokémon Center that you entered, or your home. Then you continue from there.";
 

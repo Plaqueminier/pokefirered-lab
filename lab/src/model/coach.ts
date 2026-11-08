@@ -4,7 +4,7 @@ import { type Asked, readFields } from "./decision";
 import type { JsonSchema } from "./openrouter";
 import type { TurnKind } from "./prompt";
 
-export const MAX_ADVICE_PART = 150;
+export const MAX_ADVICE_PART = 200;
 const MAX_SINCE_LINES = 12;
 
 const PART_RULES: Record<(typeof ADVICE_PARTS)[number], string> = {

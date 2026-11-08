@@ -182,7 +182,7 @@ const ANSWER = [
   ["starter", '"CHARMANDER"', "only at the Character turn: the first Pokémon"],
   ["name", '"Mira"', "only at the Character turn: the name of the trainer, 7 characters at most"],
   ["rival", '"Crumb"', "only at the Character turn: the name of the rival, 7 characters at most"],
-  ["advice", '{"team": "Catch a PIDGEY on Route 1, then train it to level 10.", "shopping": "Buy 5 POTIONS.", "progress": "", "battles": "Use WATER GUN on rock types."}', "only at a turn of the Coach (Character, Reflection, Review): what the player must do until the next turn of the Coach, in 4 parts of one or two short sentences; after 150 characters, the program removes the sentences that do not fit; an empty part keeps the last text of this part"],
+  ["advice", '{"team": "Catch a PIDGEY on Route 1, then train it to level 10.", "shopping": "Buy 5 POTIONS.", "progress": "", "battles": "Use WATER GUN on rock types."}', "only at a turn of the Coach (Character, Reflection, Review): what the player must do until the next turn of the Coach, in 4 parts of one or two short sentences; after 200 characters, the program removes the sentences that do not fit; an empty part keeps the last text of this part"],
   ["action", '"goTo 20 45"', "one action of the screen"],
   ["reason", '"The unseen area west…"', "why, in one or two sentences"],
   ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached"],

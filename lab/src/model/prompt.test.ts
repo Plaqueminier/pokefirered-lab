@@ -486,7 +486,7 @@ describe("the Coach advice", () => {
     const long = "x".repeat(MAX_ADVICE_PART + 20);
     const sentence = "Train the PIDGEY in the tall grass of Route 1 up to level 10.";
     expect(readAdvice(JSON.stringify({ advice: { team: " Catch a PIDGEY. ", shopping: "", progress: long, battles: "" } }))).toEqual({ team: "Catch a PIDGEY.", progress: "x".repeat(MAX_ADVICE_PART) });
-    expect(readAdvice(JSON.stringify({ advice: { team: `${sentence} ${sentence} ${sentence}`, progress: `${"word ".repeat(40)}end` } }))).toEqual({ team: `${sentence} ${sentence}`, progress: "word ".repeat(30).trim() });
+    expect(readAdvice(JSON.stringify({ advice: { team: `${sentence} ${sentence} ${sentence} ${sentence}`, progress: `${"word ".repeat(50)}end` } }))).toEqual({ team: `${sentence} ${sentence} ${sentence}`, progress: "word ".repeat(40).trim() });
     expect(readAdvice(JSON.stringify({ advice: { team: `${"a".repeat(MAX_ADVICE_PART - 1)}. Next` } }))).toEqual({ team: `${"a".repeat(MAX_ADVICE_PART - 1)}.` });
     expect(readAdvice(JSON.stringify({ advice: "one text" }))).toEqual({});
     const schema = withAdvice({ type: "object", properties: {}, required: [] });
