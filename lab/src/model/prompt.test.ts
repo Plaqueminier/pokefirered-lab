@@ -451,9 +451,43 @@ describe("the Coach advice", () => {
     expect(adviceLine([...decided(advised({ shopping: "Buy 5 POTIONS." })), call("zoom 1-2"), call("viewAtlas"), ...decided(call("go A"))])).toEqual(["Coach advice, the last one of your Coach for each part:", "- Shopping (reflection turn, 1 decision ago): Buy 5 POTIONS."]);
   });
 
-  test("the Coach writes the 4 parts, and the program keeps a part with text, cut at its limit", () => {
+  test("under the advice, the program tells what happened since the oldest part in force, with the same count of decisions", () => {
+    const fact = (event: object) => ({ frame: 1, ...event }) as RunEvent;
+    const beforeAdvice = [...decided(call("go A")), fact({ type: "map", map: "Route1" }), fact({ type: "catch", species: "RATTATA" })];
+    const healed = [fact({ type: "heal", source: "center", item: null, party: [{ species: "SQUIRTLE", before: 3, after: 22, maxHp: 22 }] }), fact({ type: "map", map: "Route1" }), fact({ type: "map", map: "PewterCity" })];
+    const fights = [
+      fact({ type: "faint", species: "WEEDLE", side: "enemy" }),
+      fact({ type: "faint", species: "PIDGEY", side: "player" }),
+      fact({ type: "level", species: "SQUIRTLE", from: 9, level: 10, moves: [], evolution: null }),
+      fact({ type: "trainer", trainer: "BUG CATCHER Rick", id: 102 }),
+      fact({ type: "money", before: 100, after: 200, cause: "battle" }),
+    ];
+    const bought = [fact({ type: "purchase", item: "POTION", count: 5, money: 1500 }), fact({ type: "heal", source: "item", item: "POTION", party: [{ species: "SQUIRTLE", before: 25, after: 25, maxHp: 34 }, { species: "PIDGEY", before: 1, after: 21, maxHp: 30 }] }), fact({ type: "heal", source: "item", item: "ANTIDOTE", party: [{ species: "SQUIRTLE", before: 25, after: 25, maxHp: 34 }] }), fact({ type: "heal", source: "other", item: null, party: [{ species: "SQUIRTLE", before: 25, after: 34, maxHp: 34 }, { species: "PIDGEY", before: 21, after: 21, maxHp: 30 }] }), fact({ type: "item", how: "found", item: "ANTIDOTE", count: 1 }), fact({ type: "whiteout" })];
+    expect(adviceLine([...beforeAdvice, ...decided(advised({ team: "Heal, then train." })), ...decided(call("go A")), ...healed, ...decided(call("go B")), ...fights, ...decided(call("go C")), ...bought])).toEqual([
+      "Coach advice, the last one of your Coach for each part:",
+      "- Team (reflection turn, 3 decisions ago): Heal, then train.",
+      "What happened since this advice, oldest first:",
+      "- 2 decisions ago: you healed at a Pokémon Center; you reached PewterCity for the first time.",
+      "- 1 decision ago: your PIDGEY fainted; SQUIRTLE reached level 10; you beat BUG CATCHER Rick.",
+      "- 0 decisions ago: you bought 5 POTION; you used POTION on PIDGEY; you used ANTIDOTE; SQUIRTLE healed; you found 1 ANTIDOTE; all your Pokémon fainted.",
+    ]);
+  });
+
+  test("the list of what happened keeps the last lines, and starts at the oldest part in force", () => {
+    const fact = (event: object) => ({ frame: 1, ...event }) as RunEvent;
+    const catches = Array.from({ length: 15 }, (_, at) => [...decided(call("go A")), fact({ type: "catch", species: `MON${at}` })]).flat();
+    const lines = adviceLine([...decided(advised({ team: "Catch." })), ...catches]);
+    expect(lines.slice(2).length).toBe(13);
+    expect(lines.at(-1)).toBe("- 0 decisions ago: you caught a MON14.");
+    expect(adviceLine([...decided(advised({ team: "Catch." })), ...decided(call("go A")), fact({ type: "catch", species: "PIDGEY" }), ...decided(advised({ shopping: "Buy." }, "review"))])).toContain("- 1 decision ago: you caught a PIDGEY.");
+  });
+
+  test("the Coach writes the 4 parts, and the program keeps a part with text, cut at the last full sentence that fits", () => {
     const long = "x".repeat(MAX_ADVICE_PART + 20);
+    const sentence = "Train the PIDGEY in the tall grass of Route 1 up to level 10.";
     expect(readAdvice(JSON.stringify({ advice: { team: " Catch a PIDGEY. ", shopping: "", progress: long, battles: "" } }))).toEqual({ team: "Catch a PIDGEY.", progress: "x".repeat(MAX_ADVICE_PART) });
+    expect(readAdvice(JSON.stringify({ advice: { team: `${sentence} ${sentence} ${sentence}`, progress: `${"word ".repeat(40)}end` } }))).toEqual({ team: `${sentence} ${sentence}`, progress: "word ".repeat(30).trim() });
+    expect(readAdvice(JSON.stringify({ advice: { team: `${"a".repeat(MAX_ADVICE_PART - 1)}. Next` } }))).toEqual({ team: `${"a".repeat(MAX_ADVICE_PART - 1)}.` });
     expect(readAdvice(JSON.stringify({ advice: "one text" }))).toEqual({});
     const schema = withAdvice({ type: "object", properties: {}, required: [] });
     expect(schema.required).toContain("advice");

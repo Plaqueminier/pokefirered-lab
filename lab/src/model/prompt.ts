@@ -92,7 +92,7 @@ export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSetti
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -124,11 +124,11 @@ Advice of a good player:
 - Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
 - Keep your POTIONS for when they are necessary, for example before a difficult battle.
-- You can use more than one Pokémon: catch more Pokémon and make a balanced team, with different types.
+- You can use more than one Pokémon: catch more Pokémon, step by step, up to a balanced team of 6 with different types.
 - When a wild battle goes badly, run.
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
-- To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
+- Each Pokémon that was in the battle against a foe, and did not faint, gets an equal part of the experience of this foe, also with no move. So to train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong Pokémon at the first turn. Against a trainer, this counts for each of its Pokémon: the weak Pokémon gets a part only of the foes that it was in the battle against.
 - Buy Poké Balls and Potions at a Poké Mart.
 - ${REPEL_FACTS}
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
@@ -389,7 +389,7 @@ function outcome({ result, texts }: Try): string {
 }
 
 function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
-  // The prompt does not use the state events yet.
+  // The last decisions do not show the state events: the Coach advice tells them.
   if (isStateEvent(event)) return [];
   switch (event.type) {
     case "action": {
