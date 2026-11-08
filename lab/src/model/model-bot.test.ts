@@ -251,7 +251,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "34", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "35", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -321,7 +321,8 @@ describe.skipIf(!ready)("model bot", () => {
       ]);
       const [first, second] = modelEvents(harness);
       expect(first).toMatchObject({ model: "big", decision: { advice: { team: "Catch a second Pokémon. big" } } });
-      expect(first.prompt.user).toContain('- A smaller model plays the next decisions, about 20, until your next turn. Write in "advice" what it must do, in 4 parts');
+      expect(first.prompt.user).toContain('- A smaller model plays the next decisions, about 20, until your next turn. It reads your advice at each of these decisions');
+      expect(first.prompt.user).toContain('- Write in "advice" what it must do, in 4 parts');
       expect(first.prompt.system).toStartWith("You are the Coach of a smaller model");
       expect(second.prompt.system).toContain("A Coach, a bigger model");
       expect(second.model).toBe("small");
