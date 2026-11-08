@@ -1,4 +1,4 @@
-import type { BagItem, BagPocket, Teachable } from "../bag";
+import { BICYCLE, type BagItem, type BagPocket, type Teachable } from "../bag";
 import { struggles } from "../battle";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
@@ -64,6 +64,7 @@ const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Righ
 const REPEL_ITEMS = ["REPEL", "SUPER REPEL", "MAX REPEL"];
 const REPEL_FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";
 const REPEL_WORE_OFF = /REPEL's effect wore off/;
+const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: you stay on it after a door.";
 const MAX_BOX_LINES = 12;
 
 const WHITEOUT_ENDS =
@@ -90,7 +91,7 @@ export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSetti
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes and whether a REPEL is active, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -209,7 +210,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party),
-    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events)] : []),
+    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag)] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
     ...context(asked),
@@ -428,6 +429,12 @@ function boxFacts({ overworld: { boxes, pcItems }, party }: WalkAsked, detailed:
 function gameCounts(boxes: BoxMon[], events: readonly RunEvent[]): string {
   const whiteouts = events.filter((e) => e.type === "whiteout").length;
   return `So far in the game: ${events.filter((e) => e.type === "catch").length} Pokémon caught, ${boxes.length} Pokémon in the boxes, ${whiteouts} whiteout${whiteouts === 1 ? "" : "s"}.`;
+}
+
+function bicycleLines({ riding, rideWanted }: Overworld, bag: BagPocket[]): string[] {
+  if (!bag.some(({ items }) => items.some((item) => item.name === BICYCLE))) return [];
+  const state = rideWanted ? "You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again." : riding ? "This road keeps you on the BICYCLE until its gate." : "You walk. Use BICYCLE to ride.";
+  return [`${BICYCLE_FACTS} ${state}`];
 }
 
 function repelLines({ mapKind, repelActive }: Overworld, bag: BagPocket[], events: readonly RunEvent[]): string[] {

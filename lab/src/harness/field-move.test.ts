@@ -5,7 +5,7 @@ import { modelBot } from "../../bots/model";
 import { atlasExtract } from "../model/extract";
 import type { ModelClient } from "../model/openrouter";
 import { decryptBox } from "../party";
-import { ROM_FILE, Run, SAVES_DIR } from "../run";
+import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { cellAt, mapNamed } from "./atlas";
 import { type ActionEntry, type Bot, Harness, must } from "./harness";
 
@@ -390,6 +390,211 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a Fixed obsta
     await harness.readText();
     expect(harness.observe().mode).toBe("battle");
     expect(obstacleEvents(harness)).toEqual([expect.objectContaining({ move: "ROCK SMASH", map: "RockTunnel_B1F", x: 2, y: 23, species: "SQUIRTLE" })]);
+    harness.close();
+  });
+});
+
+const FLAG_SYS_B_DASH = 0x82f;
+const FLAG_GOT_BICYCLE = 0x271;
+const VARS_START = 0x4000;
+const TRAINER_FLAGS_START = 0x500;
+const TRAINER_FLAGS_END = 0x800;
+const VAR_MAP_SCENE_ROUTE16 = 0x405e;
+const ITEM_BICYCLE = 360;
+
+function giveBicycle(run: Run): void {
+  const { mem } = run.game;
+  const key = mem.global("gSaveBlock2Ptr").deref().field("encryptionKey").int() & 0xffff;
+  const slot = mem.global("gBagPockets").at(KEY_ITEMS_POCKET).field("itemSlots").at(0);
+  run.core.patch16(slot.field("itemId").addr, ITEM_BICYCLE);
+  run.core.patch16(slot.field("quantity").addr, 1 ^ key);
+  setFlag(run, FLAG_GOT_BICYCLE);
+}
+
+async function framesOfWalk(prepare: (run: Run, harness: Harness) => Promise<void> | void): Promise<number> {
+  const { harness, run } = await openAt("Route1", 3, 30, false);
+  await prepare(run, harness);
+  const walk = await harness.goTo(20, 30);
+  must(walk);
+  harness.close();
+  return walk.frames;
+}
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the speed of a walk", () => {
+  test("a walk of 17 cells takes 16 frames for each cell, 8 with the Running Shoes and 6 on the BICYCLE", async () => {
+    const walk = await framesOfWalk(() => {});
+    const run = await framesOfWalk((game) => setFlag(game, FLAG_SYS_B_DASH));
+    const ride = await framesOfWalk(async (game, harness) => {
+      setFlag(game, FLAG_SYS_B_DASH);
+      giveBicycle(game);
+      must(await harness.use("BICYCLE"));
+    });
+    expect(walk).toBeGreaterThanOrEqual(17 * 16);
+    expect(run).toBeLessThan(walk * 0.6);
+    expect(ride).toBeLessThan(run * 0.8);
+  });
+
+  test("a trigger stops a run at its first frame, and B does not press through the text", async () => {
+    const run = await Run.open({ startSave: START_SAVE });
+    const harness = await Harness.open({}, run);
+    setFlag(run, FLAG_SYS_B_DASH);
+    must(await harness.goTo(12, 3, "PalletTown"));
+    expect(await harness.goTo(12, 1)).toMatchObject({ status: "interrupted", reason: "trigger" });
+    expect(await harness.readText()).toMatchObject({ status: "done", text: ["OAK: Hey! Wait! Don't go out!", expect.stringContaining("OAK: It's unsafe!")] });
+    harness.close();
+  });
+});
+
+function overworld(harness: Harness) {
+  const seen = harness.observe();
+  if (seen.mode !== "overworld") throw new Error(`the game waits for a ${seen.waitingFor.kind}`);
+  return seen;
+}
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE", () => {
+  test("use BICYCLE registers it one time, then a use takes 2 frames, and the Bag and a walk prompt offer it", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    giveBicycle(run);
+    expect(harness.availableActions()).toContainEqual({ name: "use", item: "BICYCLE" });
+    const first = await harness.use("BICYCLE");
+    expect(first).toMatchObject({ status: "done", text: [] });
+    expect(first.frames).toBeGreaterThan(30);
+    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
+    expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 2 });
+    expect(overworld(harness)).toMatchObject({ riding: false, rideWanted: false });
+    expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 2 });
+    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
+    expect(await harness.use("BICYCLE", 0)).toMatchObject({ status: "impossible", reason: "BICYCLE does not work on a Pokémon" });
+    harness.close();
+  });
+
+  test("the game takes the rider off at a door, and a walk outside gets on again with no new use", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    giveBicycle(run);
+    must(await harness.use("BICYCLE"));
+    must(await harness.goTo(6, 8, "PalletTown"));
+    expect(overworld(harness)).toMatchObject({ riding: true });
+    must(await harness.goTo(6, 7));
+    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown_PlayersHouse_1F" }, riding: false, rideWanted: true });
+    must(await harness.goTo(12, 8, "PalletTown"));
+    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown" }, riding: true, rideWanted: true });
+    expect(harness.actions.filter(({ action }) => action.name === "use")).toHaveLength(1);
+    harness.close();
+  });
+
+  test("a use in a building keeps the choice for the next outdoor map, and the party menu works on the BICYCLE", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    giveBicycle(run);
+    must(await harness.goTo(6, 8, "PalletTown"));
+    must(await harness.goTo(6, 7));
+    expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 0 });
+    expect(overworld(harness)).toMatchObject({ riding: false, rideWanted: true });
+    must(await harness.goTo(12, 8, "PalletTown"));
+    expect(overworld(harness)).toMatchObject({ riding: true });
+    must(await harness.swap(0, 1));
+    expect(overworld(harness)).toMatchObject({ riding: true });
+    harness.close();
+  });
+
+  test("a Continued Run keeps the choice of its parent", async () => {
+    const onFrame = (run: Run, { map, patch }: { map: () => void; patch: () => void }) => {
+      map();
+      if (run.game.map().name === "Route1") patch();
+    };
+    const opened = async () => {
+      const run = await Run.open({ startSave: PARTY_SAVE });
+      const { onFrame: warp } = warpPatch(run, { map: "Route1", x: 3, y: 30 }, false);
+      return { run, frame: () => onFrame(run, { map: warp, patch: () => giveBicycle(run) }) };
+    };
+    const first = await opened();
+    const parent = await Harness.open({ onFrame: first.frame }, first.run);
+    await parent.play({ name: "test", version: "1", play: async (harness) => {
+      await harness.goTo(PALLET_DOOR.x, PALLET_DOOR.y);
+      must(await harness.use("BICYCLE"));
+      must(await harness.goTo(4, 30));
+    } });
+    const record = parent.record();
+    parent.close();
+    const second = await opened();
+    const continued = await Harness.open({ onFrame: second.frame, parent: { name: "parent", record } }, second.run);
+    expect(overworld(continued)).toMatchObject({ riding: true, rideWanted: true });
+    continued.close();
+  });
+});
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling Road", () => {
+  /** On a cell of Route 16 west of its gate: the scene variable of the road makes the game put the player on the BICYCLE. */
+  async function openOnRoad(x: number, y: number): Promise<{ harness: Harness; run: Run; leave: () => void }> {
+    const run = await Run.open({ startSave: PARTY_SAVE });
+    const { onFrame } = warpPatch(run, { map: "Route16", x, y }, false);
+    let onRoad = true;
+    const vars = () => run.game.mem.global("gSaveBlock1Ptr").deref().field("vars");
+    const harness = await Harness.open({ onFrame: () => {
+      onFrame();
+      if (onRoad) run.core.patch16(vars().at(VAR_MAP_SCENE_ROUTE16 - VARS_START).addr, 1);
+    } }, run);
+    await harness.goTo(PALLET_DOOR.x, PALLET_DOOR.y);
+    giveBicycle(run);
+    return { harness, run, leave: () => { onRoad = false; } };
+  }
+
+  test("a walk stops on the cell of a slope that it asked for, in the 4 directions, and the way south is the fastest", async () => {
+    const { harness } = await openOnRoad(8, 19);
+    must(await harness.goTo(8, 2, "Route17"));
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route17" }, player: { x: 8, y: 2 }, riding: true });
+    const south = await harness.goTo(8, 8);
+    must(south);
+    expect(overworld(harness)).toMatchObject({ player: { x: 8, y: 8 }, waitingFor: { kind: "walk" } });
+    const north = await harness.goTo(8, 2);
+    must(north);
+    expect(overworld(harness)).toMatchObject({ player: { x: 8, y: 2 } });
+    must(await harness.goTo(12, 2));
+    must(await harness.goTo(4, 2));
+    expect(overworld(harness)).toMatchObject({ player: { x: 4, y: 2 } });
+    expect(south.frames).toBeLessThan(north.frames / 2);
+    harness.close();
+  });
+
+  test("a rider who stops on a slope faces south: an interaction reads the sign to the south, and a direction is a step", async () => {
+    const { harness, run } = await openOnRoad(8, 19);
+    for (let flag = TRAINER_FLAGS_START; flag < TRAINER_FLAGS_END; flag++) setFlag(run, flag);
+    must(await harness.goTo(8, 4, "Route17"));
+    expect(await harness.interact(8, 5)).toMatchObject({ status: "impossible", reason: "nothing at (8, 5) starts a script" });
+    expect(overworld(harness)).toMatchObject({ player: { x: 8, y: 4, facing: "south" } });
+    expect(await harness.interact(9, 4)).toMatchObject({ status: "impossible", reason: "the player walked to Route17 (9, 4) when it turned east" });
+    // A step into a sign reads it (TrySetUpWalkIntoSignScript), as on foot.
+    expect(await harness.goTo(12, 52)).toMatchObject({ status: "interrupted", reason: "script" });
+    expect(await harness.readText()).toMatchObject({ text: ["It's a notice. Watch out for discarded items."] });
+    must(await harness.goTo(12, 52));
+    must(await harness.interact(12, 53));
+    expect(harness.waitingFor().kind).toBe("text");
+    harness.close();
+  });
+
+  test("a trainer stops a ride, and the text and the battle go on as usual; the road refuses a change of the BICYCLE", async () => {
+    const { harness, run } = await openOnRoad(8, 19);
+    must(await harness.goTo(8, 30, "Route17"));
+    expect(run.game.canChangeBicycle()).toBe(false);
+    expect(await harness.use("BICYCLE")).toEqual({ status: "done", text: [], frames: 0 });
+    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: true });
+    // The trainer at (7, 38) turns left and right: a walk on its row is in its sight when it faces right.
+    let walk = await harness.goTo(12, 38);
+    for (let tries = 0; walk.status === "done" && tries < 40; tries++) walk = await harness.goTo(tries % 2 === 0 ? 8 : 12, 38);
+    expect(walk).toMatchObject({ status: "interrupted", reason: "trainer" });
+    const talk = await harness.readText();
+    expect(talk.text.length).toBeGreaterThan(0);
+    expect(harness.waitingFor().kind).not.toBe("walk");
+    harness.close();
+  });
+
+  test("a walk gets off in the gate when the Bot did not choose to ride, and the trigger of the gate stops the walk", async () => {
+    const { harness, run, leave } = await openOnRoad(19, 13);
+    expect(overworld(harness)).toMatchObject({ riding: true, rideWanted: false });
+    leave();
+    must(await harness.goTo(4, 12, "Route16_NorthEntrance_1F"));
+    expect(run.game.canChangeBicycle()).toBe(true);
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route16_NorthEntrance_1F" }, riding: false });
+    expect(await harness.goTo(11, 12)).toMatchObject({ status: "interrupted", reason: "trigger" });
     harness.close();
   });
 });

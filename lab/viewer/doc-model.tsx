@@ -164,7 +164,7 @@ const PROMPT_PARTS = [
   ["Rules", "the goal, the rules, a short generic Guide"],
   ["Milestones", "the ones reached, and the next one: a name and a place"],
   ["Memory tree", "the top nodes; `zoom` opens a node"],
-  ["Bag, money, party", "as the Summary screen and the Bag show them; at a walk, the Pokémon in the boxes when there are some, and one line when a REPEL is active; on an underground map with a REPEL in the Bag and none active, what a REPEL does; after the text that a REPEL stopped, one line when the Bag has another"],
+  ["Bag, money, party", "as the Summary screen and the Bag show them; at a walk, the Pokémon in the boxes when there are some, and one line when a REPEL is active; on an underground map with a REPEL in the Bag and none active, what a REPEL does; after the text that a REPEL stopped, one line when the Bag has another; with a BICYCLE in the Bag, its frames for each cell, and whether the player rides or walks"],
   ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
   ["Mission", "the story step, kept until it is reached"],
@@ -233,7 +233,7 @@ export function PromptPage() {
         ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
           "Each prompt",
-          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some (at a Reflection or Review turn, the items of the PC and the box Pokémon in detail, and at a Review turn the counts of the game), and the lines of the REPEL, and the part of the Decision point (at a walk, the list What is left on a floor, then the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the Coach advice in a Run with a Coach, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
+          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a name and a place only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some (at a Reflection or Review turn, the items of the PC and the box Pokémon in detail, and at a Review turn the counts of the game), the lines of the REPEL and the line of the BICYCLE, and the part of the Decision point (at a walk, the list What is left on a floor, then the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the Coach advice in a Run with a Coach, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
         ],
         [
           "Known world",
@@ -268,7 +268,7 @@ export function PromptPage() {
           "Battle: PP",
           "when all the damage moves together have a quarter of their PP or less, one line tells that they have few PP. The rules tell that a move that does no damage can help when it has an effect on this foe, mostly when the PP of the damage moves are low. When no move has PP, one line tells that `fight 0` uses STRUGGLE (NORMAL, power 50), and the Pokémon loses 1/4 of the damage that it does.",
         ],
-        ["`use`", "at a walk: a medicine on a Pokémon, or REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE alone. The Bot also reads `use POTION 1 SQUIRTLE`, with no `on`."],
+        ["`use`", "at a walk: a medicine on a Pokémon, or REPEL, SUPER REPEL, MAX REPEL, ESCAPE ROPE and BICYCLE alone. BICYCLE is a choice that stays: the player rides on each map that allows it, until the next `use BICYCLE`. The model does not choose to run: each walk runs when the player has the Running Shoes. The Bot also reads `use POTION 1 SQUIRTLE`, with no `on`."],
         [
           "`teach`",
           "`teach <TM or HM> on <Pokémon>`, at a walk with a TM or an HM in the Bag. Each walk shows one line with the TMs and the HMs of the Bag. The Harness refuses a Pokémon that cannot learn the move or that knows it, with the reason. With 4 moves, the next Decision point is the learn-move question of the game.",

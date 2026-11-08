@@ -1,4 +1,4 @@
-import { ChevronRight, CircleHelp, Coins, Hand, Layers, OctagonX, Play, Repeat, Skull, Timer, TriangleAlert, Trophy } from "lucide-preact";
+import { Bike, ChevronRight, CircleHelp, Coins, Footprints, Hand, Layers, OctagonX, Play, Rabbit, Repeat, Skull, Timer, TriangleAlert, Trophy } from "lucide-preact";
 import type { Milestone } from "../src/game";
 import type { EndReason } from "../src/harness/harness";
 import type { Outcome } from "../src/harness/menu-driver";
@@ -22,7 +22,7 @@ type MacroScreen = (typeof MACRO_SCREENS)[number]["id"];
 
 // Exactly one entry for each Macro-action of the Harness (doc.test.ts).
 export const MACRO_DOC: { form: string; when: string; effect: string; cards: Partial<Record<MacroScreen, string>> }[] = [
-  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again. It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. A cut tree or a rock that a Pokémon can remove with a badge that the player does not have gives a reason that names the badge. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. A goTo to a cell of another Part with no way on foot names the two Parts and says that only a slide leaves the Part of the player.", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
+  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked or water cell that the player saw gets its own reason, not “no route”. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again. It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. A cut tree or a rock that a Pokémon can remove with a badge that the player does not have gives a reason that names the badge. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. A goTo to a cell of another Part with no way on foot names the two Parts and says that only a slide leaves the Part of the player. The walk runs when the player has the Running Shoes, and it rides when the Bot chose the BICYCLE (page “Running and the BICYCLE”).", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
   { form: "walkOn(x, y, direction)", when: "walk", effect: "Goes to a seen cell, then continues in one direction while the map is dark for the model. When a wall closes that direction, it goes along the wall in the direction of the walk, while the side of the wall has unseen cells near it. It stops at a wall in front, before an exit, before a ledge, at a new person and at a battle. Only the code of a Bot asks for it: the model writes `go` to an unseen cells target.", cards: { walk: "in the dark, continue in one direction" } },
   { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, an item.", cards: { walk: "turn to the next cell and press A" } },
   {
@@ -47,8 +47,8 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     form: "use(item, on?)",
     when: "battle, walk",
     effect:
-      "Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. On a walk, the medicines work on a Pokémon, and REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE work alone (ESCAPE ROPE goes to another map). Impossible, with the reason of the game, when the item does nothing.",
-    cards: { walk: "a medicine, REPEL, ESCAPE ROPE", battle: "a Potion, a Poké Ball" },
+      "Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. On a walk, the medicines work on a Pokémon, and REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE work alone (ESCAPE ROPE goes to another map). BICYCLE changes the choice of the Bot to ride or to walk, with no Bag after the first time. Impossible, with the reason of the game, when the item does nothing.",
+    cards: { walk: "a medicine, REPEL, ESCAPE ROPE, BICYCLE", battle: "a Potion, a Poké Ball" },
   },
   {
     form: "teach(item, on)",
@@ -122,7 +122,7 @@ export function MacroPage() {
         ["Results", RESULT_ROWS.map(([status, { text }]) => `\`${status}\` ${text}`).join(" · ")],
         [
           "`observe()`",
-          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the kind of the map (outdoor, underground or indoor), the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place, types, ability, and the moves as for the party), the items of the PC, whether a REPEL is active, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save.",
+          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the kind of the map (outdoor, underground or indoor), the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place, types, ability, and the moves as for the party), the items of the PC, whether a REPEL is active, whether the player rides and whether the Bot chose to ride, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save.",
         ],
         [
           "Battle facts",
@@ -310,6 +310,30 @@ export function RecordPage() {
         <DocCard icon={Repeat} title="Continue" lines={["the Harness replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit or the Token limit counts the new Model calls only"]} />
         <DocCard icon={Layers} title="10 at most" lines={["the Viewer Run, and 9 places in workers for the Runs of the Bots and the Grid replays", "a Run in a worker gives the same record as alone"]} />
       </div>
+    </Page>
+  );
+}
+
+export function SpeedPage() {
+  return (
+    <Page
+      lead="A walk moves at the best speed that the game and the choice of the Bot allow. The Run shows it in its frames only."
+      details={[
+        ["Running", "when the player has the Running Shoes (`FLAG_SYS_B_DASH`), each step holds B with the direction. The Bot does not choose it. The game itself slows the run on rock stairs. On a walk, B has no other use, and the Harness stops at the first frame of an Interruption, so B does not press through a text."],
+        ["The choice to ride", "`use BICYCLE` changes the choice of the Bot. The choice stays until the next `use BICYCLE`, also in a Continued Run and in an Extended Run. Before each leg of a walk, the Harness puts the player in the state of this choice, when the map allows the BICYCLE and the player is not on the Cycling Road."],
+        ["On and off", "the first time, the Harness opens the Bag and selects REGISTER. After that, a press of Select changes the state in 2 frames, with no fade and no text. A `use BICYCLE` on a map with no BICYCLE takes no frame: it keeps the choice for the next outdoor map."],
+        ["At a door", "the game puts a rider on foot on a map that does not allow the BICYCLE, for example a building or a cave. The next walk on a map that allows it gets on again, with no action of the Bot. The first floor of a gate allows it. FireRed has no cell that forbids a BICYCLE."],
+        ["Cycling Road", "the Routes 16, 17 and 18 between their two gates. A gate stops a person with no BICYCLE, and the game puts each other person on the BICYCLE. The player cannot get off before a gate. A trigger with no text in a gate stops a `goTo`: the next `goTo` goes on. After the gate, a walk gets off when the Bot did not choose to ride."],
+        ["Slopes", "Route 17 has them. A slope pulls a rider to the south, unless the rider holds B. So a way south holds no B, each other way and each stop holds B, and the player stays on the cell that the walk asked for. A rider who stops on a slope faces south. A direction on a slope is a step, not a turn: so `interact` works on the cell to the south, and on another side it fails with its reason."],
+      ]}
+    >
+      <Block label="🏃 Frames for each cell">
+        <div class={GRID3}>
+          <DocCard icon={Footprints} title="On foot" lines={["16 frames", "with no Running Shoes"]} />
+          <DocCard icon={Rabbit} title="Running" lines={["8 frames", "after the Running Shoes, east of Pewter City"]} />
+          <DocCard icon={Bike} title="BICYCLE" lines={["6 frames", "when the Bot chose to ride; 4 down a slope and 16 up it"]} />
+        </div>
+      </Block>
     </Page>
   );
 }

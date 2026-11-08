@@ -34,7 +34,7 @@ export function LoopPage() {
           <Terms
             numbered
             rows={[
-              ["Harness", "runs the emulator to the next Decision point; it decides nothing, except the use of FLASH"],
+              ["Harness", "runs the emulator to the next Decision point; it decides nothing, except the use of FLASH and the speed of a walk"],
               ["Decision point", "the game waits for an input: walk, text, choice, battle…"],
               ["Model call", "the model bot asks its AI model for one action"],
               ["Macro-action", "the Harness plays the action in the game, or one Raw input"],
@@ -62,7 +62,7 @@ export function PrinciplePage() {
       details={[
         ["Run", "an emulator that plays from the Starting save, or from a copy with the names of its character."],
         ["Bot", "decides what to do, and acts only through the Harness."],
-        ["Harness", "plays the actions of the Bot in the game; decides nothing, except the use of FLASH on a Dark map."],
+        ["Harness", "plays the actions of the Bot in the game; decides nothing, except the use of FLASH on a Dark map and the speed of a walk."],
         ["Decision point", "the game waits for an input: walk, text, choice, battle action…"],
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
@@ -74,7 +74,7 @@ export function PrinciplePage() {
       <div class={GRID3}>
         <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save, or a copy with names", "10 at most at the same time: the Viewer Run and 9 places"]} />
         <DocCard icon={Bot} title="Bot" lines={["decides what to do", "acts only through the Harness"]} />
-        <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH"]} />
+        <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH and the speed of a walk"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
         <DocCard icon={Eye} title="Knowledge level" lines={["`player` what a careful player knows", "`full` also the exact HP and stats of the enemy, and all the maps"]} />
         <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water, fixed obstacles"]} />

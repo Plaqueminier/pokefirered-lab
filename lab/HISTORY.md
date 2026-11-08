@@ -438,3 +438,15 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     A slide after a `press` is not in the Atlas: only `goTo` gives the end of a slide.
 
+## 34. Running and the BICYCLE (2026-11-08)
+
+81. The model bot goes to version 33: a walk runs, and the model can choose to ride. The model bot walked at 16 frames for each cell, also with the Running Shoes, so the Runs and the videos were two times longer than necessary. Issue #84.
+
+    - Each step holds B when the player has the Running Shoes (`FLAG_SYS_B_DASH`). The model does not choose it. On a walk, B has no other use, and the Harness stops at the first frame of an Interruption, so B does not press through a text.
+    - `use BICYCLE` is a choice that stays. The Harness registers the BICYCLE on Select one time, through the Bag. After that, a press of Select takes 2 frames. The game puts a rider on foot at a door, and the next walk outside gets on again, so the choice costs one Model call only.
+    - The issue wanted the walk to ride with no choice. We gave this choice to the model, so a Run shows if the model wants the BICYCLE for a long way. The model has no strong reason to ride, because it has no limit of frames. A line of facts says what the BICYCLE gives: the Runs will show if the model uses it. If it does not, the Harness can get on by itself.
+    - A test measured a walk of 17 cells: 282 frames on foot, 146 running, 105 riding.
+    - The Cycling Road: on Route 17, a slope pulls a rider to the south unless the rider holds B. A way south holds no B, and each other way and each stop holds B. So a `goTo` ends on its cell. The first try read the behaviour of the cell before the frame: the player then rolled from row 2 to row 38. The Harness now holds B for each rider who stops, because B does nothing else to a rider.
+    - A rider who stops on a slope faces south, and a direction there is a step, not a turn. So `interact` works only on the cell to the south. The signs of Route 17 have a slope cell at their north, so the player can read them.
+    - A test showed that the trigger with no text in a gate of the Cycling Road stops a `goTo`. The bot then makes one more Model call. We keep this for now, because the rule touches all the triggers.
+

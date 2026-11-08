@@ -40,7 +40,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     teachables: [],
     boxes: [],
     pcItems: [],
-    repelActive: false,
+    repelActive: false, riding: false, rideWanted: false,
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },

@@ -3,12 +3,13 @@ import { canLearnTmHm, newMove, type PartyMon, type PartyMove } from "./party";
 import { activeTask, type Decode, oneLine } from "./prompts";
 import { functionName } from "./symbols";
 
+export const BICYCLE = "BICYCLE";
 export const POCKET_NAMES = ["ITEMS", "KEY ITEMS", "POKé BALLS", "TM CASE", "BERRY POUCH"] as const;
 const ITEM_NONE = 0;
 const MAX_STRING = 256;
 const BATTLE_USAGE: Record<number, ItemUse> = { 1: "pokemon", 2: "alone" };
 const UNSUPPORTED_BATTLE_FUNCS = new Set(["BattleUseFunc_Ether", "ItemUseInBattle_EnigmaBerry"]);
-const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon", FieldUseFunc_Repel: "alone", ItemUseOutOfBattle_EscapeRope: "alone" };
+const WALK_USE_FUNCS: Record<string, ItemUse> = { FieldUseFunc_Medicine: "pokemon", FieldUseFunc_Repel: "alone", ItemUseOutOfBattle_EscapeRope: "alone", FieldUseFunc_Bike: "alone" };
 const ITEM_ANIM_KEY_STATE = 12;
 // The pocket of gItems counts from 1 (POCKET_ITEMS); the Bag counts from 0.
 const FIRST_ITEM_POCKET = 1;

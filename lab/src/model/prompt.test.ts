@@ -386,6 +386,25 @@ describe("a REPEL", () => {
   });
 });
 
+describe("the BICYCLE", () => {
+  const BICYCLE = { name: "BICYCLE", quantity: 1, description: "A folding bicycle.", price: 0, battle: null, walk: "alone" };
+  const FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: you stay on it after a door.";
+  const on = (items: object[], riding: boolean, rideWanted: boolean) => ({ ...route1(22, items), riding, rideWanted }) as Observation;
+  const prompt = (observation: Observation) => userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+
+  test("a walk with the BICYCLE in the Bag tells its facts and if the player rides, and the use line offers it", () => {
+    expect(prompt(on([BICYCLE], false, false))).toContain(`${FACTS} You walk. Use BICYCLE to ride.`);
+    expect(prompt(on([BICYCLE], true, true))).toContain(`${FACTS} You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again.`);
+    expect(prompt(on([BICYCLE], false, true))).toContain("You chose to ride:");
+    expect(prompt(on([BICYCLE], true, false))).toContain("This road keeps you on the BICYCLE until its gate.");
+    expect(prompt(on([BICYCLE], false, false))).toContain("The items that work now: BICYCLE.");
+  });
+
+  test("a walk with no BICYCLE in the Bag says nothing of it", () => {
+    expect(prompt(on([], false, false))).not.toContain("BICYCLE");
+  });
+});
+
 describe("the REPEL facts", () => {
   const REPEL = { name: "REPEL", quantity: 2, description: "Prevents weak wild POKéMON from appearing for 100 steps.", price: 350, battle: null, walk: "alone" };
   const FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";

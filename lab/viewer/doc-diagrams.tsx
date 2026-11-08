@@ -2,7 +2,7 @@ type Pos = readonly [x: number, y: number];
 type Arrow = { d: string; label: string; lx: number; ly: number; anchor: "start" | "middle" | "end" };
 
 const LOOP = [
-  { title: "Harness", tag: "🕹️ runs the game", lines: ["runs the emulator", "decides nothing, except the use of FLASH"], next: "runs to" },
+  { title: "Harness", tag: "🕹️ runs the game", lines: ["runs the emulator", "decides nothing, except the use of FLASH and the speed of a walk"], next: "runs to" },
   { title: "Decision point", tag: "⏸️ game frozen", lines: ["the game waits", "walk, text, choice, battle…"], next: "asks" },
   { title: "Model call", tag: "🤖 the Bot asks", lines: ["prompt → AI model", "action, reason, Mission"], next: "answer" },
   { title: "Macro-action", tag: "▶️ one game action", lines: ["goTo, fight, buy…", "or one Raw input"], next: "plays it" },

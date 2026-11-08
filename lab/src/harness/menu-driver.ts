@@ -35,6 +35,7 @@ const CURSOR_ROW = 2;
 const NAMING_OK_ROW = 2;
 // moveMenuCursor reads the cursor as one number: y * NAMING_CURSOR_STRIDE + x. A row of the keyboard has less than 16 columns.
 const NAMING_CURSOR_STRIDE = 16;
+const ITEM_MENU_REGISTER = 1;
 const YES = 0;
 const NO = 1;
 
@@ -172,8 +173,8 @@ export class MenuDriver {
   ) {}
 
   // JOY_NEW sees a press only after a frame with the button up.
-  tap(keys: number): "battle" | null {
-    return this.frames.advance(keys) || this.frames.advance(0) ? "battle" : null;
+  tap(keys: number, held = 0): "battle" | null {
+    return this.frames.advance(keys | held) || this.frames.advance(held) ? "battle" : null;
   }
 
   input(keys: number, watch?: () => void): Outcome {
@@ -244,6 +245,21 @@ export class MenuDriver {
     const picked = this.pickItem(place, on, walk);
     if (picked.status !== "done") return picked;
     return walk ? this.useOnWalk(item, place.item, before) : this.useInBattle(item, place.item, before);
+  }
+
+  /** REGISTER in the menu of the item, in the Bag: then Select uses the item on the field. */
+  register(item: string): Outcome {
+    const { game } = this;
+    const place = game.findInBag(item);
+    if (!place) return impossible(`there is no ${item} in the Bag`);
+    const opened = this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list");
+    if (opened.status !== "done") return opened;
+    const picked = this.pickItem(place, undefined, true);
+    if (picked.status !== "done") return picked;
+    const moved = this.moveMenuCursor(ITEM_MENU_REGISTER, () => game.bagMenu()?.menuCursor ?? null);
+    if (moved.status !== "done") return moved;
+    const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
+    return back.status === "done" ? this.closeStartMenu() : back;
   }
 
   buy(item: string, quantity: number): Outcome {

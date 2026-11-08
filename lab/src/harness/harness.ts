@@ -1,7 +1,7 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
+import { BICYCLE, type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
@@ -74,7 +74,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideWanted: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -228,6 +228,8 @@ export class Harness {
   readonly #events: RunEvent[] = [];
   readonly #menus: MenuDriver;
   readonly #parent: string | null;
+  /** The choice of the Bot with `use BICYCLE`. The Harness keeps the player in this state where the game allows it. */
+  #rideWanted = false;
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
   #playStart: { frame: number; rawInputs: number } | null = null;
   #phase: Phase = { kind: "ready" };
@@ -421,7 +423,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), teachables: game.teachables() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideWanted: this.#rideWanted, teachables: game.teachables() };
   }
 
   availableActions(): AvailableAction[] {
@@ -502,7 +504,7 @@ export class Harness {
 
   private slide(direction: Direction): Outcome & Slid {
     const before = this.place();
-    const stepped = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => at(this.place()) !== at(before));
+    const stepped = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => at(this.place()) !== at(before));
     if (stepped === "limit") return { status: "impossible", reason: `the player does not step ${direction} from ${at(before)} on the spin tile` };
     if (stepped !== "done") return { status: "interrupted", reason: stepped };
     // The game starts the slide one player_step after the step on the tile ends, and the game can wait for a walk in that frame.
@@ -553,6 +555,8 @@ export class Harness {
     for (let legs = 0; legs < MAX_LEGS; legs++) {
       const here = this.place();
       if (reached(destination, here)) return { status: "done" };
+      const changed = this.matchBicycle();
+      if (changed.status !== "done") return changed;
       const maps = this.routeMaps();
       const route = findRoute(here, destination, maps);
       const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
@@ -591,7 +595,7 @@ export class Harness {
       if (!direction) return { status: "impossible", reason: `(${x}, ${y}) is not next to the player at ${at(here)}` };
       const turned = this.face(direction);
       if (turned.status !== "done") return turned;
-      const battle = this.#menus.tap(Keys.A);
+      const battle = this.#menus.tap(Keys.A, this.stayKeys());
       if (battle) return { status: "interrupted", reason: battle };
       // ScriptContext_SetupScript locks the field controls, so an unlocked field means A started no script.
       if (!game.fieldLocked()) return { status: "impossible", reason: `nothing at (${x}, ${y}) starts a script` };
@@ -616,7 +620,30 @@ export class Harness {
   }
 
   async use(item: string, on?: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => this.#menus.use(item, on), { text: [] });
+    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => (item === BICYCLE && this.#run.game.waitingFor().kind === "walk" ? this.chooseRide(on) : this.#menus.use(item, on)), { text: [] });
+  }
+
+  private chooseRide(on?: number): Outcome {
+    if (on !== undefined) return { status: "impossible", reason: `${BICYCLE} does not work on a Pokémon` };
+    if (!this.#run.game.findInBag(BICYCLE)) return { status: "impossible", reason: `there is no ${BICYCLE} in the Bag` };
+    this.#rideWanted = !this.#rideWanted;
+    return this.matchBicycle();
+  }
+
+  // Select has no fade and no text, so a walk gets on after each door. Only the first time needs the Bag.
+  private matchBicycle(): Outcome {
+    const game = this.#run.game;
+    if (this.#rideWanted === game.riding() || !game.canChangeBicycle() || game.waitingFor().kind !== "walk") return { status: "done" };
+    const bicycle = game.findInBag(BICYCLE);
+    if (!bicycle) return { status: "done" };
+    if (game.registeredItem() !== bicycle.item) {
+      const registered = this.#menus.register(BICYCLE);
+      if (registered.status !== "done") return registered;
+    }
+    const battle = this.#menus.tap(Keys.Select);
+    if (battle) return { status: "interrupted", reason: battle };
+    const interruption = this.settle();
+    return interruption ? { status: "interrupted", reason: interruption } : { status: "done" };
   }
 
   async buy(item: string, quantity: number): Promise<ActionResult> {
@@ -764,7 +791,11 @@ export class Harness {
     const actions = record.events.filter((e) => e.type === "action");
     let next = 0;
     const actionsEnded = () => {
-      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) this.#atlas.onAction(actions[next]);
+      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) {
+        const { action, result } = actions[next];
+        if (action.name === "use" && action.item === BICYCLE && result.status !== "impossible") this.#rideWanted = !this.#rideWanted;
+        this.#atlas.onAction(actions[next]);
+      }
     };
     while (!player.ended) {
       actionsEnded();
@@ -927,7 +958,7 @@ export class Harness {
     const [dx, dy] = DIRECTION_STEP[direction];
     const path = Array.from({ length: cells }, (_, i) => ({ x: before.x + dx * (i + 1), y: before.y + dy * (i + 1) }));
     const arrival = path.at(-1)!;
-    const result = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => {
+    const result = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => {
       const now = game.player();
       return !now || game.map().name !== before.map || (now.x === arrival.x && now.y === arrival.y);
     });
@@ -951,7 +982,7 @@ export class Harness {
     const game = this.#run.game;
     if (game.player()?.facing === direction) return { status: "done" };
     const before = this.place();
-    const turned = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => game.player()?.facing === direction);
+    const turned = this.hold(DIRECTION_KEYS[direction] | this.stayKeys(), STEP_FRAME_LIMIT, () => game.player()?.facing === direction);
     if (turned === "limit") return { status: "impossible", reason: `the player does not turn ${direction}` };
     if (turned !== "done") return { status: "interrupted", reason: turned };
     const interruption = this.settle();
@@ -961,28 +992,42 @@ export class Harness {
   }
 
   private push(direction: Direction): LegResult {
-    const result = this.hold(DIRECTION_KEYS[direction], STEP_FRAME_LIMIT, () => this.#run.game.fieldLocked());
+    const result = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => this.#run.game.fieldLocked());
     return result === "limit" ? "no warp" : result;
   }
 
+  // The walk moves at the best speed that the game allows: B runs on foot. On a slope of the Cycling Road, B slows the way south.
+  private stepKeys(direction: Direction): number {
+    const game = this.#run.game;
+    const key = DIRECTION_KEYS[direction];
+    if (game.riding()) return direction === "south" ? key : key | this.stayKeys();
+    return game.hasRunningShoes() ? key | Keys.B : key;
+  }
+
+  // As BikeInputHandler_Normal (bike.c): a slope pulls a rider who holds no B to the south. B does nothing else to a rider,
+  // and the game reads the cell under the player in the same frame as the keys, so the Harness does not read the cell.
+  private stayKeys(): number {
+    return this.#run.game.riding() ? Keys.B : 0;
+  }
+
   private settle(): Interruption | null {
-    const result = this.hold(0, SETTLE_FRAME_LIMIT, () => this.#run.game.waitingFor().kind === "walk");
+    const result = this.hold(() => this.stayKeys(), SETTLE_FRAME_LIMIT, () => this.#run.game.waitingFor().kind === "walk");
     if (result === "limit") throw new Error(`the game waits for no input for more than ${SETTLE_FRAME_LIMIT} frames`);
     return result === "done" ? null : result;
   }
 
-  private hold(keys: number, limit: number, done: () => boolean): "done" | "limit" | Interruption {
+  private hold(keys: number | (() => number), limit: number, done: () => boolean): "done" | "limit" | Interruption {
     for (let frames = 0; ; frames++) {
       if (done()) return "done";
       if (frames === limit) return "limit";
-      const interruption = this.frameOrInterruption(keys);
+      const interruption = this.frameOrInterruption(typeof keys === "number" ? keys : keys());
       if (interruption) return interruption;
     }
   }
 
   private wait(frames: number): Interruption | null {
     for (let i = 0; i < frames; i++) {
-      const interruption = this.frameOrInterruption(0);
+      const interruption = this.frameOrInterruption(this.stayKeys());
       if (interruption) return interruption;
     }
     return null;

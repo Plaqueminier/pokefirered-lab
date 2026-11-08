@@ -13,7 +13,7 @@ The ROM built with the lab flag. It has the same gameplay as the vanilla build. 
 _Avoid_: debug build, mod, hack
 
 **Harness**:
-The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The one exception is FLASH on a **Dark map** (see **Field move**).
+The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The exceptions are FLASH on a **Dark map** (see **Field move**) and the speed of a walk (see **Running** and **Ride choice**).
 _Avoid_: emulator, AI
 
 **Bot**:
@@ -142,6 +142,22 @@ A cell that ends the **Slide** of a **Spin tile**. Its metatile behaviour is `MB
 **Slide**:
 The forced walk of the player from a **Spin tile** to the cell where it stops. It goes from one **Part** to another **Part** of the same map, in one direction only. Before the player takes it, the code can tell its end from the cells that the player saw, or it cannot when the way crosses an unseen cell. After the player takes it, the **Atlas** keeps its real end.
 _Avoid_: spin, glide, push
+
+**Running**:
+The walk of a player with the Running Shoes: 8 frames for each cell, not 16. A **Bot** does not choose it: the **Harness** runs on each walk.
+_Avoid_: dash, sprint
+
+**Ride choice**:
+The choice of a **Bot** to ride the BICYCLE or to walk. It stays until the **Bot** changes it. The **Harness** puts the player in the state of this choice before each walk, where the game allows it. Riding takes 6 frames for each cell. The game puts a rider on foot on a map that does not allow the BICYCLE, and the next walk on a map that allows it gets on again.
+_Avoid_: bike mode
+
+**Cycling Road**:
+The Routes 16, 17 and 18 between their two gates. A gate stops a person with no BICYCLE, and the game puts each other person on the BICYCLE. The player cannot get off before a gate. The story does not need it.
+_Avoid_: Route 17 (only one part of it), bike path
+
+**Slope**:
+A cell of the **Cycling Road** that pulls a rider to the south, 4 frames for each cell, unless the rider holds B. A rider who holds B stays on the cell and faces south.
+_Avoid_: pull-down tile, hill
 
 **Known world**:
 A part of each walk prompt of a model bot: one line for each outdoor map of the **Atlas**, in the order of the first visit. Each line has the edges seen and their destinations, the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells and the **Fixed obstacles** whose HM is in the Bag or whose move a Pokémon knows and that the party cannot remove yet. The code makes it from the **Atlas** only, so it shows only what the player saw.
