@@ -2,7 +2,7 @@
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { BICYCLE, type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
-import { type Battle, BattleWatch, type EnemyMon, enemyView, struggles } from "../battle";
+import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
@@ -12,7 +12,7 @@ import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
-import { withoutFormat } from "./game-events";
+import { isStateEvent, withoutFormat } from "./game-events";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
@@ -21,7 +21,6 @@ import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
   ButtonTrack,
   GameWatch,
-  hasStateEvents,
   isGameEvent,
   type ModelAnswer,
   type ModelEvent,
@@ -63,7 +62,7 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
+export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; double?: { ally: Battle["player"] | null; otherFoe: { enemy: EnemyMon; fights: (FightFacts | null)[] } | null; reach: MoveReach[] }; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -95,7 +94,7 @@ export type MacroAction =
   | { name: "interact"; x: number; y: number }
   | { name: "readText" }
   | { name: "choose"; option: string }
-  | { name: "fight"; move: number }
+  | { name: "fight"; move: number; foe?: number }
   | { name: "switch"; slot: number }
   | { name: "send"; slot: number }
   | { name: "swap"; first: number; second: number }
@@ -440,7 +439,7 @@ export class Harness {
           return game.teachables().map(({ item }) => ({ name, item }));
         case "switch":
         case "send":
-          return sendableSlots(game.partyOnScreen(), game.requireBattle().player.partyIndex).map((slot) => ({ name, slot }));
+          return sendableSlots(game.partyOnScreen(), [game.requireBattle().player.partyIndex, game.requireBattle().double?.ally?.partyIndex]).map((slot) => ({ name, slot }));
         case "interact":
           return this.interactions();
         case "choose":
@@ -590,8 +589,8 @@ export class Harness {
     return this.act({ name: "choose", option }, () => this.#menus.choose(option));
   }
 
-  async fight(move: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "fight", move }, () => this.#menus.fight(move), { text: [] });
+  async fight(move: number, foe?: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "fight", move, ...(foe === undefined ? {} : { foe }) }, () => this.#menus.fight(move, foe), { text: [] });
   }
 
   async run(): Promise<TextResult> {
@@ -672,7 +671,7 @@ export class Harness {
       case "choose":
         return this.choose(action.option);
       case "fight":
-        return this.fight(action.move);
+        return this.fight(action.move, action.foe);
       case "switch":
         return this.switch(action.slot);
       case "send":
@@ -759,10 +758,9 @@ export class Harness {
       this.advance(player.next());
     }
     actionsEnded();
-    const current = hasStateEvents(record);
-    const watched = current ? this.#events : withoutFormat(this.#events);
-    if (!Bun.deepEquals(watched, record.events.filter(isGameEvent))) throw new Error("the Run record does not replay the same game: its Game events are different");
-    this.#events.splice(0, this.#events.length, ...(current ? record.events : withStateEvents(record.events, this.#events)));
+    // The maps, the battles and the Milestones tell that it is the same game. The state events come from the replay: a better read of the game can change them (run 68: a party read that skipped frames lost 7 heals).
+    if (!Bun.deepEquals(withoutFormat(this.#events), withoutFormat(record.events.filter(isGameEvent)))) throw new Error("the Run record does not replay the same game: its maps, battles or Milestones are different");
+    this.#events.splice(0, this.#events.length, ...withStateEvents(record.events.filter((event) => !isStateEvent(event)), this.#events));
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
   }
 
@@ -792,16 +790,19 @@ export class Harness {
   }
 
   private battleState(battle: Battle): BattleState {
-    const { kind, player, enemy } = battle;
+    const { kind, player, enemy, double } = battle;
     const game = this.#run.game;
-    const movesSeen = this.#battles.movesSeen(enemy.partyIndex).map((move) => game.moveName(move));
+    const view = (foe: Battle["enemy"]) => enemyView(foe, this.#battles.movesSeen(foe.partyIndex).map((move) => game.moveName(move)), this.#knowledge === "full");
+    const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), game.milestones());
     return {
       ...(kind === "wild" ? { kind, inPc: game.pcCount(enemy.species) } : { kind }),
       player,
-      enemy: enemyView(enemy, movesSeen, this.#knowledge === "full"),
-      fights: fightFacts(battle, game.typeChart(), game.milestones()),
+      enemy: view(enemy),
+      fights: facts(enemy),
+      ...(double ? { double: { ally: double.ally, otherFoe: double.otherFoe && { enemy: view(double.otherFoe), fights: facts(double.otherFoe) }, reach: double.reach } } : {}),
       lastTurn: this.#battles.lastTurn(),
-      foeTurns: this.#battles.turnsAgainst(enemy.partyIndex),
+      // The text of a double battle does not tell the foe of a move.
+      foeTurns: double ? [] : this.#battles.turnsAgainst(enemy.partyIndex),
     };
   }
 
@@ -824,7 +825,7 @@ export class Harness {
     this.#events.push(...events);
     this.#atlas.onFrame();
     const started = events.some((e) => e.type === "battle" && e.state === "start");
-    this.#battles.onFrame(started, this.#run.game.enemyMovePrinted());
+    this.#battles.onFrame(started, this.#run.game.enemyMovesPrinted());
     this.#onFrame?.(this);
     return started;
   }

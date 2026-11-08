@@ -28,6 +28,7 @@ function battle({ skipped = [] as number[], encoredSlot = null as number | null 
     requireBattle: () => ({ player: { moves: [MOVE, MOVE, MOVE, MOVE], encoredSlot } }),
     waitingFor: () => ({ kind }),
     battleCursor: (menu: string) => cursors[menu],
+    battleTargetCursor: () => null,
     keysRead: () => read,
     messages: () => ({ onScreen: [], printing: [], boxClosed: false }),
     whitingOut: () => false,
@@ -72,6 +73,12 @@ describe("the battle menus", () => {
   test("under an ENCORE, another move is impossible, with the move that FIGHT plays", () => {
     const { driver, played } = battle({ encoredSlot: 3 });
     expect(driver.fight(1)).toMatchObject({ status: "impossible", reason: "the ENCORE allows only fight 3" });
+    expect(played).toEqual([]);
+  });
+
+  test("a fight on a foe is impossible with one foe to choose: the game plays nothing", () => {
+    const { driver, played } = battle();
+    expect(driver.fight(0, 2)).toMatchObject({ status: "impossible", reason: "there is only one foe to choose: write the fight with no foe" });
     expect(played).toEqual([]);
   });
 

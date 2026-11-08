@@ -1,5 +1,5 @@
 import { KIND } from "../cells";
-import type { FieldMove } from "../game";
+import { destinationNow, type FieldMove } from "../game";
 import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, personName, seenIn, WATER_RULE } from "./atlas";
 import { allCells, type BlockOf, type Cell, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
 import { partAt, partNear, slidesLeaving } from "./slides";
@@ -27,7 +27,17 @@ export function noRouteReason(here: Place, destination: Destination, asked: Plac
   if (map?.dark) return `no way to ${at(asked)} on the cells that you saw: on a dark map, you walk only on these`;
   const parts = map && here.map === asked.map ? noFootWayReason(map, here, asked) : null;
   if (parts) return parts;
+  const elevator = elevatorReason(here, asked, maps);
+  if (elevator) return elevator;
   return `no route from ${at(here)} to ${at(asked)} in ${MAX_ROUTE_MAPS} maps`;
+}
+
+function elevatorReason(here: Place, asked: Place, maps: MapSource): string | null {
+  const exit = asked.map === here.map ? undefined : maps(here.map)?.warps.find((w) => w.dynamic);
+  if (!exit) return null;
+  const now = destinationNow(exit);
+  if (now === asked.map) return null;
+  return `${here.map} is an Elevator, and its exit leads ${now ? `to ${now}` : "to no floor"} now: choose another floor at the panel first`;
 }
 
 export function stayingReason(person: RoutePerson & Place, { maps: known }: Atlas): string {

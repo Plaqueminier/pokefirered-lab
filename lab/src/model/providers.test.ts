@@ -50,9 +50,8 @@ describe("modelSettings of claude-code", () => {
 });
 
 describe("modelSettings of a Coach", () => {
-  test("the Coach has its own model on the provider of the player, with a full claude-code id, and the thinking level when it has no reasoning", () => {
-    expect(modelSettings({ provider: "claude-code", id: "haiku", thinking: "low", coach: { id: "opus" } }, {})).toMatchObject({ id: "claude-haiku-5-5", provider: "claude-code", coach: { id: "claude-opus-5-5", reasoning: "low" } });
-    expect(modelSettings({ provider: "claude-code", coach: { id: "opus", reasoning: "high" } }, {}).coach).toEqual({ id: "claude-opus-5-5", reasoning: "high" });
+  test("the Coach has its own model on the provider of the player, with a full claude-code id", () => {
+    expect(modelSettings({ provider: "claude-code", id: "haiku", thinking: "low", coach: { id: "opus" } }, {})).toMatchObject({ id: "claude-haiku-5-5", provider: "claude-code", thinking: "low", coach: { id: "claude-opus-5-5" } });
   });
 
   test("a Coach with the model of the player, or an empty id, is no Coach", () => {
@@ -60,18 +59,9 @@ describe("modelSettings of a Coach", () => {
     expect(modelSettings({ coach: { id: " " } }, {})).not.toHaveProperty("coach");
   });
 
-  test("a reasoning of the Coach with no Coach is an error", () => {
-    expect(() => modelSettings({ coach: { id: "", reasoning: "high" } }, {})).toThrow("the reasoning of the coach needs a coach");
-  });
-
-  test("the reasoning of the Coach is a level, and a provider with no off plays it as low", () => {
-    expect(() => modelSettings({ coach: { id: "big", reasoning: "huge" } }, {})).toThrow("the reasoning of the coach must be");
-    expect(modelSettings({ provider: "grok", coach: { id: "grok-big", reasoning: "off" } }, {}).coach).toEqual({ id: "grok-big", reasoning: "low" });
-  });
-
-  test("the client of the Coach thinks at its level, and plays at the reasoning level of the Run after an empty answer", () => {
-    const settings = modelSettings({ provider: "claude-code", reasoning: "low", thinking: "medium", coach: { id: "opus", reasoning: "high" } }, {});
-    expect(coachSettings(settings, { id: "claude-opus-5-5", reasoning: "high" })).toMatchObject({ id: "claude-opus-5-5", reasoning: "low", thinking: "high" });
+  test("the client of the Coach thinks at the thinking level of the Run, and plays at the reasoning level of the Run after an empty answer", () => {
+    const settings = modelSettings({ provider: "claude-code", reasoning: "low", thinking: "high", coach: { id: "opus" } }, {});
+    expect(coachSettings(settings, { id: "claude-opus-5-5" })).toMatchObject({ id: "claude-opus-5-5", reasoning: "low", thinking: "high" });
   });
 });
 

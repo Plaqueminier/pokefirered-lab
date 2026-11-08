@@ -251,7 +251,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "33", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "37", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -297,7 +297,7 @@ describe.skipIf(!ready)("model bot", () => {
 
     function coached(advice: string, client: (settings: ModelSettings) => ModelClient = (settings) => async () => {
       const { content, usage } = reply("goTo 8 6");
-      return { content: JSON.stringify({ ...JSON.parse(content), advice: `${advice} ${settings.id}` }), usage };
+      return { content: JSON.stringify({ ...JSON.parse(content), advice: { team: `${advice} ${settings.id}`, shopping: "", progress: "", battles: "" } }), usage };
     }) {
       const asks: Ask[] = [];
       const connect = (settings: ModelSettings): ModelClient => {
@@ -310,23 +310,25 @@ describe.skipIf(!ready)("model bot", () => {
       return { asks, connect };
     }
 
-    test("the Coach plays the character turn at its reasoning and writes an advice; the player plays the next decisions and gets the advice", async () => {
+    test("the Coach plays the character turn at the thinking level and writes an advice; the player plays the next decisions and gets the advice", async () => {
       const harness = await Harness.open();
       const { asks, connect } = coached("Catch a second Pokémon.");
-      await harness.play(modelBot({ id: "small", coach: { id: "big", reasoning: "high" }, costLimit: 3 * COST - COST / 2 }, connect));
+      await harness.play(modelBot({ id: "small", thinking: "high", coach: { id: "big" }, costLimit: 3 * COST - COST / 2 }, connect));
       expect(asks).toEqual([
         { model: "big", format: "character", reasoning: "high", advice: true },
         { model: "small", format: "decision", reasoning: undefined, advice: false },
         { model: "small", format: "decision", reasoning: undefined, advice: false },
       ]);
       const [first, second] = modelEvents(harness);
-      expect(first).toMatchObject({ model: "big", decision: { advice: "Catch a second Pokémon. big" } });
-      expect(first.prompt.user).toContain('- A smaller model plays the next decisions. Write in "advice" what it must do until your next turn.');
-      expect(first.prompt.system).toContain("A Coach, a bigger model");
+      expect(first).toMatchObject({ model: "big", decision: { advice: { team: "Catch a second Pokémon. big" } } });
+      expect(first.prompt.user).toContain('- A smaller model plays the next decisions, about 20, until your next turn. It reads your advice at each of these decisions');
+      expect(first.prompt.user).toContain('- Write in "advice" what it must do, in 4 parts');
+      expect(first.prompt.system).toStartWith("You are the Coach of a smaller model");
+      expect(second.prompt.system).toContain("A Coach, a bigger model");
       expect(second.model).toBe("small");
       expect(second.decision).not.toHaveProperty("advice");
-      expect(second.prompt.user).toContain("Coach advice (character turn, 0 decisions ago): Catch a second Pokémon. big");
-      expect(harness.record().header.bot.model?.coach).toEqual({ id: "big", reasoning: "high" });
+      expect(second.prompt.user).toContain("- Team (character turn, 0 decisions ago): Catch a second Pokémon. big");
+      expect(harness.record().header.bot.model?.coach).toEqual({ id: "big" });
     });
 
     test("the Coach writes the summaries of the Memory tree, and a Coach with the model of the player is no Coach", async () => {

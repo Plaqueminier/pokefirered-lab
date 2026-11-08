@@ -221,9 +221,10 @@ export class Parts {
     return part;
   }
 
-  private readonly partAtArrival: Step = ({ to, arrival }) => {
+  // A route goes through an Elevator only to the floor chosen now, from inside it: the Parts never do.
+  private readonly partAtArrival: Step = ({ to, arrival, elevator }) => {
     const map = this.atlas.maps.find((m) => m.name === to);
-    if (!map || !arrival) return null;
+    if (!map || !arrival || elevator) return null;
     return this.partAt(map, atlasCells(map), arrival);
   };
 

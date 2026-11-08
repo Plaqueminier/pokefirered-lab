@@ -1,5 +1,6 @@
 // From the same origin, the buttons alone replay a Run: the game reads no input while it is frozen (ADR 0002).
 import { mkdir, open, readdir, rename } from "node:fs/promises";
+import type { CoachAdvice } from "../protocol";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
@@ -38,7 +39,7 @@ type Starter = (typeof STARTERS)[number];
 
 // The reasoning "off" sends the effort "none", which a model that always reasons does not have: give it another level.
 /** Always on the provider of the player, so that one limit unit counts both models. */
-export type Coach = { id: string; reasoning: ReasoningLevel };
+export type Coach = { id: string };
 
 export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean; coach?: Coach } & ModelLimit;
 
@@ -54,7 +55,7 @@ export function limitOf(settings: ModelLimit): Spend {
 }
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string; reasoning?: string } };
+export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string } };
 
 export type SpendLimit = Pick<ModelOptions, "costLimit" | "tokenLimit">;
 
@@ -64,7 +65,7 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string; character?: string; starter?: StarterSpecies; names?: TrainerNames };
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string | CoachAdvice; character?: string; starter?: StarterSpecies; names?: TrainerNames };
 
 export type NodeRange = { from: number; to: number };
 
@@ -91,7 +92,7 @@ function withTrainer(event: RunEvent, trainers: ReadonlyMap<number, boolean>): R
   return trainer === undefined ? event : { ...event, trainer };
 }
 
-// A record from before format 1 gets the Game events of the whole Run: a Continued Run and the migration use this.
+// Puts the state events of a replay into events with none: for a record from before format 1 (the migration), and for a Continued Run, which reads them again.
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
   const trainers = new Map(replayed.flatMap((event) => (event.type === "battle" && event.state === "start" && event.trainer !== undefined ? [[event.frame, event.trainer]] : [])));

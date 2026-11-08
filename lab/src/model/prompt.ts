@@ -10,7 +10,7 @@ import { type BoxMon, isDamageMove, isHmMove, type PartyMon, type PartyMove, sta
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
-import { COACH_RULE } from "./coach";
+import { COACH_DUTY, COACH_INTRO, COACH_RULE } from "./coach";
 import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
 import { darkOfMap, fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
@@ -68,7 +68,7 @@ const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes
 const MAX_BOX_LINES = 12;
 
 const WHITEOUT_ENDS =
-  "If all your Pokémon faint, the Run ends. But a Run that plays too safe also makes no progress: do not wait for a perfect team, accept fair battles and explore. Before a difficult battle, heal your Pokémon. When a battle goes very badly, switch or `run`.";
+  "If all your Pokémon faint, the Run ends. So before a difficult battle, train your team and heal your Pokémon. When a battle goes very badly, switch or `run`. But a Run that plays too safe also makes no progress: train up to a level that you choose, then continue.";
 const WHITEOUT_CONTINUES =
   "If all your Pokémon faint, the Run continues: you lose some money (more with more badges and a higher level), your party is healed, and you are back at the last Pokémon Center that you entered, or your home. Then you continue from there.";
 
@@ -83,15 +83,17 @@ function characterLine(events: readonly RunEvent[]): string[] {
   return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.`];
 }
 
-export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean): string {
-  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...(coach ? [COACH_RULE] : [])].join("\n");
+export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
+  const coachLine = role === "coach" ? [COACH_DUTY] : coach ? [COACH_RULE] : [];
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...coachLine].join("\n");
+  const intro = role === "coach" ? COACH_INTRO : "You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.";
   const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
-  return `You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.
+  return `${intro}
 
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -123,11 +125,11 @@ Advice of a good player:
 - Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
 - Keep your POTIONS for when they are necessary, for example before a difficult battle.
-- You can use more than one Pokémon: catch more Pokémon and make a balanced team, with different types.
+- You can use more than one Pokémon: catch more Pokémon, step by step, up to a balanced team of 6 with different types.
 - When a wild battle goes badly, run.
 - Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
-- To train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong one when the battle is difficult: each Pokémon that took part in a battle gets experience.
+- Each Pokémon that was in the battle against a foe, and did not faint, gets an equal part of the experience of this foe, also with no move. So to train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong Pokémon at the first turn. Against a trainer, this counts for each of its Pokémon: the weak Pokémon gets a part only of the foes that it was in the battle against.
 - Buy Poké Balls and Potions at a Poké Mart.
 - ${REPEL_FACTS}
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
@@ -388,7 +390,7 @@ function outcome({ result, texts }: Try): string {
 }
 
 function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
-  // The prompt does not use the state events yet.
+  // The last decisions do not show the state events: the Coach advice tells them.
   if (isStateEvent(event)) return [];
   switch (event.type) {
     case "action": {
@@ -697,14 +699,39 @@ function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()):
   return ` <Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
 }
 
-function fights({ player, fights: facts }: BattleState): string[] {
+function fights({ player, fights: facts, double }: BattleState): string[] {
   if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
   return player.moves.flatMap((move, i) => {
     if (player.encoredSlot !== null && player.encoredSlot !== i) return [];
-    const fact = facts[i];
-    const about = move.pp === 0 ? ". No PP: you cannot use it." : !fact ? "" : "noEffect" in fact ? `. No effect: ${fact.noEffect}.` : `. On the foe: ${fightText(fact)}.`;
+    const other = double?.otherFoe?.fights[i];
+    const onFoes = double?.otherFoe ? [factText(facts[i], "foe 1"), factText(other ?? null, "foe 2")] : [factText(facts[i], null)];
+    const reach = double ? reachText(double, i) : null;
+    const known = [reach, ...onFoes].filter((text) => text !== null);
+    const about = move.pp === 0 ? ". No PP: you cannot use it." : known.length > 0 ? `. ${known.join(". ")}.` : "";
     return [`- fight ${i}: ${move.name} (${moveText(move)})${about}${player.encoredSlot === i ? " The ENCORE allows only this move." : ""}`];
   });
+}
+
+/** What the fight of the move `i` hits, and what to write for the foe that it hits. */
+function reachText({ reach, otherFoe, ally }: NonNullable<BattleState["double"]>, i: number): string | null {
+  const foes = otherFoe ? "both foes" : "the foe";
+  switch (reach[i]) {
+    case "one":
+      return otherFoe ? `Hits one foe: fight ${i} hits foe 1, fight ${i} on 2 hits foe 2` : `Hits ${foes}`;
+    case "both":
+      return `Hits ${foes}`;
+    case "all":
+      return `Hits ${foes}${ally ? " and your other Pokémon" : ""}`;
+    case "game":
+      return "The game chooses its foe";
+    default:
+      return "It does not aim at a foe";
+  }
+}
+
+function factText(fact: FightFacts | null, foe: string | null): string | null {
+  if (!fact) return null;
+  return "noEffect" in fact ? `No effect${foe ? ` on ${foe}` : ""}: ${fact.noEffect}` : `On ${foe ?? "the foe"}: ${fightText(fact)}`;
 }
 
 function fightText({ effect, stab, estimate }: Exclude<FightFacts, { noEffect: string }>): string {
@@ -721,17 +748,28 @@ function rangeText(min: number, max: number, unit = ""): string {
 }
 
 function battleLines(battle: BattleState, party: PartyMon[]): string[] {
-  const { player, enemy, lastTurn, foeTurns } = battle;
+  const { player, enemy, lastTurn, foeTurns, double } = battle;
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
     `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
+    ...(double ? doubleLines(battle) : []),
     `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
-    `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. States: ${enemy.states.join(", ") || "none"}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
+    ...(double?.ally ? [`Your other Pokémon in the battle, ${double.ally.nickname}: level ${double.ally.level}, HP ${double.ally.hp}/${double.ally.maxHp}, status ${double.ally.status}.`] : []),
+    foeLine(enemy, double?.otherFoe ? "Foe 1" : "Foe"),
+    ...(double?.otherFoe ? [foeLine(double.otherFoe.enemy, "Foe 2")] : []),
     ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
     ...(fewDamagePp(player.moves) ? ["Your damage moves have few PP: use the other moves that have an effect, or switch."] : []),
   ];
+}
+
+function foeLine(foe: BattleState["enemy"], label: string): string {
+  return `${label} ${foe.species} (${foe.types.join(", ")}): level ${foe.level}, HP ${foe.hpPercent}%, status ${foe.status}. States: ${foe.states.join(", ") || "none"}. Stat stages: ${stagesText(foe.statStages)}. Moves seen: ${foe.movesSeen.join(", ") || "none"}.`;
+}
+
+function doubleLines({ player }: BattleState): string[] {
+  return [`This is a double battle: you choose an action for each of your Pokémon, one after the other, and the turn plays after the last choice. You choose now for ${player.nickname}. Each fight below tells what it hits.`];
 }
 
 /** All the damage moves together have a quarter of their PP or less, and a move still has PP. */

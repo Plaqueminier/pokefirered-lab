@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
 import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import { callKind, modelEvents, type ShownRun } from "../src/protocol";
+import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownRun } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -77,8 +77,14 @@ function stuckText(stuck: number | undefined, turn: string | undefined): string[
   return stuck === undefined ? [] : [`stuck ${stuck}`, ...(turn ? [turn] : [])];
 }
 
+/** The one advice of a Run record before bot version 34 has the label "Advice". */
+export function adviceTerm(label: string): string {
+  return label === "Advice" ? "Coach advice" : `${label} advice`;
+}
+
 function answerFields(decision: Decision): Record<string, string> {
-  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...(decision.advice ? { "Coach advice": decision.advice } : {}) };
+  const advice = Object.fromEntries(adviceEntries(decision.advice).map(({ label, text }) => [adviceTerm(label), text]));
+  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...advice };
 }
 
 function messageBlocks(message: string): { title: BlockTitle; text: string }[] {
@@ -117,6 +123,8 @@ export type UnusualCall = {
   played: ActionEvent[];
   missionChanged: boolean;
   objectiveChanged: boolean;
+  /** The Coach advice in force after this call: the last text of each part, and the index of the call that wrote it. */
+  advice: { label: string; text: string; from: number }[];
 };
 
 const EXPENSIVE = 3;
@@ -163,8 +171,10 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
   const calls = rows.map((row) => row.call);
   const medians = { cost: median(calls.map((c) => c.usage.cost)), latency: median(calls.map((c) => c.latencyMs)), tokens: median(calls.map((c) => c.usage.promptTokens)) };
   let last: Decision | null = null;
+  const advice = new Map<string, { text: string; from: number }>();
   return rows.map(({ call, played }, index) => {
     const { decision } = call;
+    addAdvice(advice, decision?.advice, index);
     const before = calls.slice(Math.max(0, index - REPEATS + 1), index);
     const missionChanged = !!decision && !!last && decision.mission !== last.mission;
     const objectiveChanged = !!decision && !!last && decision.objective !== last.objective;
@@ -184,6 +194,10 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
     if (expensive) why.expensive = expensive;
     const turns = turnsText(call);
     if (turns) why.turns = turns;
-    return { index, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged };
+    const inForce = ADVICE_ORDER.flatMap((label) => {
+      const part = advice.get(label);
+      return part ? [{ label, ...part }] : [];
+    });
+    return { index, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged, advice: inForce };
   });
 }

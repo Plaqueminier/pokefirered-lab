@@ -46,6 +46,8 @@ export class StateWatch {
   #inBattle = false;
   #whitingOut = false;
   #blocks = "";
+  // After an item heal, Task_PartyMenuModifyHP (party_menu.c) sets the HP back to the old HP and raises it by 1 at each frame up to the new HP: these frames are no heal. The start and the end of a battle forget them.
+  readonly #itemHealTops = new Map<number, number>();
 
   constructor(game: Game) {
     this.#game = game;
@@ -77,6 +79,7 @@ export class StateWatch {
       this.#seen = now;
     }
     if (!inBattle && (partyChanged || this.#inBattle)) events.push(...this.#levels.events(this.#seen?.party ?? []));
+    if (inBattle !== this.#inBattle) this.#itemHealTops.clear();
     this.#inBattle = inBattle;
     return events;
   }
@@ -134,12 +137,22 @@ export class StateWatch {
   #partyEvents(before: WatchedMon[], after: WatchedMon[], item: string | null, { inBattle, whitingOut }: Moment): StateEvent[] {
     const both = pairs(before, after);
     const events: StateEvent[] = both.flatMap(([old, mon]): StateEvent[] => (old.hp > 0 && mon.hp === 0 ? [{ type: "faint", species: old.species, side: "player" }] : []));
+    const refilled = !item && both.filter(([old, mon]) => this.#refills(old, mon)).length > 0;
     const healed = both.some(([old, mon]) => mon.hp > 0 && (mon.hp - old.hp > Math.max(0, mon.maxHp - old.maxHp) || (old.hp > 0 && old.status !== "none" && mon.status === "none")));
     // In a battle, only an item heals: a move or the end of a status is not a heal. The whiteout heals the party, and the whiteout event tells it.
-    if (!healed || whitingOut || (inBattle && !item)) return events;
+    if (!healed || refilled || whitingOut || (inBattle && !item)) return events;
     const source = item ? "item" : this.#game.map().name.includes("PokemonCenter") ? "center" : "other";
+    if (item) for (const [old, mon] of both) if (mon.hp > old.hp) this.#itemHealTops.set(mon.personality, mon.hp);
     events.push({ type: "heal", source, item, party: both.map(([old, mon]) => ({ species: mon.species, before: old.hp, after: mon.hp, maxHp: mon.maxHp })) });
     return events;
+  }
+
+  /** A raise of the HP of the HP bar after an item heal: it ends at the HP of the heal. */
+  #refills(old: WatchedMon, mon: WatchedMon): boolean {
+    const top = this.#itemHealTops.get(mon.personality);
+    if (top === undefined || mon.hp <= old.hp) return false;
+    if (mon.hp >= top) this.#itemHealTops.delete(mon.personality);
+    return mon.hp <= top;
   }
 }
 

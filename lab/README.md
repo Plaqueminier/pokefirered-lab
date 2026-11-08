@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 33, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
+The lab has one **Bot**: the model bot (`bots/model.ts`, version 37, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -35,12 +35,28 @@ The lab has one **Bot**: the model bot (`bots/model.ts`, version 33, no goal). I
 
 ```
 bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|codex|grok] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning off|low|medium|high]
-  [--thinking off|low|medium|high] [--coach <model id>] [--coach-reasoning off|low|medium|high] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
+  [--thinking off|low|medium|high] [--coach <model id>] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
 ```
 
-The default models are `deepseek/deepseek-v4.1-flash`, `claude-haiku-5-5`, `gpt-5.6-luna` and `grok-4.7`. On `claude-code`, the aliases `haiku`, `sonnet`, `opus` and `fable` become the full ids `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`. To use a later version, give its full id. A **Plan provider** (`claude-code`, `codex`, `grok`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. `--coach` gives the **Run** a **Coach** on the same provider: it plays the Character, Reflection and Review turns, the Summary calls and the move to forget, at `--coach-reasoning`, or at the thinking level with no `--coach-reasoning`. A Coach with the model of the Run is no Coach, and `--coach-reasoning` with no `--coach` is an error. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
+The default models are `deepseek/deepseek-v4.1-flash`, `claude-haiku-5-5`, `gpt-5.6-luna` and `grok-4.7`. On `claude-code`, the aliases `haiku`, `sonnet`, `opus` and `fable` become the full ids `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`. To use a later version, give its full id. A **Plan provider** (`claude-code`, `codex`, `grok`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. `--coach` gives the **Run** a **Coach** on the same provider: it plays the Character, Reflection and Review turns, the Summary calls and the move to forget, at the `--thinking` level, which the player then never uses. A Coach with the model of the Run is no Coach. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, keep the same **Run** (the checkbox "Keep the same Run": an **Extended Run** replaces the file of its **Run record**, with the same name, so the version in the name can be older than the version in the header), and replay a **Run record** (the Select of the top bar).
+
+## Test the learn-move prompt
+
+`bun run learn-lab` asks models again at the learn-move questions of the **Run records**, with the recorded prompt or with a changed prompt. No game runs. The files go to `evals/learn-move/`, which Git ignores.
+
+```
+bun run learn-lab extract
+bun run learn-lab show <moment> [--variants <variant>]
+bun run learn-lab run --models <provider>:<id>[@<reasoning>],... [--variants <variant>,...] [--only <regex>] [--repeats <n>] [--cost-limit <dollars>] [--concurrency <n>]
+bun run learn-lab report [--variants <variant>,...]
+```
+
+- `extract` reads `runs/` and writes each question to `moments.json`, and a table of the moves, the answer and the reason to `moments.md`.
+- A variant is `base`, the recorded prompt, or edits with `+` between them: `two` asks to keep at least 2 damage moves, `types` tells when a move is the only damage move of its type, `refuse` tells in the question that `keep` can refuse the move, `zero` writes power 0 for a move with no damage and power varies for a move with no fixed power, `maxpp` shows the maximum PP in the list, `after` tells the damage moves that each answer leaves, `nohint` removes the last line of the question, and `guide` replaces it with advice.
+- `--only` selects the moments by their id, species and new move. `run` adds each answer to `results.jsonl`. A next `run` does not make a call again when the prompt is the same, so you can add a variant or a model and pay only for the new calls.
+- `report` gives, for each model and variant, the share of answers that keep the moves, leave one damage move, lose the last damage move with the type of the Pokémon, or forget a damage move for a move with no damage while a move with no damage stays. Then it gives the answers at each moment.
 
 ## Make a Race
 
@@ -63,4 +79,4 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.
 
-`saves/`, `runs/`, `races/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.
+`saves/`, `runs/`, `races/`, `evals/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.

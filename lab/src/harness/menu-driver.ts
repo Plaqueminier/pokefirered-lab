@@ -1,5 +1,5 @@
 import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
-import { type BattleMenu, struggles } from "../battle";
+import { type BattleMenu, foeBattler, struggles } from "../battle";
 import type { Game, WaitingFor } from "../game";
 import type { NamingScreen, WordScreen } from "../menus";
 import { isHmMove, PARTY_SIZE } from "../party";
@@ -183,7 +183,7 @@ export class MenuDriver {
   }
 
   untilDecision(watch: () => void = () => {}): Outcome {
-    return this.untilReady(() => this.game.waitingFor().kind !== "busy", watch);
+    return this.untilReady(() => this.game.waitingFor().kind !== "busy" || this.game.battleTargetCursor() !== null, watch);
   }
 
   choose(option: string): Outcome {
@@ -212,11 +212,13 @@ export class MenuDriver {
     throw new Error(`the script of the obstacle still runs after ${MAX_TEXT_PRESSES} screens`);
   }
 
-  fight(move: number): Outcome & Partial<Texts> {
+  /** `foe`: 1 or 2 in a double battle. With no foe, a move that hits one foe hits the first one, as the cursor of the game starts there. */
+  fight(move: number, foe?: number): Outcome & Partial<Texts> {
     const { game } = this;
-    const { player } = game.requireBattle();
+    const { player, double } = game.requireBattle();
     const chosen = player.moves[move];
     if (!chosen) return impossible(`the Pokémon has no move ${move}`);
+    if (foe !== undefined && !double?.otherFoe) return impossible("there is only one foe to choose: write the fight with no foe");
     // The game opens no move menu: FIGHT plays STRUGGLE or the ENCORE move at once (HandleTurnActionSelectionState).
     if (struggles(player)) return game.waitingFor().kind === "battleAction" ? this.turn("battleAction", FIGHT_CURSOR) : impossible("the move menu is open, but no move has PP");
     if (player.encoredSlot !== null) return move === player.encoredSlot ? this.turn("battleAction", FIGHT_CURSOR) : impossible(`the ENCORE allows only fight ${player.encoredSlot}`);
@@ -226,7 +228,16 @@ export class MenuDriver {
       if (opened.status !== "done") return opened;
       if (game.waitingFor().kind !== "battleMove") return impossible("the move menu does not open");
     }
-    return this.turn("battleMove", move);
+    const played = this.turn("battleMove", move);
+    return played.status === "done" && game.battleTargetCursor() !== null ? this.confirmTarget(foe) : played;
+  }
+
+  private confirmTarget(foe: number | undefined): Outcome & Texts {
+    const reader = new MessageReader(this.game);
+    // HandleInputChooseTarget: Left goes from the left foe straight to the right foe.
+    const moved = foe === undefined ? { status: "done" as const } : this.moveCursor(foeBattler(foe), () => this.game.battleTargetCursor(), () => Keys.Left);
+    if (moved.status !== "done") return withText(moved);
+    return withText(this.input(Keys.A, () => reader.update()), reader.textBeforeWaitingText());
   }
 
   run(): Outcome & Partial<Texts> {
@@ -493,6 +504,8 @@ export class MenuDriver {
     const reader = new MessageReader(this.game);
     for (let presses = 0; presses < MAX_TEXT_PRESSES; presses++) {
       const outcome = this.untilDecision(() => reader.update());
+      // A press of the model on the move menu can open the target screen. No action covers it, so the Bot presses B.
+      if (outcome.status === "done" && this.game.battleTargetCursor() !== null) return { ...impossible("the game waits for the target of a move"), text: reader.text };
       if (outcome.status !== "done" || this.game.waitingFor().kind !== "text") return { ...outcome, text: reader.text };
       if (reader.closedAfterPress) return { status: "done", text: reader.textBeforeWaitingText() };
       const battle = tap(this.frames, Keys.A);

@@ -4,9 +4,13 @@ import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, spe
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
+const BATTLE_TYPE_DOUBLE = 1 << 0;
 const BATTLE_TYPE_TRAINER = 1 << 3;
 const PLAYER_BATTLER = 0;
+const PLAYER_PARTNER_BATTLER = 2;
 const ENEMY_BATTLER = 1;
+const ENEMY_PARTNER_BATTLER = 3;
+const ENEMY_BATTLERS = [ENEMY_BATTLER, ENEMY_PARTNER_BATTLER];
 const MOVE_UNAVAILABLE = 0xffff;
 const DEFAULT_STAT_STAGE = 6;
 const BATTLE_MENUS: Record<string, BattleMenu> = {
@@ -14,6 +18,14 @@ const BATTLE_MENUS: Record<string, BattleMenu> = {
   HandleInputChooseMove: "battleMove",
   OakOldManHandleInputChooseMove: "battleMove",
 };
+const TARGET_MENU = "HandleInputChooseTarget";
+// MOVE_TARGET_* of include/battle.h. The other targets do not aim at a Pokémon that the player chooses.
+const MOVE_TARGET_SELECTED = 0;
+const GAME_CHOOSES_TARGET = (1 << 0) | (1 << 2);
+const MOVE_TARGET_BOTH = 1 << 3;
+const MOVE_TARGET_FOES_AND_ALLY = 1 << 5;
+// The controller of the battler that the player chooses for, also in its party menu.
+const CHOOSING_CONTROLLERS = new Set([...Object.keys(BATTLE_MENUS), TARGET_MENU, "WaitForMonSelection"]);
 const BATTLE_CURSORS: Record<BattleMenu, string> = { battleAction: "gActionSelectionCursor", battleMove: "gMoveSelectionCursor" };
 // Cmd_drawlvlupbox waits for a key in these states, one per page of the level-up stats box.
 const LEVEL_UP_BOX_KEY_STATES = new Set([6, 8]);
@@ -84,7 +96,13 @@ type StatStages = Record<StageName, number>;
 /** `states` are the volatile states of the battle, for example "seeded" or "confused". `encoredSlot`: the only move that FIGHT can play under an ENCORE. */
 export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages; encoredSlot: number | null };
 
-export type Battle = { kind: "trainer" | "wild"; player: BattleMon & { partyIndex: number }; enemy: BattleMon & { partyIndex: number } };
+type BattlerMon = BattleMon & { partyIndex: number };
+
+/** What a move hits in a double battle. `game`: the game chooses the foe. `none`: the move does not aim at a Pokémon of the battle, for example it acts on its user. */
+export type MoveReach = "one" | "both" | "all" | "game" | "none";
+
+/** `player` is the Pokémon that the player chooses for now. In a double battle, `enemy` is the first foe that can fight, `otherFoe` is the second one while both can fight, and `reach` has one entry for each move of `player`. */
+export type Battle = { kind: "trainer" | "wild"; player: BattlerMon; enemy: BattlerMon; double?: { ally: BattlerMon | null; otherFoe: BattlerMon | null; reach: MoveReach[] } };
 
 export type EnemyMon = {
   species: string;
@@ -99,11 +117,49 @@ export type EnemyMon = {
 };
 
 export function readBattle(mem: Memory, decode: Decode): Battle {
-  return {
-    kind: mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_TRAINER ? "trainer" : "wild",
-    player: { ...battleMon(mem, PLAYER_BATTLER, decode), partyIndex: battlerPartyIndex(mem, PLAYER_BATTLER) },
-    enemy: { ...battleMon(mem, ENEMY_BATTLER, decode), partyIndex: battlerPartyIndex(mem, ENEMY_BATTLER) },
-  };
+  const kind = mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_TRAINER ? "trainer" : "wild";
+  const mon = (battler: number): BattlerMon => ({ ...battleMon(mem, battler, decode), partyIndex: battlerPartyIndex(mem, battler) });
+  if (!isDouble(mem)) return { kind, player: mon(PLAYER_BATTLER), enemy: mon(ENEMY_BATTLER) };
+  const chooser = choosingBattler(mem);
+  const ally = chooser === PLAYER_BATTLER ? PLAYER_PARTNER_BATTLER : PLAYER_BATTLER;
+  const [foe = ENEMY_BATTLER, otherFoe] = ENEMY_BATTLERS.filter((battler) => canFight(mem, battler));
+  return { kind, player: mon(chooser), enemy: mon(foe), double: { ally: canFight(mem, ally) ? mon(ally) : null, otherFoe: otherFoe === undefined ? null : mon(otherFoe), reach: moveReaches(mem, chooser) } };
+}
+
+function moveReaches(mem: Memory, battler: number): MoveReach[] {
+  const moves = mem.global("gBattleMons").at(battler).field("moves");
+  return Array.from({ length: moves.length }, (_, slot) => moves.at(slot).int())
+    .filter((move) => move !== MOVE_NONE)
+    .map((move) => reachOf(mem.global("gBattleMoves").at(move).field("target").int()));
+}
+
+function reachOf(target: number): MoveReach {
+  if (target === MOVE_TARGET_SELECTED) return "one";
+  if (target & MOVE_TARGET_BOTH) return "both";
+  if (target & MOVE_TARGET_FOES_AND_ALLY) return "all";
+  return target & GAME_CHOOSES_TARGET ? "game" : "none";
+}
+
+function isDouble(mem: Memory): boolean {
+  return (mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_DOUBLE) !== 0;
+}
+
+function controllerOf(mem: Memory, battler: number): string {
+  return functionName(mem.symbols, mem.global("gBattlerControllerFuncs").at(battler).pointer()) ?? "";
+}
+
+/** A double battle asks for the left Pokémon, then for the right one. */
+function choosingBattler(mem: Memory): number {
+  return isDouble(mem) && CHOOSING_CONTROLLERS.has(controllerOf(mem, PLAYER_PARTNER_BATTLER)) ? PLAYER_PARTNER_BATTLER : PLAYER_BATTLER;
+}
+
+function canFight(mem: Memory, battler: number): boolean {
+  return (mem.global("gAbsentBattlerFlags").int() & (1 << battler)) === 0 && mem.global("gBattleMons").at(battler).field("hp").int() > 0;
+}
+
+/** The battler of a foe, as the prompt numbers the foes: 1 for the left one, 2 for the right one. */
+export function foeBattler(foe: number): number {
+  return ENEMY_BATTLERS[foe - 1];
 }
 
 export function enemyView(enemy: BattleMon, movesSeen: string[], exact: boolean): EnemyMon {
@@ -118,12 +174,16 @@ export function struggles(mon: Pick<BattleMon, "moves">): boolean {
 }
 
 export function battleMenu(mem: Memory): BattleMenu | null {
-  const controller = mem.global("gBattlerControllerFuncs").at(PLAYER_BATTLER).pointer();
-  return BATTLE_MENUS[functionName(mem.symbols, controller) ?? ""] ?? null;
+  return BATTLE_MENUS[controllerOf(mem, choosingBattler(mem))] ?? null;
+}
+
+/** The battler under the cursor of the target screen, or null with no target screen. Only a move that hits one foe opens it, and the model chooses that foe in its fight action. */
+export function battleTargetCursor(mem: Memory): number | null {
+  return controllerOf(mem, choosingBattler(mem)) === TARGET_MENU ? mem.global("gMultiUsePlayerCursor").int() : null;
 }
 
 export function battleCursor(mem: Memory, menu: BattleMenu): number {
-  return mem.global(BATTLE_CURSORS[menu]).at(PLAYER_BATTLER).int();
+  return mem.global(BATTLE_CURSORS[menu]).at(choosingBattler(mem)).int();
 }
 
 export function levelUpBoxWaits(mem: Memory): boolean {
@@ -167,26 +227,28 @@ function scriptCommand(mem: Memory): string | null {
   return command < commands.length ? functionName(mem.symbols, commands.at(command).pointer()) : null;
 }
 
-export function enemyMovePrinted(mem: Memory): PrintedMove | null {
-  const move = mem.global("gLastPrintedMoves").at(ENEMY_BATTLER).int();
-  return move === MOVE_NONE || move === MOVE_UNAVAILABLE ? null : { partyIndex: battlerPartyIndex(mem, ENEMY_BATTLER), move };
+export function enemyMovesPrinted(mem: Memory): (PrintedMove | null)[] {
+  return ENEMY_BATTLERS.map((battler) => {
+    const move = mem.global("gLastPrintedMoves").at(battler).int();
+    return move === MOVE_NONE || move === MOVE_UNAVAILABLE ? null : { partyIndex: battlerPartyIndex(mem, battler), move };
+  });
 }
 
 export class BattleWatch {
-  private last: PrintedMove | null = null;
+  private last: (PrintedMove | null)[] = [];
   private moves = new Map<number, Set<number>>();
-  private open: { before: Battle; texts: string[] } | null = null;
+  private open: { before: Battle; texts: string[]; choosing?: true } | null = null;
   private turns: { foe: number; turn: BattleTurn }[] = [];
 
   // gLastPrintedMoves keeps the move of the last battle until the intro of the next one clears it.
-  onFrame(battleStarted: boolean, printed: PrintedMove | null): void {
-    const changed = printed && (printed.move !== this.last?.move || printed.partyIndex !== this.last?.partyIndex);
+  onFrame(battleStarted: boolean, printed: (PrintedMove | null)[]): void {
+    const changed = printed.filter((move, i): move is PrintedMove => move !== null && (move.move !== this.last[i]?.move || move.partyIndex !== this.last[i]?.partyIndex));
     this.last = printed;
     if (battleStarted) {
       this.moves = new Map();
       this.open = null;
       this.turns = [];
-    } else if (changed) this.moves.set(printed.partyIndex, (this.moves.get(printed.partyIndex) ?? new Set()).add(printed.move));
+    } else for (const { partyIndex, move } of changed) this.moves.set(partyIndex, (this.moves.get(partyIndex) ?? new Set()).add(move));
   }
 
   movesSeen(partyIndex: number): number[] {
@@ -194,11 +256,14 @@ export class BattleWatch {
   }
 
   onAction(before: Battle | null, texts: string[], now: Battle | null, decision: boolean): void {
-    if (before) this.open = { before, texts: [] };
+    if (before && !this.open?.choosing) this.open = { before, texts: [] };
     if (!this.open) return;
     this.open.texts.push(...texts);
     if (!now) this.open = null;
-    else if (decision) {
+    else if (decision && now.double && this.open.texts.length === 0) {
+      // The choice for one Pokémon of a double battle has no text: the turn starts after the choice for the other one.
+      this.open.choosing = true;
+    } else if (decision) {
       this.turns.push({ foe: this.open.before.enemy.partyIndex, turn: battleTurn(this.open.before, now, this.open.texts) });
       this.open = null;
     }

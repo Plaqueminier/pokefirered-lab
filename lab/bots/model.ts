@@ -14,7 +14,7 @@ import { darkOfMap } from "../src/model/extract";
 import { importantEvents } from "../src/model/important-events";
 import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
-import { modelEvents } from "../src/protocol";
+import { type CoachAdvice, modelEvents } from "../src/protocol";
 
 const MAX_UNREADABLE = 3;
 // After this number of impossible actions in a row, a new conversation starts from a new prompt.
@@ -41,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "33",
+    version: "37",
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -91,7 +91,7 @@ function isSpinGoTo({ x, y, map }: Cell & { map?: string }, { grid, map: here }:
 
 type BrokenWalk = { action: PlayedAction; asked: WalkAsked; map: string | undefined; fainted: number };
 
-type Conversation = { mind: Mind; advises: boolean; advice: string; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
+type Conversation = { mind: Mind; advises: boolean; advice: CoachAdvice; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
 class ModelPlay {
   #conversation: Conversation | null = null;
@@ -195,8 +195,8 @@ class ModelPlay {
       }
       if (action.name === "zoom") conversation.turns.push({ assistant: reply.content, user: zoomMessage(tree, action, asked) });
       // A zoom or a retry can write the advice: the last answer of the turn keeps it, so that its age counts from the end of the turn.
-      if (conversation.advises) conversation.advice = readAdvice(reply.content) || conversation.advice;
-      const decision = { ...written, note: keptNote(written.note, tree), ...(conversation.advice ? { advice: conversation.advice } : {}) };
+      if (conversation.advises) conversation.advice = { ...conversation.advice, ...readAdvice(reply.content) };
+      const decision = { ...written, note: keptNote(written.note, tree), ...(Object.keys(conversation.advice).length > 0 ? { advice: conversation.advice } : {}) };
       const removed = readRemoved(reply.content, conversation.sentences);
       // The note of this answer can start a merge, and the numbers then name old nodes. This also holds the limit for the whole Review turn.
       conversation.sentences = [];
@@ -214,10 +214,10 @@ class ModelPlay {
     const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
     const coached = this.settings.coach !== undefined;
     const { plays, advises } = coachRole(coached, turn, asked);
-    const request = [...turnRequest(turn, this.settings.starter, this.harness.fixedNames()), ...(advises ? [ADVICE_REQUEST] : [])];
+    const request = [...turnRequest(turn, this.settings.starter, this.harness.fixedNames()), ...(advises ? ADVICE_REQUEST : [])];
     const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice: coached ? adviceLine(events) : [] });
-    const system = systemPrompt(this.settings, observation.party.length > 0);
-    return { mind: plays ? this.coach : this.player, advises, advice: "", system, user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal" || plays, sentences: memory.sentences };
+    const system = systemPrompt(this.settings, observation.party.length > 0, plays ? "coach" : "player");
+    return { mind: plays ? this.coach : this.player, advises, advice: {}, system, user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal" || plays, sentences: memory.sentences };
   }
 
   private async summarize(): Promise<void> {

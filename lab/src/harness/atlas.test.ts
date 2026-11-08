@@ -9,7 +9,7 @@ function grid(name: string, num: number, warps: Warp[]): MapGrid {
 
 const stairs = (x: number, to: string, num: number, warpId = 0): Warp => ({ x, y: 0, to, group: 0, num, warpId, behavior: "MB_LADDER", toKind: "indoor", how: "step" });
 
-function walk(grids: MapGrid[], places: [string, number][]) {
+function walk(grids: MapGrid[], places: [string, number][], knowledge: KnowledgeLevel = "player") {
   let at = 0;
   const here = () => grids.find((g) => g.name === places[at][0])!;
   const game = {
@@ -22,8 +22,9 @@ function walk(grids: MapGrid[], places: [string, number][]) {
     actorsOf: () => ({ people: [], obstacles: [] }),
     obstaclesOf: () => [],
     mapView: (name: string) => ({ grid: grids.find((g) => g.name === name), actors: { people: [], obstacles: [] } }),
+    allMapNames: [grids.map((g) => g.name)],
   };
-  const watch = new AtlasWatch(game as unknown as Game, "player");
+  const watch = new AtlasWatch(game as unknown as Game, knowledge);
   for (at = 0; at < places.length; at++) watch.onFrame();
   return watch.atlas();
 }
@@ -244,6 +245,34 @@ describe("the arrival of an exit", () => {
     const atlas = walk([grid("A", 0, [stairs(1, "B", 1)]), grid("B", 1, [stairs(2, "C", 2)]), grid("C", 2, [])], [["A", 1], ["B", 2]]);
     expect(mapNamed(atlas, "A").warps).toMatchObject([{ to: "B", arrival: { x: 2, y: 0 } }]);
     expect(mapNamed(atlas, "B").warps).toMatchObject([{ to: null, arrival: null }]);
+  });
+});
+
+describe("the exit of an Elevator", () => {
+  const mat: Warp = { x: 1, y: 0, to: "MAP_DYNAMIC", group: 127, num: 127, warpId: 127, behavior: "MB_SOUTH_ARROW_WARP", toKind: "indoor", how: "press", from: { x: 1, y: 0 }, direction: "south", dynamic: "unknown" };
+  const wall: Warp = { ...stairs(2, "Elevator", 2), behavior: "MB_NORMAL", how: "none" };
+  const floors = () => [grid("F1", 0, [stairs(1, "Elevator", 2), wall]), grid("F2", 1, [stairs(2, "Elevator", 2)]), grid("Elevator", 2, [mat])];
+
+  test("the exit keeps one destination for each floor that the player came from or reached by it", () => {
+    const atlas = walk(floors(), [["F1", 1], ["Elevator", 1], ["F2", 2]]);
+    expect(mapNamed(atlas, "Elevator").warps).toMatchObject([
+      { x: 1, y: 0, to: "F1", arrival: { x: 1, y: 0 }, elevator: true },
+      { x: 1, y: 0, to: "F2", arrival: { x: 2, y: 0 }, elevator: true },
+    ]);
+    expect(mapNamed(atlas, "F2").warps).toMatchObject([{ to: "Elevator", arrival: { x: 1, y: 0 } }]);
+  });
+
+  test("an exit with no floor known is not taken", () => {
+    const atlas = walk([grid("Elevator", 2, [mat])], [["Elevator", 0]]);
+    expect(mapNamed(atlas, "Elevator").warps).toMatchObject([{ to: null, arrival: null, elevator: true }]);
+  });
+
+  test("at the full Knowledge level, the floors are all the maps with a warp to the Elevator, at the cell of the warp that the player can take", () => {
+    const atlas = walk(floors(), [], "full");
+    expect(mapNamed(atlas, "Elevator").warps).toMatchObject([
+      { to: "F1", arrival: { x: 1, y: 0 }, elevator: true },
+      { to: "F2", arrival: { x: 2, y: 0 }, elevator: true },
+    ]);
   });
 });
 

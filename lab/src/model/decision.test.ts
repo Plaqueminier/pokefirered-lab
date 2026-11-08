@@ -93,6 +93,7 @@ describe("readAction", () => {
   test("in a battle: a move, run or a Raw input; in the party menu: Raw inputs only", () => {
     expect(readAction("fight 1", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "fight", move: 1 });
     expect(readAction("fight 0", { kind: "battleMove", party, battle, items: [] })).toEqual({ name: "fight", move: 0 });
+    expect(readAction("fight 2 on 2", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "fight", move: 2, foe: 2 });
     expect(readAction("run", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "run" });
     expect(readAction("press A", { kind: "partyPick", party, battle, items: [] })).toEqual({ name: "press", button: "A" });
     expect(() => readAction("fight 1", { kind: "partyPick", party, battle, items: [] })).toThrow('"fight" is not an action now: use zoom or press');
@@ -148,7 +149,7 @@ describe("readAction", () => {
     expect(() => readAction("go 2", walk(3))).toThrow("there is no target 2: the targets are letters, A to C");
     expect(() => readAction("go A", walk(0))).toThrow("there is no target A: the map has no targets");
     expect(() => readAction("choose YES", walk(3))).toThrow('"choose" is not an action now: use go, goTo, viewAtlas, zoom or press');
-    expect(() => readAction("fight 4", { kind: "battleAction", party, battle, items: [] })).toThrow('"fight 4" is not an action: write fight <0-3>, for example fight 0');
+    expect(() => readAction("fight 4", { kind: "battleAction", party, battle, items: [] })).toThrow('"fight 4" is not an action: write fight <0-3> [on <1 or 2>], for example fight 0');
     expect(() => readAction("press X", walk(3))).toThrow('"press X" is not an action: write press <button>, for example press A');
     expect(() => readAction("a".repeat(500), walk(3))).toThrow(`"${"a".repeat(80)}" is not an action`);
   });

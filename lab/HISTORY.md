@@ -389,6 +389,8 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     The question now shows the species, the maximum PP of the moves, what each answer leaves, the fact that a Pokémon Center gives back all the PP, and the request to keep at least 2 damage moves. It keeps its last sentence: with no last sentence, the answers of Haiku and DeepSeek were worse. Other tests gave no reason to change more. `power 0` in place of `power ---` gave no gain, and no reason read `---` as an unknown value. A sentence in the question that `keep` can refuse the move added 2 good refusals of 54 and 8 refusals of useful moves of 99. A sentence that a move is the only damage move of its type also made the models refuse useful moves. The Thinking level `medium` gave no clear gain at this question, so this question keeps the reasoning level of the Run.
 
+    The command of these tests is `bun run learn-lab` (`lab/README.md`, "Test the learn-move prompt"). It reads the learn-move questions of the Run records, asks the models again with the recorded prompt or with named edits of it, and does not ask a model again when it already answered the same prompt. No game runs. `dae6b0eaa`
+
 ## 31. What is left (2026-11-05)
 
 78. The model bot goes to version 30: the program tells what is left, and a walk continues after a wild battle. The model did not lack the facts. In Run 00062, all 605 walk prompts in Mt. Moon offered a lead or an exit to unseen cells, and the Run ended in the cave with 1,052 Model calls there. In Run 00060, the 1,020 Model calls of Rock Tunnel never reached Lavender Town, and at frame 2,667,545 the prompt listed 11 unseen places on the floor while the model wrote "The RockTunnel loop taught nothing new".
@@ -438,9 +440,90 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     A slide after a `press` is not in the Atlas: only `goTo` gives the end of a slide.
 
-## 34. Running and the BICYCLE (2026-11-08)
+## 34. The Elevator of the Rocket Hideout (2026-11-07)
 
-81. The model bot goes to version 33: a walk runs, and the model can choose to ride. The model bot walked at 16 frames for each cell, also with the Running Shoes, so the Runs and the videos were two times longer than necessary. Issue #84.
+81. The model bot goes to version 33: the exit of an Elevator leads to the floor chosen at its panel. In Run 00060, the bot had the LIFT KEY and chose floors at the panel, but it never left `RocketHideout_Elevator`: 159 Decision points with no progress, and `go` to the exit mat 61 times. The exit mat at (2, 5) aims at MAP_DYNAMIC: the game sends the player to its dynamic warp, which `setdynamicwarp` writes at each choice of a floor. The Harness read MAP_DYNAMIC as a map with no name, so the route had no arrival, `goTo` stopped on the mat, and the prompt said "not taken".
+
+    The changes:
+
+    - The grid of the player's map reads the dynamic warp of the game: the exit of an Elevator leads to the floor chosen now. Each floor has its warp to the Elevator on the cell that `setdynamicwarp` gives.
+    - The Atlas keeps one destination of the exit for each floor that the player reached by it or came from. At the `full` level, the floors are the maps with a warp to the Elevator that the player can take. A new floor is a new exit, so it is progress.
+    - The prompt shows the exit of an Elevator as one target: "an Elevator, to the floor chosen at the panel, now B2F; floors known: …". It is also one exit in the lines of the other maps, and a lead never goes through it. The model chooses the floor at the panel; the program does not.
+    - From the Elevator, a `goTo` to another map with no route says "choose another floor at the panel first".
+
+    A replay of Run 00060 to its end in `RocketHideout_Elevator` checked it. The exit mat led to `RocketHideout_B2F`, the last floor that the bot chose, and the Atlas had this floor with its arrival (28, 16). `goTo 20 22 RocketHideout_B4F` gave the reason with the floor of now, and `goTo 2 5` took the player to `RocketHideout_B2F` (28, 17) in 190 frames.
+
+## 35. Smaller changes of the Viewer and the Race (2026-11-05)
+
+82. Six changes with no effect on the decisions of the model:
+
+    - An ended live Run keeps its cell of the Grid until a person removes it: the X of its cell, or "Remove N ended" in the bar. It also leaves the Run select, and its Run record stays. The button "Continue" of an ended Run opens the form "Bots" on its Run record, with "Keep the same Run" on, and the bar of the Grid has the form "Bots" too. The screen and the facts of a cell fit the size of the cell, and a wide cell puts the facts next to the screen. `b27cc76d7`
+    - After the events of a long Run, a page had no list of Run records. These events are one message of more than 100 MB. Over the default limit of 16 MB, Bun drops the next messages with no error. The limit of the server is now 1 GiB. `b27cc76d7`
+    - A Run record of an older date holds an alias of the claude command, for example `haiku`. The Race now shows the full id of that alias, the id of step 73. `bcd2085a8`
+    - The eye button of the Race bar hides the numbers, the dots, the crown, the battle and result icons, the gyms, the counts at the doors and the names of the places, so only the Ghosts that walk stay. `bcd2085a8`
+    - After a whiteout, the game warps the player to a Pokémon Center and heals the party. A Race now cuts this warp and this heal from a Run that ends with the whiteout, so its Ghost stays on the cell where it lost. A Run that plays on after a whiteout keeps them. `7920f9f72`
+    - In a Leaderboard row, the state comes after the model, in a fixed column of 128 px, as wide as its longest text "unknown screen". The cost also has a fixed column. So a change of state moves no text. The panel of the Race is 500 px wide, and at most 60% of a narrow window. `637ea8761`, `5f8eb9ddc`
+
+## 36. Truer Game events (2026-11-06 to 11-07)
+
+83. Three reads of the game state were wrong, and Runs showed them. The bot version does not change.
+
+    - In Run 00068, on the S.S. Anne, the party read stopped with "unknown extended control code 0x92". `GetBoxMonData` and `SetBoxMonData` (`pokemon.c`) decrypt the box of a Pokémon in place. When a frame ends before the game encrypts the box again, the read decrypted the plain bytes a second time. It read a false species and false moves, and the decoder stopped on the false description of a move. The read now compares the checksum of the box: when the plain bytes give this checksum, it keeps them. The Game events used the same check, and they skipped such a frame. They now read it, and they still skip a box with a bad checksum. `1d1aa270f`
+    - This better read then stopped the Continued Runs. The replay of Run 00068 gave 7 heals more than its Run record, with the same maps, battles and Milestones, and the Harness refused to start: "the Run record does not replay the same game". Now the replay must give only the maps, the battles and the Milestones of the record. The other Game events come from the replay, as for a record from before format 1, so a Continued Run and an Extended Run keep the better read. ADR 0006 tells the same. `eb18089f6`
+    - Run 00061 had about 30 heals with the source "other" after each SUPER POTION. The item sets the new HP. Then `Task_PartyMenuModifyHP` (`party_menu.c`) sets the HP back to the old HP and adds 1 at each frame, up to the new HP. The watch read each of these frames as a heal with no item. It now keeps the HP of each item heal, and a rise up to this HP with no item is no heal. The start and the end of a battle clear it. So an item heal on a walk gives one heal event. `3a742d8a0`
+
+## 37. A Coach advice in 4 parts (2026-11-07)
+
+84. The model bot goes to version 34: the Coach writes its advice in 4 parts, and it gets its own rules. Runs 00070 (Haiku with a Sonnet Coach) and 00071 (Haiku with an Opus Coach) both ended with a whiteout after the first badge. Run 00070 lost to the rival with a WARTORTLE at level 24 and a WEEDLE at level 4. Run 00071 had one CHARMELEON, and its poison made it faint on the way to a Pokémon Center, with 5088 money and no POTION or ANTIDOTE. The advice told the way and "heal if HP is low" (25 of 30 advices in Run 00070), but rarely to catch a Pokémon (2 and 3 times) or to buy items (1 and 0 times). Haiku followed the advice to the letter ("still above the 1/3 retreat line, so I keep fighting"), and 7 of the 11 advices of Opus were longer than 200 characters, so the program cut them.
+
+    The changes:
+
+    - The `advice` is an object with 4 parts of at most 150 characters: `team` (the most important part: which Pokémon to catch and where, which Pokémon to train and up to which level, which Pokémon to switch with the PC), `shopping` (what to buy at the next Poké Mart, or nothing), `progress` (the next steps that the objective does not tell) and `battles` (which moves against which foes, when to switch, run or heal). An empty part keeps the last text of this part.
+    - Each prompt shows the last text of each part, with its turn and the number of decisions since. The single advice of an older Run record shows as the part "Advice", until the first advice in parts of an Extended Run or a Continued Run.
+    - The calls of the Coach get their own rules: it is the Coach of a smaller model, which follows its advice to the letter but rarely catches a Pokémon, trains a weak one, buys items or changes its team by itself. The player keeps its rules with the line about the Coach.
+    - The panel "Model" shows the advice in force on each call, part by part, with the call that wrote each part. `8744698fc`
+    - Just before this version, the Coach lost its own reasoning level: the option `--coach-reasoning` and the field "Coach reasoning" of the form and of the record card go away. With a Coach, the Coach plays all the turns that think, so the player never used the thinking level, and a second level for the Coach only told the same thing twice. All the calls of the Coach now use the thinking level of the Run. No Run record had a Coach then. `1ffc907cb`
+
+## 38. A Coach advice for all of the next decisions (2026-11-08)
+
+85. The model bot goes to version 35: the advice stays useful for the 20 decisions that read it, and the player can see which steps are done. Runs 00072 (GPT-6.1 Coach), 00073 (Sonnet Coach) and 00074 (Opus Coach) played version 34. In Run 00072, "Catch Nidoran on Route 22" came back in 6 advices in a row, from decision 128 to decision 238, while the player went from Viridian City to Viridian Forest, and the Coach sent the player back for it. In Runs 00073 and 00074, "Heal at the Viridian Center" stayed after the heal, until the next turn of the Coach. In Run 00073, the Coach wrote "Keep Wharepai weak in the back". In Run 00074, the program cut 19 of the 28 parts of the Opus Coach in the middle of a word. `swap` played only in Runs 00060 and 00073 of Runs 00060 to 00074.
+
+    The changes:
+
+    - The part `team` asks for a team that grows step by step up to 6 Pokémon with different types: at least 2 before the first Gym, then about one more after each Gym, and each one trained. It replaces "Two or three trained Pokémon win more battles than one strong Pokémon".
+    - The rules of the Coach say that a weak Pokémon at the back of the party does not help: it tells how to train this Pokémon, or to put it in a box. They also say not to send the player after one exact Pokémon in one place from what the Coach thinks it knows of the game: it names a Pokémon that the Run saw, or gives a general advice. No code checks these rules.
+    - The request of an advice says that the player reads it at each of the next decisions, about 20. It tells only about the place of the player and the next place on the way, and it writes the next step after a step that ends.
+    - Under the advice, each prompt tells what happened since the oldest part in force, from the state events: the heals, the purchases, the items, the catches, the levels, the fainted Pokémon of the player, the trainers beaten, the first visits of a map and the whiteouts, with at most the last 12 lines. Each line has the same count of decisions as a part of the advice. The player gets the rule that a step that these facts show as done is done. This is the first use of the state events in a prompt.
+    - The rule of a Run that ends at a whiteout no longer says "do not wait for a perfect team, accept fair battles and explore", which went against the training. It says to train the team and heal before a difficult battle, and to train up to a chosen level, then continue. `9329ffa73`
+    - A part can have 200 characters, in place of 150. The program cuts it at the last full sentence that fits, or at the last full word, and the request asks for one or two short sentences. `9329ffa73`
+    - The advice of a good player gives the exact rule of the experience (`src/battle_script_commands.c`, `src/battle_util.c`): each Pokémon that was in the battle against a foe, and did not faint, gets an equal part, also with no move, and the list starts again at each new foe. So the weak Pokémon goes first, and the `switch` comes at the first turn, not "when the battle is difficult". The EXP. SHARE does not help: the aide on Route 15 gives it after 50 species caught. The advice also asks for a team of 6. `90cafd685`
+
+## 39. Double battles (2026-11-08)
+
+86. The model bot goes to version 36: the model plays a Double battle. In Run 00061, the bot beat Rock Tunnel and came to Route 16, and YOUNG COUPLE LEA & JED stopped the Run with "unknown screen". The code knew only 2 battlers: 0 for the player and 1 for the foe. The ROM has 33 trainers with a double battle.
+
+    The cause has two parts. After a move that hits one foe, the game opens a target screen (`HandleInputChooseTarget`), and the Harness read it as a busy game, so each `fight` waited 3600 frames and failed. After a choice for battler 0, the game waits for battler 2, which the Harness did not read, so `use` and `switch` failed in the same way.
+
+    The changes:
+
+    - `Battle.player` is the Pokémon that the player chooses for now. A new `double` gives its ally and the second foe, while both foes can fight.
+    - `fight <move> on <1 or 2>` chooses the foe, and the driver answers the target screen. With no `on`, a move hits foe 1, because the cursor of the game starts there. `on` with one foe to choose is impossible, and the game plays nothing.
+    - The prompt tells who chooses now, shows the ally and both foes, and gives the effect of each fight on each foe. Each fight tells what it hits, with the exact action for each foe.
+    - A `press` on the move menu can still open the target screen. No action covers it: the Bot presses B 3 times, as on each unknown screen.
+    - The ally is not in the list for `switch` and `send`. The moves seen come from both foes.
+    - The choice for the first Pokémon has no text, so it does not count as a turn: the `Last turn` line starts at this choice and ends after the turn. `Your moves on this foe` does not show, because the text does not tell the foe of a move.
+
+    What stays as it was: the `battle` state events and the Viewer show only battlers 0 and 1, and a move cannot aim at the ally.
+
+    The emulator tests fight LEA & JED, with a third Pokémon that the test copies into the party: a fight on each foe, a switch, a POTION, and a faint with a send. A replay of Run 00061 to its end, then fights that a script chose with the new code, won the battle.
+
+    A test on a model gave the reach of each move. The prompts of 3 situations went to fresh Haiku models with no other explanation. All 3 chose a valid action, named the Pokémon that chooses and knew that the turn did not play yet. But one model said that RAZOR LEAF hits one foe, as the first prompt gave only a general sentence about moves that hit both foes, and another model doubted that `on 2` was part of the action. So each fight now says what it hits, from `gBattleMoves[move].target`, and it writes the exact actions. The same test on the new prompts: 2 fresh Haiku models read RAZOR LEAF as a move that hits both foes, and they wrote the exact actions. The models answered from the prompts only: no model played a whole battle in the game.
+
+    The Doc tab has a new page, "Double battle".
+
+## 40. Running and the BICYCLE (2026-11-08)
+
+87. The model bot goes to version 37: a walk runs, and the model can choose to ride. The model bot walked at 16 frames for each cell, also with the Running Shoes, so the Runs and the videos were two times longer than necessary. Issue #84.
 
     - Each step holds B when the player has the Running Shoes (`FLAG_SYS_B_DASH`). The model does not choose it. On a walk, B has no other use, and the Harness stops at the first frame of an Interruption, so B does not close a text. The game does not run on a map that does not allow it, for example a house or a gym.
     - `use BICYCLE` is a choice that stays. The Harness registers the BICYCLE on Select one time, through the Bag. After that, a press of Select takes 2 frames. The game puts a rider on foot at the door of a map that does not allow the BICYCLE, and the next walk on a map that allows it rides again, so the choice costs one Model call only.
