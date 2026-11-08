@@ -38,7 +38,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     effect: "Moves the cursor to the option and presses A. SOMEONE'S PC or BILL'S PC opens the Pokémon PC.",
     cards: { choice: "yes/no, a script menu, the menus of the PC" },
   },
-  { form: "fight(move)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE. Under an ENCORE, FIGHT plays the encored move, and another move is impossible.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
+  { form: "fight(move, foe?)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE. Under an ENCORE, FIGHT plays the encored move, and another move is impossible. In a double battle, it is the choice for one Pokémon: the choice for the first Pokémon gives no messages, and the game then waits for the action of the second one. `foe` is 1 or 2, and it is impossible with one foe to choose. With no foe, a move that hits one foe hits foe 1.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
   { form: "switch(slot)", when: "battle", effect: "Sends another Pokémon of the party into the battle.", cards: { battle: "send another Pokémon" } },
   { form: "send(slot)", when: "party menu of a battle", effect: "Sends a Pokémon, for example after a faint.", cards: { battle: "send a Pokémon after a faint" } },
   { form: "swap(first, second)", when: "walk", effect: "Changes the order of two Pokémon of the party.", cards: { walk: "change the order of two Pokémon" } },

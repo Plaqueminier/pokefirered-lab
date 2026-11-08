@@ -9,9 +9,10 @@ import {
   battleCursor,
   battleMenu,
   battleMenuSlot,
+  battleTargetCursor,
   battleYesNoCursor,
   dexPageWaits,
-  enemyMovePrinted,
+  enemyMovesPrinted,
   forgetMoveCursor,
   type LearnMoveBox,
   learnMoveBox,
@@ -592,6 +593,10 @@ export class Game {
     return battleCursor(this.mem, menu);
   }
 
+  battleTargetCursor(): number | null {
+    return this.context().mode === "battle" ? battleTargetCursor(this.mem) : null;
+  }
+
   fieldLocked(): boolean {
     return this.mem.global("sLockFieldControls").int() !== 0;
   }
@@ -630,8 +635,8 @@ export class Game {
   }
 
   // Read also outside a battle, so that BattleWatch sees the old value before the battle intro clears it.
-  enemyMovePrinted(): PrintedMove | null {
-    return enemyMovePrinted(this.mem);
+  enemyMovesPrinted(): (PrintedMove | null)[] {
+    return enemyMovesPrinted(this.mem);
   }
 
   keysRead(): { held: number; pressed: number } {

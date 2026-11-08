@@ -3,10 +3,10 @@ import { type Battle, enemyView } from "../battle";
 import { battleTurn, fightFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
-import type { BoxMon } from "../party";
+import type { BoxMon, PartyMove } from "../party";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
-import { type Asked, askedOf, readAction } from "./decision";
+import { type Asked, askedOf, readAction, sendable } from "./decision";
 import { importantEvents } from "./important-events";
 import { adviceLine, coachRole, MAX_ADVICE_PART, readAdvice, withAdvice } from "./coach";
 import type { CoachAdvice } from "../protocol";
@@ -199,6 +199,65 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
     },
   } as Observation;
 }
+
+describe("a double battle", () => {
+  const twoFoes = () => {
+    const observation = wildPidgey({ party: 3 });
+    if (observation.mode !== "battle") throw new Error("no battle");
+    const move: PartyMove = { name: "TACKLE", type: "NORMAL", effect: 0, power: 35, accuracy: 95, pp: 10, maxPp: 35, description: "" };
+    const fact = (effect: number) => ({ effect, stab: false, estimate: null });
+    const ally = { ...observation.battle.player, nickname: "SHELL", partyIndex: 1 };
+    observation.battle = {
+      ...observation.battle,
+      kind: "trainer",
+      player: { ...observation.battle.player, moves: [move] },
+      fights: [fact(1)],
+      double: { ally, otherFoe: { enemy: { ...observation.battle.enemy, species: "NINETALES" }, fights: [fact(2)] }, reach: ["one"] },
+    };
+    return observation;
+  };
+
+  test("the prompt tells who chooses now, shows both foes, the fights on each foe, and how to choose a foe", () => {
+    const observation = twoFoes();
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("You choose now for SQUIRTLE.");
+    expect(prompt).toContain("Your other Pokémon in the battle, SHELL: level 6, HP 20/22, status none.");
+    expect(prompt).toContain("Foe 1 PIDGEY (NORMAL, FLYING)");
+    expect(prompt).toContain("Foe 2 NINETALES (NORMAL, FLYING)");
+    expect(prompt).toContain("Hits one foe: fight 0 hits foe 1, fight 0 on 2 hits foe 2. On foe 1: normal effect ×1. On foe 2: super effective ×2.");
+  });
+
+  test("each fight tells what it hits", () => {
+    const observation = twoFoes();
+    if (observation.mode !== "battle" || !observation.battle.double) throw new Error("no double battle");
+    const { battle } = observation;
+    const lineFor = (reach: "both" | "all" | "game" | "none") => {
+      battle.double = { ally: battle.double?.ally ?? null, otherFoe: battle.double?.otherFoe ?? null, reach: [reach] };
+      return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    };
+    expect(lineFor("both")).toContain("Hits both foes. On foe 1:");
+    expect(lineFor("all")).toContain("Hits both foes and your other Pokémon. On foe 1:");
+    expect(lineFor("game")).toContain("The game chooses its foe. On foe 1:");
+    expect(lineFor("none")).toContain("It does not aim at a foe. On foe 1:");
+  });
+
+  test("with one foe left, the prompt does not number the foes and has no line to choose one", () => {
+    const observation = twoFoes();
+    if (observation.mode !== "battle") throw new Error("no battle");
+    observation.battle.double = { ally: null, otherFoe: null, reach: ["one"] };
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("You choose now for SQUIRTLE.");
+    expect(prompt).toContain("Foe PIDGEY (NORMAL, FLYING)");
+    expect(prompt).toContain("Hits the foe. On the foe: normal effect ×1.");
+    expect(prompt).not.toContain("on 2");
+    expect(prompt).not.toContain("Your other Pokémon in the battle");
+  });
+
+  test("the ally of a double battle is not in the list of Pokémon to switch with", () => {
+    const observation = twoFoes();
+    expect(sendable(askedOf(observation, false)!)).toEqual([2]);
+  });
+});
 
 describe("the Bag", () => {
   test("each prompt shows the money and the Bag once, with the effect of each item; a battle has one use line for the items that work now", () => {

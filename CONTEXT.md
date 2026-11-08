@@ -32,6 +32,10 @@ _Avoid_: command, move (a move is a Pokémon attack)
 An event of the game that stops a **Macro-action**: a coord trigger, a trainer who sees the player, another script, a battle, or an arrival on a map that is not on the route. The **Macro-action** returns at the first frame of the interruption. That frame is not always a **Decision point**, but the game is also frozen there. A text, a choice, an interaction after its A press, or a **Raw input** stops only for a battle, because a script runs during them.
 _Avoid_: event (a map event is a warp, a person, a sign or a trigger), stop
 
+**Double battle**:
+A trainer battle with 2 Pokémon on each side. The game asks for one action for each Pokémon of the player, one after the other, and it plays the turn after the last choice, so each choice is one **Decision point**. Each fight in the prompt tells what it hits. The model chooses the foe of a move in its `fight` action, and the **Harness** answers the target screen of the game: the model never sees this screen. A move cannot aim at the other Pokémon of the player. The game has no wild **Double battle**.
+_Avoid_: 2v2, multi battle (the game gives this name to a battle with a partner, which is another thing)
+
 **Decision point**:
 A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**, after a level up in a battle, an evolution, or a TM or an HM: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step

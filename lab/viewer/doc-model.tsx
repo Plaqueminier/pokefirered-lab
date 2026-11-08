@@ -259,6 +259,7 @@ export function PromptPage() {
           "Battle: damage",
           "each `fight` shows its effect on the foe (×2, ×½, ×0), STAB and the damage estimate: the formula of the game with no critical hit, random factor 85% to 100%, in percent of the foe HP and in hits to KO. No estimate for a move with no power. A move with fixed damage (SEISMIC TOSS, DRAGON RAGE…) shows its effect only. Abilities, held items and weather are not in it.",
         ],
+        ["Battle: double", "each `fight` also tells what it hits, and shows its effect on each foe (page “Double battle”)."],
         ["Battle: turns", "the line `Last turn: …` tells who moved first, the moves, their results (critical hit, miss) and the HP before and after. `Your moves on this foe: …` lists the moves already used on this foe, with their results. Both sides show their states after their status (`States: seeded, confused.`)."],
         [
           "Battle: no effect",
@@ -486,6 +487,54 @@ export function MemoryPage() {
           />
         </Block>
       </div>
+    </Page>
+  );
+}
+
+export function DoubleBattlePage() {
+  return (
+    <Page
+      lead="A trainer battle with 2 Pokémon on each side. The model chooses for one Pokémon at a time, and the program answers the target screen of the game."
+      details={[
+        ["Trainers", "the ROM has 33 trainers with a double battle, and a double battle needs 2 Pokémon that can fight in the party. The game has no wild double battle."],
+        ["Target screen", "after a move that hits one foe, the game opens a target screen (`HandleInputChooseTarget`). It is not a Decision point: the `fight` action answers it. With one foe left and the other Pokémon alive, the game still opens it, and the action confirms this foe. With only 2 Pokémon left in the battle, the game does not open it."],
+        ["`press` on the move menu", "a `press A` can open the target screen. No action covers it, so the Bot presses B 3 times, as on each unknown screen."],
+        ["Foes", "foe 1 is the left foe and foe 2 is the right foe. With one foe left, the prompt does not number the foes, and `on` is impossible: the game plays nothing."],
+        ["`on` with another move", "a move that hits both foes ignores `on`, as the game opens no target screen for it."],
+        ["Switch and send", "the other Pokémon in the battle is not in the list. The game refuses a Pokémon that the first choice of the turn already sends, and the action is impossible with its text."],
+        ["Last turn", "the first choice has no text, so it is not a turn. `Last turn: …` starts at this choice and ends after the turn. It gives the HP of the Pokémon that chose first and of foe 1."],
+        ["Moves on this foe", "`Your moves on this foe: …` does not show, because the text of a double battle does not tell the foe of a move. `Moves seen` comes from both foes."],
+        ["Not yet", "a move cannot aim at the other Pokémon of the player. The `battle` state events and the Viewer show only the left Pokémon and the left foe."],
+      ]}
+    >
+      <div class={BLOCKS2}>
+        <Block label="🔁 One turn">
+          <Terms
+            numbered
+            rows={[
+              ["First choice", "the game asks for the action of the left Pokémon. The answer gives no text"],
+              ["Second choice", "the game asks for the action of the right Pokémon"],
+              ["Turn", "the game plays the turn, and the last action gives all its text"],
+              ["Faint", "the party menu asks for one Pokémon for each empty place"],
+            ]}
+          />
+        </Block>
+        <Block label="🎯 What the model writes">
+          <Terms
+            rows={[
+              ["`fight 0`", "the move 0. A move that hits one foe hits foe 1"],
+              ["`fight 0 on 2`", "the move 0 on foe 2"],
+              ["`switch`, `use`", "the same actions as in a single battle, for the Pokémon that chooses now"],
+            ]}
+          />
+        </Block>
+      </div>
+      <Block label="👁️ What the prompt adds" sub="Only in a double battle.">
+        <div class={GRID2}>
+          <DocCard icon={Eye} title="The battle" lines={["“You choose now for …”", "the other Pokémon: level, HP, status", "`Foe 1` and `Foe 2`, each with the facts of a foe"]} />
+          <DocCard icon={Eye} title="Each fight" lines={["what it hits: one foe, both foes, both foes and your other Pokémon, the game chooses, or no foe", "for one foe: the exact action for each foe", "the effect and the damage on each foe"]} />
+        </div>
+      </Block>
     </Page>
   );
 }

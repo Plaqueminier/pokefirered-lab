@@ -120,7 +120,7 @@ export function actionsOf(asked: Asked): ActionVerb[] {
 
 export function sendable(asked: Asked): number[] {
   if (!("battle" in asked)) return [];
-  return sendableSlots(asked.party, asked.battle.player.partyIndex);
+  return sendableSlots(asked.party, [asked.battle.player.partyIndex, asked.battle.double?.ally?.partyIndex]);
 }
 
 const BUTTONS = Object.keys(Keys) as Button[];
@@ -341,7 +341,7 @@ const FORMS: Record<ActionVerb, [form: string, example: string]> = {
   goTo: ["goTo <x> <y>", "goTo 9 42"],
   swap: ["swap <Pokémon> <Pokémon>", "swap 1 2"],
   choose: ["choose <option>", "choose YES"],
-  fight: ["fight <0-3>", "fight 0"],
+  fight: ["fight <0-3> [on <1 or 2>]", "fight 0"],
   switch: ["switch <Pokémon>", "switch 2"],
   send: ["send <Pokémon>", "send 2"],
   run: ["run", "run"],
@@ -389,7 +389,7 @@ function parse(written: string): ParsedAction | null {
   if ((m = action.match(/^go\s+(\S+)$/i))) return { name: "go", target: m[1] };
   if ((m = action.match(/^goto\s+(-?\d+)\s+(-?\d+)(?:\s+(\S+))?$/i))) return { name: "goTo", x: Number(m[1]), y: Number(m[2]), ...(m[3] ? { map: m[3] } : {}) };
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
-  if ((m = action.match(/^fight\s+([0-3])$/i))) return { name: "fight", move: Number(m[1]) };
+  if ((m = action.match(/^fight\s+([0-3])(?:\s+on\s+([12]))?$/i))) return { name: "fight", move: Number(m[1]), ...(m[2] ? { foe: Number(m[2]) } : {}) };
   if (/^run$/i.test(action)) return { name: "run" };
   if (/^leave$/i.test(action)) return { name: "leave" };
   if (/^keep$/i.test(action)) return { name: "keep" };

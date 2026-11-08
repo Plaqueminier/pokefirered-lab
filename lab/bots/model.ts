@@ -41,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "35",
+    version: "36",
     model: settings,
     play: (harness) => {
       const player = mind(settings);

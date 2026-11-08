@@ -217,8 +217,8 @@ export function isHmMove(move: string): boolean {
 }
 
 /** The slots of the party that can enter a battle: not fainted, and not already in the battle. */
-export function sendableSlots(party: PartyMon[], inBattle: number): number[] {
-  return party.flatMap((mon, slot) => (mon.hp > 0 && slot !== inBattle ? [slot] : []));
+export function sendableSlots(party: PartyMon[], inBattle: (number | undefined)[]): number[] {
+  return party.flatMap((mon, slot) => (mon.hp > 0 && !inBattle.includes(slot) ? [slot] : []));
 }
 
 export function readMoves(mem: Memory, decode: Decode, ppBonuses: number, slot: (slot: number) => { move: number; pp: number }): PartyMove[] {

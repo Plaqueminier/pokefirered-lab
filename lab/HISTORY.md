@@ -498,3 +498,25 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - A part can have 200 characters, in place of 150. The program cuts it at the last full sentence that fits, or at the last full word, and the request asks for one or two short sentences. `9329ffa73`
     - The advice of a good player gives the exact rule of the experience (`src/battle_script_commands.c`, `src/battle_util.c`): each Pokémon that was in the battle against a foe, and did not faint, gets an equal part, also with no move, and the list starts again at each new foe. So the weak Pokémon goes first, and the `switch` comes at the first turn, not "when the battle is difficult". The EXP. SHARE does not help: the aide on Route 15 gives it after 50 species caught. The advice also asks for a team of 6. `90cafd685`
 
+## 39. Double battles (2026-11-08)
+
+86. The model bot goes to version 36: the model plays a Double battle. In Run 00061, the bot beat Rock Tunnel and came to Route 16, and YOUNG COUPLE LEA & JED stopped the Run with "unknown screen". The code knew only 2 battlers: 0 for the player and 1 for the foe. The ROM has 33 trainers with a double battle.
+
+    The cause has two parts. After a move that hits one foe, the game opens a target screen (`HandleInputChooseTarget`), and the Harness read it as a busy game, so each `fight` waited 3600 frames and failed. After a choice for battler 0, the game waits for battler 2, which the Harness did not read, so `use` and `switch` failed in the same way.
+
+    The changes:
+
+    - `Battle.player` is the Pokémon that the player chooses for now. A new `double` gives its ally and the second foe, while both foes can fight.
+    - `fight <move> on <1 or 2>` chooses the foe, and the driver answers the target screen. With no `on`, a move hits foe 1, because the cursor of the game starts there. `on` with one foe to choose is impossible, and the game plays nothing.
+    - The prompt tells who chooses now, shows the ally and both foes, and gives the effect of each fight on each foe. Each fight tells what it hits, with the exact action for each foe.
+    - A `press` on the move menu can still open the target screen. No action covers it: the Bot presses B 3 times, as on each unknown screen.
+    - The ally is not in the list for `switch` and `send`. The moves seen come from both foes.
+    - The choice for the first Pokémon has no text, so it does not count as a turn: the `Last turn` line starts at this choice and ends after the turn. `Your moves on this foe` does not show, because the text does not tell the foe of a move.
+
+    What stays as it was: the `battle` state events and the Viewer show only battlers 0 and 1, and a move cannot aim at the ally.
+
+    The emulator tests fight LEA & JED, with a third Pokémon that the test copies into the party: a fight on each foe, a switch, a POTION, and a faint with a send. A replay of Run 00061 to its end, then fights that a script chose with the new code, won the battle.
+
+    A test on a model gave the reach of each move. The prompts of 3 situations went to fresh Haiku models with no other explanation. All 3 chose a valid action, named the Pokémon that chooses and knew that the turn did not play yet. But one model said that RAZOR LEAF hits one foe, as the first prompt gave only a general sentence about moves that hit both foes, and another model doubted that `on 2` was part of the action. So each fight now says what it hits, from `gBattleMoves[move].target`, and it writes the exact actions. The same test on the new prompts: 2 fresh Haiku models read RAZOR LEAF as a move that hits both foes, and they wrote the exact actions. The models answered from the prompts only: no model played a whole battle in the game.
+
+    The Doc tab has a new page, "Double battle".

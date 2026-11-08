@@ -692,14 +692,39 @@ function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()):
   return ` <Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
 }
 
-function fights({ player, fights: facts }: BattleState): string[] {
+function fights({ player, fights: facts, double }: BattleState): string[] {
   if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
   return player.moves.flatMap((move, i) => {
     if (player.encoredSlot !== null && player.encoredSlot !== i) return [];
-    const fact = facts[i];
-    const about = move.pp === 0 ? ". No PP: you cannot use it." : !fact ? "" : "noEffect" in fact ? `. No effect: ${fact.noEffect}.` : `. On the foe: ${fightText(fact)}.`;
+    const other = double?.otherFoe?.fights[i];
+    const onFoes = double?.otherFoe ? [factText(facts[i], "foe 1"), factText(other ?? null, "foe 2")] : [factText(facts[i], null)];
+    const reach = double ? reachText(double, i) : null;
+    const known = [reach, ...onFoes].filter((text) => text !== null);
+    const about = move.pp === 0 ? ". No PP: you cannot use it." : known.length > 0 ? `. ${known.join(". ")}.` : "";
     return [`- fight ${i}: ${move.name} (${moveText(move)})${about}${player.encoredSlot === i ? " The ENCORE allows only this move." : ""}`];
   });
+}
+
+/** What the fight of the move `i` hits, and what to write for the foe that it hits. */
+function reachText({ reach, otherFoe, ally }: NonNullable<BattleState["double"]>, i: number): string | null {
+  const foes = otherFoe ? "both foes" : "the foe";
+  switch (reach[i]) {
+    case "one":
+      return otherFoe ? `Hits one foe: fight ${i} hits foe 1, fight ${i} on 2 hits foe 2` : `Hits ${foes}`;
+    case "both":
+      return `Hits ${foes}`;
+    case "all":
+      return `Hits ${foes}${ally ? " and your other Pokémon" : ""}`;
+    case "game":
+      return "The game chooses its foe";
+    default:
+      return "It does not aim at a foe";
+  }
+}
+
+function factText(fact: FightFacts | null, foe: string | null): string | null {
+  if (!fact) return null;
+  return "noEffect" in fact ? `No effect${foe ? ` on ${foe}` : ""}: ${fact.noEffect}` : `On ${foe ?? "the foe"}: ${fightText(fact)}`;
 }
 
 function fightText({ effect, stab, estimate }: Exclude<FightFacts, { noEffect: string }>): string {
@@ -716,17 +741,28 @@ function rangeText(min: number, max: number, unit = ""): string {
 }
 
 function battleLines(battle: BattleState, party: PartyMon[]): string[] {
-  const { player, enemy, lastTurn, foeTurns } = battle;
+  const { player, enemy, lastTurn, foeTurns, double } = battle;
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
     `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
+    ...(double ? doubleLines(battle) : []),
     `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
-    `Foe ${enemy.species} (${enemy.types.join(", ")}): level ${enemy.level}, HP ${enemy.hpPercent}%, status ${enemy.status}. States: ${enemy.states.join(", ") || "none"}. Stat stages: ${stagesText(enemy.statStages)}. Moves seen: ${enemy.movesSeen.join(", ") || "none"}.`,
+    ...(double?.ally ? [`Your other Pokémon in the battle, ${double.ally.nickname}: level ${double.ally.level}, HP ${double.ally.hp}/${double.ally.maxHp}, status ${double.ally.status}.`] : []),
+    foeLine(enemy, double?.otherFoe ? "Foe 1" : "Foe"),
+    ...(double?.otherFoe ? [foeLine(double.otherFoe.enemy, "Foe 2")] : []),
     ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
     ...(fewDamagePp(player.moves) ? ["Your damage moves have few PP: use the other moves that have an effect, or switch."] : []),
   ];
+}
+
+function foeLine(foe: BattleState["enemy"], label: string): string {
+  return `${label} ${foe.species} (${foe.types.join(", ")}): level ${foe.level}, HP ${foe.hpPercent}%, status ${foe.status}. States: ${foe.states.join(", ") || "none"}. Stat stages: ${stagesText(foe.statStages)}. Moves seen: ${foe.movesSeen.join(", ") || "none"}.`;
+}
+
+function doubleLines({ player }: BattleState): string[] {
+  return [`This is a double battle: you choose an action for each of your Pokémon, one after the other, and the turn plays after the last choice. You choose now for ${player.nickname}. Each fight below tells what it hits.`];
 }
 
 /** All the damage moves together have a quarter of their PP or less, and a move still has PP. */
