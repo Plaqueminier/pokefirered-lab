@@ -1,8 +1,8 @@
 import { nicknamedSpecies } from "../menus";
-import { type BagItem, battleItems, depositableItems, type ItemUse, sellableItems, type Teachable, walkItems } from "../bag";
+import { type BagItem, battleItems, depositableItems, holdableItems, type ItemUse, sellableItems, type Teachable, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
 import type { Decision, NodeRange, NodeSentence } from "../harness/record";
-import { type BoxMon, type PartyMon, type PartyMove, sendableSlots } from "../party";
+import { type BoxMon, hasTakableItem, type PartyMon, type PartyMove, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { Keys } from "../protocol";
 import type { ShopItem } from "../shop";
@@ -61,13 +61,13 @@ type BoxAction = Extract<MacroAction, { name: "depositPokemon" | "withdrawPokemo
 
 type ActionVerb = Exclude<ModelAction["name"], BoxAction["name"]>;
 
-const NAMES = { go: 0, goTo: 0, swap: 0, teach: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
+const NAMES = { go: 0, goTo: 0, swap: 0, teach: 0, give: 0, take: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ActionVerb[];
 
 export type Asked = { party: PartyMon[] } & (
-  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[]; bagEmpty?: boolean }
+  | { kind: "walk"; overworld: Overworld; view: AtlasView; atlasShown: boolean; items: BagItem[]; holdable: BagItem[]; bagEmpty?: boolean }
   | ({ kind: "choice"; options: string[] } & ({ overworld: Overworld; storage?: number } | { battle: BattleState }))
   | { kind: "battleAction" | "battleMove" | "partyPick"; battle: BattleState; items: BagItem[]; bagEmpty?: boolean }
   | { kind: "shopMenu"; forSale: ShopItem[]; sellable: BagItem[] }
@@ -80,7 +80,7 @@ export type Asked = { party: PartyMon[] } & (
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ActionVerb[]> = {
-  walk: ["go", "goTo", "swap", "use", "teach", "viewAtlas", "zoom", "press"],
+  walk: ["go", "goTo", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"],
   choice: ["choose", "zoom"],
   battleAction: ["fight", "switch", "run", "use", "zoom"],
   battleMove: ["fight", "zoom", "press"],
@@ -106,6 +106,10 @@ export function actionsOf(asked: Asked): ActionVerb[] {
         return "items" in asked && asked.items.length > 0;
       case "teach":
         return asked.kind === "walk" && asked.overworld.teachables.length > 0;
+      case "give":
+        return asked.kind === "walk" && asked.holdable.length > 0;
+      case "take":
+        return asked.party.some(hasTakableItem);
       case "sell":
         return asked.kind === "shopMenu" && asked.sellable.length > 0;
       case "withdraw":
@@ -132,7 +136,7 @@ export function askedOf(observation: Observation, atlasShown: boolean): Asked | 
   if (waitingFor.kind === "learnMove") return { kind: "learnMove", party, slot: waitingFor.slot, move: waitingFor.move };
   if (observation.mode === "naming") return waitingFor.kind === "naming" ? { kind: "naming", party, subject: waitingFor.subject, maxLength: waitingFor.maxLength, keys: waitingFor.keys } : null;
   if (observation.mode === "overworld") {
-    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag), bagEmpty };
+    if (waitingFor.kind === "walk") return { kind: "walk", party, overworld: observation, view: atlasExtract(observation), atlasShown, items: walkItems(observation.bag, observation.stones), holdable: holdableItems(observation.bag), bagEmpty };
     if (waitingFor.kind === "shopMenu") return { kind: "shopMenu", party, forSale: waitingFor.items, sellable: sellableItems(observation.bag) };
     if (waitingFor.kind === "itemPc") return { kind: "itemPc", party, pcItems: waitingFor.items, depositable: depositableItems(observation.bag) };
     if (waitingFor.kind === "pokemonPc") return { kind: "pokemonPc", party, boxes: observation.boxes };
@@ -188,9 +192,9 @@ type QuantityName = "buy" | "sell" | "withdraw" | "deposit";
 /** An action as the model writes it: the Pokémon, the item and the option are still texts. */
 type Written =
   | { name: "go"; target: string }
-  | { name: "switch" | "send" | "swap"; pokemon: string }
+  | { name: "switch" | "send" | "swap" | "take"; pokemon: string }
   | { name: "use"; item: string; on?: string }
-  | { name: "teach"; item: string; on: string }
+  | { name: "teach" | "give"; item: string; on: string }
   | { name: QuantityName; item: string; quantity: number }
   | { name: "forget"; move: string };
 type ParsedAction = Exclude<ModelAction, { name: Written["name"] | BoxAction["name"] }> | Written;
@@ -215,6 +219,8 @@ export function readAction(text: string, asked: Asked): ModelAction {
       return { name: action.name, slot: partySlot(action.pokemon, asked.party) };
     case "swap":
       return swapOf(action.pokemon, asked.party);
+    case "take":
+      return { name: "take", on: partySlot(action.pokemon, asked.party) };
     case "choose": {
       if (asked.kind !== "choice") return action;
       const option = asked.options.find((o) => o.toLowerCase() === action.option.toLowerCase());
@@ -231,6 +237,8 @@ export function readAction(text: string, asked: Asked): ModelAction {
       return readUse(action.item, action.on, asked);
     case "teach":
       return readTeach(action.item, action.on, asked);
+    case "give":
+      return readGive(action.item, action.on, asked);
     case "buy":
     case "sell":
     case "withdraw":
@@ -256,10 +264,32 @@ function noStartMenu(asked: Asked): string {
 
 function forgotten(move: string, asked: Asked): string {
   if (asked.kind !== "learnMove") return move;
-  const { moves } = asked.party[asked.slot];
-  // A name or a place that is not a move of the Pokémon goes to the Harness, which gives the reason.
+  return knownMove(move, asked.party[asked.slot]);
+}
+
+// A name or a place that is not a move of the Pokémon goes to the Harness, which gives the reason.
+function knownMove(move: string, { moves }: PartyMon): string {
   const place = /^\d+$/.test(move) ? moves[Number(move) - 1] : undefined;
   return (place ?? moves.find((m) => plain(m.name) === plain(move)))?.name ?? move;
+}
+
+// A nickname and a move can each have spaces, so only a known Pokémon tells where the move starts.
+function monAndMove(written: string, party: PartyMon[]): { on: number; move?: string } {
+  let error: unknown;
+  for (const end of [written.length, ...spacesFromEnd(written)]) {
+    try {
+      const on = partySlot(written.slice(0, end).trim(), party);
+      const move = written.slice(end).trim().replace(/^on\s+/i, "");
+      return move === "" ? { on } : { on, move: knownMove(move, party[on]) };
+    } catch (e) {
+      error ??= e;
+    }
+  }
+  throw error;
+}
+
+function spacesFromEnd(text: string): number[] {
+  return [...text].flatMap((c, i) => (c === " " ? [i] : [])).reverse();
 }
 
 function readUse(name: string, writtenOn: string | undefined, asked: Asked): ModelAction {
@@ -273,8 +303,9 @@ function readUse(name: string, writtenOn: string | undefined, asked: Asked): Mod
     if (on !== undefined) throw new Error(`${item.name} does not work on a Pokémon: use ${item.name}`);
     return { name: "use", item: item.name };
   }
-  if (on === undefined) throw new Error(`${item.name} works on a Pokémon: use ${item.name} on <Pokémon>`);
-  return { name: "use", item: item.name, on: partySlot(on, asked.party) };
+  const use = itemUse(item, asked);
+  if (on === undefined) throw new Error(`${item.name} works on ${use === "move" ? "a move of " : ""}a Pokémon: use ${item.name} on <Pokémon>${use === "move" ? " <move>" : ""}`);
+  return use === "move" ? { name: "use", item: item.name, ...monAndMove(on, asked.party) } : { name: "use", item: item.name, on: partySlot(on, asked.party) };
 }
 
 function readTeach(name: string, on: string, asked: Asked): ModelAction {
@@ -282,6 +313,13 @@ function readTeach(name: string, on: string, asked: Asked): ModelAction {
   const found = teachables.find((t) => plain(t.item) === plain(name) || plain(teachableName(t)) === plain(name));
   if (!found) throw new Error(`"${quoted(name)}" is not a TM or an HM of your Bag: ${teachables.map(teachableName).join(", ")}`);
   return { name: "teach", item: found.item, on: partySlot(on, asked.party) };
+}
+
+function readGive(name: string, on: string, asked: Asked): ModelAction {
+  const holdable = asked.kind === "walk" ? asked.holdable : [];
+  const found = holdable.find((item) => plain(item.name) === plain(name));
+  if (!found) throw new Error(`"${quoted(name)}" is not an item of your Bag that a Pokémon can hold with an effect: ${holdable.map((item) => item.name).join(", ") || "none"}`);
+  return { name: "give", item: found.name, on: partySlot(on, asked.party) };
 }
 
 export function teachableName({ item, move }: Teachable): string {
@@ -325,7 +363,7 @@ function plain(text: string): string {
 }
 
 // The separator of the arguments in the form action(a, b) or action a, b, as a written action: a space when the action is not here. A null keeps the text as one argument.
-const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["teach", " on "], ["name", null], ["choose", null]]);
+const ARGUMENT_SEPARATORS = new Map<string, string | null>([["use", " on "], ["teach", " on "], ["give", " on "], ["name", null], ["choose", null]]);
 
 function withSpaces(action: string): string {
   const call = action.match(/^(\w+)\s*\((.*)\)$/) ?? (action.includes(",") ? action.match(/^(\w+)\s+(.*)$/) : null);
@@ -345,8 +383,10 @@ const FORMS: Record<ActionVerb, [form: string, example: string]> = {
   switch: ["switch <Pokémon>", "switch 2"],
   send: ["send <Pokémon>", "send 2"],
   run: ["run", "run"],
-  use: ["use <item> [on <Pokémon>]", "use POTION on 1"],
+  use: ["use <item> [on <Pokémon> [<move>]]", "use POTION on 1"],
   teach: ["teach <TM or HM> on <Pokémon>", "teach TM13 on 1"],
+  give: ["give <item> on <Pokémon>", "give ORAN BERRY on 1"],
+  take: ["take <Pokémon>", "take 1"],
   buy: ["buy <item> <quantity>", "buy POTION 2"],
   sell: ["sell <item> <quantity>", "sell POTION 2"],
   withdraw: ["withdraw <item> [quantity]", "withdraw POTION 2"],
@@ -378,6 +418,8 @@ function parse(written: string): ParsedAction | null {
   let m: RegExpMatchArray | null;
   if ((m = action.match(/^use\s+(.+?)(?:\s+on\s+(.+))?$/i))) return { name: "use", item: m[1], ...(m[2] === undefined ? {} : { on: m[2] }) };
   if ((m = action.match(/^teach\s+(.+?)\s+on\s+(.+)$/i))) return { name: "teach", item: m[1], on: m[2] };
+  if ((m = action.match(/^give\s+(.+?)\s+on\s+(.+)$/i))) return { name: "give", item: m[1], on: m[2] };
+  if ((m = action.match(/^take\s+(.+)$/i))) return { name: "take", pokemon: m[1] };
   if ((m = action.match(/^(buy|sell|withdraw|deposit)\s+(.+?)(?:\s+(\d+))?$/i))) {
     const name = m[1].toLowerCase() as QuantityName;
     // The quantity is 1 when a withdraw or a deposit does not give it. A buy or a sell must give it.

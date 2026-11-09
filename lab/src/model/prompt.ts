@@ -1,4 +1,4 @@
-import { BICYCLE, type BagItem, type BagPocket, type Teachable } from "../bag";
+import { BICYCLE, type BagItem, type BagPocket, type ItemUse, type Stone, type Teachable } from "../bag";
 import { struggles } from "../battle";
 import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
@@ -6,7 +6,7 @@ import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
 import { type CallTurn, callTurns, isDecision, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
-import { type BoxMon, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
+import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { characterTurn, runCharacter } from "./character";
@@ -99,7 +99,7 @@ Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same
 
 At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map that you cannot remove yet (a cut tree, a rock or a boulder) with the move that removes each one, when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it on foot; a slide can go through it. A line under the map tells when you saw all the cells that you can reach from where you are: other parts of the map can still have unseen cells, so take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. On a map with spin tiles, the extract also gives the parts of the map, the slides that leave each part and where each slide ends, and a target in another part shows its part and the number of exits or slides to it. The leads are what you did not explore in other parts and maps: unseen cells, exits not taken, and slides whose end you did not see. On a floor of a cave, a forest or a large building, the list What is left counts, from the game, the unseen places and the exits not taken in your part, in the other parts and on the floors that the exits reach. Trust it more than your notes. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
 
-In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
+In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit and no held item. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
 
 Answer with JSON:
 - "reason": why you choose this action, in one or two short sentences.
@@ -485,7 +485,7 @@ function partyText(party: PartyMon[]): string {
       `${slot + 1}. ${monName(m)}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
       `Type ${m.types.join(", ")}`,
       `Ability ${m.ability.name}: ${m.ability.description.replace(/\.$/, "")}`,
-      `Held item ${m.heldItem ?? "none"}`,
+      `Held item ${m.heldItem ? `${m.heldItem.name}: ${m.heldItem.description.replace(/\.$/, "")}` : "none"}`,
       `Nature ${m.nature}`,
       `Stats: ${statsText(m.stats)}`,
       `EXP ${m.exp}, ${m.expToNextLevel} to the next level.`,
@@ -588,6 +588,8 @@ function actionLines(asked: Asked): string[] {
         "- goTo <x> <y> <map>: walk to a cell of another map.",
         ...useLine(asked),
         ...teachLine(asked),
+        ...giveLine(asked),
+        ...takeLine(asked),
         ...(actionsOf(asked).includes("swap") ? [`- swap <Pokémon> <Pokémon>: change the order of two Pokémon of your party. The first Pokémon starts the next battle.${pokemonHelp(asked.party)}`] : []),
         ...(actionsOf(asked).includes("viewAtlas") ? ["- viewAtlas: get the full Atlas, all the maps that you know in detail, then choose again. The game does not move. One time at most at each decision."] : []),
       ];
@@ -646,14 +648,34 @@ function keyList(keys: string[]): string {
 
 function useLine(asked: Asked & { items: BagItem[] }): string[] {
   if (asked.items.length === 0) return [];
-  const names = asked.items.map((item) => (itemUse(item, asked) === "pokemon" ? `${item.name} (on a Pokémon)` : item.name));
-  return [`- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: ${names.join(", ")}.${pokemonHelp(asked.party)}`];
+  const moveItem = asked.items.find((item) => itemUse(item, asked) === "move");
+  const moveHelp = moveItem ? ` On a move, write the Pokémon and then the move, for example use ${moveItem.name} on 1 ${asked.party[0].moves[0].name}.` : "";
+  return [`- use <item> [on <Pokémon>${moveItem ? " [<move>]" : ""}]: use an item of your Bag. The items that work now: ${asked.items.map((item) => itemWithTarget(item, asked)).join(", ")}.${pokemonHelp(asked.party)}${moveHelp}`, ...(asked.kind === "walk" ? stoneLines(asked.overworld.stones, asked.party) : [])];
+}
+
+const ITEM_TARGETS: Record<ItemUse, string> = { alone: "", pokemon: " (on a Pokémon)", move: " (on a move of a Pokémon)" };
+
+function itemWithTarget(item: BagItem, asked: Asked): string {
+  return `${item.name}${ITEM_TARGETS[itemUse(item, asked) ?? "alone"]}`;
+}
+
+function stoneLines(stones: Stone[], party: PartyMon[]): string[] {
+  return stones.filter(({ evolutions }) => evolutions.length > 0).map(({ item, evolutions }) => `  ${item}: ${evolutions.map(({ slot, species }) => `${monPlace(party, slot)} becomes ${species}`).join(", ")}.`);
 }
 
 type WalkAsked = Asked & { kind: "walk" };
 
 function teachLine({ overworld: { teachables } }: WalkAsked): string[] {
   return teachables.length === 0 ? [] : [`- teach <TM or HM> on <Pokémon>: teach its move to a Pokémon of your party, for example teach ${teachables[0].item} on 1. Your Bag has: ${teachables.map(teachableName).join(", ")}.`];
+}
+
+function giveLine({ holdable, party }: WalkAsked): string[] {
+  return holdable.length === 0 ? [] : [`- give <item> on <Pokémon>: a Pokémon of your party holds an item of your Bag, for example give ${holdable[0].name} on 1. When it holds an item, this item goes back to your Bag. The items with an effect when a Pokémon holds them: ${holdable.map((item) => item.name).join(", ")}.${pokemonHelp(party)}`];
+}
+
+function takeLine({ party }: WalkAsked): string[] {
+  const holders = [...party.keys()].filter((slot) => hasTakableItem(party[slot]));
+  return holders.length === 0 ? [] : [`- take <Pokémon>: put the item that a Pokémon holds in your Bag. Holders: ${holders.map((slot) => `${monPlace(party, slot)} (${party[slot].heldItem?.name})`).join(", ")}.`];
 }
 
 function teachDetails({ overworld: { teachables }, party }: WalkAsked): string[] {

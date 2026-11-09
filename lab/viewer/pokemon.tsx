@@ -99,7 +99,7 @@ export function PokemonSummary({ mon }: { mon: PartyMon }) {
           </div>
           <div class="flex justify-between">
             <dt class="text-muted">Held item</dt>
-            <dd class="font-semibold">{mon.heldItem ?? "none"}</dd>
+            <dd class="font-semibold">{mon.heldItem?.name ?? "none"}</dd>
           </div>
         </dl>
         <div class="flex flex-col gap-1">

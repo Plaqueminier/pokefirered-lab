@@ -58,6 +58,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     teachables: [],
+    stones: [],
     milestones: [],
     map: { group: 0, num: 0, name: "Route1" },
     mapKind: "outdoor",
@@ -286,6 +287,45 @@ describe("the Bag", () => {
     expect(readAction("use potion on squirtle", asked)).toEqual({ name: "use", item: "POTION", on: 0 });
     expect(readAction("use repel", asked)).toEqual({ name: "use", item: "REPEL" });
     expect(() => readAction("use POKé BALL", asked)).toThrow('"POKé BALL" is not an item that works now: POTION, REPEL');
+  });
+
+  test("an item on a move has its form in the use line, and it stays out of a prompt with no such item", () => {
+    const ether = { name: "ETHER", quantity: 1, description: "", price: 1200, battle: "move", walk: "move" };
+    const observation = route1(10, [ether]);
+    observation.party[0].moves = [move("CUT", "NORMAL", 50, 0, 30, "")];
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("- use <item> [on <Pokémon> [<move>]]: use an item of your Bag. The items that work now: ETHER (on a move of a Pokémon).");
+    expect(prompt).toContain("On a move, write the Pokémon and then the move, for example use ETHER on 1 CUT.");
+  });
+
+  test("a stone shows each Pokémon that it evolves and the species; a stone that evolves none is not in the use line", () => {
+    const stone = (name: string) => ({ name, quantity: 1, description: "", price: 2100, battle: null, walk: "pokemon" });
+    const observation = { ...route1(10, [stone("MOON STONE"), stone("FIRE STONE")]), stones: [{ item: "MOON STONE", evolutions: [{ slot: 0, species: "NIDOQUEEN" }] }, { item: "FIRE STONE", evolutions: [] }] };
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("The items that work now: MOON STONE (on a Pokémon).");
+    expect(prompt).toContain("  MOON STONE: 1 SQUIRTLE becomes NIDOQUEEN.");
+    expect(prompt).not.toContain("FIRE STONE:");
+    expect(prompt).not.toContain("FIRE STONE (on");
+  });
+
+  test("the lines of give and take: only with an item to give and a Pokémon that holds an item", () => {
+    const leftovers = { name: "LEFTOVERS", quantity: 1, description: "", price: 200, battle: null, walk: null, holdable: true };
+    const none = route1(10, [POTION]);
+    const nonePrompt = userPrompt(none, askedOf(none, false)!, [], NO_TURN);
+    expect(nonePrompt).not.toContain("- give ");
+    expect(nonePrompt).not.toContain("- take ");
+    const observation = route1(10, [leftovers]);
+    observation.party[0] = { ...observation.party[0], heldItem: { name: "ORAN BERRY", description: "A hold item that restores 10 HP.", mail: false } };
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("- give <item> on <Pokémon>: a Pokémon of your party holds an item of your Bag, for example give LEFTOVERS on 1. When it holds an item, this item goes back to your Bag. The items with an effect when a Pokémon holds them: LEFTOVERS.");
+    expect(prompt).toContain("- take <Pokémon>: put the item that a Pokémon holds in your Bag. Holders: 1 SQUIRTLE (ORAN BERRY).");
+    expect(prompt).toContain("Held item ORAN BERRY: A hold item that restores 10 HP. Nature");
+    observation.party[0] = { ...observation.party[0], heldItem: { name: "ORANGE MAIL", description: "", mail: true } };
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).not.toContain("- take ");
+  });
+
+  test("the rules say that the damage estimate has no critical hit and no held item", () => {
+    expect(systemPrompt(SYSTEM, true)).toContain("an estimate of its damage with no critical hit and no held item");
   });
 });
 

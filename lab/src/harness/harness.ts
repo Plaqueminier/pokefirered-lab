@@ -1,18 +1,19 @@
 // Frames run only inside a Macro-action or a Raw input: the game is frozen at each Decision point (docs/adr/0002).
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { BICYCLE, type BagPocket, battleItems, depositableItems, sellableItems, type Teachable, walkItems } from "../bag";
+import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, sellableItems, type Stone, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
-import { type BoxMon, isHmMove, type PartyMon, sendableSlots } from "../party";
+import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
 import { isStateEvent, withoutFormat } from "./game-events";
+import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
@@ -43,7 +44,7 @@ const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "walkOn", "interact", "swap", "use", "teach"],
+  walk: ["goTo", "walkOn", "interact", "swap", "use", "teach", "give", "take"],
   choice: ["choose"],
   text: ["readText"],
   battleAction: ["fight", "switch", "run", "use"],
@@ -70,7 +71,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; teachables: Teachable[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -98,9 +99,10 @@ export type MacroAction =
   | { name: "switch"; slot: number }
   | { name: "send"; slot: number }
   | { name: "swap"; first: number; second: number }
-  | { name: "teach"; item: string; on: number }
+  | { name: "teach" | "give"; item: string; on: number }
+  | { name: "take"; on: number }
   | { name: "run" }
-  | { name: "use"; item: string; on?: number }
+  | { name: "use"; item: string; on?: number; move?: string }
   | { name: "buy"; item: string; quantity: number }
   | { name: "sell"; item: string; quantity: number }
   | { name: "withdraw" | "deposit"; item: string; quantity: number }
@@ -113,8 +115,8 @@ export type MacroAction =
 
 export type AvailableAction =
   | { name: "goTo" | "walkOn" | "swap" | "name" }
-  | { name: "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "walkOn" | "swap" | "name" | "use" | "teach" | "buy" | "sell" | "withdraw" | "deposit" }>;
+  | { name: "use" | "teach" | "give" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
+  | Exclude<MacroAction, { name: "goTo" | "walkOn" | "swap" | "name" | "use" | "teach" | "give" | "buy" | "sell" | "withdraw" | "deposit" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -219,6 +221,7 @@ export class Harness {
   readonly #atlas: AtlasWatch;
   readonly #events: RunEvent[] = [];
   readonly #menus: MenuDriver;
+  readonly #items: ItemDriver;
   readonly #parent: string | null;
   readonly #walk: WalkDriver;
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
@@ -239,9 +242,11 @@ export class Harness {
     this.#parent = options.parent?.name ?? null;
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game, this.#knowledge);
-    const frames = { advance: (keys: number) => this.advance(keys) };
+    // A replay does not pass here, so an old Run record that stopped an evolution with B stays the same game.
+    const frames = { advance: (keys: number) => this.advance(keys & Keys.B && run.game.evolutionCanStop() ? keys & ~Keys.B : keys) };
     this.#menus = new MenuDriver(run.game, frames);
-    this.#walk = new WalkDriver(run.game, frames, this.#menus);
+    this.#items = new ItemDriver(run.game, this.#menus);
+    this.#walk = new WalkDriver(run.game, frames, this.#menus, this.#items);
   }
 
   /** The Harness owns the Run, also a Run that the caller opened: it closes the Run when the Run cannot start. */
@@ -416,7 +421,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, teachables: game.teachables() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, teachables: game.teachables(), stones: game.stones() };
   }
 
   availableActions(): AvailableAction[] {
@@ -437,6 +442,10 @@ export class Harness {
           return game.party().length > 1 ? [{ name }] : [];
         case "teach":
           return game.teachables().map(({ item }) => ({ name, item }));
+        case "give":
+          return holdableItems(game.bag()).map((item) => ({ name, item: item.name }));
+        case "take":
+          return game.party().flatMap((mon, on) => (hasTakableItem(mon) ? [{ name, on }] : []));
         case "switch":
         case "send":
           return sendableSlots(game.partyOnScreen(), [game.requireBattle().player.partyIndex, game.requireBattle().double?.ally?.partyIndex]).map((slot) => ({ name, slot }));
@@ -453,7 +462,7 @@ export class Harness {
           return game.requireBattle().kind === "wild" ? [{ name }] : [];
         case "use": {
           const bag = game.bag();
-          return (waiting.kind === "walk" ? walkItems(bag) : battleItems(bag, game.requireBattle().kind)).map((item) => ({ name, item: item.name }));
+          return (waiting.kind === "walk" ? walkItems(bag, game.stones()) : battleItems(bag, game.requireBattle().kind)).map((item) => ({ name, item: item.name }));
         }
         case "buy":
           return waiting.kind === "shopMenu" ? waiting.items.map((item) => ({ name, item: item.name })) : [];
@@ -597,8 +606,8 @@ export class Harness {
     return this.act<Texts>({ name: "run" }, () => this.#menus.run(), { text: [] });
   }
 
-  async use(item: string, on?: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }) }, () => (item === BICYCLE && this.#run.game.waitingFor().kind === "walk" ? this.#walk.chooseRide(on) : this.#menus.use(item, on)), { text: [] });
+  async use(item: string, on?: number, move?: string): Promise<TextResult> {
+    return this.act<Texts>({ name: "use", item, ...(on === undefined ? {} : { on }), ...(move === undefined ? {} : { move }) }, () => (item === BICYCLE && this.#run.game.waitingFor().kind === "walk" ? this.#walk.chooseRide(on) : this.#items.use(item, on, move)), { text: [] });
   }
 
   async buy(item: string, quantity: number): Promise<ActionResult> {
@@ -634,11 +643,11 @@ export class Harness {
   }
 
   async forget(move: string): Promise<TextResult> {
-    return this.act<Texts>({ name: "forget", move }, () => this.#menus.forget(move), { text: [] });
+    return this.act<Texts>({ name: "forget", move }, () => this.#items.forget(move), { text: [] });
   }
 
   async keep(): Promise<TextResult> {
-    return this.act<Texts>({ name: "keep" }, () => this.#menus.keep(), { text: [] });
+    return this.act<Texts>({ name: "keep" }, () => this.#items.keep(), { text: [] });
   }
 
   async switch(slot: number): Promise<TextResult> {
@@ -654,7 +663,15 @@ export class Harness {
   }
 
   async teach(item: string, on: number): Promise<TextResult> {
-    return this.act<Texts>({ name: "teach", item, on }, () => this.#menus.teach(item, on), { text: [] });
+    return this.act<Texts>({ name: "teach", item, on }, () => this.#items.teach(item, on), { text: [] });
+  }
+
+  async give(item: string, on: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "give", item, on }, () => this.#items.give(item, on), { text: [] });
+  }
+
+  async take(on: number): Promise<TextResult> {
+    return this.act<Texts>({ name: "take", on }, () => this.#items.take(on), { text: [] });
   }
 
   /** Runs a Macro-action or a Raw input from its description. */
@@ -680,10 +697,14 @@ export class Harness {
         return this.swap(action.first, action.second);
       case "teach":
         return this.teach(action.item, action.on);
+      case "give":
+        return this.give(action.item, action.on);
+      case "take":
+        return this.take(action.on);
       case "run":
         return this.run();
       case "use":
-        return this.use(action.item, action.on);
+        return this.use(action.item, action.on, action.move);
       case "buy":
         return this.buy(action.item, action.quantity);
       case "sell":

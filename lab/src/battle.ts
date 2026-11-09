@@ -40,6 +40,7 @@ const EVO_STATE = 0;
 const EVO_LEARN_MOVE_STATE = 6;
 const EVO_LEARN_MOVE_YES_STATE = 7;
 const EVO_PARTY_ID = 10;
+const EVOSTATE_WAIT_CYCLE_MON_SPRITE = 8;
 const EVOSTATE_REPLACE_MOVE = 22;
 const MVSTATE_HANDLE_YES_NO = 4;
 const MVSTATE_SHOW_MOVE_SELECT = 5;
@@ -197,6 +198,15 @@ export function battleYesNoCursor(mem: Memory): number | null {
 
 export function dexPageWaits(mem: Memory): boolean {
   return activeTask(mem, "Task_DexScreen_RegisterMonToPokedex") !== null && mem.global("sPokedexScreenData").deref().field("state").int() === DEX_PAGE_KEY_STATE;
+}
+
+export function evolutionSceneRuns(mem: Memory): boolean {
+  return activeTask(mem, EVOLUTION_TASK) !== null;
+}
+
+// Task_EvolutionScene stops an evolution when B alone is held in this state.
+export function evolutionCanStop(mem: Memory): boolean {
+  return activeTask(mem, EVOLUTION_TASK)?.field("data").at(EVO_STATE).int() === EVOSTATE_WAIT_CYCLE_MON_SPRITE;
 }
 
 export function learnMoveBox(mem: Memory): LearnMoveBox | null {

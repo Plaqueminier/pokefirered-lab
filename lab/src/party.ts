@@ -1,6 +1,7 @@
 import type { Memory, Ref } from "./memory";
 import { IN_BOX_COUNT } from "./pc";
 import { type Decode, oneLine } from "./prompts";
+import { functionName } from "./symbols";
 
 // SUBSTRUCT_CASE rows of GetSubstruct (pokemon.c): growth, attacks, EVs, misc positions per personality % 24.
 const SUBSTRUCT_POSITIONS = ["0123", "0132", "0213", "0312", "0231", "0321", "1023", "1032", "2013", "3012", "2031", "3021", "1203", "1302", "2103", "3102", "2301", "3201", "1230", "1320", "2130", "3120", "2310", "3210"];
@@ -51,12 +52,14 @@ export type StageName = (typeof STAGE_NAMES)[number];
 // fixedDamage: the power in the game is 1, so the move has its own damage rule (SEISMIC TOSS, DRAGON RAGE, SUPER FANG…).
 export type PartyMove = { name: string; type: string; effect: number; power: number | null; fixedDamage?: true; accuracy: number | null; pp: number; maxPp: number; description: string };
 
+type HeldItem = { name: string; description: string; mail: boolean };
+
 export type PartyMon = {
   species: string;
   nickname: string;
   types: string[];
   ability: { name: string; description: string };
-  heldItem: string | null;
+  heldItem: HeldItem | null;
   isEgg: boolean;
   nature: string;
   level: number;
@@ -91,7 +94,7 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       nickname: decode(box.field("nickname").bytes()),
       types: speciesTypes(mem, species, decode),
       ability: monAbility(mem, decode, species, ivWord),
-      heldItem: item === ITEM_NONE ? null : decode(mem.global("gItems").at(item).field("name").bytes()),
+      heldItem: readHeldItem(mem, item, decode),
       isEgg: ((ivWord >>> IS_EGG_BIT) & 1) === 1,
       nature: textAt(mem, mem.global("gNatureNamePointers").at(personality % NUM_NATURES).pointer(), decode),
       level,
@@ -105,6 +108,21 @@ export function readParty(mem: Memory, decode: Decode): PartyMon[] {
       moves: monMoves(mem, decode, substructs, growth, attacks),
     };
   });
+}
+
+function readHeldItem(mem: Memory, item: number, decode: Decode): HeldItem | null {
+  if (item === ITEM_NONE) return null;
+  const data = mem.global("gItems").at(item);
+  return { name: decode(data.field("name").bytes()), description: textAt(mem, data.field("description").pointer(), decode), mail: functionName(mem.symbols, data.field("fieldUseFunc").pointer()) === "FieldUseFunc_Mail" };
+}
+
+export function hasTakableItem({ heldItem, isEgg }: Pick<PartyMon, "heldItem" | "isEgg">): boolean {
+  return heldItem && !isEgg ? !heldItem.mail : false;
+}
+
+export function monIds(mem: Memory, slot: number): { species: number; item: number; isEgg: boolean } {
+  const { substructs, growth, misc } = decryptBox(mem.global("gPlayerParty").at(slot).field("box"));
+  return { species: substructs.getUint16(growth, true), item: substructs.getUint16(growth + GROWTH_HELD_ITEM, true), isEgg: ((substructs.getUint32(misc + MISC_IV_WORD, true) >>> IS_EGG_BIT) & 1) === 1 };
 }
 
 export function canLearnTmHm(mem: Memory, slot: number, tm: number): boolean {
@@ -125,7 +143,7 @@ function monAbility(mem: Memory, decode: Decode, species: number, ivWord: number
   return { name: nameAt(mem, "gAbilityNames", ability, decode), description: textAt(mem, mem.global("gAbilityDescriptionPointers").at(ability).pointer(), decode) };
 }
 
-export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[] };
+export type WatchedMon = { personality: number; species: string; nickname: string; level: number; hp: number; maxHp: number; status: Status; moves: string[]; heldItem: string | null };
 
 export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerParty" | "gEnemyParty", count: number): WatchedMon[] | null {
   const party = mem.global(global);
@@ -139,6 +157,7 @@ export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerPa
     const species = substructs.getUint16(growth, true);
     if (species === SPECIES_NONE) continue;
     const moves = Array.from({ length: MAX_MON_MOVES }, (_, slot) => substructs.getUint16(attacks + slot * 2, true)).filter((move) => move !== MOVE_NONE);
+    const item = substructs.getUint16(growth + GROWTH_HELD_ITEM, true);
     watched.push({
       personality,
       species: nameAt(mem, "gSpeciesNames", species, decode),
@@ -148,6 +167,7 @@ export function readWatchedParty(mem: Memory, decode: Decode, global: "gPlayerPa
       maxHp: mon.field("maxHP").int(),
       status: statusOf(mon.field("status").int()),
       moves: moves.map((move) => nameAt(mem, "gMoveNames", move, decode)),
+      heldItem: readHeldItem(mem, item, decode)?.name ?? null,
     });
   }
   return watched;

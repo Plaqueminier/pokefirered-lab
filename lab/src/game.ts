@@ -2,7 +2,7 @@
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
 import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "./cells";
-import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, findInBag, itemAnimWaits, readBag, readTeachables, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
+import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, type BerryPouchMenu, berryPouchMenu, findInBag, itemSceneRuns, readBag, readStones, readTeachables, type Stone, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   type Battle,
   type BattleMenu,
@@ -13,6 +13,8 @@ import {
   battleYesNoCursor,
   dexPageWaits,
   enemyMovesPrinted,
+  evolutionCanStop,
+  evolutionSceneRuns,
   forgetMoveCursor,
   type LearnMoveBox,
   learnMoveBox,
@@ -24,7 +26,7 @@ import { readTypeChart, type TypeChart } from "./battle-facts";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
-import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
+import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
 import { type BoxMon, nameAt, newMove, type PartyMon, type PartyMove, readBoxMons, readParty } from "./party";
 import { currentBox, itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, pokemonPcCursor, storageScreen, type StorageScreen, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
@@ -40,6 +42,11 @@ const NUM_METATILES_IN_PRIMARY = 640;
 const MAP_DYNAMIC = 0x7f;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
+// IsNationalPokedexEnabled (event_data.c).
+const FLAG_SYS_NATIONAL_DEX = 0x840;
+const VAR_NATIONAL_DEX = 0x404e;
+const NATIONAL_DEX_VALUE = 0x6258;
+const NATIONAL_DEX_MAGIC = 0xb9;
 // EndRivalBattle sets it after the first rival battle, won or lost.
 const FLAG_BEAT_RIVAL_IN_OAKS_LAB = 0x258;
 const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
@@ -465,7 +472,35 @@ export class Game {
 
   // Outside a battle, gBattlescriptCurrInstr keeps its old value, so the battle read is false there.
   learnMoveBox(): LearnMoveBox | null {
-    return this.context().mode === "battle" ? learnMoveBox(this.mem) : partyLearnMoveBox(this.mem);
+    return this.learnsInBattleWindows() ? learnMoveBox(this.mem) : partyLearnMoveBox(this.mem);
+  }
+
+  learnsInBattleWindows(): boolean {
+    return this.context().mode === "battle" || evolutionSceneRuns(this.mem);
+  }
+
+  evolutionCanStop(): boolean {
+    return evolutionCanStop(this.mem);
+  }
+
+  ppMoveCursor(): number | null {
+    return ppMoveCursor(this.mem);
+  }
+
+  berryPouchMenu(): BerryPouchMenu | null {
+    return berryPouchMenu(this.mem);
+  }
+
+  itemSceneRuns(): boolean {
+    return itemSceneRuns(this.mem);
+  }
+
+  stones(): Stone[] {
+    return readStones(this.mem, this.decode, this.nationalDex());
+  }
+
+  private nationalDex(): boolean {
+    return this.mem.global("gSaveBlock2Ptr").deref().field("pokedex").field("nationalMagic").int() === NATIONAL_DEX_MAGIC && this.varGet(VAR_NATIONAL_DEX) === NATIONAL_DEX_VALUE && this.flag(FLAG_SYS_NATIONAL_DEX);
   }
 
   forgetMoveCursor(): number | null {
@@ -512,10 +547,6 @@ export class Game {
 
   tmCaseItemMenu(): boolean {
     return tmCaseItemMenu(this.mem);
-  }
-
-  teachSceneRuns(): boolean {
-    return this.context().callback2 === "CB2_PSA";
   }
 
   bagQuantity(item: number): number {
@@ -593,10 +624,6 @@ export class Game {
 
   menuMessage(): string {
     return oneLine(this.decode(this.mem.global("gStringVar4").bytes()));
-  }
-
-  itemAnimWaits(): boolean {
-    return itemAnimWaits(this.mem);
   }
 
   battleCursor(menu: BattleMenu): number {

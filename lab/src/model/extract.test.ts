@@ -38,6 +38,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     party: [],
     bag: [],
     teachables: [],
+    stones: [],
     boxes: [],
     pcItems: [],
     repelActive: false, riding: false, rideChosen: false,

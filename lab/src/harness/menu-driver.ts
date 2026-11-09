@@ -1,8 +1,8 @@
-import { type BagPlace, BATTLE_POCKETS, ITEMS_POCKET, POKE_BALLS_POCKET, sellRefusal } from "../bag";
+import { type BagPlace, ITEMS_POCKET, sellRefusal } from "../bag";
 import { type BattleMenu, foeBattler, struggles } from "../battle";
-import type { Game, WaitingFor } from "../game";
+import type { Game } from "../game";
 import type { NamingScreen, WordScreen } from "../menus";
-import { isHmMove, PARTY_SIZE } from "../party";
+import { PARTY_SIZE } from "../party";
 import { freeBox, IN_BOX_COLUMNS, type StorageScreen } from "../pc";
 import { type Messages, oneLine } from "../prompts";
 import { Keys } from "../protocol";
@@ -10,7 +10,6 @@ import type { Interruption } from "./harness";
 
 const DECISION_FRAME_LIMIT = 3600;
 const FIGHT_CURSOR = 0;
-const BAG_CURSOR = 1;
 const POKEMON_CURSOR = 2;
 const RUN_CURSOR = 3;
 const SHOP_BUY = 0;
@@ -23,9 +22,7 @@ const WITHDRAW_MENU_WITHDRAW = 0;
 // The longest way out: the message of a full box, the box choice, the main screen and the question to close.
 const MAX_CLOSE_PRESSES = 4;
 const MAX_TEXT_PRESSES = 256;
-const START_MENU_POKEMON = "POKéMON";
-const START_MENU_BAG = "BAG";
-const TM_CASE_ITEM = "TM CASE";
+export const START_MENU_POKEMON = "POKéMON";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const FLASH_ACTION = "FLASH";
@@ -35,9 +32,6 @@ const CURSOR_ROW = 2;
 const NAMING_OK_ROW = 2;
 // moveMenuCursor reads the cursor as one number: y * NAMING_CURSOR_STRIDE + x. A row of the keyboard has less than 16 columns.
 const NAMING_CURSOR_STRIDE = 16;
-const ITEM_MENU_REGISTER = 1;
-const YES = 0;
-const NO = 1;
 
 export type Outcome =
   | { status: "done" }
@@ -50,18 +44,18 @@ export type Texts = { text: string[] };
 /** The frames of the Harness. `advance` runs one frame with the keys, and it gives true when a battle starts. */
 export type Input = { advance(keys: number): boolean };
 
-const impossible = (reason: string): Outcome => ({ status: "impossible", reason });
+export const impossible = (reason: string): Outcome => ({ status: "impossible", reason });
 
 const quantityRefusal = (verb: string, item: string, quantity: number, most: number): Outcome | null => (quantity < 1 || quantity > most ? impossible(`the quantity of ${item} to ${verb} is 1 to ${most}`) : null);
 
-const withText = (outcome: Outcome, text: string[] = []): Outcome & Texts => ({ ...outcome, text });
+export const withText = (outcome: Outcome, text: string[] = []): Outcome & Texts => ({ ...outcome, text });
 
 const BATTLE_INTERRUPTION: Outcome = { status: "interrupted", reason: "battle" };
 
-const DONE: Outcome = { status: "done" };
+export const DONE: Outcome = { status: "done" };
 
 /** The key that moves a cursor from `at` toward `target`. */
-function toward(target: number, more: number, less: number): (at: number) => number {
+export function toward(target: number, more: number, less: number): (at: number) => number {
   return (at) => (target > at ? more : less);
 }
 
@@ -73,7 +67,7 @@ function quantityKey(at: number, target: number): number {
 
 // The battle menus are 2x2 grids. The game does not move the cursor to an empty move slot, and the moves fill
 // the slots in order: so the cursor goes left and up first, and passes only on cells before the target.
-function gridKey(cursor: number, target: number): number {
+export function gridKey(cursor: number, target: number): number {
   if (cursor & CURSOR_COLUMN & ~target) return Keys.Left;
   if (cursor & CURSOR_ROW & ~target) return Keys.Up;
   return target & CURSOR_COLUMN & ~cursor ? Keys.Right : Keys.Down;
@@ -124,7 +118,7 @@ function isOnOk({ cursor, columns }: NamingScreen): boolean {
   return cursor.x === columns && cursor.y === NAMING_OK_ROW;
 }
 
-class MessageReader {
+export class MessageReader {
   readonly text: string[] = [];
   private messages: Messages;
   private pressedOnce = false;
@@ -243,33 +237,6 @@ export class MenuDriver {
   run(): Outcome & Partial<Texts> {
     if (this.game.requireBattle().kind === "trainer") return impossible("there is no running from a trainer battle");
     return this.turn("battleAction", RUN_CURSOR);
-  }
-
-  use(item: string, on?: number): Outcome & Partial<Texts> {
-    const { game } = this;
-    const walk = game.waitingFor().kind === "walk";
-    const place = this.usablePlace(item, on, walk);
-    if ("status" in place) return place;
-    const before = game.bagQuantity(place.item);
-    const opened = walk ? this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list") : this.openBag();
-    if (opened.status !== "done") return opened;
-    const picked = this.pickItem(place, on, walk);
-    if (picked.status !== "done") return picked;
-    return walk ? this.useOnWalk(item, place.item, before) : this.useInBattle(item, place.item, before);
-  }
-
-  register(item: string): Outcome {
-    const { game } = this;
-    const place = game.findInBag(item);
-    if (!place) return impossible(`there is no ${item} in the Bag`);
-    const opened = this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list");
-    if (opened.status !== "done") return opened;
-    const picked = this.pickItem(place, undefined, true);
-    if (picked.status !== "done") return picked;
-    const moved = this.moveMenuCursor(ITEM_MENU_REGISTER, () => game.bagMenu()?.menuCursor ?? null);
-    if (moved.status !== "done") return moved;
-    const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
-    return back.status === "done" ? this.closeStartMenu() : back;
   }
 
   buy(item: string, quantity: number): Outcome {
@@ -400,104 +367,8 @@ export class MenuDriver {
     return pressed.status === "done" ? this.readText() : withText(pressed);
   }
 
-  forget(move: string): Outcome & Partial<Texts> {
-    const { game } = this;
-    const learn = game.waitingFor();
-    if (learn.kind !== "learnMove") throw new Error("forget is available only at a learnMove");
-    const pokemon = game.party()[learn.slot];
-    const slot = pokemon.moves.findIndex((m) => m.name === move);
-    if (slot < 0) return impossible(`${pokemon.nickname} does not know ${move}: its moves are ${pokemon.moves.map((m) => m.name).join(", ")}`);
-    if (isHmMove(move)) return impossible(`${move} is an HM move, and HM moves cannot be forgotten now`);
-    const yes = this.answerLearnMove(YES);
-    if (yes.status !== "done") return yes;
-    const shown = this.showForgetMoves();
-    if (shown.status !== "done") return shown;
-    const moved = this.moveMenuCursor(slot, () => game.forgetMoveCursor());
-    return moved.status === "done" ? this.endLearnMove(learn) : moved;
-  }
-
-  keep(): Outcome & Partial<Texts> {
-    const learn = this.game.waitingFor();
-    if (learn.kind !== "learnMove") throw new Error("keep is available only at a learnMove");
-    const no = this.answerLearnMove(NO);
-    if (no.status !== "done") return no;
-    const asked = this.tapUntil(Keys.A, () => this.game.learnMoveBox()?.question === "stop", "the question to stop learning the move");
-    if (asked.status !== "done") return asked;
-    return this.endLearnMove(learn);
-  }
-
-  teach(item: string, on: number): Outcome & Partial<Texts> {
-    const { game } = this;
-    const teachable = game.teachables().find((t) => t.item === item);
-    if (!teachable) return impossible(`there is no ${item} in the TM Case`);
-    const missing = this.missingPokemon(on);
-    if (missing) return missing;
-    const { nickname } = game.party()[on];
-    const move = teachable.move.name;
-    if (teachable.knowing.includes(on)) return impossible(`${nickname} already knows ${move}`);
-    if (!teachable.able.includes(on)) return impossible(`${nickname} cannot learn ${move}`);
-    const chosen = this.chooseTeach(item, on);
-    return chosen.status === "done" ? this.finishTeach(on, move) : chosen;
-  }
-
-  private chooseTeach(item: string, on: number): Outcome {
-    const { game } = this;
-    const tmCase = game.findInBag(TM_CASE_ITEM);
-    if (!tmCase) return impossible(`there is no ${TM_CASE_ITEM} in the Bag`);
-    const opened = this.openStartMenu(START_MENU_BAG, () => game.bagMenu()?.screen === "list");
-    if (opened.status !== "done") return opened;
-    const context = this.pickItem(tmCase, undefined, true);
-    if (context.status !== "done") return context;
-    const list = this.menuInput(Keys.A, () => game.tmCaseRow() !== null);
-    if (list.status !== "done") return list;
-    // InitTMCase sorts the pocket when it opens, with the HMs first: the row of an item changes.
-    const place = game.findInBag(item);
-    if (!place) return impossible(`there is no ${item} in the TM Case`);
-    const row = this.moveMenuCursor(place.row, () => game.tmCaseRow());
-    if (row.status !== "done") return row;
-    const itemMenu = this.menuInput(Keys.A, () => game.tmCaseItemMenu());
-    if (itemMenu.status !== "done") return itemMenu;
-    const party = this.menuInput(Keys.A, () => this.pickMenu() !== null);
-    if (party.status !== "done") return party;
-    const moved = this.moveMenuCursor(on, () => this.pickMenu()?.cursor ?? null);
-    return moved.status === "done" ? this.pressUntilRead(Keys.A) : moved;
-  }
-
-  private finishTeach(slot: number, move: string): Outcome & Partial<Texts> {
-    const { game } = this;
-    // B cancels the scene of a TM, and A only passes its texts (pokemon_special_anim.c).
-    const after = this.untilReady(
-      () => game.tmCaseRow() !== null || game.learnMoveBox() !== null,
-      () => {
-        if (game.teachSceneRuns() || game.waitingTexts().length > 0) tap(this.frames, Keys.A);
-      },
-    );
-    if (after.status !== "done" || game.learnMoveBox()) return after;
-    const bag = this.menuInput(Keys.B, () => game.bagMenu()?.screen === "list");
-    if (bag.status !== "done") return withText(bag);
-    const closed = this.closeStartMenu();
-    if (closed.status !== "done") return withText(closed);
-    const { nickname, moves } = game.party()[slot];
-    return withText(DONE, [moves.some((known) => known.name === move) ? `${nickname} learned ${move}!` : `${nickname} did not learn the move ${move}.`]);
-  }
-
-  private showForgetMoves(): Outcome {
-    const { game } = this;
-    const moves = () => game.forgetMoveCursor() !== null;
-    const screen = "the moves of the Pokémon";
-    if (game.mode() === "battle") return this.tapUntil(Keys.A, moves, screen);
-    const text = this.tapUntil(Keys.A, () => game.waitingTexts().length > 0, "the question of the move to forget");
-    return text.status === "done" ? this.tapUntil(Keys.A, moves, screen) : text;
-  }
-
-  private endLearnMove({ slot, move }: Extract<WaitingFor, { kind: "learnMove" }>): Outcome & Partial<Texts> {
-    if (this.game.mode() === "battle") return this.input(Keys.A);
-    const pressed = this.pressUntilRead(Keys.A);
-    return pressed.status === "done" ? this.finishTeach(slot, move.name) : pressed;
-  }
-
-  private answerLearnMove(target: number): Outcome {
-    return this.moveCursor(target, () => this.game.learnMoveBox()?.cursor ?? null, toward(target, Keys.Down, Keys.Up));
+  tap(keys: number): "battle" | null {
+    return tap(this.frames, keys);
   }
 
   readText(): Outcome & Texts {
@@ -603,98 +474,13 @@ export class MenuDriver {
     return this.menuInput(Keys.A, () => (this.namingScreen()?.text.length ?? length) > length);
   }
 
-  private missingPokemon(slot: number): Outcome | null {
+  missingPokemon(slot: number): Outcome | null {
     return this.game.party()[slot] ? null : impossible(`the party has no Pokémon ${slot}`);
   }
 
-  private pickMenu() {
+  pickMenu() {
     const menu = this.game.partyMenu();
     return menu?.kind === "pick" ? menu : null;
-  }
-
-  /** The place of the item in the Bag, or why the item cannot be used now. */
-  usablePlace(item: string, on: number | undefined, walk: boolean): BagPlace | Outcome {
-    const { game } = this;
-    const place = game.findInBag(item);
-    if (!place || place.pocket >= BATTLE_POCKETS) return impossible(`there is no ${item} in the Bag${walk ? "" : " of a battle"}`);
-    const use = walk ? place.walk : place.battle;
-    if (!use) return impossible(`${item} does not work ${walk ? "outside" : "in"} a battle`);
-    if (!walk && place.pocket === POKE_BALLS_POCKET && game.requireBattle().kind === "trainer") return impossible("the trainer blocks a ball: there is no catching in a trainer battle");
-    if (use === "pokemon" && on === undefined) return impossible(`${item} works on a Pokémon: give the Pokémon`);
-    if (use === "alone" && on !== undefined) return impossible(`${item} does not work on a Pokémon`);
-    return (on === undefined ? null : this.missingPokemon(on)) ?? place;
-  }
-
-  /** From the list of the Bag to the menu of the item, and the Pokémon when the item needs one. */
-  private pickItem(place: BagPlace, on: number | undefined, walk: boolean): Outcome {
-    const { game } = this;
-    const row = this.toBagItem(place);
-    if (row.status !== "done") return row;
-    const context = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "context", "the menu of the item");
-    if (context.status !== "done" || on === undefined) return context;
-    const party = this.tapUntil(Keys.A, () => this.pickMenu() !== null, "the party menu");
-    if (party.status !== "done") return party;
-    return this.moveMenuCursor(walk ? on : game.battleMenuSlot(on), () => this.pickMenu()?.cursor ?? null);
-  }
-
-  private useInBattle(item: string, id: number, before: number): Outcome & Partial<Texts> {
-    const { game } = this;
-    const reader = new MessageReader(game);
-    const pressed = this.pressUntilRead(Keys.A);
-    if (pressed.status !== "done") return pressed;
-    const used = this.untilDecision(() => reader.update());
-    if (used.status !== "done") return used;
-    if (!game.battleScreen() && game.bagQuantity(id) === before) return this.refused(item, game.waitingTexts().join(" "));
-    const effect = game.battleScreen() ? [] : game.waitingTexts();
-    if (effect.length > 0) {
-      const after = this.input(Keys.A, () => reader.update());
-      if (after.status !== "done") return after;
-    }
-    return { status: "done", text: [...effect, ...reader.textBeforeWaitingText()] };
-  }
-
-  private useOnWalk(item: string, id: number, before: number): Outcome & Partial<Texts> {
-    const { game } = this;
-    const pressed = this.pressUntilRead(Keys.A);
-    if (pressed.status !== "done") return pressed;
-    const told = this.untilReady(() => game.waitingTexts().length > 0 || game.itemAnimWaits());
-    if (told.status !== "done") return told;
-    if (game.itemAnimWaits()) {
-      const effect = this.menuInput(Keys.A, () => game.waitingTexts().length > 0);
-      if (effect.status !== "done") return effect;
-    }
-    return this.endWalkUse(item, id, before, game.waitingTexts());
-  }
-
-  // The medicines and the REPEL items go back to the Bag and then to the field. ESCAPE ROPE closes the Bag and shows its text on the field, then warps to another map.
-  private endWalkUse(item: string, id: number, before: number, text: string[]): Outcome & Partial<Texts> {
-    const { game } = this;
-    if (game.mode() === "overworld") {
-      const escaped = this.input(Keys.A);
-      return escaped.status === "done" ? { status: "done", text } : withText(escaped, text);
-    }
-    const back = this.menuInput(Keys.A, () => game.bagMenu()?.screen === "list");
-    if (back.status !== "done") return withText(back, text);
-    const closed = this.closeStartMenu();
-    if (closed.status !== "done") return withText(closed, text);
-    return game.bagQuantity(id) === before ? impossible(`the game refuses the ${item}: ${text.join(" ")}`) : { status: "done", text };
-  }
-
-  private refused(item: string, message: string): Outcome {
-    const { game } = this;
-    const back = this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
-    if (back.status !== "done") return back;
-    const closed = this.input(Keys.B);
-    if (closed.status !== "done") return closed;
-    return impossible(`the game refuses the ${item}: ${message}`);
-  }
-
-  private openBag(): Outcome {
-    const { game } = this;
-    const cursor = () => (game.waitingFor().kind === "battleAction" ? game.battleCursor("battleAction") : null);
-    const moved = this.moveCursor(BAG_CURSOR, cursor, (at) => gridKey(at, BAG_CURSOR));
-    if (moved.status !== "done") return moved;
-    return this.tapUntil(Keys.A, () => game.bagMenu()?.screen === "list", "the Bag");
   }
 
   private shopOption(option: number, shown: () => boolean, screen: string): Outcome {
@@ -714,7 +500,7 @@ export class MenuDriver {
     return game.shopMenu() ? DONE : this.tapUntil(Keys.B, () => game.shopMenu() !== null, "the shop menu");
   }
 
-  private toBagItem(place: BagPlace): Outcome {
+  toBagItem(place: BagPlace): Outcome {
     const { game } = this;
     const list = () => {
       const menu = game.bagMenu();
@@ -851,7 +637,7 @@ export class MenuDriver {
     return withText(this.untilDecision(() => reader.update()), reader.textBeforeWaitingText());
   }
 
-  private openStartMenu(option: string, shown: () => boolean): Outcome {
+  openStartMenu(option: string, shown: () => boolean): Outcome {
     const { game } = this;
     const opened = this.menuInput(Keys.Start, () => game.startMenu() !== null);
     if (opened.status !== "done") return opened;
@@ -861,19 +647,19 @@ export class MenuDriver {
     return moved.status === "done" ? this.menuInput(Keys.A, shown) : moved;
   }
 
-  private closeStartMenu(): Outcome {
+  closeStartMenu(): Outcome {
     const { game } = this;
     const closed = this.menuInput(Keys.B, () => game.startMenu() !== null);
     return closed.status === "done" ? this.menuInput(Keys.B, () => game.waitingFor().kind === "walk") : closed;
   }
 
-  private openPartyActions(menuSlot: number): Outcome {
+  openPartyActions(menuSlot: number): Outcome {
     const { game } = this;
     const moved = this.moveMenuCursor(menuSlot, () => this.pickMenu()?.cursor ?? null);
     return moved.status === "done" ? this.menuInput(Keys.A, () => game.partyMenu()?.kind === "actions") : moved;
   }
 
-  private selectPartyAction(find: (options: string[]) => number, done: () => boolean): Outcome {
+  selectPartyAction(find: (options: string[]) => number, done: () => boolean): Outcome {
     const { game } = this;
     const menu = game.partyMenu();
     if (menu?.kind !== "actions") throw new Error("the party menu does not show the actions of a Pokémon");
@@ -899,7 +685,7 @@ export class MenuDriver {
     return this.input(Keys.A, watch);
   }
 
-  private moveCursor(target: number, read: () => number | null, key: (cursor: number) => number, press = (keys: number) => this.input(keys)): Outcome {
+  moveCursor(target: number, read: () => number | null, key: (cursor: number) => number, press = (keys: number) => this.input(keys)): Outcome {
     for (let cursor = read(); cursor !== target; ) {
       if (cursor === null) return impossible("the menu closed when the cursor moved");
       const moved = press(key(cursor));
@@ -911,7 +697,7 @@ export class MenuDriver {
     return { status: "done" };
   }
 
-  private moveMenuCursor(target: number, cursor: () => number | null, key = toward(target, Keys.Down, Keys.Up)): Outcome {
+  moveMenuCursor(target: number, cursor: () => number | null, key = toward(target, Keys.Down, Keys.Up)): Outcome {
     for (let at = cursor(); at !== target; ) {
       if (at === null) return impossible("the menu reads no input");
       const from = at;
@@ -925,13 +711,13 @@ export class MenuDriver {
     return { status: "done" };
   }
 
-  private menuInput(keys: number, ready: () => boolean): Outcome {
+  menuInput(keys: number, ready: () => boolean): Outcome {
     const pressed = this.pressUntilRead(keys);
     return pressed.status === "done" ? this.untilReady(ready) : pressed;
   }
 
   // A menu reads the keys from the frame after the frame that shows it.
-  private tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
+  tapUntil(keys: number, shown: () => boolean, screen: string): Outcome {
     const pressed = this.pressUntilRead(keys);
     if (pressed.status !== "done") return pressed;
     for (let frames = 0; !shown(); frames++) {
@@ -942,7 +728,7 @@ export class MenuDriver {
   }
 
   // A slow frame of the game skips the keys, so a press of one frame can be lost.
-  private pressUntilRead(keys: number): Outcome {
+  pressUntilRead(keys: number): Outcome {
     const { game } = this;
     for (const [held, read] of [
       [0, () => (game.keysRead().held & keys) === 0],
@@ -956,7 +742,7 @@ export class MenuDriver {
     return this.frames.advance(0) ? BATTLE_INTERRUPTION : { status: "done" };
   }
 
-  private untilReady(ready: () => boolean, watch: () => void = () => {}): Outcome {
+  untilReady(ready: () => boolean, watch: () => void = () => {}): Outcome {
     for (let frames = 0; ; frames++) {
       watch();
       if (ready()) return { status: "done" };

@@ -676,7 +676,7 @@ function CodeDemo() {
         <Code>press(button)</Code> one press when no Macro-action fits.
       </p>
       <div class="flex flex-wrap gap-1">
-        {["go", "goTo", "swap", "use", "teach", "viewAtlas", "zoom", "press"].map((name) => (
+        {["go", "goTo", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"].map((name) => (
           <Code key={name}>{name}</Code>
         ))}
       </div>

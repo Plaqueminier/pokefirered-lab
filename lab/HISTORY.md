@@ -534,3 +534,18 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - A test showed that the trigger with no text in a gate of the Cycling Road stops a `goTo`. The bot then makes one more Model call. We keep this for now, because the rule touches all the triggers.
     - The first review found a stop of the Run: a `goTo` or a `use BICYCLE` on water pressed Select, and the game then showed a text that the Harness did not wait for. The Harness now does not press Select on water, as the game. A review also showed that a menu action or a Raw input on a slope holds no B, so the slope can pull the rider. We keep this, because B can close a menu: only a walk stops on the cell that it asks for.
     - The frames of a walk went to their own module, `walk-driver.ts`, because `harness.ts` had more than 1000 lines. One rule for a rider on a slope now applies to all the frames of a walk.
+
+## 41. The items of the Bag (2026-11-09)
+
+88. The model bot goes to version 38: it uses the PP items, RARE CANDY, the evolution stones and the Berries, and it gives held items. In Run 00061, on Route 10, the Venusaur had moves at 0 PP and the Bag had an ETHER. The prompt did not offer it, so the bot went back into Rock Tunnel many times to find a Pokémon Center. The same Bag had a RARE CANDY and a MOON STONE that the model could not use. Issue #85.
+
+    - An item that works on one move names the move: `use ETHER on 1 CUT`. The ETHER items and the ELIXIR items have the same functions in the game: only one bit of their effect is different, so the Harness reads this bit.
+    - The parser reads the Pokémon first and the rest as a move, because a nickname and a move can each have spaces. With no move or an unknown move, the action goes to the Harness, which gives the moves.
+    - A RARE CANDY continues through the new stats, the moves and the evolution. Outside a battle and an evolution scene, the learn-move question was a Decision point only for a TM, because its end expected the TM Case. It now ends in any list of items, and the move tutor stays out.
+    - An evolution also starts outside a battle now, so the learn-move question reads the windows of the evolution scene when this scene runs.
+    - The prompt names what a stone does: `MOON STONE: 2 NIDORINA becomes NIDOQUEEN.` The list uses the rule of a use of the item, not the rule of the party menu: an Egg and a Pokémon with an EVERSTONE are not in it, and with no National Pokédex no evolution goes past number 151. A level evolution stays unknown to the prompt.
+    - The game stops an evolution when B alone is held during its animation, and no stop helps the bot. The Harness removes B there, for the frames of the Macro-actions and of the Raw inputs. A replay plays its record as it is, so an old Run stays the same.
+    - `give` and `take` are new Macro-actions, on a walk. A swap answers YES, and a take is not a received item: the event code removes the items that go between the Bag and a Pokémon, as it does for the PC. The spec put the description of a held item in the list "What these moves and abilities do". This list is only on the review and reflection turns with a Pokémon in the boxes, so the description went to the party line, next to the ability.
+    - The estimate of a `fight` still does not count held items, and the prompt now says so.
+    - The item code left `menu-driver.ts` for `item-driver.ts`, because the first file had 981 lines.
+    - No POKé FLUTE on a walk: `interact` on a Snorlax asks the question, and `choose YES` wakes it. No rods, ITEMFINDER or VS SEEKER, because they are not useful enough for the code that they need.

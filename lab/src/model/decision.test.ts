@@ -47,6 +47,7 @@ describe("readAction", () => {
     view: { lines: [], left: [], spinTiles: false, targets: Array.from({ length: targets }, () => edge) },
     atlasShown: false,
     items: [],
+    holdable: [],
     bagEmpty,
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
@@ -81,6 +82,51 @@ describe("readAction", () => {
     expect(() => readAction("use TM13 on 1", { ...asked, items: [potion] } as Asked)).toThrow("TM13 is a TM or an HM: write teach TM13 on <Pokémon>");
     expect(() => readAction("use TM13 on 1", asked)).toThrow('"use" is not an action now: use go, goTo, swap, teach, viewAtlas, zoom or press');
     expect(() => readAction("press Start", asked)).toThrow("your Bag has no item that works now; write teach <TM or HM> on <Pokémon> for a TM or an HM");
+  });
+
+  describe("an item on a move", () => {
+    const known = (name: string) => ({ name }) as PartyMon["moves"][number];
+    const mons = [{ nickname: "Mr Mime", moves: [known("CUT"), known("DOUBLE SLAP")] }, { nickname: "Pip", moves: [known("TACKLE")] }] as PartyMon[];
+    const ether: BagItem = { name: "ETHER", quantity: 1, description: "", price: 0, battle: "move", walk: "move" };
+    const elixir: BagItem = { name: "ELIXIR", quantity: 1, description: "", price: 0, battle: "pokemon", walk: "pokemon" };
+    const asked: Asked = { kind: "battleAction", battle, items: [ether, elixir], party: mons };
+
+    test("it reads the Pokémon first, then the rest as a move, by its name or its place", () => {
+      expect(readAction("use ETHER on 1 CUT", asked)).toEqual({ name: "use", item: "ETHER", on: 0, move: "CUT" });
+      expect(readAction("use ether on Mr Mime double slap", asked)).toEqual({ name: "use", item: "ETHER", on: 0, move: "DOUBLE SLAP" });
+      expect(readAction("use ETHER on 1 Mr Mime DOUBLE SLAP", asked)).toEqual({ name: "use", item: "ETHER", on: 0, move: "DOUBLE SLAP" });
+      expect(readAction("use ETHER on Pip 2 TACKLE", asked)).toEqual({ name: "use", item: "ETHER", on: 1, move: "TACKLE" });
+      expect(readAction("use ETHER on 1 2", asked)).toEqual({ name: "use", item: "ETHER", on: 0, move: "DOUBLE SLAP" });
+      expect(readAction("use(ETHER, 2, TACKLE)", asked)).toEqual({ name: "use", item: "ETHER", on: 1, move: "TACKLE" });
+    });
+
+    test("no move or an unknown move goes to the Harness, which gives the moves", () => {
+      expect(readAction("use ETHER on 1", asked)).toEqual({ name: "use", item: "ETHER", on: 0 });
+      expect(readAction("use ETHER on 1 SURF", asked)).toEqual({ name: "use", item: "ETHER", on: 0, move: "SURF" });
+    });
+
+    test("it refuses an item with no Pokémon, and a move on an item for the whole Pokémon", () => {
+      expect(() => readAction("use ETHER", asked)).toThrow("ETHER works on a move of a Pokémon: use ETHER on <Pokémon> <move>");
+      expect(() => readAction("use ETHER on MEW CUT", asked)).toThrow('"MEW CUT" is not a Pokémon of your party');
+      expect(readAction("use ELIXIR on 1", asked)).toEqual({ name: "use", item: "ELIXIR", on: 0 });
+      expect(() => readAction("use ELIXIR on 1 CUT", asked)).toThrow("the Pokémon 1 of your party is Mr Mime, not CUT");
+    });
+  });
+
+  test("give and take: at a walk, on a Pokémon of the party, and give only with an item that has a held effect", () => {
+    const leftovers: BagItem = { name: "LEFTOVERS", quantity: 1, description: "", price: 0, battle: null, walk: null, holdable: true };
+    const mons = [{ nickname: "Shelly", heldItem: null }, { nickname: "Pip", heldItem: { name: "ORAN BERRY", description: "", mail: false } }] as PartyMon[];
+    const asked: Asked = { ...(walk(0, mons) as Asked & { kind: "walk" }), holdable: [leftovers] };
+    expect(readAction("give leftovers on 1", asked)).toEqual({ name: "give", item: "LEFTOVERS", on: 0 });
+    expect(readAction("give(LEFTOVERS, Pip)", asked)).toEqual({ name: "give", item: "LEFTOVERS", on: 1 });
+    expect(() => readAction("give POTION on 1", asked)).toThrow('"POTION" is not an item of your Bag that a Pokémon can hold with an effect: LEFTOVERS');
+    expect(() => readAction("give LEFTOVERS", asked)).toThrow('"give LEFTOVERS" is not an action: write give <item> on <Pokémon>');
+    expect(() => readAction("give LEFTOVERS on 1", walk(0, mons))).toThrow('"give" is not an action now');
+    expect(readAction("take Pip", asked)).toEqual({ name: "take", on: 1 });
+    expect(() => readAction("take 1", walk(0))).toThrow('"take" is not an action now');
+    const mail = [{ nickname: "Pip", heldItem: { name: "ORANGE MAIL", description: "", mail: true } }] as PartyMon[];
+    expect(() => readAction("take 1", walk(0, mail))).toThrow('"take" is not an action now');
+    expect(() => readAction("take 1", { kind: "battleAction", party: mons, battle, items: [] })).toThrow('"take" is not an action now');
   });
 
   test("at a choice: an option of the choice, in any case", () => {

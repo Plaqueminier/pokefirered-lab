@@ -98,7 +98,7 @@ export class StateWatch {
 
   #changes(before: Seen, after: Seen, moment: Moment): StateEvent[] {
     const reads = this.#reads;
-    const bag = withoutPcMoves(difference(before.bag, after.bag), difference(before.pc, after.pc));
+    const bag = withoutTransfers(withoutTransfers(difference(before.bag, after.bag), difference(before.pc, after.pc)), difference(heldCounts(before.party), heldCounts(after.party)));
     const gained = [...bag].filter(([, count]) => count > 0);
     const spent = [...bag].filter(([, count]) => count < 0);
     const money = after.keys.money - before.keys.money;
@@ -325,11 +325,15 @@ function difference(before: Map<string, number>, after: Map<string, number>): Ma
   return changes;
 }
 
-function withoutPcMoves(bag: Map<string, number>, pc: Map<string, number>): Map<string, number> {
+function heldCounts(party: readonly WatchedMon[]): Map<string, number> {
+  return counts(party.flatMap(({ heldItem }) => (heldItem === null ? [] : [{ name: heldItem, quantity: 1 }])));
+}
+
+function withoutTransfers(bag: Map<string, number>, other: Map<string, number>): Map<string, number> {
   const left = new Map<string, number>();
   for (const [name, change] of bag) {
-    const pcChange = pc.get(name) ?? 0;
-    const rest = Math.sign(pcChange) === -Math.sign(change) ? change - Math.sign(change) * Math.min(Math.abs(change), Math.abs(pcChange)) : change;
+    const otherChange = other.get(name) ?? 0;
+    const rest = Math.sign(otherChange) === -Math.sign(change) ? change - Math.sign(change) * Math.min(Math.abs(change), Math.abs(otherChange)) : change;
     if (rest !== 0) left.set(name, rest);
   }
   return left;

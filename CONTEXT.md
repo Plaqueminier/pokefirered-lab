@@ -13,7 +13,7 @@ The ROM built with the lab flag. It has the same gameplay as the vanilla build. 
 _Avoid_: debug build, mod, hack
 
 **Harness**:
-The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The exceptions are FLASH on a **Dark map** (see **Field move**) and the speed of a walk (see **Running** and **Ride choice**).
+The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The exceptions are FLASH on a **Dark map** (see **Field move**), the speed of a walk (see **Running** and **Ride choice**) and B during the animation of an evolution, which the **Harness** removes so that B stops no evolution.
 _Avoid_: emulator, AI
 
 **Bot**:
@@ -37,7 +37,7 @@ A trainer battle with 2 Pokémon on each side. The game asks for one action for 
 _Avoid_: 2v2, multi battle (the game gives this name to a battle with a partner, which is another thing)
 
 **Decision point**:
-A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**, after a level up in a battle, an evolution, or a TM or an HM: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
+A frame where the game waits for an input that a **Bot** must choose, for example walk, a text box, a choice, a battle action or a name. The naming screen is one **Decision point**: the **Bot** gives the whole text, and the **Harness** types it and selects OK. The learn-move question ("Delete a move to make room for …?") is one **Decision point**, after a level up in a battle, a RARE CANDY, an evolution, or a TM or an HM: the **Bot** gives the move to forget, or keeps the 4 moves, and the **Harness** does the yes/no boxes and the summary screen. The game is frozen until the **Bot** gives the next action. Frames where the game waits for nothing (animations, fades, walking) are not decision points.
 _Avoid_: turn (in a battle, a turn is one round), pause, step
 
 **Mission**:
@@ -249,6 +249,10 @@ _Avoid_: resumed run, paused run, Continued Run (a **Continued Run** is a new **
 **Run result**:
 What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `token limit` (the **Run** used more tokens than its **Token limit**), `plan limit` (the **Plan provider** refused a call because the quota of the subscription is used; a **Continued Run** or an **Extended Run** can play on later), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness**, with no default), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them). The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
+
+**Held item**:
+The item that a Pokémon of the party holds. A **Bot** gives an item of the Bag to a Pokémon with `give`, and puts it back in the Bag with `take`. `give` offers only the items with an effect when a Pokémon holds them. The damage estimate of a `fight` does not count a **Held item**. The **Harness** does not take Mail, which has no effect in a battle.
+_Avoid_: equipped item
 
 **Inventory**:
 The Bag (its five pockets with their items and quantities) and the PC (its items, and the species of the Pokémon in its boxes) of a **Run** at one frame. The **Run record** does not keep it: the **Viewer** keeps a history of the changes of the **Inventory** of the shown **Run**, and its panel "Bag and PC" shows the **Inventory** at the cursor.

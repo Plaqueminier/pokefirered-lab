@@ -3,6 +3,7 @@ import { DIRECTION_STEP, type Direction } from "../cells";
 import type { Game } from "../game";
 import { Keys } from "../protocol";
 import type { ActionEntry, Interruption } from "./harness";
+import type { ItemDriver } from "./item-driver";
 import { type Input, type MenuDriver, type Outcome, tap } from "./menu-driver";
 import type { Cell, Leg } from "./path";
 import { at } from "./route-reasons";
@@ -24,6 +25,7 @@ export class WalkDriver {
     private readonly game: Game,
     frames: Input,
     private readonly menus: MenuDriver,
+    private readonly items: ItemDriver,
   ) {
     // A slope pulls a rider to the south unless the rider holds B, and B slows each way on a slope to 16 frames, so a way south holds no B.
     // B has no other effect on a rider, and the game reads the slope cell in the same frame as the keys: a read before that frame is stale.
@@ -35,7 +37,7 @@ export class WalkDriver {
   }
 
   chooseRide(on?: number): Outcome {
-    const place = this.menus.usablePlace(BICYCLE, on, true);
+    const place = this.items.usablePlace(BICYCLE, on, true);
     return "status" in place ? place : this.matchRide(!this.chosen);
   }
 
@@ -50,7 +52,7 @@ export class WalkDriver {
     const bicycle = game.findInBag(BICYCLE);
     if (!bicycle) return { status: "done" };
     if (game.registeredItem() !== bicycle.item) {
-      const registered = this.menus.register(BICYCLE);
+      const registered = this.items.register(BICYCLE);
       if (registered.status !== "done") return registered;
     }
     const battle = this.tap(Keys.Select);

@@ -44,17 +44,29 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   { form: "swap(first, second)", when: "walk", effect: "Changes the order of two Pokémon of the party.", cards: { walk: "change the order of two Pokémon" } },
   { form: "run()", when: "wild battle", effect: "Escapes. Impossible against a trainer.", cards: { battle: "escape a wild battle" } },
   {
-    form: "use(item, on?)",
+    form: "use(item, on?, move?)",
     when: "battle, walk",
     effect:
-      "Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. On a walk, the medicines work on a Pokémon, and REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE work alone (ESCAPE ROPE goes to another map). BICYCLE changes the choice of the Bot to ride or to walk, with no Bag after the first time. Impossible, with the reason of the game, when the item does nothing.",
-    cards: { walk: "a medicine, REPEL, ESCAPE ROPE, BICYCLE", battle: "a Potion, a Poké Ball" },
+      "Uses an item of the Bag, on a Pokémon for a Potion. A Poké Ball catches in a wild battle. A Berry goes through the BERRY POUCH. ETHER, MAX ETHER and LEPPA BERRY name a move, on a walk and in a battle, and ELIXIR and MAX ELIXIR work on a Pokémon. On a walk, PP UP and PP MAX name a move, and the medicines, RARE CANDY and the evolution stones work on a Pokémon. RARE CANDY and a stone continue through the new stats, the moves and the evolution, and can stop at the learn-move question of the game. REPEL, SUPER REPEL, MAX REPEL and ESCAPE ROPE work alone (ESCAPE ROPE goes to another map). BICYCLE changes the choice of the Bot to ride or to walk, with no Bag after the first time. Impossible on an Egg, impossible with the moves when a move is missing or unknown, and impossible with the reason of the game when the item does nothing.",
+    cards: { walk: "a medicine, a PP item, RARE CANDY, a stone, a Berry, REPEL, ESCAPE ROPE, BICYCLE", battle: "a Potion, an ETHER, a Berry, a Poké Ball" },
   },
   {
     form: "teach(item, on)",
     when: "walk",
     effect: "Teaches the move of a TM or an HM of the Bag to a Pokémon, through the TM Case and the party menu of the game, and returns to the walk. A TM leaves the Bag, and an HM stays. With 4 moves, it stops at the learn-move question of the game. Impossible for a Pokémon that cannot learn the move or that knows it.",
     cards: { walk: "the move of a TM or an HM" },
+  },
+  {
+    form: "give(item, on)",
+    when: "walk",
+    effect: "A Pokémon holds an item of the Bag, through the Bag (or the BERRY POUCH), GIVE and the party menu. When the Pokémon holds an item, the action answers YES to the swap, and the result says it. Impossible for an item with no effect when a Pokémon holds it, an item that the Pokémon holds, an Egg, a Pokémon that holds Mail, and a swap when the old item has no room in the Bag.",
+    cards: { walk: "an item for a Pokémon to hold" },
+  },
+  {
+    form: "take(on)",
+    when: "walk",
+    effect: "Puts the item that a Pokémon holds in the Bag, through the party menu. Impossible for a Pokémon with no item, an Egg, a Pokémon that holds Mail, and a full Bag. The take is not an item event.",
+    cards: { walk: "the item that a Pokémon holds" },
   },
   {
     form: "buy(item, quantity)",
@@ -96,11 +108,11 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   },
   {
     form: "forget(move)",
-    when: "learn a move: “Delete a move to make room for …?”, after a level up in a battle, an evolution, or a TM or an HM",
-    effect: "Selects YES and the move on the summary screen: the Pokémon forgets it and learns the new move. After a TM or an HM, it also returns to the walk. Impossible for a move or a place that the Pokémon does not know, or an HM move.",
+    when: "learn a move: “Delete a move to make room for …?”, after a level up in a battle, a RARE CANDY, an evolution, or a TM or an HM",
+    effect: "Selects YES and the move on the summary screen: the Pokémon forgets it and learns the new move. After an item, it also returns to the walk, or stops at the next learn-move question. Impossible for a move or a place that the Pokémon does not know, or an HM move.",
     cards: { learn: "forget it and learn the new move" },
   },
-  { form: "keep()", when: "learn a move", effect: "Selects NO, then YES at “Stop learning …?”: the Pokémon keeps its 4 moves. After a TM or an HM, the item stays in the Bag, and the action returns to the walk.", cards: { learn: "keep the 4 moves" } },
+  { form: "keep()", when: "learn a move", effect: "Selects NO, then YES at “Stop learning …?”: the Pokémon keeps its 4 moves. After an item, the action returns to the walk, or stops at the next learn-move question, and a TM or an HM stays in the Bag.", cards: { learn: "keep the 4 moves" } },
 ];
 
 export const RAW_INPUT_FORM = "press(button)";
@@ -122,7 +134,7 @@ export function MacroPage() {
         ["Results", RESULT_ROWS.map(([status, { text }]) => `\`${status}\` ${text}`).join(" · ")],
         [
           "`observe()`",
-          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price) and the money, and the party as the Summary screen shows it (types, ability, held item, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the kind of the map (outdoor, underground or indoor), the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place, types, ability, and the moves as for the party), the items of the PC, whether a REPEL is active, whether the player rides and whether the Bot chose to ride, and each TM and HM of the Bag with its move and the Pokémon that can learn it or know it. The Atlas gives the rival with its name from the save. At the learn-move question after a `teach`, the mode is `menu`, with no facts of the map.",
+          "what the game waits for, the Milestones, the Atlas, the Bag (items, quantities, effect, price, and if the item has an effect when a Pokémon holds it) and the money, and the party as the Summary screen shows it (types, ability, held item with its description and if it is Mail, nature, stats, EXP now, at the start of the level and to the next level; for each move its type, power, accuracy, PP and description). On the map: the kind of the map (outdoor, underground or indoor), the grid, the people, the fixed obstacles, the Pokémon in the boxes (species, nickname, level, box and place, types, ability, and the moves as for the party), the items of the PC, whether a REPEL is active, whether the player rides and whether the Bot chose to ride, each TM and HM of the Bag with its move and the Pokémon that can learn it or know it, and each evolution stone of the Bag with the Pokémon that it can evolve and the species that they become. The Atlas gives the rival with its name from the save. At the learn-move question after a `teach` or an item, the mode is `menu`, with no facts of the map.",
         ],
         [
           "Battle facts",
@@ -151,7 +163,7 @@ export function MacroPage() {
         </Block>
         <Block label="⌨️ Raw input">
           <p class="m-0 text-sm text-muted">
-            <Code>{RAW_INPUT_FORM}</Code> one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text.
+            <Code>{RAW_INPUT_FORM}</Code> one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text. During the animation of an evolution, the Harness removes B, so the press reaches the game after the animation.
           </p>
         </Block>
       </div>
@@ -343,13 +355,13 @@ export function NotYetPage() {
     <Page
       lead="Here the Harness sees a busy game: no Decision point, no action."
       details={[
-        ["Menus", "the mailbox of the PC, the Bag outside use, teach, sell and deposit: the Harness sees a busy game. At the Pokémon PC, the Harness does not move a Pokémon between boxes or release a Pokémon."],
-        ["Learn a move", "a level up outside a battle (Rare Candy) and a move tutor: the question to learn a move is not a Decision point there."],
+        ["Menus", "the mailbox of the PC, the Bag outside use, teach, give, sell and deposit: the Harness sees a busy game. At the Pokémon PC, the Harness does not move a Pokémon between boxes or release a Pokémon."],
+        ["Learn a move", "a move tutor: the question to learn a move is not a Decision point there."],
       ]}
     >
       <div class={GRID2}>
-        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the mailbox of the PC", "the Bag outside use, teach, sell and deposit", "a move between boxes or a release at the Pokémon PC"]} />
-        <DocCard icon={TriangleAlert} tone="warn" title="Learn a move" lines={["a level up outside a battle (Rare Candy)", "a move tutor"]} />
+        <DocCard icon={TriangleAlert} tone="warn" title="Menus" lines={["the mailbox of the PC", "the Bag outside use, teach, give, sell and deposit", "a move between boxes or a release at the Pokémon PC"]} />
+        <DocCard icon={TriangleAlert} tone="warn" title="Learn a move" lines={["a move tutor"]} />
       </div>
     </Page>
   );
