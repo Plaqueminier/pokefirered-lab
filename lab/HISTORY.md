@@ -549,3 +549,8 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The estimate of a `fight` still does not count held items, and the prompt now says so.
     - The item code left `menu-driver.ts` for `item-driver.ts`, because the first file had 981 lines.
     - No POKé FLUTE on a walk: `interact` on a Snorlax asks the question, and `choose YES` wakes it. No rods, ITEMFINDER or VS SEEKER, because they are not useful enough for the code that they need.
+
+89. The model bot goes to version 39: the Coach also plans these items. The smaller model does not plan, so the `team` part now names the Pokémon that gets a RARE CANDY, a stone or an item to hold, and the `battles` part tells when to use an item.
+
+    - The list "What happened since" now tells a `give`, a `take` and a `use` on a Pokémon or a move, so the player does not spend a second ETHER on a step that is done. These facts come from the action events, because a PP item, a give and a take make no state event. A place in the party can change after a swap, so a fact gives the place at that decision. A heal of the same item already tells its use, and a refused action tells nothing.
+    - A stone keeps the level, so its fact is now `NIDORINA became NIDOQUEEN`, not `reached level 20 and became NIDOQUEEN`.

@@ -591,6 +591,44 @@ describe("the Coach advice", () => {
     ]);
   });
 
+  test("the facts tell an item that a Pokémon gets, holds or gives back, and an evolution with no new level", () => {
+    const fact = (event: object) => ({ frame: 1, ...event }) as RunEvent;
+    const done = (action: object) => fact({ type: "action", action, result: { status: "done", frames: 10, text: [] } });
+    const refused = (action: object) => fact({ type: "action", action, result: { status: "impossible", reason: "no", frames: 0, text: [] } });
+    const lines = adviceLine([
+      ...decided(advised({ team: "Give an item." })),
+      ...decided(call("give LEFTOVERS on 1")),
+      done({ name: "give", item: "LEFTOVERS", on: 0 }),
+      ...decided(call("take 2")),
+      done({ name: "take", on: 1 }),
+      ...decided(call("use ETHER on 1 CUT")),
+      done({ name: "use", item: "ETHER", on: 0, move: "CUT" }),
+      ...decided(call("use ELIXIR on 2")),
+      done({ name: "use", item: "ELIXIR", on: 1 }),
+      ...decided(call("use MOON STONE on 2")),
+      done({ name: "use", item: "MOON STONE", on: 1 }),
+      fact({ type: "level", species: "NIDORINA", from: 20, level: 20, moves: [], evolution: "NIDOQUEEN" }),
+      ...decided(call("use POTION on 1")),
+      done({ name: "use", item: "POTION", on: 0 }),
+      fact({ type: "heal", source: "item", item: "POTION", party: [{ species: "SQUIRTLE", before: 1, after: 21, maxHp: 30 }] }),
+      ...decided(call("use REPEL")),
+      done({ name: "use", item: "REPEL" }),
+      ...decided(call("give LEFTOVERS on 2")),
+      refused({ name: "give", item: "LEFTOVERS", on: 1 }),
+      refused({ name: "take", on: 1 }),
+      refused({ name: "use", item: "ETHER", on: 0, move: "CUT" }),
+    ]);
+    expect(lines.slice(2)).toEqual([
+      "What happened since this advice, oldest first:",
+      "- 7 decisions ago: you gave LEFTOVERS to Pokémon 1.",
+      "- 6 decisions ago: you took the item of Pokémon 2.",
+      "- 5 decisions ago: you used ETHER on CUT of Pokémon 1.",
+      "- 4 decisions ago: you used ELIXIR on Pokémon 2.",
+      "- 3 decisions ago: you used MOON STONE on Pokémon 2; NIDORINA became NIDOQUEEN.",
+      "- 2 decisions ago: you used POTION on SQUIRTLE.",
+    ]);
+  });
+
   test("the list of what happened keeps the last lines, and starts at the oldest part in force", () => {
     const fact = (event: object) => ({ frame: 1, ...event }) as RunEvent;
     const catches = Array.from({ length: 15 }, (_, at) => [...decided(call("go A")), fact({ type: "catch", species: `MON${at}` })]).flat();

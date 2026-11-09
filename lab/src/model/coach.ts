@@ -1,4 +1,4 @@
-import { type CallTurn, type Coach, callTurns, isDecision, type ModelSettings, type RunEvent } from "../harness/record";
+import { type ActionEvent, type CallTurn, type Coach, callTurns, isDecision, type ModelSettings, type RunEvent } from "../harness/record";
 import { ADVICE_ORDER, ADVICE_PARTS, addAdvice, type CoachAdvice, callKind } from "../protocol";
 import { type Asked, readFields } from "./decision";
 import type { JsonSchema } from "./openrouter";
@@ -8,10 +8,10 @@ export const MAX_ADVICE_PART = 200;
 const MAX_SINCE_LINES = 12;
 
 const PART_RULES: Record<(typeof ADVICE_PARTS)[number], string> = {
-  team: "the most important part: which Pokémon to catch, with your Poké Balls; which Pokémon to train, where and up to which level; which Pokémon to switch with the PC. Make the team bigger step by step, up to 6 Pokémon with different types: at least 2 before the first Gym, then about one more after each Gym. Train each Pokémon of the team, not only the strongest one",
+  team: "the most important part: which Pokémon to catch, with your Poké Balls; which Pokémon to train, where and up to which level; which Pokémon to switch with the PC. Make the team bigger step by step, up to 6 Pokémon with different types: at least 2 before the first Gym, then about one more after each Gym. Train each Pokémon of the team, not only the strongest one. Name the Pokémon that gets a RARE CANDY, an evolution stone or an item to hold",
   shopping: 'what to buy at the next Poké Mart, how many and for how much money, or "nothing to buy"',
   progress: "the next steps toward the next Milestone that the objective does not already tell",
-  battles: "which moves to use against which foes, and when to switch, run or go back to a Pokémon Center",
+  battles: "which moves to use against which foes, when to use an item, for example a PP item when the PP are low, and when to switch, run or go back to a Pokémon Center",
 };
 
 export const ADVICE_REQUEST = [
@@ -71,8 +71,27 @@ export function readAdvice(content: string): CoachAdvice {
   }));
 }
 
-function factText(event: CallTurn["events"][number]): string | null {
+function itemActionText({ action, result }: ActionEvent, turn: CallTurn): string | null {
+  if (result.status !== "done") return null;
+  switch (action.name) {
+    case "give":
+      return `you gave ${action.item} to Pokémon ${action.on + 1}`;
+    case "take":
+      return `you took the item of Pokémon ${action.on + 1}`;
+    case "use": {
+      const { item, on, move } = action;
+      if (on === undefined || turn.events.some((event) => event.type === "heal" && event.item === item)) return null;
+      return `you used ${item} on ${move ? `${move} of ` : ""}Pokémon ${on + 1}`;
+    }
+    default:
+      return null;
+  }
+}
+
+function factText(event: CallTurn["events"][number], turn: CallTurn): string | null {
   switch (event.type) {
+    case "action":
+      return itemActionText(event, turn);
     case "heal": {
       if (event.source === "center") return "you healed at a Pokémon Center";
       // The party of a heal has all the Pokémon. A cure of a status raises no HP.
@@ -87,6 +106,7 @@ function factText(event: CallTurn["events"][number]): string | null {
     case "catch":
       return `you caught a ${event.species}`;
     case "level":
+      if (event.level === event.from) return `${event.species} became ${event.evolution}`;
       return `${event.species} reached level ${event.level}${event.evolution ? ` and became ${event.evolution}` : ""}`;
     case "faint":
       return event.side === "player" ? `your ${event.species} fainted` : null;
@@ -104,7 +124,7 @@ function sinceAdvice(turns: readonly CallTurn[], from: number): string[] {
   const visited = new Set<string>();
   const lines = turns.flatMap((turn, at) => {
     const facts = turn.events.flatMap((event) => {
-      if (event.type !== "map") return factText(event) ?? [];
+      if (event.type !== "map") return factText(event, turn) ?? [];
       const first = !visited.has(event.map);
       visited.add(event.map);
       return first ? `you reached ${event.map} for the first time` : [];

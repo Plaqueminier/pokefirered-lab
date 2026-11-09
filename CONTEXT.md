@@ -101,7 +101,7 @@ A second AI model of a **Run** of a model bot, on the **Model provider** of the 
 _Avoid_: mentor, teacher, big model, thinker
 
 **Coach advice**:
-What the **Coach** writes at its **Character turn**, **Reflection turns** and **Review turns** for the next decisions. It has 4 parts: the team (Pokémon to catch, to train, to switch with the PC), the shopping, the way to the next **Milestone**, and the battles. Each prompt of a **Run** with a **Coach** shows the last text of each part, with its turn and the number of decisions since, and under them what happened in the game since then; an empty part keeps the last text of this part. Before bot version 34, it was one text, which the first advice in parts of a later Run ends. It is not the **Mission**, not the **Objective** and not a note of the **Memory tree**.
+What the **Coach** writes at its **Character turn**, **Reflection turns** and **Review turns** for the next decisions. It has 4 parts: the team (Pokémon to catch, to train, to switch with the PC, and the Pokémon that gets a RARE CANDY, an evolution stone or a **Held item**), the shopping, the way to the next **Milestone**, and the battles. Each prompt of a **Run** with a **Coach** shows the last text of each part, with its turn and the number of decisions since, and under them what happened in the game since then; an empty part keeps the last text of this part. Before bot version 34, it was one text, which the first advice in parts of a later Run ends. It is not the **Mission**, not the **Objective** and not a note of the **Memory tree**.
 _Avoid_: tip, hint, coach note
 
 **Plan provider**:
