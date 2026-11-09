@@ -211,7 +211,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     ...world,
     bagText(observation.bag),
     `Money: ${observation.money}`,
-    partyText(observation.party),
+    partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText),
     ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag)] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
@@ -478,7 +478,7 @@ function boxDescriptions(shown: BoxMon[], party: PartyMon[]): string[] {
   return descriptions.size === 0 ? [] : ["What these moves and abilities do:", ...[...descriptions].map(([name, description]) => `- ${name}: ${description}`)];
 }
 
-function partyText(party: PartyMon[]): string {
+function partyText(party: PartyMon[], moveAbout: (move: PartyMove) => string): string {
   if (party.length === 0) return "Party: none.";
   const mon = (m: PartyMon, slot: number) => {
     const about = [
@@ -490,7 +490,7 @@ function partyText(party: PartyMon[]): string {
       `Stats: ${statsText(m.stats)}`,
       `EXP ${m.exp}, ${m.expToNextLevel} to the next level.`,
     ];
-    return [about.join(". "), ...m.moves.map((move) => `  - ${move.name}: ${moveText(move)}. ${move.description}`)].join("\n");
+    return [about.join(". "), ...m.moves.map((move) => `  - ${move.name}: ${moveAbout(move)}. ${move.description}`)].join("\n");
   };
   return ["Party:", ...party.map(mon)].join("\n");
 }
@@ -557,10 +557,10 @@ function learnMoveLines(mon: PartyMon, move: PartyMove): string[] {
     `${monName(mon)} wants to learn ${move.name} (${moveAtMaxPp(move)}). ${move.description}`,
     `It already knows ${moves.length} moves. To learn ${move.name}, it must forget one of them:`,
     ...moves.map((known, i) => `- ${i + 1}. ${known.name}: ${moveAtMaxPp(known)}. ${known.description} ${forgetting(known)}`),
-    "A Pokémon Center gives back all the PP, so this list shows only the maximum PP of each move.",
+    "A Pokémon Center gives back all the PP, so this prompt shows only the maximum PP of each move.",
     `If you keep your moves: ${damageLeft(mon, moves)}`,
     "Keep at least 2 damage moves when you can: with only one, a foe can resist it and its PP can run out.",
-    "This is an important choice. Before you choose, count your damage moves and compare their PP.",
+    "This is an important choice. Before you choose, count your damage moves and compare their maximum PP.",
   ];
 }
 
@@ -681,7 +681,7 @@ function takeLine({ party }: WalkAsked): string[] {
 function teachDetails({ overworld: { teachables }, party }: WalkAsked): string[] {
   if (teachables.length === 0) return [];
   const mons = (slots: number[]) => slots.map((slot) => monPlace(party, slot)).join(", ");
-  const about = ({ item, move, able, knowing }: Teachable) => [`- ${item}: ${move.name} (${moveText(move)}). ${move.description} Can learn it: ${mons(able) || "none"}.`, ...(knowing.length === 0 ? [] : [`Knows it: ${mons(knowing)}.`])].join(" ");
+  const about = ({ item, move, able, knowing }: Teachable) => [`- ${item}: ${move.name} (${moveAtMaxPp(move)}). ${move.description} Can learn it: ${mons(able) || "none"}.`, ...(knowing.length === 0 ? [] : [`Knows it: ${mons(knowing)}.`])].join(" ");
   return ["", `Your TMs and HMs. ${TEACH_RULE}`, ...teachables.map(about), "Does one of these moves help your Objective?"];
 }
 

@@ -1062,8 +1062,8 @@ describe("the TMs and the HMs of the Bag", () => {
       expect(prompt).toContain(
         [
           "Your TMs and HMs. A TM works one time, then it leaves your Bag. An HM stays in your Bag. A Pokémon with 4 moves must forget a move to learn a new one: you choose the move, or you keep the 4 moves.",
-          "- HM06: ROCK SMASH (NORMAL, power 50, accuracy 100, PP 10/10). What ROCK SMASH does. Can learn it: 1 SQUIRTLE.",
-          "- TM39: ROCK TOMB (NORMAL, power 50, accuracy 100, PP 10/10). What ROCK TOMB does. Can learn it: none. Knows it: 1 SQUIRTLE.",
+          "- HM06: ROCK SMASH (NORMAL, power 50, accuracy 100, max PP 10). What ROCK SMASH does. Can learn it: 1 SQUIRTLE.",
+          "- TM39: ROCK TOMB (NORMAL, power 50, accuracy 100, max PP 10). What ROCK TOMB does. Can learn it: none. Knows it: 1 SQUIRTLE.",
           "Does one of these moves help your Objective?",
         ].join("\n"),
       );
@@ -1194,12 +1194,18 @@ describe("the learn-move question", () => {
         "- 2. POISONPOWDER: POISON, power ---, accuracy 100, max PP 35. Poison. If you forget it: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
         "- 3. LEECH SEED: GRASS, power ---, accuracy 100, max PP 10. Seed. If you forget it: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
         "- 4. VINE WHIP: GRASS, power 35, accuracy 100, max PP 10. A whip. If you forget it: Sage then has 1 damage move: TACKLE (NORMAL, max PP 35).",
-        "A Pokémon Center gives back all the PP, so this list shows only the maximum PP of each move.",
+        "A Pokémon Center gives back all the PP, so this prompt shows only the maximum PP of each move.",
         "If you keep your moves: Sage then has 2 damage moves: TACKLE (NORMAL, max PP 35), VINE WHIP (GRASS, STAB, max PP 10).",
         "Keep at least 2 damage moves when you can: with only one, a foe can resist it and its PP can run out.",
-        "This is an important choice. Before you choose, count your damage moves and compare their PP.",
+        "This is an important choice. Before you choose, count your damage moves and compare their maximum PP.",
       ].join("\n"),
     );
+  });
+
+  test("the party also shows only the maximum PP, so a used move does not look worse", () => {
+    const prompt = learnMovePrompt([TACKLE, POWDER, SEED, WHIP], SLEEP);
+    expect(prompt).toContain("  - VINE WHIP: GRASS, power 35, accuracy 100, max PP 10. A whip.");
+    expect(prompt).not.toMatch(/PP \d+\/\d+/);
   });
 
   test("a new damage move counts in what an answer leaves, and an answer can leave no damage move", () => {
@@ -1224,9 +1230,5 @@ describe("the learn-move question", () => {
     const cut = move("CUT", "NORMAL", 50, 30, 30, "A cut.");
     const prompt = learnMovePrompt([cut, POWDER, SEED, WHIP], SLEEP);
     expect(prompt).toContain("- 1. CUT: NORMAL, power 50, accuracy 100, max PP 30. A cut. It is an HM move: it cannot be forgotten.\n");
-  });
-
-  test("the Party keeps the PP of the moment", () => {
-    expect(learnMovePrompt([TACKLE, POWDER, SEED, WHIP], SLEEP)).toContain("  - VINE WHIP: GRASS, power 35, accuracy 100, PP 3/10. A whip.");
   });
 });
