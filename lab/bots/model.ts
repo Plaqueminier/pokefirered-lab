@@ -1,8 +1,8 @@
 import { isDecisionPoint } from "../src/game";
-import { type ActionResult, type Bot, errorText, type Harness, type Observation } from "../src/harness/harness";
+import { type ActionResult, type Bot, errorText, type Harness, type Interruption, type Observation } from "../src/harness/harness";
 import type { Cell } from "../src/harness/path";
 import { spinDirection } from "../src/harness/slides";
-import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
+import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, isSilentRead, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
 import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, withAdvice } from "../src/model/coach";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
@@ -41,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "40",
+    version: "41",
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -68,6 +68,34 @@ export function walkGoesOn(party: readonly PartyMon[], faintedBefore: number): b
   return lead !== undefined && isReadyToFight(lead) && fainted(party) <= faintedBefore && party.every((mon) => mon.status === "none");
 }
 
+type Spot = { map: { name: string }; player: Cell };
+
+function triggerCell({ map, player }: Spot): string {
+  return `${map.name} (${player.x}, ${player.y})`;
+}
+
+type TriggerSpot = Spot & { grid: { triggers: readonly Cell[] } };
+
+// The current of Seafoam Islands B4F moves the player off its trigger with no text, and it runs again at each step.
+function walkGoesOnAfterTrigger(since: readonly RunEvent[], now: TriggerSpot, passed: readonly string[]): boolean {
+  const onTrigger = now.grid.triggers.some((t) => t.x === now.player.x && t.y === now.player.y);
+  return since.every(isSilentRead) && onTrigger && !passed.includes(triggerCell(now));
+}
+
+type ContinuedInterruption = "battle" | "trigger";
+
+function continuesAfter(reason: Interruption): reason is ContinuedInterruption {
+  return reason === "battle" || reason === "trigger";
+}
+
+type WalkChain = { fainted: number; passed: readonly string[] };
+
+export function chainAfter(walk: WalkChain & { reason: ContinuedInterruption }, since: readonly RunEvent[], now: TriggerSpot & { party: readonly PartyMon[] }): WalkChain | null {
+  const { fainted, passed } = walk;
+  if (walk.reason === "battle") return walkGoesOn(now.party, fainted) ? { fainted, passed } : null;
+  return walkGoesOnAfterTrigger(since, now, passed) ? { fainted, passed: [...passed, triggerCell(now)] } : null;
+}
+
 type WalkAsked = Asked & { kind: "walk" };
 
 function walksInTheDark(target: Target, overworld: Overworld): target is Target & { kind: "frontier" } {
@@ -89,7 +117,7 @@ function isSpinGoTo({ x, y, map }: Cell & { map?: string }, { grid, map: here }:
   return (map ?? here.name) === here.name && spinDirection(grid, { x, y }) !== null;
 }
 
-type BrokenWalk = { action: PlayedAction; asked: WalkAsked; map: string | undefined; fainted: number };
+type BrokenWalk = WalkChain & { action: PlayedAction; asked: WalkAsked; map: string | undefined; reason: ContinuedInterruption; since: number };
 
 type Conversation = { mind: Mind; advises: boolean; advice: CoachAdvice; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
@@ -139,7 +167,7 @@ class ModelPlay {
         const conversation = this.#conversation;
         this.#conversation = null;
         const result = await this.perform(action, asked);
-        if (asked.kind === "walk") this.#brokenWalk = this.brokenWalk(action, asked, result, fainted(observation.party));
+        if (asked.kind === "walk") this.#brokenWalk = this.brokenWalk(action, asked, result, { fainted: fainted(observation.party), passed: [] });
         if (conversation && result?.status === "impossible" && ++conversation.impossible < MAX_IMPOSSIBLE && this.harness.waitingFor().kind === kind) {
           const call = modelEvents(this.harness.events).at(-1)!;
           conversation.turns.push({ assistant: call.answer ?? "", user: impossibleMessage(call.decision?.action ?? "", "reason" in result ? result.reason : "", asked) });
@@ -153,16 +181,18 @@ class ModelPlay {
     return this.harness.events.findLast((e) => e.type === "map")?.map;
   }
 
-  private brokenWalk(action: PlayedAction, asked: WalkAsked, result: ActionResult | null, faintedBefore: number): BrokenWalk | null {
-    if (result?.status !== "interrupted" || result.reason !== "battle" || !canWalkAgain(action, asked, this.currentMap())) return null;
-    return { action, asked, map: this.currentMap(), fainted: faintedBefore };
+  private brokenWalk(action: PlayedAction, asked: WalkAsked, result: ActionResult | null, chain: WalkChain): BrokenWalk | null {
+    if (result?.status !== "interrupted" || !continuesAfter(result.reason) || !canWalkAgain(action, asked, this.currentMap())) return null;
+    return { ...chain, action, asked, map: this.currentMap(), reason: result.reason, since: this.harness.events.length };
   }
 
   private async continueWalk(now: Observation): Promise<boolean> {
     const walk = this.#brokenWalk;
     this.#brokenWalk = null;
-    if (!walk || now.mode !== "overworld" || this.currentMap() !== walk.map || !walkGoesOn(now.party, walk.fainted)) return false;
-    this.#brokenWalk = this.brokenWalk(walk.action, walk.asked, await this.perform(walk.action, { ...walk.asked, overworld: now }), walk.fainted);
+    if (!walk || now.mode !== "overworld" || this.currentMap() !== walk.map) return false;
+    const chain = chainAfter(walk, this.harness.events.slice(walk.since), now);
+    if (!chain) return false;
+    this.#brokenWalk = this.brokenWalk(walk.action, walk.asked, await this.perform(walk.action, { ...walk.asked, overworld: now }), chain);
     return true;
   }
 

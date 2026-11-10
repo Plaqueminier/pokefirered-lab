@@ -4,7 +4,7 @@ import type { BattleTurn, FightFacts } from "../battle-facts";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import { isStateEvent } from "../harness/game-events";
 import type { ActionEntry, BattleState, NoProgress, Observation } from "../harness/harness";
-import { type CallTurn, callTurns, isDecision, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
+import { type CallTurn, callTurns, isDecision, isSilentRead, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
 import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { actionText, badgeNeeded, modelEvents } from "../protocol";
@@ -320,7 +320,23 @@ export function situation(asked: Asked): string {
 type AnsweredTurn = CallTurn & { call: ModelEvent };
 
 function answeredTurns(events: readonly RunEvent[]): AnsweredTurn[] {
-  return callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: turn.events }] : []));
+  return callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: withoutSilentInterruptions(turn.events) }] : []));
+}
+
+function withoutSilentInterruptions<E extends RunEvent>(events: E[]): E[] {
+  const hidden = new Set<E>();
+  events.forEach((interruption, i) => {
+    if (interruption.type !== "action" || interruption.result.status !== "interrupted" || interruption.result.reason !== "trigger") return;
+    let first = i + 1;
+    while (first < events.length && events[first].type !== "action") first++;
+    let end = first;
+    while (end < events.length && isSilentRead(events[end])) end++;
+    const replay = events[end];
+    if (replay?.type !== "action" || actionText(replay.action) !== actionText(interruption.action)) return;
+    hidden.add(interruption);
+    for (const read of events.slice(first, end)) hidden.add(read);
+  });
+  return hidden.size === 0 ? events : events.filter((event) => !hidden.has(event));
 }
 
 // The last Model calls, each with what the program played and the game did until the next one.

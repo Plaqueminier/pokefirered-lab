@@ -128,6 +128,10 @@ export function textsOf(events: readonly RunEvent[]): string[] {
   return events.flatMap((e) => (e.type === "action" && "text" in e.result ? e.result.text : []));
 }
 
+export function isSilentRead(event: RunEvent): boolean {
+  return event.type === "action" && event.action.name === "readText" && event.result.status === "done" && textsOf([event]).length === 0;
+}
+
 /** A decision is a Model call after which the program played an action: a zoom or a viewAtlas is none. */
 export function isDecision(turn: CallTurn): turn is CallTurn & { call: ModelEvent } {
   return turn.call !== null && turn.events.some((e) => e.type === "action");

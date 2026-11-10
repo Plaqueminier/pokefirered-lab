@@ -53,6 +53,14 @@ function warpPatch(run: Run, first: WarpTo, wild: boolean): { onFrame: () => voi
   };
 }
 
+function firstAnswer(users: string[], first: (user: string) => string): ModelClient {
+  return async ({ user }) => {
+    users.push(user);
+    const action = users.length === 1 ? first(user) : "I do not know";
+    return { content: JSON.stringify({ reason: "r", action, mission: "m", objective: "o", note: "" }), usage: { promptTokens: 1, cachedTokens: 0, completionTokens: 1, reasoningTokens: 0, cost: 0 } };
+  };
+}
+
 async function openAt(map: string, x: number, y: number, wild = true): Promise<{ harness: Harness; run: Run; warpTo: (next: WarpTo) => void }> {
   const run = await Run.open({ startSave: PARTY_SAVE });
   const { onFrame, warpTo } = warpPatch(run, { map, x, y }, wild);
@@ -273,11 +281,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a walk on a m
     const { harness } = await openAt("RockTunnel_1F", 17, 3, false);
     const users: string[] = [];
     const letter = (user: string) => user.match(/^([A-Z]). unseen cells east of/m)?.[1];
-    const client: ModelClient = async ({ user }) => {
-      users.push(user);
-      const action = users.length === 1 ? "go " + letter(user) : "I do not know";
-      return { content: JSON.stringify({ reason: "r", action, mission: "m", objective: "o", note: "" }), usage: { promptTokens: 1, cachedTokens: 0, completionTokens: 1, reasoningTokens: 0, cost: 0 } };
-    };
+    const client = firstAnswer(users, (user) => "go " + letter(user));
     await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
     expect(users[0]).toContain("This map is dark: you see about 3 x 3 cells. The HM move FLASH lights it, and no Pokémon of your party knows it.");
     expect(users[0]).not.toContain("(25, ");
@@ -542,6 +546,24 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE",
   });
 });
 
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a trigger with a text", () => {
+  test("the model bot makes a Model call after the text of a trigger, on the cell of the trigger: the walk does not continue", async () => {
+    const { harness, run } = await openAt("PokemonTower_5F", 8, 9, false);
+    for (let flag = TRAINER_FLAGS_START; flag < TRAINER_FLAGS_END; flag++) setFlag(run, flag);
+    const before = harness.actions.length;
+    const users: string[] = [];
+    const client = firstAnswer(users, () => "goTo 13 9");
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const played = harness.actions.slice(before);
+    expect(played.map(({ action, result }: ActionEntry) => [action.name, result.status])).toEqual([["goTo", "interrupted"], ["readText", "done"]]);
+    expect(played[1].result).toMatchObject({ text: [expect.stringContaining("purified")] });
+    expect(harness.observe()).toMatchObject({ player: { x: 10, y: 9 } });
+    expect(users).toHaveLength(4);
+    expect(users[1]).toContain("goTo(13, 9) ×1: interrupted (trigger)");
+    harness.close();
+  });
+});
+
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling Road", () => {
   async function openOnRoad(x: number, y: number): Promise<{ harness: Harness; run: Run; leave: () => void }> {
     const run = await Run.open({ startSave: PARTY_SAVE });
@@ -613,6 +635,22 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling R
     expect(run.game.canChangeBicycle()).toBe(true);
     expect(overworld(harness)).toMatchObject({ map: { name: "Route16_NorthEntrance_1F" }, riding: false });
     expect(await harness.goTo(11, 12)).toMatchObject({ status: "interrupted", reason: "trigger" });
+    harness.close();
+  });
+
+  test("the model bot continues a walk that the trigger of the gate stopped with no text: the walk costs one Model call", async () => {
+    const { harness, leave } = await openOnRoad(19, 13);
+    leave();
+    must(await harness.goTo(4, 12, "Route16_NorthEntrance_1F"));
+    const before = harness.actions.length;
+    const users: string[] = [];
+    const client = firstAnswer(users, () => "goTo 11 12");
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    const played = harness.actions.slice(before).map(({ action, result }: ActionEntry) => [action.name, result.status]);
+    expect(played).toEqual([["goTo", "interrupted"], ["readText", "done"], ["goTo", "done"]]);
+    expect(users).toHaveLength(4);
+    expect(users[1]).toMatch(/^Map Route16\b/m);
+    expect(users[1]).not.toContain("trigger");
     harness.close();
   });
 });

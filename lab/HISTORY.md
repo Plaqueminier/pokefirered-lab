@@ -559,3 +559,12 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
 
     - At this question, the Party block now shows `max PP 10` for each Pokémon. A Pokémon Center gives back all the PP, so a used move must not look worse.
     - The list of the TMs and HMs also shows `max PP`, because a TM has no current PP. The list of the boxes and the fight actions keep the current PP.
+
+## 42. The walk past a trigger (2026-11-10)
+
+91. The model bot goes to version 41: a walk that a trigger stops continues when the game shows no text. In the gates of the Cycling Road, the trigger only sets a variable of the game, but each `goTo` through a gate cost one more Model call. Issue #86.
+
+    - The Harness does not change: an Interruption stops at its first frame, and the game does not tell there if a text comes. So the bot decides at the next walk. The walk continues when each `readText` since the trigger read no text, with no other event. The player must also be on a cell of a trigger.
+    - Of the 228 triggers of the game, 53 can end with no text. Most of them only set a variable of the game or turn a person. The current of Seafoam Islands B4F moves the player one cell back with no text, and it runs again at each step on its cells. The player is then off the cell of the trigger, so the model chooses. A walk also does not continue a second time after the same cell of a trigger.
+    - The party does not count after a trigger, because a trigger with no text does not change it. After a wild battle, the old rule stays: a healthy first Pokémon, no new faint and no status. A walk can continue after a battle and then after a trigger, and the faints count from the first interruption.
+    - The next prompt tells nothing about the trigger, because the player did not see it. The tries and the last decisions also do not show the interruption and its empty `readText`: the first review found the line `goTo(11, 12) ×1: interrupted (trigger)` for a walk that was done. Only the `trigger` reason continues a walk. The `script` reason (a map scene, the poison on the field, an Egg, the Safari Zone) shows a text nearly each time.

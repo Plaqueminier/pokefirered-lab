@@ -15,7 +15,7 @@ export function LoopPage() {
         ["Frozen game", "in a Run of a Bot, the game runs only during an action (ADR 0002): the same Run at any speed of the Bot."],
         ["Viewer Run", "no Bot: the keyboard or a replay plays it, in real time."],
         ["`zoom`, `viewAtlas`", "no frames run: the model gets a new call at once, at the same Decision point."],
-        ["Walk after a wild battle", "the model bot can continue a walk with no Model call (page “Stuck, reflection and review”)."],
+        ["Walk after a wild battle or a trigger with no text", "the model bot can continue a walk with no Model call (page “Stuck, reflection and review”)."],
         ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text. During the animation of an evolution, the Harness removes B, so the press reaches the game after the animation.`],
       ]}
     >

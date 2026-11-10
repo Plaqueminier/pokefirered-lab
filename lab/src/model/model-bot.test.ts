@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { canWalkAgain, modelBot, unknownScreen, walkGoesOn } from "../../bots/model";
+import { canWalkAgain, chainAfter, modelBot, unknownScreen, walkGoesOn } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, type ModelSettings, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
 import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
@@ -189,6 +189,35 @@ describe("the walks that continue after a wild battle", () => {
   });
 });
 
+describe("the walks that continue after a trigger", () => {
+  const healthy = { hp: 30, maxHp: 30, status: "none", moves: [{ power: 35, fixedDamage: false, pp: 10 }] } as unknown as PartyMon;
+  const gate: Parameters<typeof chainAfter>[2] = { map: { name: "Gate" }, player: { x: 10, y: 12 }, grid: { triggers: [{ x: 10, y: 12 }] }, party: [healthy] };
+  const read = (text: string[], status: "done" | "impossible" = "done"): RunEvent => ({ type: "action", frame: 1, action: { name: "readText" }, result: status === "done" ? { status, text, frames: 1 } : { status, reason: "unknown screen", text, frames: 1 } });
+  const trigger = { reason: "trigger", fainted: 0, passed: [] } as const;
+
+  test("the walk goes on when the game showed no text and the player stays on the cell of the trigger, and the chain keeps this cell", () => {
+    expect(chainAfter(trigger, [], gate)).toEqual({ fainted: 0, passed: ["Gate (10, 12)"] });
+    expect(chainAfter({ ...trigger, passed: ["Other (10, 12)"] }, [read([]), read([])], gate)).toEqual({ fainted: 0, passed: ["Other (10, 12)", "Gate (10, 12)"] });
+  });
+
+  test("the model chooses after a text, an unknown screen, a model call, a battle, a cell off the trigger, or a second interruption on the same cell", () => {
+    expect(chainAfter(trigger, [read([]), read(["Hi!"])], gate)).toBeNull();
+    expect(chainAfter(trigger, [read([], "impossible")], gate)).toBeNull();
+    expect(chainAfter(trigger, [{ type: "model" } as RunEvent], gate)).toBeNull();
+    expect(chainAfter(trigger, [{ type: "battle", state: "start", frame: 1 }], gate)).toBeNull();
+    expect(chainAfter(trigger, [], { ...gate, player: { x: 10, y: 11 } })).toBeNull();
+    expect(chainAfter({ ...trigger, passed: ["Gate (10, 12)"] }, [], gate)).toBeNull();
+  });
+
+  test("the party does not count after a trigger; after a battle, the chain keeps its cells and counts the faints from the first interruption", () => {
+    const fainted = { ...healthy, hp: 0 };
+    expect(chainAfter({ ...trigger, fainted: 0 }, [], { ...gate, party: [fainted, { ...healthy, status: "poison" } as PartyMon] })).toEqual({ fainted: 0, passed: ["Gate (10, 12)"] });
+    const battle = { reason: "battle", fainted: 0, passed: ["Gate (10, 12)"] } as const;
+    expect(chainAfter(battle, [read(["Wild PIDGEY appeared!"])], gate)).toEqual({ fainted: 0, passed: ["Gate (10, 12)"] });
+    expect(chainAfter(battle, [], { ...gate, party: [fainted, healthy] })).toBeNull();
+  });
+});
+
 describe.skipIf(!ready)("model bot", () => {
   test("with a fake model, it plays past the first rival battle: the code reads the texts, the model chooses at each walk, choice and battle action, and the next Milestone in the prompt moves with the story", async () => {
     const { client, prompts } = fakeModel();
@@ -251,7 +280,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "40", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: "41", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {

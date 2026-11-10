@@ -104,6 +104,19 @@ describe("the tries since the last progress", () => {
     expect(tries(progressInText, 4)).toEqual([]);
   });
 
+  test("a trigger with no text that the program continued is no try; a trigger with a text, or one that the model must answer, stays", () => {
+    const walk = { name: "goTo", x: 11, y: 12 } as const;
+    const interrupted = played(walk, { status: "interrupted", reason: "trigger", frames: 97 });
+    const silent = played({ name: "readText" }, { status: "done", text: [], frames: 2 });
+    const done = played(walk, { status: "done", frames: 117 });
+    const map: RunEvent = { type: "map", frame: 0, map: "Route16_NorthEntrance_1F" };
+    expect(tries([call("goTo 11 12"), interrupted, silent, done], 0)).toEqual(["- goTo(11, 12) ×1: done"]);
+    expect(tries([call("goTo 11 12"), interrupted, map, silent, done], 0)).toEqual(["- goTo(11, 12) ×1: done"]);
+    const text = played({ name: "readText" }, { status: "done", text: ["Purified, protected zone."], frames: 9 });
+    expect(tries([call("goTo 11 12"), interrupted, text], 0)).toEqual(['- goTo(11, 12) ×1: interrupted (trigger), "Purified, protected zone."']);
+    expect(tries([call("goTo 11 12"), interrupted, silent, call("goTo 3 3")], 0)).toEqual(["- goTo(11, 12) ×1: interrupted (trigger)"]);
+  });
+
   test("a goTo to a spin tile tells where the player stopped", () => {
     const events = [call("goTo 3 1"), played({ name: "goTo", x: 3, y: 1 }, { status: "done", slidTo: { x: 6, y: 1 }, frames: 40 })];
     expect(tries(events, 0)).toEqual(["- goTo(3, 1) ×1: done, you stepped on the spin tile and slid to (6, 1)"]);
