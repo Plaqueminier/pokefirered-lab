@@ -553,7 +553,8 @@ describe.skipIf(!ready)("model bot", () => {
     expect(continued.result.frames).toBe(record.result.frames + harness.frame - parentFrame);
     const replayed = await replay(continued);
     expect([replayed.frame, replayed.screen]).toEqual([harness.frame, harness.screenHash()]);
-    await expect(Harness.open({ parent: { name: "parent.json", record: { ...record, header: { ...record.header, seed: 1 } } } })).rejects.toThrow("the Run record does not replay here: different seed");
+    // A Continued Run plays with the seed of its parent: it refuses another one.
+    await expect(Harness.open({ seed: 1, parent: { name: "parent.json", record } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 
   test("after an impossible action, the conversation goes on with the reason of the Harness and the exits of the map; after 3 in a row, a new conversation starts", async () => {

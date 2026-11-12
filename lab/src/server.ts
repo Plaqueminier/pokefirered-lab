@@ -77,9 +77,10 @@ class LivePlay {
     return this.atlas.sight();
   }
 
-  async reset(names: TrainerNames | null = null, knowledge: KnowledgeLevel = "player"): Promise<void> {
+  /** `seed`: by default the seed of the ROM, so that the keyboard plays the game of the ROM after a replay with another seed. */
+  async reset(names: TrainerNames | null = null, knowledge: KnowledgeLevel = "player", seed?: number): Promise<void> {
     this.endReplay();
-    await this.run.reset(names);
+    await this.run.reset(names, seed);
     this.inventory = new InventoryHistory();
     this.atlas = new AtlasWatch(this.run.game, knowledge);
     this.resyncClock();
@@ -94,7 +95,7 @@ class LivePlay {
 
   async startReplay(name: string, record: RunRecord, continued: Continuation | null): Promise<(keyof RunOrigin)[]> {
     // A save with no place for the names gives a notice through the differences below.
-    await this.reset(record.header.names, record.header.knowledge).catch(() => this.reset(null, record.header.knowledge));
+    await this.reset(record.header.names, record.header.knowledge, record.header.seed).catch(() => this.reset(null, record.header.knowledge, record.header.seed));
     const differences = originDifferences(this.run, record);
     if (differences.length > 0) {
       await this.reset();
@@ -444,7 +445,9 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
     return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
-  const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(start ? { from: start.from } : {}) }, count, start && continuationOf(start.record));
+  // A Genetic bot continues a Run record with the Genome of its header.
+  const genome = bot.genome && start?.record.header.bot.genome;
+  const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) }, count, start && continuationOf(start.record));
   show(botRun(started[0]));
   for (const run of started) void run.done.then((end) => onBotEnd(run, end));
   const origin = start ? ` from the end of ${start.from.record}${start.from.kind === "extended" ? ", in the same Run" : ""}` : "";

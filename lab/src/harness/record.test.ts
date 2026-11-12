@@ -210,7 +210,20 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(replayed.events.length).toBeGreaterThan(0);
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());
-    await expect(replay({ ...record, header: { ...record.header, seed: 1 } })).rejects.toThrow("the Run record does not replay here: different seed");
+    // The replay plays with the seed of the header: with another seed, the same buttons give another game.
+    expect((await replay({ ...record, header: { ...record.header, seed: 1 } })).screen).not.toBe(harness.screenHash());
+  });
+
+  test("a Run with another seed keeps that seed in its Run record, and its replay plays with that seed: the same Game events, the same frames and the same screen", async () => {
+    const harness = await Harness.open({ seed: 0xbeef, frameBudget: 6_000 });
+    await harness.play(starter);
+    const record = harness.record();
+    expect(record.header.seed).toBe(0xbeef);
+
+    const replayed = await replay(record);
+    expect(replayed.events).toEqual(record.events.filter(isGameEvent));
+    expect(replayed.frame).toBe(harness.frame);
+    expect(replayed.screen).toBe(harness.screenHash());
   });
 
   test("the Run record has the track of the player: a point at each change of cell, map or facing; the migration of a record below format 3 writes the same track and State track, and the Game events of format 1", async () => {

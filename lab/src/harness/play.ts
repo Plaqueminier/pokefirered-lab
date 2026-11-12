@@ -1,21 +1,21 @@
 import { basename, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
-import { evolutionGenome } from "../genetic/evolution";
+import { evolutionGenome, type PlayerRun } from "../genetic/evolution";
 import { type Genome, readGenome } from "../genetic/genome";
 import { providerProblem } from "../model/providers";
 import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
 import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
 import { limitOf, modelTotals, providerOf, readRecord, writeRecord } from "./record";
 
-const USAGE = `Usage: bun run bot <name in bots/> [player|full]
-       bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full]
+const USAGE = `Usage: bun run bot <name in bots/> [player|full] [--seed <0 to 0xffff>]
+       bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full] [--seed <0 to 0xffff>]
        bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--coach <model id>] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
-  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" }, genome: { type: "string" } },
+  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" }, genome: { type: "string" }, seed: { type: "string" } },
 });
 const [name, ...rest] = positionals;
 const isLevel = (arg: string): arg is KnowledgeLevel => (KNOWLEDGE_LEVELS as readonly string[]).includes(arg);
@@ -26,21 +26,31 @@ if (!name || ids.length > 1) {
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: values.coach === undefined ? undefined : { id: values.coach }, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: values["no-stop-at-whiteout"] ? false : undefined };
+const seed = values.seed === undefined ? undefined : Number(values.seed);
+if (seed !== undefined && !(Number.isInteger(seed) && seed >= 0 && seed <= 0xffff)) {
+  console.error(`The seed ${values.seed} is not a whole number from 0 to 0xffff.`);
+  process.exit(1);
+}
 const genome = values.genome === undefined ? undefined : await genomeFile(values.genome);
-const bot = await loadBot(name, model, genome).catch((error: unknown) => {
+const loaded = await loadBot(name, model, genome?.genome).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);
 });
-if (bot.genome && !genome) {
+if (loaded.genome && !genome) {
   console.error(`The Bot ${name} plays with a Genome: bun run bot ${name} --genome <Genome file>|<Evolution>:<Genome id>`);
   process.exit(1);
 }
+// A Genome of an Evolution plays as in the Evolution: with its goal, its frame limit, its Stuck limit and, with no --seed, its training seed.
+const evolutionRun = genome?.run;
+const bot = evolutionRun ? { ...loaded, goal: evolutionRun.goal, frameBudget: evolutionRun.frameBudget, noProgressLimit: evolutionRun.noProgressLimit } : loaded;
 
 // `<Evolution>:<Genome id>`: a Genome of an Evolution of runs/evolutions/. Any other value is the path of a Genome file.
-async function genomeFile(path: string): Promise<Genome> {
+async function genomeFile(path: string): Promise<{ genome: Genome; id?: number; run?: PlayerRun }> {
   const ofEvolution = /^([\w-]+):(\d+)$/.exec(path);
   try {
-    return ofEvolution ? await evolutionGenome(ofEvolution[1], Number(ofEvolution[2])) : readGenome(await Bun.file(path).json());
+    if (!ofEvolution) return { genome: readGenome(await Bun.file(path).json()) };
+    const id = Number(ofEvolution[2]);
+    return { ...(await evolutionGenome(ofEvolution[1], id)), id };
   } catch (error) {
     console.error(`${path} is not a Genome: ${errorText(error)}`);
     process.exit(1);
@@ -67,6 +77,7 @@ if (values.continue !== undefined) {
 const knowledge = rest.find(isLevel) ?? parent?.record.header.knowledge ?? "player";
 const harness = await Harness.open({
   knowledge,
+  seed: seed ?? evolutionRun?.seed,
   parent,
   onAction: ({ action, result }) => {
     const call = actionText(action);
@@ -88,12 +99,14 @@ const error = await harness.play(bot).then(
   () => null,
   (e: unknown) => e,
 );
-const record = harness.record();
+// The Run record of a Genome of an Evolution holds the Genome id, so that its Ghost in a Race has the number and the face of the Genome.
+const played = harness.record();
+const record = genome?.id === undefined ? played : { ...played, header: { ...played.header, genomeId: genome.id } };
 console.log(`Run record: ${relative(process.cwd(), await writeRecord(record))}`);
 if (error) console.error(`The Bot stops with an error: ${errorText(error)}`);
 
 const { result } = record;
-console.log(`Run end: ${result.endReason}, ${result.frames} frames, raw inputs ${result.rawInputs}${result.lastText === undefined ? "" : `, last text "${result.lastText}"`}${result.planLimit === undefined ? "" : `, ${result.planLimit}`}`);
+console.log(`Run end: ${result.endReason}, ${result.frames} frames, seed ${record.header.seed}, raw inputs ${result.rawInputs}${result.lastText === undefined ? "" : `, last text "${result.lastText}"`}${result.planLimit === undefined ? "" : `, ${result.planLimit}`}`);
 console.log(`Milestones: ${result.milestones.join(", ") || "none"}`);
 if (bot.model) {
   const totals = modelTotals(record.events);

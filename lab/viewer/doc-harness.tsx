@@ -271,7 +271,7 @@ export function RecordPage() {
     <Page
       lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and from its origin, its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider, its Coach if it has one, and its cost limit or Token limit; a record with no provider played on `openrouter`; the Genome of a Genetic bot), the Fitness of a new best of an Evolution, keys at each frame, events, track, State track and result."],
+        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider, its Coach if it has one, and its cost limit or Token limit; a record with no provider played on `openrouter`; the Genome of a Genetic bot), the Fitness of a new best of an Evolution, the Genome id of a Genome of an Evolution, keys at each frame, events, track, State track and result."],
         ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
@@ -279,10 +279,11 @@ export function RecordPage() {
           "from the game state, with typed fields: map, battle, Milestone, heal (Pokémon Center, item or other, with the HP of the party before and after), purchase, item (found or received), catch, faint (of the player or of the enemy), level (with the new moves and the evolution), money (before, after and cause), trainer beaten, obstacle removed (the move, the map, the cell and the Pokémon), FLASH used (the map and the Pokémon) and whiteout.",
         ],
         ["Old record", "a record from before format 1 has only the map, battle and Milestone events, and the facts of the record say “No Game events in this record”. A record from before format 2 has no track, and a record from before format 3 has no State track; a replay and Continue still work on them. `bun run migrate` replays the keys of each one, and writes the track and the State track, and the Game events of the state when the record has none; it does not change the keys."],
+        ["Seed", "the seed of the game RNG, `gLabRngSeed` in the ROM (`0x4c41`). `--seed` of `bun run bot` gives another one: the Harness writes it in the ROM image before the boot. The header keeps it, and the replay, the Grid and Continue play with the seed of the record."],
         ["Replay", "choose the record in the list of the Run, in the top bar."],
         [
           "Continue",
-          "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The replay must give the map, battle and Milestone events of the record, or the Harness refuses to start. The other Game events come from the replay, so a better read of the game replaces those of the record. The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones.",
+          "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas), and the Bot continues to play. The replay must give the map, battle and Milestone events of the record, or the Harness refuses to start. The other Game events come from the replay, so a better read of the game replaces those of the record. The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones. The Genetic bot continues with the Genome of the header.",
         ],
         [
           "Keep the same Run",
@@ -301,6 +302,7 @@ export function RecordPage() {
               ["Origin", "ROM, seed, save, and the names that the Run wrote in its copy of the save"],
               ["Bot", "its name and version, and the Genome of a Genetic bot; for an Extended Run, those of the last part"],
               ["Fitness", "only for the Run record of a new best of an Evolution: the Fitness version, the note and the points of each term"],
+              ["Genome id", "`genomeId`, for the Run record of a new best of an Evolution and of `bun run bot genetic --genome <Evolution>:<Genome id>`: the number of its Ghost in a Race"],
               ["Parts", "only for an Extended Run: the Bot, the result and the end of each earlier part"],
               ["Keys", "the buttons at each frame"],
               ["Events", "the Game events, the Model calls"],

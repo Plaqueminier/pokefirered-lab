@@ -385,7 +385,7 @@ function oldNotes(event: RunEvent): RunEvent {
 }
 
 export async function replay(record: RunRecord): Promise<Replay> {
-  const run = await Run.open({ names: record.header.names });
+  const run = await Run.open({ names: record.header.names, seed: record.header.seed });
   try {
     const differences = originDifferences(run, record);
     if (differences.length > 0) throw new Error(`the Run record does not replay here: different ${differences.join(", ")}`);

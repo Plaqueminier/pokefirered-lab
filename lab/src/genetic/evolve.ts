@@ -42,7 +42,7 @@ class EvolvePool {
 
   play: Player = (genome, { seed, frameBudget, noProgressLimit, goal }) =>
     new Promise<EvolveEnd>((done) => {
-      this.#waiting.push({ job: { job: ++this.#jobs, genome, frameBudget, noProgressLimit, goal }, done });
+      this.#waiting.push({ job: { job: ++this.#jobs, genome, seed, frameBudget, noProgressLimit, goal }, done });
       this.next();
     }).then(({ played, error }) => {
       if (!played) throw new Error(`a Run of the Evolution did not play: ${error}`);
@@ -78,7 +78,7 @@ const seed = before ? undefined : crypto.getRandomValues(new Uint32Array(1))[0];
 console.log(before ? `The Evolution ${name} continues after Generation ${before.generations.length}, in ${relative(process.cwd(), dir)}` : `A new Evolution ${name}, seed ${seed}, in ${relative(process.cwd(), dir)}`);
 console.log(`${parallel} Runs at the same time`);
 let start = performance.now();
-const onGeneration = ({ number, frameBudget, genomes, record }: Generation) => {
+const onGeneration = ({ number, frameBudget, genomes, record, tests }: Generation) => {
   const seconds = (performance.now() - start) / 1000;
   start = performance.now();
   const [best] = genomes;
@@ -86,6 +86,7 @@ const onGeneration = ({ number, frameBudget, genomes, record }: Generation) => {
   const milestones = best.milestones.join(", ") || "no Milestone";
   const newBest = record === undefined ? "" : `, new best: Run record ${relative(process.cwd(), `${dir}/${record}`)}`;
   console.log(`Generation ${number}: best Fitness ${best.fitness.toFixed(2)} (Genome ${best.id}, ${best.frames} frames, ${best.endReason}, ${milestones}), mean ${mean.toFixed(2)}, frame limit ${frameBudget}, ${seconds.toFixed(1)} s${newBest}`);
+  for (const test of tests ?? []) console.log(`  Test of Genome ${best.id} on the seed 0x${test.seed.toString(16)}: Fitness ${test.fitness.toFixed(2)}, ${test.frames} frames, ${test.endReason}, ${test.milestones.join(", ") || "no Milestone"}`);
 };
 try {
   const evolution = await evolve(dir, { play: pool.play, seed, onGeneration });
