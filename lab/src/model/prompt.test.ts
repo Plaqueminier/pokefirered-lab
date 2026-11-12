@@ -6,7 +6,7 @@ import type { ActionEntry, Observation } from "../harness/harness";
 import type { BoxMon, PartyMove } from "../party";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
-import { type Asked, askedOf, readAction, sendable } from "./decision";
+import { type Asked, askedOf, DECISION_SCHEMA, readAction, readDecision, sendable } from "./decision";
 import { importantEvents } from "./important-events";
 import { adviceLine, coachRole, coachWants, MAX_ADVICE_PART, MAX_TRAINED, readAdvice, wantLines, withAdvice } from "./coach";
 import type { CoachAdvice } from "../protocol";
@@ -892,7 +892,7 @@ describe("the rules and the character turn", () => {
     expect(userPrompt(observation, asked, [], NO_TURN)).not.toContain("Your character:");
   });
 
-  const characterAnswer = (fields: { character?: string; starter?: string; name?: string; rival?: string }) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character: "A shy baker.", starter: "SQUIRTLE", name: "Mira", rival: "Crumb", ...fields });
+  const characterAnswer = (fields: { character?: string; voice?: string; starter?: string; name?: string; rival?: string }) => JSON.stringify({ reason: "", action: "go A", mission: "", objective: "", note: "", character: "A shy baker.", starter: "SQUIRTLE", name: "Mira", rival: "Crumb", ...fields });
 
   test("a character turn with a free starter asks the character for the starter; with a given starter it tells the starter", () => {
     const free = characterTurn("free", null, () => 0.5).join("\n");
@@ -943,6 +943,34 @@ describe("the rules and the character turn", () => {
   test("the character keeps the country of the trainer", () => {
     expect(characterTurn("free", null, () => 0.5).join("\n")).toContain("the trainer and its country");
     expect(CHARACTER_SCHEMA.properties.character.description).toContain("the country of the trainer");
+  });
+
+  test("the character turn writes a voice, which each later prompt and the Viewer show with the character; an older character has none", () => {
+    const request = characterTurn("free", null, () => 0.5).join("\n");
+    expect(request).toContain('Write in "voice", in at most 200 characters, how this trainer talks in English');
+    expect(request).toContain("no catchphrase");
+    expect(CHARACTER_SCHEMA.required).toContain("voice");
+    const voice = "Quiet and exact; talks in crossword clues and counts letters.";
+    expect(readCharacterDecision(characterAnswer({ voice: ` ${voice} ` }), "free", null).voice).toBe(voice);
+    expect(readCharacterDecision(characterAnswer({ voice: "x".repeat(300) }), "free", null).voice).toHaveLength(200);
+    expect(readCharacterDecision(characterAnswer({}), "free", null)).not.toHaveProperty("voice");
+    const played = call("go A");
+    const turn: ModelEvent = { ...played, character: true, decision: { ...played.decision!, character: "A shy translator.", voice, starter: "SQUIRTLE" }, error: null };
+    expect(shownCharacter([turn])).toBe(`A shy translator. Voice: ${voice}`);
+    const observation = route1(22, []);
+    expect(userPrompt(observation, askedOf(observation, false)!, [turn], NO_TURN)).toContain(`Your first Pokémon: SQUIRTLE. Play as this trainer. Your voice in "say": ${voice}`);
+  });
+
+  test("an answer can say a line in the voice of the character: the rules keep the reason plain, and the last decisions show the line", () => {
+    expect(DECISION_SCHEMA.required).toContain("say");
+    expect(systemPrompt(settings, true)).toContain('- "say": what your trainer says now, out loud, in one short sentence in English, or an empty string.');
+    const answer = (say?: string) => JSON.stringify({ reason: "r", action: "go A", mission: "", objective: "", note: "", ...(say === undefined ? {} : { say }) });
+    expect(readDecision(answer(" Seven letters: GEODUDE. "))).toMatchObject({ say: "Seven letters: GEODUDE." });
+    expect(readDecision(answer(""))).not.toHaveProperty("say");
+    expect(readDecision(answer())).not.toHaveProperty("say");
+    const said: ModelEvent = { ...call("go A"), decision: { ...call("go A").decision!, say: "Seven letters: GEODUDE." }, error: null };
+    const observation = route1(22, []);
+    expect(userPrompt(observation, askedOf(observation, false)!, [said, call("go B")], NO_TURN)).toContain('You chose: go A. You said: "Seven letters: GEODUDE."');
   });
 
   test("the character has 400 characters at most", () => {

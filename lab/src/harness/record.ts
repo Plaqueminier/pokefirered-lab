@@ -65,7 +65,8 @@ export type Turn = { assistant: string; user: string };
 
 export type Usage = { promptTokens: number; cachedTokens?: number; completionTokens: number; reasoningTokens: number; cost: number };
 
-export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; advice?: string | CoachAdvice; character?: string; starter?: StarterSpecies; names?: TrainerNames };
+/** `say`: since bot version 43, and only when the model wrote one. `voice`: only at the Character turn, since bot version 43. */
+export type Decision = { reason: string; action: string; mission: string; objective: string; note: string; say?: string; advice?: string | CoachAdvice; character?: string; voice?: string; starter?: StarterSpecies; names?: TrainerNames };
 
 export type NodeRange = { from: number; to: number };
 

@@ -80,7 +80,8 @@ function characterLine(events: readonly RunEvent[]): string[] {
   const decision = runCharacter(events);
   if (!decision) return [];
   const names = decision.names ? ` Your name: ${decision.names.player}. Your rival: ${decision.names.rival}.` : "";
-  return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.`];
+  const voice = decision.voice ? ` Your voice in "say": ${decision.voice}` : "";
+  return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.${voice}`];
 }
 
 export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
@@ -107,6 +108,7 @@ Answer with JSON:
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
 - "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. A note never says that a place is explored, crossed or a dead end: the program removes this sentence, except after "Guess:" or "A person said:", because the list What is left tells it from the game. It also removes a sentence that repeats one that a review turn removed. It writes "Guess:" before a sentence with a word like "might" or "likely". Nobody changes a note later, and only a review turn or these rules can remove a sentence from your top nodes. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
+- "say": what your trainer says now, out loud, in one short sentence in English, or an empty string. Only the people who watch the Run read it, and it changes nothing in the game: keep "reason" plain. Talk as your character: the words, the tone and the things that your character notices. No catchphrase, and do not say a line again.
 - "remove": only at a review turn: ${REMOVE_RULE}.
 
 Rules of the program:
@@ -343,7 +345,8 @@ function withoutSilentInterruptions<E extends RunEvent>(events: E[]): E[] {
 function pastCalls(answers: AnsweredTurn[]): string[] {
   return answers.slice(-MAX_PAST_CALLS).map(({ call, events: after }) => {
     const lines = after.flatMap(eventLines);
-    const answer = call.decision ? `You chose: ${call.decision.action}` : `Your answer could not be read: ${call.error}`;
+    const said = call.decision?.say ? `. You said: "${call.decision.say}"` : "";
+    const answer = call.decision ? `You chose: ${call.decision.action}${said}` : `Your answer could not be read: ${call.error}`;
     const shown = lines.length > MAX_CALL_LINES ? [`… ${lines.length - MAX_CALL_LINES + 1} lines before`, ...lines.slice(-(MAX_CALL_LINES - 1))] : lines;
     return [`- At ${call.situation}. ${answer}`, ...shown.map((line) => `  ${line}`)].join("\n");
   });

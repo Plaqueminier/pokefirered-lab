@@ -84,7 +84,7 @@ export function adviceTerm(label: string): string {
 
 function answerFields(decision: Decision): Record<string, string> {
   const advice = Object.fromEntries([...adviceEntries(decision.advice), ...wantEntries(decision.advice)].map(({ label, text }) => [adviceTerm(label), text]));
-  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...advice };
+  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...(decision.say ? { Says: decision.say } : {}), ...advice };
 }
 
 function messageBlocks(message: string): { title: BlockTitle; text: string }[] {

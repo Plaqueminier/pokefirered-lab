@@ -28,8 +28,10 @@ export const DECISION_SCHEMA = {
     mission: { type: "string", description: "The story step that you work on, in one short sentence. Keep it until you reach it." },
     objective: { type: "string", description: "What you do now for your Mission, in one short sentence." },
     note: { type: "string", description: `A fact that the game proved, a lesson (what works, what fails and why), or a guess that starts with "Guess:", in one line of ${MAX_SENTENCE} characters at most, or an empty string. Never HP or PP values.` },
+    say: { type: "string", description: `What your trainer says now, in the voice of your character, in one short sentence of ${MAX_SENTENCE} characters at most, or an empty string. It changes nothing in the game.` },
   },
-  required: FIELDS,
+  // Not in FIELDS: an answer with no "say" stays readable, because it only feeds the videos.
+  required: [...FIELDS, "say"],
   additionalProperties: false,
 } as const;
 
@@ -178,7 +180,8 @@ export function readDecision(content: string): Decision {
     if (typeof text !== "string") throw new Error(`the answer has no string "${field}"`);
     decision[field] = text.trim();
   }
-  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE) };
+  const say = typeof fields.say === "string" ? fields.say.trim().slice(0, MAX_SENTENCE) : "";
+  return { ...decision, mission: decision.mission.slice(0, MAX_SENTENCE), objective: decision.objective.slice(0, MAX_SENTENCE), ...(say ? { say } : {}) };
 }
 
 export function readRemoved(content: string, shown: readonly NodeSentence[]): NodeSentence[] {

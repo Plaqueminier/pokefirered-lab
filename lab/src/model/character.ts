@@ -4,6 +4,7 @@ import { MAX_NAME, NAME_KEYS, nameProblem, type TrainerNames } from "../save-fil
 import { alternatives, type Asked, DECISION_SCHEMA, readDecision, readFields } from "./decision";
 
 const MAX_CHARACTER = 400;
+const MAX_VOICE = 200;
 export const NORMAL_TRAINER = "Normal trainer";
 // Asked to invent with no idea, 10 of 12 test answers were a bold fan of CHARMANDER.
 const TRAINER_JOBS = [
@@ -49,11 +50,12 @@ export const CHARACTER_SCHEMA = {
   properties: {
     ...DECISION_SCHEMA.properties,
     character: { type: "string", description: `The style of your nicknames, then the trainer that you play with the country of the trainer, in ${MAX_CHARACTER} characters at most.` },
+    voice: { type: "string", description: `How this trainer talks in English, in ${MAX_VOICE} characters at most.` },
     starter: { type: "string", enum: STARTER_SPECIES, description: "The first Pokémon of your trainer." },
     name: { type: "string", description: `The name of your trainer, in ${MAX_NAME} characters at most.` },
     rival: { type: "string", description: `The name of the rival of your trainer, in ${MAX_NAME} characters at most.` },
   },
-  required: [...DECISION_SCHEMA.required, "character", "starter", "name", "rival"],
+  required: [...DECISION_SCHEMA.required, "character", "voice", "starter", "name", "rival"],
 };
 
 function picked<T>(list: readonly T[], random: () => number): T {
@@ -76,7 +78,8 @@ export function characterTurn(starter: ModelSettings["starter"], gameNames: Trai
     gameNames
       ? `- The game already has your names: write ${gameNames.player} in "name" and ${gameNames.rival} in "rival".`
       : `- Choose the name of this trainer and the name of the rival of this trainer. Write them in "name" and "rival": ${MAX_NAME} characters at most for each one, no space at the start or the end, and only these characters: ${NAME_KEYS}`,
-    `- Write in "character", in at most ${MAX_CHARACTER} characters: the style of the nicknames, then the trainer and its country. You keep it for the whole Run. Then choose your action as usual.`,
+    `- Write in "character", in at most ${MAX_CHARACTER} characters: the style of the nicknames, then the trainer and its country. You keep it for the whole Run.`,
+    `- Write in "voice", in at most ${MAX_VOICE} characters, how this trainer talks in English: the words, the tone and the things that the trainer notices, from the job, the hobby and the taste. Make the voice clear but natural: no catchphrase, and no exaggeration that the character does not give. You use this voice in "say" for the whole Run. Then choose your action as usual.`,
   ];
 }
 
@@ -95,7 +98,8 @@ export function readCharacterDecision(content: string, starter: ModelSettings["s
   const chosen = starter === "free" ? STARTER_SPECIES.find((name) => name === String(fields.starter).toUpperCase()) : starter;
   if (!chosen) throw new Error(`"starter" must be ${alternatives([...STARTER_SPECIES])}`);
   const names = gameNames ?? { player: readName(fields, "name"), rival: readName(fields, "rival") };
-  return { ...decision, character: fields.character.trim().slice(0, MAX_CHARACTER), starter: chosen, names };
+  const voice = typeof fields.voice === "string" ? fields.voice.trim().slice(0, MAX_VOICE) : "";
+  return { ...decision, character: fields.character.trim().slice(0, MAX_CHARACTER), ...(voice ? { voice } : {}), starter: chosen, names };
 }
 
 export function runCharacter(events: readonly RunEvent[]): Decision | undefined {
@@ -104,7 +108,10 @@ export function runCharacter(events: readonly RunEvent[]): Decision | undefined 
 
 export function shownCharacter(calls: readonly ModelEvent[]): string | null {
   const decision = runCharacter(calls);
-  if (decision?.character) return decision.names ? `${decision.names.player}, rival ${decision.names.rival}. ${decision.character}` : decision.character;
+  if (decision?.character) {
+    const text = `${decision.character}${decision.voice ? ` Voice: ${decision.voice}` : ""}`;
+    return decision.names ? `${decision.names.player}, rival ${decision.names.rival}. ${text}` : text;
+  }
   return calls.length > 0 && !calls.some((call) => call.character) ? NORMAL_TRAINER : null;
 }
 
