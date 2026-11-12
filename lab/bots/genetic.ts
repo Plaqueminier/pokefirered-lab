@@ -1,5 +1,6 @@
-import { isDecisionPoint } from "../src/game";
-import { type Genome, scoreOf } from "../src/genetic/genome";
+import { isDecisionPoint, type WaitingFor } from "../src/game";
+import { battleActions, moveKey } from "../src/genetic/battle";
+import { type ChoiceCriterion, type Genome, scoreOf } from "../src/genetic/genome";
 import { type WalkAction, walkActions } from "../src/genetic/walk";
 import type { ActionResult, AvailableAction, Bot, Harness, MacroAction } from "../src/harness/harness";
 import { type Cell, cellKey } from "../src/harness/path";
@@ -13,37 +14,25 @@ const MAX_UNCOVERED = 3;
 /** `impossible`: the Harness answered `impossible`, and the game did not change. */
 type Candidate = { score: number; play: () => Promise<{ impossible: boolean }> };
 
-export function geneticBot(genome: Genome = { walk: {} }): Bot {
-  return { name: "genetic", version: "1", genome, noProgressLimit: NO_PROGRESS_LIMIT, play: (harness) => new GeneticPlay(harness, genome).play() };
+/** A group with no weights, for example in a Genome of version 1, has the weight 0 for each criterion. */
+export function geneticBot(weights: Partial<Genome> = {}): Bot {
+  const genome: Genome = { walk: {}, choice: {}, battle: {}, ...weights };
+  return { name: "genetic", version: "2", genome, noProgressLimit: NO_PROGRESS_LIMIT, play: (harness) => new GeneticPlay(harness, genome).play() };
 }
 
-const FIRST: AvailableAction["name"][] = ["leave", "keep"];
+// The Genome has no criteria for these Decision points: a fixed rule plays. A name stays empty: the game keeps its name.
+const FIXED_RULES: Partial<Record<WaitingFor["kind"], (available: AvailableAction[]) => MacroAction[]>> = {
+  naming: () => [{ name: "name", text: "" }],
+  learnMove: () => [{ name: "keep" }],
+  partyPick: (available) => available.flatMap((a) => (a.name === "send" ? [a] : [])),
+  shopMenu: () => [{ name: "leave" }],
+  itemPc: () => [{ name: "leave" }],
+  pokemonPc: () => [{ name: "leave" }],
+};
 
-function complete(action: AvailableAction): MacroAction[] {
-  switch (action.name) {
-    case "goTo":
-    case "walkOn":
-    case "swap":
-    case "teach":
-    case "give":
-      return [];
-    case "name":
-      return [{ name: "name", text: "" }];
-    case "use":
-      return [{ name: "use", item: action.item }];
-    case "buy":
-    case "sell":
-    case "withdraw":
-    case "deposit":
-      return [{ name: action.name, item: action.item, quantity: 1 }];
-    default:
-      return [action];
-  }
-}
-
-// Until the criteria of the choices and of the battles: the first action that the Harness gives, after `leave` and `keep`. A name stays empty: the game keeps its name.
-function fallbackActions(available: AvailableAction[]): MacroAction[] {
-  return [...available.filter((a) => FIRST.includes(a.name)), ...available.filter((a) => !FIRST.includes(a.name))].flatMap(complete);
+/** Each option of a choice, YES/NO and `multichoice`, in the order of the menu. */
+function choiceCriteria(options: string[]): Partial<Record<ChoiceCriterion, number>>[] {
+  return options.map((option, i) => ({ isYes: Number(option === "YES"), isNo: Number(option === "NO"), rank: options.length === 1 ? 0 : i / (options.length - 1) }));
 }
 
 function nothingPlayed(result: ActionResult): { impossible: boolean } {
@@ -52,6 +41,8 @@ function nothingPlayed(result: ActionResult): { impossible: boolean } {
 
 class GeneticPlay {
   readonly #walked = new Map<string, Set<string>>();
+  // The moves that the Bot played since the last walk: a battle ends on the overworld.
+  readonly #usedMoves = new Set<string>();
   #uncovered = 0;
 
   constructor(
@@ -67,10 +58,38 @@ class GeneticPlay {
         continue;
       }
       this.#uncovered = 0;
-      const observation = this.harness.observe();
-      const candidates = waiting.kind === "walk" && observation.mode === "overworld" ? this.walkCandidates(observation) : fallbackActions(this.harness.availableActions()).map((action): Candidate => ({ score: 0, play: async () => nothingPlayed(await this.harness.perform(action)) }));
-      if (!(await this.playBest(candidates))) return;
+      if (!(await this.playBest(this.candidates(waiting)))) return;
     }
+  }
+
+  private candidates(waiting: WaitingFor): Candidate[] {
+    const observation = this.harness.observe();
+    if (waiting.kind === "walk") {
+      this.#usedMoves.clear();
+      return observation.mode === "overworld" ? this.walkCandidates(observation) : [];
+    }
+    if (waiting.kind === "choice") return choiceCriteria(waiting.options).map((criteria, i) => this.candidate(scoreOf(this.genome.choice, criteria), { name: "choose", option: waiting.options[i] }));
+    if (observation.mode === "battle" && (waiting.kind === "battleAction" || waiting.kind === "battleMove")) {
+      const { battle } = observation;
+      return battleActions(battle, this.harness.availableActions(), this.#usedMoves).map(({ action, criteria }) =>
+        this.candidate(scoreOf(this.genome.battle, criteria), action, () => {
+          if (action.name === "fight") this.#usedMoves.add(moveKey(battle, action.move));
+        }),
+      );
+    }
+    return (FIXED_RULES[waiting.kind]?.(this.harness.availableActions()) ?? []).map((action) => this.candidate(0, action));
+  }
+
+  /** `played`: what the Bot remembers when the action is not impossible. */
+  private candidate(score: number, action: MacroAction, played?: () => void): Candidate {
+    return {
+      score,
+      play: async () => {
+        const result = nothingPlayed(await this.harness.perform(action));
+        if (!result.impossible) played?.();
+        return result;
+      },
+    };
   }
 
   /** An impossible action leaves the list, and the next best plays. A tie goes to the first action of the list. False: no action is possible. */

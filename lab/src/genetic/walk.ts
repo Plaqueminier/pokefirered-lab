@@ -61,7 +61,9 @@ export function walkActions(overworld: Overworld, { walked, arrivals }: WalkMemo
   });
   const exits = here.warps.map(({ x, y, to }): WalkAction => ({ target: { kind: "exit", cell: { x, y }, to }, criteria: exitCriteria(to, distance(player, { x, y })) }));
   const edges = here.edges.map(({ side, to }): WalkAction => ({ target: { kind: "edge", side, to }, criteria: exitCriteria(to, stepsToEdge(here, player, side)) }));
-  const talks = here.people.map(({ localId, x, y, texts }): WalkAction => {
+  // As for the model bot: a person that left the map, for example the Poké Ball of the starter, is not a target.
+  const present = new Set(people.map((p) => p.localId));
+  const talks = here.people.filter((p) => present.has(p.localId)).map(({ localId, x, y, texts }): WalkAction => {
     const cell = people.find((p) => p.localId === localId && p.loaded) ?? { x, y };
     return { target: { kind: "person", cell: { x: cell.x, y: cell.y }, localId }, criteria: { notUsed: Number(texts.length === 0), distance: near(distance(player, cell)), isPerson: 1 } };
   });

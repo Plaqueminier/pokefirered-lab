@@ -1,6 +1,7 @@
 // `bun run evolve <name>`: starts the Evolution of that name, or continues it from its file.
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
+import { geneticBot } from "../../bots/genetic";
 import { endOf, evolutionDir, evolve, type Generation, type Player, readEvolution } from "./evolution";
 import type { EvolveEnd, EvolveJob } from "./evolve-worker";
 
@@ -39,9 +40,9 @@ class EvolvePool {
     this.#free.push(...this.#workers);
   }
 
-  play: Player = (genome, { seed, frameBudget, noProgressLimit }) =>
+  play: Player = (genome, { seed, frameBudget, noProgressLimit, goal }) =>
     new Promise<EvolveEnd>((done) => {
-      this.#waiting.push({ job: { job: ++this.#jobs, genome, frameBudget, noProgressLimit }, done });
+      this.#waiting.push({ job: { job: ++this.#jobs, genome, frameBudget, noProgressLimit, goal }, done });
       this.next();
     }).then(({ played, error }) => {
       if (!played) throw new Error(`a Run of the Evolution did not play: ${error}`);
@@ -66,6 +67,12 @@ class EvolvePool {
 
 const dir = evolutionDir(name);
 const before = await readEvolution(dir);
+// The Evolution also refuses it after the first Generation that plays: this check saves the time of that Generation.
+const { version } = geneticBot();
+if (before?.bot && before.bot.version !== version) {
+  console.error(`The Evolution ${name} plays the Genetic bot version ${before.bot.version}, and the Genetic bot is now version ${version}: start a new Evolution.`);
+  process.exit(1);
+}
 const pool = new EvolvePool(parallel);
 const seed = before ? undefined : crypto.getRandomValues(new Uint32Array(1))[0];
 console.log(before ? `The Evolution ${name} continues after Generation ${before.generations.length}, in ${relative(process.cwd(), dir)}` : `A new Evolution ${name}, seed ${seed}, in ${relative(process.cwd(), dir)}`);

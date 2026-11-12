@@ -44,13 +44,15 @@ The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`
 
 ## Run the Genetic bot
 
-The **Genetic bot** (`bots/genetic.ts`, version 1, no goal) plays with a **Genome**, and asks no AI model (ADR 0008). The **Genome** is a JSON file of weights from -1 to 1, for example:
+The **Genetic bot** (`bots/genetic.ts`, version 2, no goal) plays with a **Genome**, and asks no AI model (ADR 0008). The **Genome** is a JSON file of weights from -1 to 1, for example:
 
 ```
-{"walk": {"notUsed": 1, "isExit": 1, "previousMap": -1, "isPerson": -1, "isSign": -1, "unknownNeighbours": 1, "distance": -0.2}}
+{"walk": {"notUsed": 1, "isExit": 1, "previousMap": -1, "isSign": -1, "unknownNeighbours": 1, "distance": -0.2},
+ "choice": {"isYes": 1},
+ "battle": {"noDamage": 0.5, "usedNoDamage": -1, "power": 1}}
 ```
 
-At each walk **Decision point**, the **Bot** lists the seen exits, people and signs, and each seen cell that the player can reach. It gives each action the score Σ weight × criterion, and plays the action with the best score. A criterion with no weight has the weight 0. Version 1 has the criteria of the walk only: at a choice, a battle or another menu, it plays the first action of the **Harness**, after `leave` and `keep`. The page "Genome and criteria" of the Doc tab gives each criterion.
+At each walk **Decision point**, the **Bot** lists the seen exits, people and signs, and each seen cell that the player can reach. At a choice, it lists each option. At a battle, it lists each move, and `run` against a wild Pokémon. It gives each action the score Σ weight × criterion, and plays the action with the best score. A criterion with no weight has the weight 0, so a **Genome** of version 1 (the group `walk` only) has the weight 0 for the choices and the battles. At a name, a new move, a shop or a PC, a fixed rule plays. This **Genome** plays from the bedroom to `first-rival-battle`. The page "Genome and criteria" of the Doc tab gives each criterion.
 
 In `lab/`:
 

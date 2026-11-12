@@ -29,8 +29,8 @@ const SETTINGS = {
 
 type Settings = typeof SETTINGS;
 
-/** `run`: what the Run of this Genome must use. */
-export type Player = (genome: Genome, run: { seed: number; frameBudget: number; noProgressLimit: number }) => Promise<Played>;
+/** `run`: what the Run of this Genome must use. The Genetic bot has no goal: the Run ends at the goal of the Evolution. */
+export type Player = (genome: Genome, run: { seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone }) => Promise<Played>;
 
 export type Played = { record: RunRecord; fitness: Fitness };
 
@@ -82,7 +82,7 @@ async function playGeneration(dir: string, evolution: Evolution, play: Player): 
   const number = (last?.number ?? 0) + 1;
   const frameBudget = Math.max(settings.frameBudget.least, settings.frameBudget.timesBest * (last?.genomes[0].frames ?? 0));
   const born = last ? children(evolution, last) : firstGenomes(evolution);
-  const played = await Promise.all(born.map(({ genome }) => play(genome, { seed: evolution.seeds.training, frameBudget, noProgressLimit: settings.noProgressLimit })));
+  const played = await Promise.all(born.map(({ genome }) => play(genome, { seed: evolution.seeds.training, frameBudget, noProgressLimit: settings.noProgressLimit, goal: settings.goal })));
   const { name, version } = played[0].record.header.bot;
   for (const { record, fitness } of played) {
     if (record.header.bot.version !== (evolution.bot?.version ?? version)) throw new Error(`the Evolution plays the Genetic bot version ${evolution.bot?.version ?? version}, and this Run plays version ${record.header.bot.version}: start a new Evolution`);
