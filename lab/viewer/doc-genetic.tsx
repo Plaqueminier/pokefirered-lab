@@ -129,7 +129,7 @@ export function EvolutionPage() {
       <div class={GRID3}>
         <DocCard icon={Repeat} title="The 5 best" lines={["they pass unchanged to the next Generation", "same id, same weights", "the best Genome is never lost"]} />
         <DocCard icon={GitFork} title="Parents" lines={["the 25 best Genomes", "drawn by pairs at random", "each pair gives one child: 45 children"]} />
-        <DocCard icon={Shuffle} title="Child" lines={["uniform crossover: each weight from one parent or the other", "Gaussian mutation, σ = 0.1, on each weight with the probability 0.2", "a weight stays from −1 to 1"]} />
+        <DocCard icon={Shuffle} title="Child" lines={["uniform crossover: each weight from one parent or the other", "20 children: low Gaussian mutation, σ = 0.1, on each weight with the probability 0.2", "25 children: high mutation, σ = 0.3, with the probability 0.4", "a weight stays from −1 to 1"]} />
       </div>
       <div class={BLOCKS2}>
         <Block label="Commands" sub="In `lab/`. The first Generation has random weights from −1 to 1.">

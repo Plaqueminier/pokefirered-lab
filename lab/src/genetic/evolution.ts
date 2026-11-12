@@ -12,7 +12,7 @@ import { type Genome, genomeOf, weightOf } from "./genome";
 
 const EVOLUTIONS_DIR = join(RUNS_DIR, "evolutions");
 const EVOLUTION_FILE = "evolution.json";
-const EVOLUTION_FORMAT = 2;
+const EVOLUTION_FORMAT = 3;
 
 // The value of gLabRngSeed in the ROM. A test seed must never equal it.
 const ROM_SEED = 0x4c41;
@@ -22,7 +22,11 @@ export const SETTINGS = {
   population: 50,
   elites: 5,
   parents: 25,
-  mutation: { probability: 0.2, sigma: 0.1 },
+  // The children of a Generation, in this order. A low mutation tunes the best Genomes; a high mutation leaves a local optimum.
+  mutations: [
+    { children: 20, probability: 0.2, sigma: 0.1 },
+    { children: 25, probability: 0.4, sigma: 0.3 },
+  ],
   generations: 100,
   goal: "first-rival-battle" as Milestone,
   noProgressLimit: NO_PROGRESS_LIMIT,
@@ -141,8 +145,9 @@ function children({ seed, settings, generations }: Evolution, last: Generation):
   const elites = last.genomes.slice(0, settings.elites).map(({ id, parents, genome }) => ({ id, parents, genome }));
   const parents = last.genomes.slice(0, settings.parents);
   const firstId = 1 + Math.max(...generations.flatMap((g) => g.genomes.map((m) => m.id)));
-  const { probability, sigma } = settings.mutation;
-  const born = Array.from({ length: settings.population - elites.length }, (_, i): Born => {
+  const mutations = settings.mutations.flatMap(({ children, ...mutation }) => Array.from({ length: children }, () => mutation));
+  if (elites.length + mutations.length !== settings.population) throw new Error(`the elites and the children of the mutations make ${elites.length + mutations.length} Genomes, not ${settings.population}`);
+  const born = mutations.map(({ probability, sigma }, i): Born => {
     const a = Math.floor(random() * parents.length);
     const b = (a + 1 + Math.floor(random() * (parents.length - 1))) % parents.length;
     const genome = genomeOf((group, criterion) => {
