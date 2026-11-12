@@ -4,7 +4,7 @@ import type { Cell } from "../src/harness/path";
 import { spinDirection } from "../src/harness/slides";
 import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, isSilentRead, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
 import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
-import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, withAdvice } from "../src/model/coach";
+import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, wantLines, withAdvice } from "../src/model/coach";
 import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
 import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
 import { type AnswerFormat, type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply } from "../src/model/openrouter";
@@ -41,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "41",
+    version: "42",
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -245,7 +245,7 @@ class ModelPlay {
     const coached = this.settings.coach !== undefined;
     const { plays, advises } = coachRole(coached, turn, asked);
     const request = [...turnRequest(turn, this.settings.starter, this.harness.fixedNames()), ...(advises ? ADVICE_REQUEST : [])];
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice: coached ? adviceLine(events) : [] });
+    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice: coached ? [...adviceLine(events), ...wantLines(events, asked, observation.bag)] : [] });
     const system = systemPrompt(this.settings, observation.party.length > 0, plays ? "coach" : "player");
     return { mind: plays ? this.coach : this.player, advises, advice: {}, system, user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal" || plays, sentences: memory.sentences };
   }

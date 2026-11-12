@@ -309,7 +309,11 @@ export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } 
 
 export const ADVICE_PARTS = ["team", "shopping", "progress", "battles"] as const;
 
-export type CoachAdvice = Partial<Record<(typeof ADVICE_PARTS)[number], string>>;
+/** A Pokémon of the party, by nickname, that the Coach wants at this level. */
+export type TrainGoal = { pokemon: string; level: number };
+
+/** `catchNew` and `train`: since bot version 42, each turn of the Coach writes them again, in place of the last ones. */
+export type CoachAdvice = Partial<Record<(typeof ADVICE_PARTS)[number], string>> & { catchNew?: boolean; train?: TrainGoal[] };
 
 const ADVICE_LABELS = { team: "Team", shopping: "Shopping", progress: "Progress", battles: "Battles" } as const;
 
@@ -319,6 +323,16 @@ export const ADVICE_ORDER = ["Advice", ...ADVICE_PARTS.map((part) => ADVICE_LABE
 export function adviceEntries(advice: string | CoachAdvice | undefined): { label: string; text: string }[] {
   if (typeof advice === "string") return advice ? [{ label: "Advice", text: advice }] : [];
   return ADVICE_PARTS.flatMap((part) => (advice?.[part] ? [{ label: ADVICE_LABELS[part], text: advice[part] }] : []));
+}
+
+/** `catchNew` and `train` as texts, for the Viewer: none for an advice that does not write them. */
+export function wantEntries(advice: string | CoachAdvice | undefined): { label: string; text: string }[] {
+  if (typeof advice !== "object" || advice.catchNew === undefined) return [];
+  const train = (advice.train ?? []).map(({ pokemon, level }) => `${pokemon} to level ${level}`).join(", ");
+  return [
+    { label: "Catch", text: advice.catchNew ? "a new species" : "no new species now" },
+    { label: "Train", text: train || "no Pokémon" },
+  ];
 }
 
 /** Adds an advice to the advice in force: each part replaces its last text. The first advice in parts of an Extended Run ends the one advice of its older part. */

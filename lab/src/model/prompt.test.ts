@@ -8,7 +8,7 @@ import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
 import { type Asked, askedOf, readAction, sendable } from "./decision";
 import { importantEvents } from "./important-events";
-import { adviceLine, coachRole, MAX_ADVICE_PART, readAdvice, withAdvice } from "./coach";
+import { adviceLine, coachRole, coachWants, MAX_ADVICE_PART, MAX_TRAINED, readAdvice, wantLines, withAdvice } from "./coach";
 import type { CoachAdvice } from "../protocol";
 import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
 
@@ -660,7 +660,59 @@ describe("the Coach advice", () => {
     expect(readAdvice(JSON.stringify({ advice: "one text" }))).toEqual({});
     const schema = withAdvice({ type: "object", properties: {}, required: [] });
     expect(schema.required).toContain("advice");
-    expect(schema.properties).toMatchObject({ advice: { type: "object", required: ["team", "shopping", "progress", "battles"], additionalProperties: false } });
+    expect(schema.properties).toMatchObject({ advice: { type: "object", required: ["team", "shopping", "progress", "battles", "catchNew", "train"], additionalProperties: false } });
+  });
+
+  test("the Coach writes catchNew and train, and the program keeps the goals that it can check", () => {
+    const goals = [{ pokemon: " Literka ", level: 12 }, { pokemon: "", level: 10 }, { pokemon: "Hasko", level: 10.5 }, { pokemon: "Hasko", level: 101 }, "x", ...Array.from({ length: 4 }, (_, at) => ({ pokemon: `MON${at}`, level: 20 }))];
+    expect(readAdvice(JSON.stringify({ advice: { team: "Catch.", catchNew: true, train: goals } }))).toEqual({ team: "Catch.", catchNew: true, train: [{ pokemon: "Literka", level: 12 }, { pokemon: "MON0", level: 20 }, { pokemon: "MON1", level: 20 }].slice(0, MAX_TRAINED) });
+    expect(readAdvice(JSON.stringify({ advice: { team: "", catchNew: "yes", train: "Literka" } }))).toEqual({});
+    const schema = withAdvice({ type: "object", properties: {}, required: [] });
+    expect(schema.properties).toMatchObject({ advice: { required: ["team", "shopping", "progress", "battles", "catchNew", "train"], properties: { catchNew: { type: "boolean" }, train: { type: "array" } } } });
+  });
+
+  test("the last turn of the Coach replaces catchNew and train, also with an empty list; a Run record from before bot version 42 has none", () => {
+    expect(coachWants(decided(advised({ team: "Catch a PIDGEY." })))).toBeNull();
+    const first = advised({ catchNew: true, train: [{ pokemon: "Literka", level: 12 }] }, "character");
+    const second = advised({ team: "Heal.", catchNew: false, train: [] }, "review");
+    expect(coachWants([...decided(first), ...decided(call("go A"))])).toEqual({ catchNew: true, train: [{ pokemon: "Literka", level: 12 }] });
+    expect(coachWants([...decided(first), ...decided(second), ...decided(advised({ team: "Old." }))])).toEqual({ catchNew: false, train: [] });
+  });
+
+  describe("at the battle menu, the program tells what the Coach wants when the facts agree", () => {
+    const mon = (nickname: string, level: number, hp = 20) => ({ ...(wildPidgey({ party: 1 }).party[0]), species: nickname === "SQUIRTLE" ? "SQUIRTLE" : "CATERPIE", nickname, level, hp });
+    const battleWith = (party: ReturnType<typeof mon>[], change: (o: Observation & { mode: "battle" }) => void = () => {}) => {
+      const observation = wildPidgey() as Observation & { mode: "battle" };
+      observation.party = party;
+      change(observation);
+      return observation;
+    };
+    const lines = (observation: Observation, wants: CoachAdvice) => wantLines(decided(advised(wants)), askedOf(observation, false)!, observation.bag);
+    const CATCH = "Your Coach wants a new species for the team, and this PIDGEY is one. A Poké Ball catches it more easily when its HP is low.";
+
+    test("a wild battle against a new species, with a Poké Ball, when the Coach wants a new species", () => {
+      const observation = battleWith([mon("SQUIRTLE", 6)]);
+      expect(lines(observation, { catchNew: true, train: [] })).toEqual([CATCH]);
+      expect(lines(observation, { catchNew: false, train: [] })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.battle = { ...o.battle, inPc: 1 } as typeof o.battle)), { catchNew: true, train: [] })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.bag = o.bag.filter((pocket) => pocket.pocket !== "POKé BALLS"))), { catchNew: true, train: [] })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.battle = { ...o.battle, kind: "trainer" } as typeof o.battle)), { catchNew: true, train: [] })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.waitingFor = { kind: "battleMove" } as typeof o.waitingFor)), { catchNew: true, train: [] })).toEqual([]);
+      expect(lines(observation, { team: "Catch a PIDGEY." })).toEqual([]);
+    });
+
+    test("a Pokémon under its level that did not fight this foe, by its nickname in any case", () => {
+      const train = [{ pokemon: "literka", level: 12 }];
+      const party = [mon("SQUIRTLE", 6), mon("LITERKA", 5)];
+      expect(lines(battleWith(party), { catchNew: false, train })).toEqual([
+        "Your Coach wants LITERKA trained up to level 12, and it is level 5. Each Pokémon that fights a foe gets a part of its experience, also after only one turn, and LITERKA did not fight this foe yet.",
+      ]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6), mon("LITERKA", 12)]), { catchNew: false, train })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6), mon("LITERKA", 5, 0)]), { catchNew: false, train })).toEqual([]);
+      expect(lines(battleWith(party, (o) => (o.battle = { ...o.battle, player: { ...o.battle.player, nickname: "LITERKA" } })), { catchNew: false, train })).toEqual([]);
+      const switched = { moves: [], player: { before: { name: "LITERKA", hp: "20/20" }, after: { name: "SQUIRTLE", hp: "20/22" } }, foe: { before: { name: "PIDGEY", hp: "100%" }, after: { name: "PIDGEY", hp: "90%" } } };
+      expect(lines(battleWith(party, (o) => (o.battle = { ...o.battle, foeTurns: [switched] })), { catchNew: false, train })).toEqual([]);
+    });
   });
 
   test("the advice shows in every prompt of a Run with a Coach, and in none of a Run with no Coach", () => {

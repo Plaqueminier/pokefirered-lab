@@ -4,7 +4,7 @@ import { modelBot } from "../bots/model";
 import { Harness } from "../src/harness/harness";
 import { type ModelEvent, readRecord, RecordPlayer, type RunRecord } from "../src/harness/record";
 import { ROM_FILE, START_SAVE } from "../src/run";
-import { modelPanelView } from "./model-calls";
+import { modelPanelView, unusualCalls } from "./model-calls";
 
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
 setDefaultTimeout(60_000);
@@ -62,6 +62,23 @@ describe.skipIf(!ready)("the panel Model", () => {
     expect(afterAtlas[1].text).toBe("Memory tree, the top nodes (zoom <a-b> opens a node):\n#1: Mom is downstairs.");
     expect(afterAtlas[10].text).toBe(reply("viewAtlas").content);
     expect(modelPanelView(record.events, false, null)).toMatchObject({ calling: false, selected: 2 });
+  });
+});
+
+describe("the Coach advice in force", () => {
+  test("each call shows catchNew and train of the last turn that wrote them, with the call that wrote them", () => {
+    const at = (frame: number, advice?: object): ModelEvent =>
+      ({ type: "model", frame, latencyMs: 1, model: "a/b", situation: "a walk", prompt: { system: "", user: "" }, answer: "{}", usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cost: 0 }, decision: { reason: "r", action: "go A", mission: "m", objective: "o", note: "", ...(advice ? { advice } : {}) }, error: null }) as ModelEvent;
+    const calls = unusualCalls([at(1, { team: "Catch.", catchNew: true, train: [{ pokemon: "Literka", level: 12 }] }), at(2), at(3, { battles: "Run.", catchNew: false, train: [] })]);
+    expect(calls[1].advice).toEqual([
+      { label: "Team", text: "Catch.", from: 0 },
+      { label: "Catch", text: "a new species", from: 0 },
+      { label: "Train", text: "Literka to level 12", from: 0 },
+    ]);
+    expect(calls[2].advice.slice(-2)).toEqual([
+      { label: "Catch", text: "no new species now", from: 2 },
+      { label: "Train", text: "no Pokémon", from: 2 },
+    ]);
   });
 });
 
