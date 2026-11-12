@@ -10,11 +10,11 @@ export type EvolveJob = { job: number; genome: Genome } & PlayerRun;
 
 export type EvolveEnd = { job: number } & ({ played: Played; error: string | null } | { played: null; error: string });
 
-self.onmessage = async ({ data: { job, genome, seed, frameBudget, noProgressLimit, goal } }: MessageEvent<EvolveJob>) => {
+self.onmessage = async ({ data: { job, genome, seed, frameBudget, noProgressLimit } }: MessageEvent<EvolveJob>) => {
   let harness: Harness | null = null;
   try {
     harness = await Harness.open({ seed, frameBudget, noProgressLimit });
-    const error = await harness.play({ ...geneticBot(genome), goal }).then(
+    const error = await harness.play(geneticBot(genome)).then(
       () => null,
       (e: unknown) => errorText(e),
     );

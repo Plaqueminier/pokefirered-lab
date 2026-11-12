@@ -27,8 +27,6 @@ export const SETTINGS = {
     { children: 20, probability: 0.2, sigma: 0.1 },
     { children: 25, probability: 0.4, sigma: 0.3 },
   ],
-  generations: 100,
-  goal: "first-rival-battle" as Milestone,
   noProgressLimit: NO_PROGRESS_LIMIT,
   frameBudget: { least: 30_000, timesBest: 2 },
   testEvery: 10,
@@ -38,7 +36,7 @@ type Settings = typeof SETTINGS;
 
 export type Player = (genome: Genome, run: PlayerRun) => Promise<Played>;
 
-export type PlayerRun = { seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone };
+export type PlayerRun = { seed: number; frameBudget: number; noProgressLimit: number };
 
 export type Played = { record: RunRecord; fitness: Fitness };
 
@@ -50,20 +48,27 @@ export type Generation = { number: number; frameBudget: number; genomes: Member[
 
 type BotFacts = { name: string; version: string };
 
-export type Evolution = { format: number; seed: number; seeds: { training: number; tests: number[] }; bot: BotFacts; fitnessVersion: string; settings: Settings; generations: Generation[] };
+/** `from`: the Evolution whose last Generation gives Generation 1. */
+export type Evolution = { format: number; seed: number; seeds: { training: number; tests: number[] }; bot: BotFacts; fitnessVersion: string; settings: Settings; from?: { evolution: string; generation: number }; generations: Generation[] };
 
 type Born = Pick<Member, "id" | "parents" | "genome">;
 
-/** `bot`: the Genetic bot that plays. `stop`: when it gives true, the Evolution ends after the Generation that plays. */
-type EvolveOptions = { play: Player; bot: BotFacts; seed?: number; until?: number; stop?: () => boolean; onGeneration?: (generation: Generation, evolution: Evolution) => void };
+/** Generation 1 of an Evolution that starts from another, and the frames of the best Genome of the Generation before it. */
+type Start = { from: NonNullable<Evolution["from"]>; genomes: Born[]; bestFrames: number };
 
-export async function evolve(dir: string, { play, bot, seed, until = Number.POSITIVE_INFINITY, stop, onGeneration }: EvolveOptions): Promise<Evolution> {
+/** `bot`: the Genetic bot that plays. `from`: the folder of another Evolution, for a new Evolution only. `until`: the number of Generations of a test. `stop`: when it gives true, the Evolution ends after the Generation that plays. */
+type EvolveOptions = { play: Player; bot: BotFacts; seed?: number; from?: string; until?: number; stop?: () => boolean; onGeneration?: (generation: Generation, evolution: Evolution) => void };
+
+// An Evolution has no end: it plays until it is stopped.
+export async function evolve(dir: string, { play, bot, seed, from, until = Number.POSITIVE_INFINITY, stop, onGeneration }: EvolveOptions): Promise<Evolution> {
   const earlier = await readEvolution(dir);
+  if (earlier && from !== undefined) throw new Error(`the Evolution ${basename(dir)} exists: it continues from its file, and only a new Evolution starts from another`);
   const problem = earlier && problemOf(earlier, bot);
   if (problem) throw new Error(problem);
-  let evolution = earlier ?? newEvolution(seed, bot);
-  while (endOf(evolution) === null && evolution.generations.length < until && !stop?.()) {
-    const generation = await playGeneration(dir, evolution, play);
+  const start = from === undefined ? undefined : await startFrom(from, SETTINGS.population);
+  let evolution = earlier ?? newEvolution(seed, bot, start?.from);
+  while (evolution.generations.length < until && !stop?.()) {
+    const generation = await playGeneration(dir, evolution, play, start);
     evolution = { ...evolution, generations: [...evolution.generations, generation] };
     await writeEvolution(dir, evolution);
     onGeneration?.(generation, evolution);
@@ -84,26 +89,30 @@ function problemOf(evolution: Evolution, bot: BotFacts): string | null {
   return null;
 }
 
-export function endOf({ settings, generations }: Evolution): string | null {
-  const last = generations.at(-1);
-  const reaches = ({ milestones }: Outcome) => milestones.includes(settings.goal);
-  if (last?.tests && reaches(last.genomes[0]) && last.tests.every(reaches)) return `the best Genome of Generation ${last.number} reaches ${settings.goal} on the training seed and on the ${last.tests.length} test seeds`;
-  if (generations.length >= settings.generations) return `${settings.generations} Generations`;
-  return null;
-}
-
-function newEvolution(seed: number | undefined, { name, version }: BotFacts): Evolution {
+function newEvolution(seed: number | undefined, { name, version }: BotFacts, from: Evolution["from"]): Evolution {
   if (seed === undefined) throw new Error("a new Evolution needs the seed of its random choices");
-  return { format: EVOLUTION_FORMAT, seed, seeds: { training: ROM_SEED, tests: TEST_SEEDS }, bot: { name, version }, fitnessVersion: FITNESS_VERSION, settings: SETTINGS, generations: [] };
+  return { format: EVOLUTION_FORMAT, seed, seeds: { training: ROM_SEED, tests: TEST_SEEDS }, bot: { name, version }, fitnessVersion: FITNESS_VERSION, settings: SETTINGS, ...(from ? { from } : {}), generations: [] };
 }
 
-async function playGeneration(dir: string, evolution: Evolution, play: Player): Promise<Generation> {
+/** The weights of the last Generation of the Evolution of `dir`, in its rank order, with the ids 1, 2… and no parents. A file of any format holds them. */
+async function startFrom(dir: string, population: number): Promise<Start> {
+  const evolution = basename(dir);
+  const last = (await readEvolution(dir))?.generations.at(-1);
+  if (!last) throw new Error(`no Evolution ${evolution} to start from in runs/evolutions/`);
+  if (last.genomes.length < population) throw new Error(`the last Generation of the Evolution ${evolution} has ${last.genomes.length} Genomes, not ${population}`);
+  const genomes = last.genomes.slice(0, population).map((member, i): Born => ({ id: i + 1, parents: [], genome: genomeOf((group, criterion) => weightOf(member.genome, group, criterion)) }));
+  return { from: { evolution, generation: last.number }, genomes, bestFrames: last.genomes[0].frames };
+}
+
+async function playGeneration(dir: string, evolution: Evolution, play: Player, start: Start | undefined): Promise<Generation> {
   const { settings, generations } = evolution;
   const last = generations.at(-1);
   const number = (last?.number ?? 0) + 1;
-  const frameBudget = Math.max(settings.frameBudget.least, settings.frameBudget.timesBest * (last?.genomes[0].frames ?? 0));
-  const born = last ? children(evolution, last) : firstGenomes(evolution);
-  const run = { frameBudget, noProgressLimit: settings.noProgressLimit, goal: settings.goal };
+  // Generation 1 of an Evolution from another has the frame limit of a Generation after the last Generation of the other.
+  const bestFrames = last ? last.genomes[0].frames : (start?.bestFrames ?? 0);
+  const frameBudget = Math.max(settings.frameBudget.least, settings.frameBudget.timesBest * bestFrames);
+  const born = last ? children(evolution, last) : (start?.genomes ?? firstGenomes(evolution));
+  const run = { frameBudget, noProgressLimit: settings.noProgressLimit };
   const played = await Promise.all(born.map(({ genome }) => play(genome, { ...run, seed: evolution.seeds.training })));
   for (const { record, fitness } of played) {
     if (record.header.bot.version !== evolution.bot.version) throw new Error(`the Evolution plays the Genetic bot version ${evolution.bot.version}, and this Run plays version ${record.header.bot.version}: start a new Evolution`);
@@ -191,13 +200,13 @@ async function writeEvolution(dir: string, evolution: Evolution): Promise<void> 
   await rename(`${path}.tmp`, path);
 }
 
-export type EvolutionFacts = { name: string; generations: number; end: string | null; problem: string | null };
+export type EvolutionFacts = { name: string; generations: number; problem: string | null };
 
 /** The Evolutions of `runs/evolutions/`, with the reason why each one cannot continue with this Genetic bot. */
 export async function evolutionList(bot: BotFacts): Promise<EvolutionFacts[]> {
   const names = (await readdir(EVOLUTIONS_DIR).catch(() => [])).filter((name) => PLAIN_NAME.test(name)).sort();
   const all = await Promise.all(names.map(async (name) => ({ name, evolution: await readEvolution(evolutionDir(name)).catch(() => null) })));
-  return all.flatMap(({ name, evolution }) => (evolution ? [{ name, generations: evolution.generations.length, end: endOf(evolution), problem: problemOf(evolution, bot) }] : []));
+  return all.flatMap(({ name, evolution }) => (evolution ? [{ name, generations: evolution.generations.length, problem: problemOf(evolution, bot) }] : []));
 }
 
 export async function evolutionGenome(name: string, id: number): Promise<{ genome: Genome; run: PlayerRun }> {
@@ -209,8 +218,7 @@ export async function evolutionGenome(name: string, id: number): Promise<{ genom
   const generation = evolution.generations.findLast((g) => g.genomes.some((m) => m.id === id));
   const member = generation?.genomes.find((m) => m.id === id);
   if (!generation || !member) throw new Error(`the Evolution ${name} has no Genome ${id}`);
-  const { noProgressLimit, goal } = evolution.settings;
-  return { genome: member.genome, run: { seed: evolution.seeds.training, frameBudget: generation.frameBudget, noProgressLimit, goal } };
+  return { genome: member.genome, run: { seed: evolution.seeds.training, frameBudget: generation.frameBudget, noProgressLimit: evolution.settings.noProgressLimit } };
 }
 
 async function evolutionFiles(): Promise<string[]> {

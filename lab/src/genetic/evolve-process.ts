@@ -7,11 +7,12 @@ export const STOP_EVOLUTION = "stop";
 
 export type EvolutionRun = { name: string; parallel: number; generation: number | null; played: number; population: number; lastSeconds: number | null; stopping: boolean };
 
-type Command = (name: string, parallel: number) => string[];
+/** `from`: the Evolution whose last Generation gives Generation 1 of a new Evolution. */
+type Command = (name: string, parallel: number, from: string | undefined) => string[];
 
 const EVOLVE_SCRIPT = join(import.meta.dir, "evolve.ts");
 
-const evolveCommand: Command = (name, parallel) => [process.execPath, EVOLVE_SCRIPT, name, "--parallel", String(parallel)];
+const evolveCommand: Command = (name, parallel, from) => [process.execPath, EVOLVE_SCRIPT, name, "--parallel", String(parallel), ...(from === undefined ? [] : ["--from", from])];
 
 export class EvolveProcess {
   #run: EvolutionRun | null = null;
@@ -26,11 +27,11 @@ export class EvolveProcess {
     return this.#run;
   }
 
-  start(name: string, parallel: number): string | null {
+  start(name: string, parallel: number, from?: string): string | null {
     if (this.#run) return `The Evolution ${this.#run.name} plays: one Evolution at a time.`;
     this.#run = { name, parallel, generation: null, played: 0, population: 0, lastSeconds: null, stopping: false };
     let errors = "";
-    const child = Bun.spawn(this.command(name, parallel), {
+    const child = Bun.spawn(this.command(name, parallel, from), {
       stdout: "inherit",
       stderr: "pipe",
       ipc: (news: EvolveNews) => this.#change(this.#news(news)),

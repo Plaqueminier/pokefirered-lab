@@ -118,12 +118,13 @@ export function EvolutionPage() {
       lead="An Evolution makes Generations of Genomes. Each Genome of a Generation plays one Run from the Starting save, the Fitness ranks the Runs, and the best Genomes make the next Generation. The loop asks the Harness nothing itself: it receives a player, “play this Genome on this seed”, so the Runs can play in workers."
       details={[
         ["Ids", "each Genome gets an id when it is born, and the ids follow one another across the Evolution: 1 to 50 in the first Generation, then 51, 52… It keeps the ids of its two parents. A Genome that passes unchanged keeps its id and its parents."],
+        ["Start from another Evolution", "with `--from <other>`, Generation 1 is the 50 Genomes of the last Generation of the other Evolution, in its order from the best Fitness: the weights only, with the new ids 1 to 50 and no parents. The other file can have an older format, for example format 2. The file of the new Evolution keeps the name of the other Evolution and the number of its last Generation in `from`. Generation 1 then plays and ranks as usual, and the next Generations come from it as usual. The command refuses `--from` for an Evolution that exists, because a continue plays from its own file, and it refuses an other Evolution that has no file."],
         ["Seeds", "the Evolution has its own seed for its random choices. The random choices of a Generation come from this seed and the number of the Generation only: a continued Evolution makes the same Generations as an Evolution that did not stop. The Runs of the Generations play on one seed of the game, the training seed: the seed of the ROM, `0x4c41`."],
         ["Test seeds", "every 10 Generations, the best Genome also plays one Run on each of 3 test seeds: `0x0001`, `0x1234` and `0xbeef`. The Evolution never ranks with them, so they show if the Genome is good on any seed, or only on the training seed. The tests play with the limits of the Generation, and their results go in the file with the Generation. They do not change the Fitness of the Genome or the next Generation."],
-        ["Limits of a Run", "a Run ends with `goal` at `first-rival-battle`, and with `no progress` when the Stuck counter reaches 60. Its frame limit is the higher of 30 000 and 2 × the frames of the Run of the best Genome of the previous Generation: a safety only."],
+        ["Limits of a Run", "a Run has no goal: it ends with `no progress` when the Stuck counter reaches 60, or with `frame budget` at its frame limit, so a Genome goes as far as it can. The frame limit is the higher of 30 000 and 2 × the frames of the Run of the best Genome of the previous Generation. For Generation 1 of an Evolution from another, the previous Generation is the last Generation of the other."],
         ["Parallel Runs", "`bun run evolve` plays 12 Runs at the same time, or the number of `--parallel` (18 at most), in its own workers. They do not use the places of the Viewer."],
         ["Stop and continue", "the Evolution writes its file after each Generation. A stop loses only the Generation that plays: the same command plays it again. The command refuses to continue an Evolution of another version of the Genetic bot or of the Fitness. The Evolutions tab stops an Evolution after the Generation that plays, so it loses no Generation (see Page of the Evolutions)."],
-        ["End", "the best Genome of a Generation with tests reaches `first-rival-battle` on the training seed and on the 3 test seeds, or 100 Generations."],
+        ["No end", "an Evolution has no goal and no limit of Generations: it plays until you stop it, with Ctrl-C or with “Stop after this Generation” in the Evolutions tab. The results of the test seeds stay in the file, but they do not stop the Evolution."],
       ]}
     >
       <div class={GRID3}>
@@ -135,15 +136,15 @@ export function EvolutionPage() {
         <Block label="Commands" sub="In `lab/`. The first Generation has random weights from −1 to 1.">
           <Terms
             rows={[
-              ["`bun run evolve <name> [--parallel <1 to 18>]`", "starts the Evolution `<name>`, or continues it from its file."],
-              ["`bun run bot genetic --genome <name>:<Genome id> [--seed <0 to 0xffff>]`", "plays one Genome of the Evolution again, as the Evolution played it: the training seed, the goal and the frame limit of the last Generation that holds the Genome, so the same Run. `--seed` plays it on another seed, for example a test seed. Its Run record goes to `runs/`."],
+              ["`bun run evolve <name> [--parallel <1 to 18>] [--from <other>]`", "starts the Evolution `<name>`, or continues it from its file. `--from`: a new Evolution starts from the last Generation of the Evolution `<other>`."],
+              ["`bun run bot genetic --genome <name>:<Genome id> [--seed <0 to 0xffff>]`", "plays one Genome of the Evolution again, as the Evolution played it: the training seed, no goal, and the frame limit of the last Generation that holds the Genome, so the same Run. `--seed` plays it on another seed, for example a test seed. Its Run record goes to `runs/`."],
             ]}
           />
         </Block>
         <Block label="The folder runs/evolutions/<name>/" sub="The Select of the top bar replays its Run records, in a group for each Evolution.">
           <Terms
             rows={[
-              ["`evolution.json`", "the settings, the seeds, the Fitness version and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones; every 10 Generations, the same results for the best Genome on each test seed."],
+              ["`evolution.json`", "the settings, the seeds, the Fitness version, the other Evolution of `--from` and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones; every 10 Generations, the same results for the best Genome on each test seed."],
               ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, its id, the Fitness version and the Fitness. Any other Run comes back from its Genome and its seed."],
               ["Races", "the Race of each Generation and the Race of the bests (see Races of an Evolution)."],
             ]}
@@ -193,17 +194,17 @@ export function EvolutionsTabPage() {
         ["News", "the process started by the server sends its news over IPC: its start, the end of each Run and the end of each Generation. The server sends the state to the page over the WebSocket, and the page reads the files of the Evolution again after each Generation."],
         ["Stop", "“Stop after this Generation” asks the process to stop when the Generation that plays ends. The file then holds this Generation, and Continue plays the next one. Ctrl-C of `bun run evolve` in a terminal stops at once and loses the Generation that plays."],
         ["Error", "when the process ends with an error, for example another version of the Fitness, a toast gives the last line of its errors."],
-        ["Refusals of the form", "a name with other characters than letters, digits, `-` and `_`; an Evolution that ended; an Evolution of another version of the Genetic bot or of the Fitness; a file of an older format. The server tells the reason in `/evolution/list.json`."],
-        ["Older format", "the page also shows an Evolution file of format 1 (Genetic bot version 1): it has no Race, and it does not continue. A Genome of version 1 has the group `walk` only: its groups `choice` and `battle` show “not in the Genetic bot version 1”, with the weight 0."],
+        ["Refusals of the form", "a name with other characters than letters, digits, `-` and `_`; an Evolution of another version of the Genetic bot or of the Fitness; a file of an older format. The server tells the reason in `/evolution/list.json`."],
+        ["Older format", "the page also shows an Evolution file of an older format, for example format 1 (Genetic bot version 1): it does not continue, but a new Evolution can start from it. A file of format 1 has no Race. A Genome of version 1 has the group `walk` only: its groups `choice` and `battle` show “not in the Genetic bot version 1”, with the weight 0."],
         ["Best Genome", "the best Genome of the Evolution is the best Genome of the last Generation with a new best: only a new best writes a Run record. “Born in Generation n” is the first Generation that holds its id: an elite keeps its id and its parents. An elite plays again in each Generation, and its Fitness can change when the frame limit grows."],
         ["Scale of the bars", "the bars of a Generation card share one scale: the full width is the largest sum of the points of the terms, the sum of the best Genome. So the length of a bar compares two Genomes, and the length of a segment compares two terms."],
         ["Fitness version 1", "a file of the Fitness version 1 has no term `triggers`: the legend tells “not in Fitness v1”, and the bars have no segment for it."],
-        ["Server routes", "`/evolution/list.json` lists the Evolutions of `runs/evolutions/`, each with its end or the reason why it does not continue; `/evolution/file/<name>` gives the file of one Evolution."],
+        ["Server routes", "`/evolution/list.json` lists the Evolutions of `runs/evolutions/`, each with its number of Generations and the reason why it does not continue; `/evolution/file/<name>` gives the file of one Evolution."],
       ]}
     >
       <div class={GRID3}>
-        <DocCard icon={LayoutDashboard} title="Header" lines={["the Select of the Evolutions of `runs/evolutions/`", "its state: running, stops after, stopped after Generation n, ended, does not continue", "the button “Race of the bests”"]} />
-        <DocCard icon={Gauge} title="Five numbers" lines={["the Generations, with the versions of the bot and of the Fitness", "the best Fitness and its Genome, the mean of the last Generation", "the Milestones of the best, the frame limit and the Runs that end at Stuck 60"]} />
+        <DocCard icon={LayoutDashboard} title="Header" lines={["the Select of the Evolutions of `runs/evolutions/`", "its state: running, stops after, stopped after Generation n, does not continue", "the button “Race of the bests”"]} />
+        <DocCard icon={Gauge} title="Five numbers" lines={["the Generations, with the versions of the bot and of the Fitness, and the other Evolution of `--from`", "the best Fitness and its Genome, the mean of the last Generation", "the Milestones of the best, the frame limit and the Runs that end at Stuck 60"]} />
         <DocCard icon={ChartLine} title="Fitness by Generation" lines={["the best Fitness (accent) and the mean Fitness (info) of each Generation", "a dot at each new best", "a click shows the Generation in the card under the chart; the Select under the chart does the same with the keyboard"]} />
       </div>
       <div class={BLOCKS2}>
@@ -212,7 +213,8 @@ export function EvolutionsTabPage() {
             rows={[
               ["Name", "the name of a new Evolution, or of an Evolution that exists: the field tells which. The page shows the Evolution of the Select."],
               ["Runs at the same time", "from 1 to 18, 12 by default: the `--parallel` of the command."],
-              ["Start or Continue", "the same as the command under the button, for example `bun run evolve night-1`."],
+              ["Start from", "“random weights”, or an Evolution of the list: its last Generation is Generation 1 of the new Evolution, the `--from` of the command. A Continue plays from the file, so the Select is disabled for an Evolution that exists."],
+              ["Start or Continue", "the same as the command under the button, for example `bun run evolve night-2 --from night-1`."],
               ["Running", "the Generation that plays and a bar of its Runs (n / 50), the Runs at the same time and the time of the last Generation."],
               ["Stop after this Generation", "the Evolution stops when its Generation ends, and loses nothing."],
             ]}
@@ -221,7 +223,7 @@ export function EvolutionsTabPage() {
         <Block label="Best Genome" sub="The card under the chart.">
           <Terms
             rows={[
-              ["Facts", "its id, the Generation where it was born, its parents, its frames and the end of its Run."],
+              ["Facts", "its id, the Generation where it was born, its parents (for a Genome of Generation 1: random weights, or the weights of the other Evolution of `--from`), its frames and the end of its Run."],
               ["Weights", "each weight from −1 to 1 on a bar from a centre line, in three columns: `walk`, `choice` and `battle`."],
               ["Fitness", "the points and the count of each term."],
               ["Replay its Run", "replays its Run record in the Lab tab."],

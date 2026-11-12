@@ -28,24 +28,17 @@ const fitnessText = (value: number) => value.toFixed(2);
 const count = (value: number) => value.toLocaleString("en-US");
 const raceOf = (evolution: string, generation: number | typeof BESTS_RACE) => evolutionPath(evolution, generation === BESTS_RACE ? BESTS_RACE : generationRace(generation));
 
-function command(name: string, parallel: number): string {
-  return `bun run evolve ${name || "<name>"}${parallel === DEFAULT_PARALLEL ? "" : ` --parallel ${parallel}`}`;
+function command(name: string, parallel: number, from: string): string {
+  return `bun run evolve ${name || "<name>"}${parallel === DEFAULT_PARALLEL ? "" : ` --parallel ${parallel}`}${from ? ` --from ${from}` : ""}`;
 }
 
 async function json<T>(url: string): Promise<T> {
   return (await fetched(url)).json();
 }
 
-function continueProblem(facts: EvolutionFacts): string | null {
-  if (facts.end) return `It ended: ${facts.end}.`;
-  if (facts.problem) return `It does not continue: ${facts.problem}.`;
-  return null;
-}
-
 function stateOf(facts: EvolutionFacts | undefined, run: EvolutionRun | null): { tone: Tone; text: string } {
   if (run && run.name === facts?.name) return run.stopping ? { tone: "warn", text: `stops after Generation ${run.generation ?? "…"}` } : { tone: "info", text: `running · Generation ${run.generation ?? "…"}` };
   if (!facts) return { tone: "info", text: "no Generation yet" };
-  if (facts.end) return { tone: "ok", text: `ended: ${facts.end}` };
   if (facts.problem) return { tone: "bad", text: `does not continue: ${facts.problem}` };
   return { tone: "warn", text: `stopped after Generation ${facts.generations}` };
 }
@@ -85,16 +78,23 @@ type Actions = { send: (message: ClientMessage) => void; openRace: (name: string
 function StartCard({ list, initial, send, onStart }: { list: readonly EvolutionFacts[]; initial: string; send: Actions["send"]; onStart: (name: string) => void }) {
   const [name, setName] = useState(initial);
   const [parallel, setParallel] = useState(DEFAULT_PARALLEL);
+  // "": random weights.
+  const [from, setFrom] = useState("");
   useEffect(() => setName(initial), [initial]);
   const known = list.find((facts) => facts.name === name);
-  const error = name !== "" && !PLAIN_NAME.test(name) ? 'Only letters, digits, "-" and "_".' : known ? (continueProblem(known) ?? undefined) : undefined;
+  const error = name !== "" && !PLAIN_NAME.test(name) ? 'Only letters, digits, "-" and "_".' : known?.problem ? `It does not continue: ${known.problem}.` : undefined;
   const hint = known ? `It has ${known.generations} Generations: Continue plays Generation ${known.generations + 1}.` : "A new folder runs/evolutions/<name>/.";
+  const others = list.filter((facts) => facts.name !== name).map((facts) => ({ value: facts.name, label: `${facts.name}, Generation ${facts.generations}`, group: "The last Generation of" }));
+  const startFrom = known ? "" : from;
   return (
     <Card>
       <div class="flex flex-col gap-4">
         <span class={LABEL}>Start or continue</span>
         <Field label="Name of the Evolution" hint={hint} error={error}>
           <Input value={name} invalid={error !== undefined} placeholder="night-1" onInput={(event) => setName(event.currentTarget.value.trim())} />
+        </Field>
+        <Field label="Start from" hint={known ? "Continue plays from the file of the Evolution." : startFrom ? `Generation 1: the Genomes of the last Generation of ${startFrom}, in their order.` : "Generation 1: Genomes with random weights from −1 to 1."}>
+          <Select options={[{ value: "", label: "random weights" }, ...others]} value={startFrom} title="The Genomes of Generation 1" disabled={known !== undefined} onChange={setFrom} />
         </Field>
         <div class="flex flex-col gap-1.5">
           <span class="flex items-baseline justify-between text-xs font-semibold text-muted">
@@ -109,14 +109,14 @@ function StartCard({ list, initial, send, onStart }: { list: readonly EvolutionF
           variant="primary"
           disabled={name === "" || error !== undefined}
           onClick={() => {
-            send({ type: "start-evolution", name, parallel });
+            send({ type: "start-evolution", name, parallel, ...(startFrom ? { from: startFrom } : {}) });
             onStart(name);
           }}
         >
           {known ? <RotateCcw size={14} /> : <Play size={14} />} {known ? "Continue" : "Start"}
         </Button>
         <span class="text-xs text-muted">
-          The same as <Code>{command(name, parallel)}</Code>
+          The same as <Code>{command(name, parallel, startFrom)}</Code>
         </span>
       </div>
     </Card>
@@ -156,7 +156,8 @@ function RunningCard({ run, send }: { run: EvolutionRun; send: Actions["send"] }
 
 function BestCard({ evolution, best, record, actions, name }: { evolution: Evolution; best: Member; record: string | undefined; actions: Actions; name: string }) {
   const { version } = evolution.bot;
-  const parents = best.parents.length > 0 ? `parents ${best.parents.join(" × ")}` : "random weights";
+  const first = evolution.from ? `weights of ${evolution.from.evolution}, Generation ${evolution.from.generation}` : "random weights";
+  const parents = best.parents.length > 0 ? `parents ${best.parents.join(" × ")}` : first;
   return (
     <Card>
       <div class="@container flex flex-col gap-4">
@@ -288,10 +289,10 @@ function Dashboard({ name, evolution, races, actions, side }: { name: string; ev
   return (
     <>
       <div class="grid grid-cols-2 gap-3 @3xl:grid-cols-3 @5xl:grid-cols-5">
-        <StatTile size="lg" label="Generations" value={generations.length} total={settings.generations} detail={`bot v${evolution.bot.version} · Fitness v${evolution.fitnessVersion}`} icon={Layers} />
+        <StatTile size="lg" label="Generations" value={generations.length} detail={`bot v${evolution.bot.version} · Fitness v${evolution.fitnessVersion}${evolution.from ? ` · from ${evolution.from.evolution}, Generation ${evolution.from.generation}` : ""}`} icon={Layers} />
         <StatTile size="lg" label="Best Fitness" value={fitnessText(best.fitness)} detail={`Genome ${best.id}, Generation ${bestGeneration.number}`} icon={Trophy} tone="accent" />
         <StatTile size="lg" label="Mean, last Generation" value={meanOf(last).toFixed(1)} detail={`from ${meanOf(generations[0]).toFixed(1)} in Generation 1`} icon={Gauge} />
-        <StatTile size="lg" label="Milestones of the best" value={best.milestones.length} detail={best.milestones.join(", ") || `goal: ${settings.goal}`} icon={Milestone} />
+        <StatTile size="lg" label="Milestones of the best" value={best.milestones.length} detail={best.milestones.join(", ") || "no Milestone"} icon={Milestone} />
         <StatTile size="lg" label="Frame limit" value={count(last.frameBudget)} detail={`${stuck} of ${last.genomes.length} end at Stuck ${settings.noProgressLimit}`} icon={Timer} />
       </div>
       <div class={COLUMNS}>

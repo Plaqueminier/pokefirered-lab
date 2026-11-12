@@ -281,7 +281,8 @@ export type ClientMessage =
   | { type: "grid-add"; name: string; cell: number }
   | { type: "grid-remove"; cell: number }
   | ({ type: "grid-cursor" } & GridCursorControl)
-  | { type: "start-evolution"; name: string; parallel: number }
+  /** `from`: the Evolution whose last Generation gives Generation 1 of a new Evolution. None: random weights. */
+  | { type: "start-evolution"; name: string; parallel: number; from?: string }
   | { type: "stop-evolution" };
 
 /** The track of a Run record: `TRACK_POINT` numbers at each change of cell, map or facing: the frame, the map group and number, the cell and the facing (0 south, 1 north, 2 west, 3 east). */

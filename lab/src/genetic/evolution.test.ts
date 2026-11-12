@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { RunRecord } from "../harness/record";
 import { dotOf } from "../race/file";
 import { readRace } from "../race/make";
@@ -80,4 +80,13 @@ test("an Evolution does not continue with another version of the Genetic bot", a
   const dir = await evolutionDir();
   await evolve(dir, { play: fakePlayer, bot, seed: 7, until: 1 });
   await expect(evolve(dir, { play: fakePlayer, bot: { name: "genetic", version: "2" }, until: 2 })).rejects.toThrow("it plays the Genetic bot version 1, and the Genetic bot is now version 2: start a new Evolution");
+});
+
+test("an Evolution from another has as Generation 1 the weights of the last Generation of the other, in its order, with new ids and no parents", async () => {
+  const other = await evolutionDir();
+  const last = (await evolve(other, { play: fakePlayer, bot, seed: 7, until: 2 })).generations[1];
+  const started = await evolve(await evolutionDir(), { play: fakePlayer, bot, seed: 8, from: other, until: 1 });
+  expect(started.from).toEqual({ evolution: basename(other), generation: 2 });
+  const born = started.generations[0].genomes.map(({ id, parents, genome }) => ({ id, parents, genome })).sort((a, b) => a.id - b.id);
+  expect(born).toEqual(last.genomes.map(({ genome }, i) => ({ id: i + 1, parents: [], genome })));
 });

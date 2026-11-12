@@ -598,7 +598,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       send({ type: "notice", text: await extendRun(message.record, message.limit) });
       break;
     case "start-evolution": {
-      const refusal = evolution.start(message.name, message.parallel);
+      const refusal = evolution.start(message.name, message.parallel, message.from);
       if (refusal) send({ type: "notice", text: refusal });
       break;
     }

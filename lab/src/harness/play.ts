@@ -42,7 +42,7 @@ if (loaded.genome && !genome) {
   process.exit(1);
 }
 const evolutionRun = genome?.run;
-const bot = evolutionRun ? { ...loaded, goal: evolutionRun.goal, frameBudget: evolutionRun.frameBudget, noProgressLimit: evolutionRun.noProgressLimit } : loaded;
+const bot = evolutionRun ? { ...loaded, frameBudget: evolutionRun.frameBudget, noProgressLimit: evolutionRun.noProgressLimit } : loaded;
 
 async function readGenomeArg(path: string): Promise<{ genome: Genome; id?: number; run?: PlayerRun }> {
   const ofEvolution = /^([\w-]+):(\d+)$/.exec(path);
