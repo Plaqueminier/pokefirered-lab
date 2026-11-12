@@ -19,6 +19,8 @@ export type RunState = { state: GameState | null; grid: MapGrid | null; actors: 
 export class Run {
   #origin: RunOrigin;
   #save: Uint8Array | null = null;
+  /** The value of `gLabRngSeed` in the ROM file (src/lab.c): the seed of a Run that asks for no other seed. */
+  readonly #romSeed: number;
 
   private constructor(
     readonly core: Core,
@@ -27,15 +29,17 @@ export class Run {
     readonly startSavePath: string,
   ) {
     this.#origin = origin;
+    this.#romSeed = origin.seed;
   }
 
-  static async open({ startSave = START_SAVE, names = null }: { startSave?: string; names?: TrainerNames | null } = {}): Promise<Run> {
+  /** `seed`: the seed of the game RNG, from 0 to 0xffff. The Run writes it in the ROM image before the boot. */
+  static async open({ startSave = START_SAVE, names = null, seed }: { startSave?: string; names?: TrainerNames | null; seed?: number } = {}): Promise<Run> {
     if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
     const core = await Core.open(ROM_FILE);
     const mem = new Memory(core, await loadSymbols(join(REPO_DIR, `${ROM_NAME}.elf`), CACHE_DIR));
     const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null, names: null }, startSave);
     try {
-      await run.reset(names);
+      await run.reset(names, seed);
     } catch (error) {
       core.close();
       throw error;
@@ -43,24 +47,28 @@ export class Run {
     return run;
   }
 
-  async reset(names: TrainerNames | null = null): Promise<void> {
+  async reset(names: TrainerNames | null = null, seed = this.#romSeed): Promise<void> {
     const file = Bun.file(this.startSavePath);
-    this.boot((await file.exists()) ? new Uint8Array(await file.arrayBuffer()) : null, names);
+    this.boot((await file.exists()) ? new Uint8Array(await file.arrayBuffer()) : null, names, seed);
   }
 
   // The bytes of the last boot, not the file: a person can write the file while a Model call waits.
   rename(names: TrainerNames, holds: readonly (readonly [number, number])[]): void {
-    this.boot(this.#save, names);
+    this.boot(this.#save, names, this.#origin.seed);
     for (const [keys, frames] of holds) for (let i = 0; i < frames; i++) this.runFrame(keys);
   }
 
-  private boot(save: Uint8Array | null, names: TrainerNames | null): void {
+  // The game reads gLabRngSeed from the ROM at the boot: a patch of the ROM image stays after a reset, and only in this core.
+  private boot(save: Uint8Array | null, names: TrainerNames | null, seed: number): void {
     if (names && !save) throw new Error("no Starting save to write the names in");
+    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff) throw new Error(`the seed ${seed} is not a whole number from 0 to 0xffff`);
     const played = save && names ? this.game.namedSave(save, names) : save;
+    const seedGlobal = this.game.mem.global("gLabRngSeed");
+    this.core.patch16(seedGlobal.addr, seed);
     this.core.reset();
     if (played) this.core.loadSaveData(played);
     this.#save = save;
-    this.#origin = { ...this.#origin, startSave: save && sha256(save), names };
+    this.#origin = { ...this.#origin, seed: seedGlobal.int(), startSave: save && sha256(save), names };
     this.core.reset();
   }
 

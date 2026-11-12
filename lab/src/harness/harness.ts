@@ -180,6 +180,8 @@ type SummaryCallListener = (event: SummaryEvent, harness: Harness) => void;
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
   startSave?: string;
+  /** The seed of the game RNG, from 0 to 0xffff. By default the seed of the parent, else the seed of the ROM. */
+  seed?: number;
   onAction?: ActionListener;
   onFrame?: (harness: Harness) => void;
   onCallStart?: CallStartListener;
@@ -265,7 +267,7 @@ export class Harness {
       run?.core.close();
       throw new Error(`${startSave} not found: make the Starting save first (lab/README.md)`);
     }
-    const opened = run ?? (await Run.open({ startSave, names: options.parent?.record.header.names }));
+    const opened = run ?? (await Run.open({ startSave, names: options.parent?.record.header.names, seed: options.seed ?? options.parent?.record.header.seed }));
     try {
       const harness = new Harness(opened, options);
       if (options.parent) {

@@ -71,8 +71,8 @@ export function GenomePage() {
         <Block label="Battle criteria" sub="The group `battle` of the Genome: the criteria 17 to 23 of the spec, in this order. A criterion of the moves is 0 for `run`.">
           <Terms rows={groupRows(BATTLE_DOC)} />
         </Block>
-        <Block label="Play one Genome" sub="In `lab/`, from the Starting save. The Run record goes to `runs/`, and the Viewer replays it as the Run of any Bot.">
-          <Terms rows={[["`bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full]`", "plays the Genome of the file, or a Genome of an Evolution, at the `player` Knowledge level, or at `full`."]]} />
+        <Block label="Play one Genome" sub="In `lab/`, from the Starting save. The Run record goes to `runs/`, and the Viewer replays it as the Run of any Bot. A “continue” of this record in the form “Bots” plays the Genome of its header.">
+          <Terms rows={[["`bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full] [--seed <0 to 0xffff>]`", "plays the Genome of the file, or a Genome of an Evolution, at the `player` Knowledge level, or at `full`. `--seed`: another seed of the game, for example a seed that the Genome does not know."]]} />
         </Block>
       </div>
     </Page>
@@ -116,11 +116,12 @@ export function EvolutionPage() {
       lead="An Evolution makes Generations of Genomes. Each Genome of a Generation plays one Run from the Starting save, the Fitness ranks the Runs, and the best Genomes make the next Generation. The loop asks the Harness nothing itself: it receives a player, “play this Genome on this seed”, so the Runs can play in workers."
       details={[
         ["Ids", "each Genome gets an id when it is born, and the ids follow one another across the Evolution: 1 to 50 in the first Generation, then 51, 52… It keeps the ids of its two parents. A Genome that passes unchanged keeps its id and its parents."],
-        ["Seeds", "the Evolution has its own seed for its random choices. The random choices of a Generation come from this seed and the number of the Generation only: a continued Evolution makes the same Generations as an Evolution that did not stop. The Runs play on one seed of the game: now the seed of the ROM."],
+        ["Seeds", "the Evolution has its own seed for its random choices. The random choices of a Generation come from this seed and the number of the Generation only: a continued Evolution makes the same Generations as an Evolution that did not stop. The Runs of the Generations play on one seed of the game, the training seed: the seed of the ROM, `0x4c41`."],
+        ["Test seeds", "every 10 Generations, the best Genome also plays one Run on each of 3 test seeds: `0x0001`, `0x1234` and `0xbeef`. The training never uses them, so they show if the Genome is good on any seed, or only on the training seed. The tests play with the limits of the Generation, and their results go in the file with the Generation. They do not change the Fitness of the Genome or the next Generation."],
         ["Limits of a Run", "a Run ends with `goal` at `first-rival-battle`, and with `no progress` when the Stuck counter reaches 60. Its frame limit is the higher of 30 000 and 2 × the frames of the Run of the best Genome of the previous Generation: a safety only."],
         ["Parallel Runs", "`bun run evolve` plays 12 Runs at the same time, or the number of `--parallel` (18 at most), in its own workers. They do not use the places of the Viewer."],
         ["Stop and continue", "the Evolution writes its file after each Generation. A stop loses only the Generation that plays: the same command plays it again. The command refuses to continue an Evolution of another version of the Genetic bot or of the Fitness."],
-        ["End", "the best Genome of a Generation reaches `first-rival-battle`, or 100 Generations."],
+        ["End", "the best Genome of a Generation with tests reaches `first-rival-battle` on the training seed and on the 3 test seeds, or 100 Generations."],
       ]}
     >
       <div class={GRID3}>
@@ -133,15 +134,15 @@ export function EvolutionPage() {
           <Terms
             rows={[
               ["`bun run evolve <name> [--parallel <1 to 18>]`", "starts the Evolution `<name>`, or continues it from its file."],
-              ["`bun run bot genetic --genome <name>:<Genome id>`", "plays one Genome of the Evolution again, with its Run record in `runs/`."],
+              ["`bun run bot genetic --genome <name>:<Genome id> [--seed <0 to 0xffff>]`", "plays one Genome of the Evolution again, as the Evolution played it: the training seed, the goal and the frame limit of the last Generation that holds the Genome, so the same Run. `--seed` plays it on another seed, for example a test seed. Its Run record goes to `runs/`."],
             ]}
           />
         </Block>
         <Block label="The folder runs/evolutions/<name>/" sub="The Select of the top bar replays its Run records, in a group for each Evolution.">
           <Terms
             rows={[
-              ["`evolution.json`", "the settings, the seeds, the Fitness version and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones."],
-              ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, the Fitness version and the Fitness. Any other Run comes back from its Genome."],
+              ["`evolution.json`", "the settings, the seeds, the Fitness version and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones; every 10 Generations, the same results for the best Genome on each test seed."],
+              ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, the Fitness version and the Fitness. Any other Run comes back from its Genome and its seed."],
             ]}
           />
         </Block>

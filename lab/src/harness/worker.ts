@@ -64,10 +64,10 @@ self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => 
   let earlier: { record: RunRecord; events: number } | null = null;
   let error: string | null = null;
   try {
-    const { bot: name, model, from, ...options } = spec;
-    const bot = await loadBot(name, model);
+    const { bot: name, model, genome, from, ...options } = spec;
+    const bot = await loadBot(name, model, genome);
     const parent = from && (await parentRecord(from.record));
-    const run = await Run.open({ names: parent?.record.header.names });
+    const run = await Run.open({ names: parent?.record.header.names, seed: parent?.record.header.seed });
     const poster = new ViewPoster(run);
     const harness = await Harness.open(
       {

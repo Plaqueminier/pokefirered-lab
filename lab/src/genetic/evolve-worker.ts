@@ -8,15 +8,15 @@ import type { Genome } from "./genome";
 
 declare const self: Worker;
 
-export type EvolveJob = { job: number; genome: Genome; frameBudget: number; noProgressLimit: number; goal: Milestone };
+export type EvolveJob = { job: number; genome: Genome; seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone };
 
 /** `error`: the Bot stopped with an error, and the Run record holds the Run until then. */
 export type EvolveEnd = { job: number } & ({ played: Played; error: string | null } | { played: null; error: string });
 
-self.onmessage = async ({ data: { job, genome, frameBudget, noProgressLimit, goal } }: MessageEvent<EvolveJob>) => {
+self.onmessage = async ({ data: { job, genome, seed, frameBudget, noProgressLimit, goal } }: MessageEvent<EvolveJob>) => {
   let harness: Harness | null = null;
   try {
-    harness = await Harness.open({ frameBudget, noProgressLimit });
+    harness = await Harness.open({ seed, frameBudget, noProgressLimit });
     const error = await harness.play({ ...geneticBot(genome), goal }).then(
       () => null,
       (e: unknown) => errorText(e),

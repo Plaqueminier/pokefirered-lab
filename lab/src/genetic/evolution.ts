@@ -9,11 +9,13 @@ import { GROUPS, type Genome } from "./genome";
 
 const EVOLUTIONS_DIR =join(RUNS_DIR, "evolutions");
 const EVOLUTION_FILE = "evolution.json";
-const EVOLUTION_FORMAT = 1;
+// 2: the test seeds, and the tests of the best Genome.
+const EVOLUTION_FORMAT = 2;
 const NAME = /^[\w-]+$/;
 
-// The seed of `gLabRngSeed` in the ROM (src/lab.c). A Run cannot take another seed yet (#94).
+// The training seed is the seed of `gLabRngSeed` in the ROM (src/lab.c). A test seed is never a training seed. On each test seed, the scripted bot also reaches first-rival-battle.
 const ROM_SEED = 0x4c41;
+const TEST_SEEDS = [0x0001, 0x1234, 0xbeef];
 
 // The settings of v1 (spec #88). The file keeps them, so that a continued Evolution keeps the settings of its start.
 const SETTINGS = {
@@ -25,23 +27,33 @@ const SETTINGS = {
   goal: "first-rival-battle" as Milestone,
   noProgressLimit: 60,
   frameBudget: { least: 30_000, timesBest: 2 },
+  /** Each `testEvery` Generations, the best Genome also plays on each test seed. */
+  testEvery: 10,
 };
 
 type Settings = typeof SETTINGS;
 
 /** `run`: what the Run of this Genome must use. The Genetic bot has no goal: the Run ends at the goal of the Evolution. */
-export type Player = (genome: Genome, run: { seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone }) => Promise<Played>;
+export type Player = (genome: Genome, run: PlayerRun) => Promise<Played>;
+
+export type PlayerRun = { seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone };
 
 export type Played = { record: RunRecord; fitness: Fitness };
 
+/** What the Run of a Genome gives. */
+type Outcome = { fitness: number; terms: Fitness["terms"]; frames: number; milestones: Milestone[]; endReason: EndReason };
+
 /** A Genome of a Generation. `parents`: the ids of the two Genomes that gave it, none in the first Generation. An elite keeps its id and its parents. */
-type Member = { id: number; parents: number[]; genome: Genome; fitness: number; terms: Fitness["terms"]; frames: number; milestones: Milestone[]; endReason: EndReason };
+type Member = { id: number; parents: number[]; genome: Genome } & Outcome;
 
-/** `genomes`: from the best Fitness to the worst. `record`: the Run record of the best Genome, in the folder of the Evolution, when it is a new best. */
-export type Generation = { number: number; frameBudget: number; genomes: Member[]; record?: string };
+/**
+ * `genomes`: from the best Fitness to the worst. `record`: the Run record of the best Genome, in the folder of the Evolution, when it is a new best.
+ * `tests`: each `testEvery` Generations, the Runs of the best Genome on the test seeds.
+ */
+export type Generation = { number: number; frameBudget: number; genomes: Member[]; record?: string; tests?: ({ seed: number } & Outcome)[] };
 
-/** `seed`: the seed of the random choices of the Evolution. `seeds.training`: the seed of the game for each Run. */
-export type Evolution = { format: number; seed: number; seeds: { training: number }; bot: { name: string; version: string } | null; fitnessVersion: string; settings: Settings; generations: Generation[] };
+/** `seed`: the seed of the random choices of the Evolution. `seeds.training`: the seed of the game for each Run. `seeds.tests`: the seeds of the tests only. */
+export type Evolution = { format: number; seed: number; seeds: { training: number; tests: number[] }; bot: { name: string; version: string } | null; fitnessVersion: string; settings: Settings; generations: Generation[] };
 
 type Born = Pick<Member, "id" | "parents" | "genome">;
 
@@ -66,14 +78,15 @@ export async function evolve(dir: string, { play, seed, until = Number.POSITIVE_
 /** Null while the Evolution can play a Generation. */
 export function endOf({ settings, generations }: Evolution): string | null {
   const last = generations.at(-1);
-  if (last?.genomes[0].milestones.includes(settings.goal)) return `the best Genome of Generation ${last.number} reaches ${settings.goal}`;
+  const reaches = ({ milestones }: Outcome) => milestones.includes(settings.goal);
+  if (last?.tests && reaches(last.genomes[0]) && last.tests.every(reaches)) return `the best Genome of Generation ${last.number} reaches ${settings.goal} on the training seed and on the ${last.tests.length} test seeds`;
   if (generations.length >= settings.generations) return `${settings.generations} Generations`;
   return null;
 }
 
 function newEvolution(seed: number | undefined): Evolution {
   if (seed === undefined) throw new Error("a new Evolution needs the seed of its random choices");
-  return { format: EVOLUTION_FORMAT, seed, seeds: { training: ROM_SEED }, bot: null, fitnessVersion: FITNESS_VERSION, settings: SETTINGS, generations: [] };
+  return { format: EVOLUTION_FORMAT, seed, seeds: { training: ROM_SEED, tests: TEST_SEEDS }, bot: null, fitnessVersion: FITNESS_VERSION, settings: SETTINGS, generations: [] };
 }
 
 async function playGeneration(dir: string, evolution: Evolution, play: Player): Promise<{ generation: Generation; bot: NonNullable<Evolution["bot"]> }> {
@@ -82,7 +95,8 @@ async function playGeneration(dir: string, evolution: Evolution, play: Player): 
   const number = (last?.number ?? 0) + 1;
   const frameBudget = Math.max(settings.frameBudget.least, settings.frameBudget.timesBest * (last?.genomes[0].frames ?? 0));
   const born = last ? children(evolution, last) : firstGenomes(evolution);
-  const played = await Promise.all(born.map(({ genome }) => play(genome, { seed: evolution.seeds.training, frameBudget, noProgressLimit: settings.noProgressLimit, goal: settings.goal })));
+  const run = { frameBudget, noProgressLimit: settings.noProgressLimit, goal: settings.goal };
+  const played = await Promise.all(born.map(({ genome }) => play(genome, { ...run, seed: evolution.seeds.training })));
   const { name, version } = played[0].record.header.bot;
   for (const { record, fitness } of played) {
     if (record.header.bot.version !== (evolution.bot?.version ?? version)) throw new Error(`the Evolution plays the Genetic bot version ${evolution.bot?.version ?? version}, and this Run plays version ${record.header.bot.version}: start a new Evolution`);
@@ -90,11 +104,16 @@ async function playGeneration(dir: string, evolution: Evolution, play: Player): 
   }
   // A stable sort: a tie keeps the order of birth, so the Generation is always the same.
   const ranked = born.map((genome, i) => ({ genome, played: played[i] })).sort((a, b) => b.played.fitness.note - a.played.fitness.note);
-  const genomes = ranked.map(({ genome, played: { record, fitness } }): Member => ({ ...genome, fitness: fitness.note, terms: fitness.terms, frames: record.result.frames, milestones: record.result.milestones, endReason: record.result.endReason }));
+  const genomes = ranked.map(({ genome, played }): Member => ({ ...genome, ...outcomeOf(played) }));
   const bestBefore = Math.max(Number.NEGATIVE_INFINITY, ...generations.map((g) => g.genomes[0].fitness));
   const best = ranked[0].played;
   const record = best.fitness.note > bestBefore ? basename(await writeRecord({ ...best.record, header: { ...best.record.header, fitness: best.fitness } }, dir)) : undefined;
-  return { generation: { number, frameBudget, genomes, ...(record === undefined ? {} : { record }) }, bot: { name, version } };
+  const tests = number % settings.testEvery === 0 ? await Promise.all(evolution.seeds.tests.map(async (seed) => ({ seed, ...outcomeOf(await play(genomes[0].genome, { ...run, seed })) }))) : undefined;
+  return { generation: { number, frameBudget, genomes, ...(record === undefined ? {} : { record }), ...(tests === undefined ? {} : { tests }) }, bot: { name, version } };
+}
+
+function outcomeOf({ record, fitness }: Played): Outcome {
+  return { fitness: fitness.note, terms: fitness.terms, frames: record.result.frames, milestones: record.result.milestones, endReason: record.result.endReason };
 }
 
 function firstGenomes({ seed, settings }: Evolution): Born[] {
@@ -163,13 +182,16 @@ async function writeEvolution(dir: string, evolution: Evolution): Promise<void> 
   await rename(`${path}.tmp`, path);
 }
 
-/** The Genome with this id in any Generation of the Evolution `name`. */
-export async function evolutionGenome(name: string, id: number): Promise<Genome> {
+/** The Genome with this id in any Generation of the Evolution `name`, and what its Run in the Evolution used: the same Genome and `run` give the same Run. */
+export async function evolutionGenome(name: string, id: number): Promise<{ genome: Genome; run: PlayerRun }> {
   const evolution = await readEvolution(evolutionDir(name));
   if (!evolution) throw new Error(`no Evolution ${name} in runs/evolutions/`);
-  const member = evolution.generations.flatMap((g) => g.genomes).find((m) => m.id === id);
-  if (!member) throw new Error(`the Evolution ${name} has no Genome ${id}`);
-  return member.genome;
+  // An elite plays again in each Generation, with the frame limit of that Generation: the last Generation that holds the Genome gives the Run.
+  const generation = evolution.generations.findLast((g) => g.genomes.some((m) => m.id === id));
+  const member = generation?.genomes.find((m) => m.id === id);
+  if (!generation || !member) throw new Error(`the Evolution ${name} has no Genome ${id}`);
+  const { noProgressLimit, goal } = evolution.settings;
+  return { genome: member.genome, run: { seed: evolution.seeds.training, frameBudget: generation.frameBudget, noProgressLimit, goal } };
 }
 
 /** The Run records of all the Evolutions, as paths in the runs folder: `evolutions/<name>/<file>`. */
