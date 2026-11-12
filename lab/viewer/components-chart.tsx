@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { fraction, LABEL, TONES, type Tone, useWidth } from "./components";
+import { fraction, LABEL, TONES, type Tone, Tooltip, useWidth } from "./components";
 
 export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; max?: number; tone?: Tone }) {
   const part = fraction(Math.abs(value), max) * 50;
@@ -12,6 +12,26 @@ export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; 
       />
       <span class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-fg/45" />
     </div>
+  );
+}
+
+/** `color`: a color token of the theme, for example "series-1". */
+export type BarSegment = { label: string; value: number; color: string };
+
+export function StackedBar({ segments, max, format = (value) => value.toFixed(1) }: { segments: readonly BarSegment[]; max?: number; format?: (value: number) => string }) {
+  const shown = segments.filter((segment) => segment.value > 0);
+  const total = shown.reduce((sum, segment) => sum + segment.value, 0);
+  const tip = segments.length === 0 ? "No value" : segments.map((segment) => `${segment.label} ${format(segment.value)}`).join(" · ");
+  return (
+    <Tooltip text={tip} wide>
+      <div role="img" aria-label={tip} class="relative h-2.5 w-full overflow-hidden rounded-full bg-track">
+        <div class="flex h-full gap-0.5 transition-[width] duration-300 ease-out" style={{ width: `${fraction(total, max ?? total) * 100}%` }}>
+          {shown.map((segment) => (
+            <span key={segment.label} class="h-full min-w-px transition-[flex-grow] duration-300 ease-out" style={{ flex: `${segment.value} 1 0`, background: `var(--color-${segment.color})` }} />
+          ))}
+        </div>
+      </div>
+    </Tooltip>
   );
 }
 

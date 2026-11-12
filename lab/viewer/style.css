@@ -116,6 +116,14 @@
   --color-model-grok: #000;
   --color-model-genetic: #c45ad8;
 
+  /* The categorical colors of a chart, in a fixed order: the first series takes series-1. Checked for color blindness on the surface of a Card. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+
   --color-type-normal: #a8a878;
   --color-type-fight: #c03028;
   --color-type-flying: #a890f0;

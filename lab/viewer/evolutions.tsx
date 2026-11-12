@@ -2,16 +2,27 @@ import { Dna, Flag, Gauge, Layers, Milestone, Play, RotateCcw, Square, Timer, Tr
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { Evolution, EvolutionFacts, Generation } from "../src/genetic/evolution";
+import type { Fitness } from "../src/genetic/fitness";
 import type { EvolutionRun } from "../src/genetic/evolve-process";
 import { GROUP_NAMES, GROUPS, type Genome, weightOf } from "../src/genetic/genome";
 import { BESTS_RACE, type ClientMessage, DEFAULT_PARALLEL, evolutionPath, generationRace, MAX_PARALLEL, PLAIN_NAME } from "../src/protocol";
-import { Bar, Button, Card, Code, Field, Input, LABEL, Pill, Slider, StatTile, TermList, type Tone, Tooltip } from "./components";
-import { GenerationChart, SignedBar } from "./components-chart";
+import { Bar, Button, Card, Code, Field, Input, LABEL, Legend, Pill, Slider, StatTile, TermList, type Tone, Tooltip } from "./components";
+import { GenerationChart, SignedBar, StackedBar } from "./components-chart";
 import { Select } from "./components-layers";
 import { fetched, Store, useStore } from "./cursor";
+import { GhostState } from "./race-cards";
 
 type Member = Generation["genomes"][number];
 
+// The terms of the bars, in the order of the series colors. `frames` is negative and small: the rows give its value as a number.
+const BAR_TERMS = ["milestones", "maps", "exits", "texts", "triggers", "levels"] as const;
+type Terms = Partial<Fitness["terms"]>;
+
+/** The points of each term of the bars, with `undefined` for a term that the Fitness version of the file does not have (`triggers` before version 2). */
+const pointsOf = (terms: Terms) => BAR_TERMS.map((term) => terms[term]?.points);
+const seriesOf = (i: number) => `series-${i + 1}`;
+const segmentsOf = (points: readonly (number | undefined)[]) => points.flatMap((value, i) => (value === undefined ? [] : [{ label: BAR_TERMS[i], value, color: seriesOf(i) }]));
+const ROW = "grid grid-cols-[3ch_8ch_1fr_7ch_7ch] items-center gap-3 @3xl:grid-cols-[3ch_8ch_1fr_7ch_7ch_14ch_22ch]";
 
 const fitnessText = (value: number) => value.toFixed(2);
 const count = (value: number) => value.toLocaleString("en-US");
@@ -172,6 +183,95 @@ function BestCard({ evolution, best, record, actions, name }: { evolution: Evolu
   );
 }
 
+function MeanTerms({ genomes, max, version }: { genomes: readonly Member[]; max: number; version: string }) {
+  const mean = (value: (m: Member) => number) => genomes.reduce((sum, m) => sum + value(m), 0) / genomes.length;
+  const note = mean((m) => m.fitness);
+  const means = BAR_TERMS.map((term) => (genomes[0].terms[term] === undefined ? undefined : mean((m) => m.terms[term]?.points ?? 0)));
+  const share = (points: number) => (note > 0 ? ` · ${((points / note) * 100).toFixed(0)} %` : "");
+  return (
+    <div class="grid grid-cols-1 gap-4 @3xl:grid-cols-[1fr_minmax(0,420px)]">
+      <div class="flex min-w-0 flex-col gap-2">
+        <span class={LABEL}>Mean Fitness {fitnessText(note)}</span>
+        <StackedBar segments={segmentsOf(means)} max={max} format={fitnessText} />
+        <span class="text-xs text-faint">
+          The bar of the mean has the scale of the rows: the full width is the largest sum of points, the sum of the best Genome. The term frames gives {fitnessText(mean((m) => m.terms.frames.points))} on average, out of the bars.
+        </span>
+      </div>
+      <Legend
+        title="Mean points of each term"
+        columns={2}
+        items={means.map((points, i) => ({ label: points === undefined ? `${BAR_TERMS[i]}: not in Fitness v${version}` : `${BAR_TERMS[i]} ${fitnessText(points)}${share(points)}`, style: `background: var(--color-${seriesOf(i)})` }))}
+      />
+    </div>
+  );
+}
+
+function GenomeRow({ rank, member, max }: { rank: number; member: Member; max: number }) {
+  const milestones = member.milestones.join(", ");
+  return (
+    <div class={`${ROW} py-1 text-xs tabular-nums`}>
+      <span class="text-right text-faint">{rank}</span>
+      <span class="truncate font-mono">{member.id}</span>
+      <StackedBar segments={segmentsOf(pointsOf(member.terms))} max={max} format={fitnessText} />
+      <span class="text-right font-semibold">{fitnessText(member.fitness)}</span>
+      <span class="text-right text-muted">{fitnessText(member.terms.frames.points)}</span>
+      <span class="hidden @3xl:flex">
+        <GhostState ghost={{ result: member.endReason, battle: null }} />
+      </span>
+      <span class="hidden min-w-0 text-muted @3xl:flex">
+        {milestones ? (
+          <Tooltip text={milestones}>
+            <span class="truncate">{milestones}</span>
+          </Tooltip>
+        ) : (
+          "–"
+        )}
+      </span>
+    </div>
+  );
+}
+
+function GenerationCard({ generation, version, race, openRace }: { generation: Generation; version: string; race: boolean; openRace: () => void }) {
+  const genomes = generation.genomes.toSorted((a, b) => b.fitness - a.fitness);
+  const max = Math.max(...genomes.map((m) => pointsOf(m.terms).reduce<number>((sum, points) => sum + Math.max(0, points ?? 0), 0)));
+  return (
+    <Card>
+      <div class="@container flex flex-col gap-4">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span class={LABEL}>Generation {generation.number}</span>
+          <span class="text-xs text-muted tabular-nums">
+            {genomes.length} Genomes, by Fitness · frame limit {count(generation.frameBudget)}
+          </span>
+          <span class="ml-auto">
+            <Tooltip text={race ? "The Genomes of this Generation, in the Race tab" : "This Generation has no Race"}>
+              <Button size="sm" disabled={!race} onClick={openRace}>
+                <Flag size={12} /> Race of Generation {generation.number}
+              </Button>
+            </Tooltip>
+          </span>
+        </div>
+        <MeanTerms genomes={genomes} max={max} version={version} />
+        <div class="flex min-w-0 flex-col">
+          <div class={`${ROW} border-b border-line pb-1.5 text-xs text-faint`}>
+            <span class="text-right">#</span>
+            <span>Genome</span>
+            <span>Points of each term</span>
+            <span class="text-right">Fitness</span>
+            <span class="text-right">frames</span>
+            <span class="hidden @3xl:block">End</span>
+            <span class="hidden @3xl:block">Milestones</span>
+          </div>
+          <div class="max-h-[520px] overflow-y-auto">
+            {genomes.map((member, i) => (
+              <GenomeRow key={member.id} rank={i + 1} member={member} max={max} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 const COLUMNS = "grid grid-cols-1 gap-4 @5xl:grid-cols-[1fr_340px]";
 
 function Dashboard({ name, evolution, races, actions, side }: { name: string; evolution: Evolution; races: ReadonlySet<string>; actions: Actions; side: ComponentChildren }) {
@@ -184,7 +284,7 @@ function Dashboard({ name, evolution, races, actions, side }: { name: string; ev
   const stuck = last.genomes.filter((m) => m.endReason === "no progress").length;
   const openRace = (generation: number) => actions.openRace(raceOf(name, generation));
   const picked = Number(pick) || generations.length;
-  const hasRaces = races.has(raceOf(name, generations[0].number));
+  const pickedGeneration = generations.find((g) => g.number === picked) ?? last;
   return (
     <>
       <div class="grid grid-cols-2 gap-3 @3xl:grid-cols-3 @5xl:grid-cols-5">
@@ -200,22 +300,20 @@ function Dashboard({ name, evolution, races, actions, side }: { name: string; ev
             <GenerationChart
               label="Fitness by Generation"
               points={generations.map((g) => ({ generation: g.number, best: g.genomes[0].fitness, mean: meanOf(g), newBest: g.record !== undefined }))}
-              pickText={hasRaces ? "its Race" : undefined}
-              onPick={hasRaces ? openRace : undefined}
+              pickText="its Genomes"
+              onPick={(generation) => setPick(String(generation))}
             />
             <div class="flex flex-wrap items-center gap-2">
               <div class="w-44">
-                <Select options={generations.map((g) => ({ value: String(g.number), label: `Generation ${g.number}`, disabledReason: races.has(raceOf(name, g.number)) ? undefined : "no Race" }))} value={String(picked)} title="A Generation" onChange={setPick} />
+                <Select options={generations.map((g) => ({ value: String(g.number), label: `Generation ${g.number}` }))} value={String(pickedGeneration.number)} title="The Generation of the card under the chart" onChange={setPick} />
               </div>
-              <Button size="sm" disabled={!races.has(raceOf(name, picked))} onClick={() => openRace(picked)}>
-                <Flag size={13} /> Race of Generation {picked}
-              </Button>
-              {hasRaces && <span class="text-xs text-faint">Or click the chart at a Generation.</span>}
+              <span class="text-xs text-faint">Or click the chart at a Generation: the card under the chart shows its Genomes.</span>
             </div>
           </div>
         </Card>
         {side}
       </div>
+      <GenerationCard generation={pickedGeneration} version={evolution.fitnessVersion} race={races.has(raceOf(name, pickedGeneration.number))} openRace={() => openRace(pickedGeneration.number)} />
       <BestCard evolution={evolution} best={best} record={bestGeneration.record} actions={actions} name={name} />
     </>
   );

@@ -6,7 +6,7 @@ import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
-import { BotsDemo, GenerationChartDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, SignedBarDemo, TimelineDemo } from "./components-tab-lab";
+import { BotsDemo, GenerationChartDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, SignedBarDemo, StackedBarDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -790,6 +790,12 @@ const ENTRIES: Entry[] = [
     title: "GenerationChart",
     rule: "A value by Generation of an Evolution: the best value as an accent line on a light accent area, the mean as an info line, and an accent dot at each new best. The header gives the values of the last Generation. A hover moves a line and two points to the nearest Generation, and the header then gives its values. With onPick, a click gives that Generation, and the header tells what the click does. The scale starts at 0, or lower for a negative value. One Generation gives a dot for each line; no Generation gives a short text.",
     demo: () => <GenerationChartDemo />,
+  },
+  {
+    category: "data",
+    title: "StackedBar",
+    rule: "The parts of a sum on one bar: one segment for each part, in the order of the list, each in a color token of the theme (series-1, series-2 and so on, in this order). A gap of 2 px separates two segments. A segment of 0 or less does not show. With max, the bar takes the part sum / max of the width, so that the bars of a list share one scale; with no max, it takes the full width. Use a Legend next to it. A hover gives the value of each part. The segments move.",
+    demo: () => <StackedBarDemo />,
   },
   {
     category: "data",

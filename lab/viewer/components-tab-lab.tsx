@@ -3,8 +3,8 @@ import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
 import type { BotInfo, ClientMessage, ProviderStatus, RecordFacts, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
-import { Badges, Button, Tabs } from "./components";
-import { GenerationChart, type GenerationPoint, SignedBar } from "./components-chart";
+import { Badges, Button, Legend, Tabs } from "./components";
+import { type BarSegment, GenerationChart, type GenerationPoint, SignedBar, StackedBar } from "./components-chart";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
@@ -610,6 +610,47 @@ export function SignedBarDemo() {
           Mutate
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setWeights([1, 0.62, 0.05, 0, -0.4, -1, 1.6])}>
+          Reset
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const PARTS = ["maps", "exits", "texts", "levels"];
+const SEGMENTS: BarSegment[] = [50, 15, 34, 20].map((value, i) => ({ label: PARTS[i], value, color: `series-${i + 1}` }));
+
+export function StackedBarDemo() {
+  const [segments, setSegments] = useState(SEGMENTS);
+  const rows: [string, readonly BarSegment[]][] = [
+    ["several segments", segments],
+    ["one segment", segments.slice(0, 1)],
+    ["a zero segment (texts)", segments.map((s) => (s.label === "texts" ? { ...s, value: 0 } : s))],
+    ["empty", []],
+  ];
+  const max = Math.max(...segments.map((s) => s.value)) * segments.length;
+  return (
+    <div class="flex max-w-[620px] flex-col gap-4">
+      <div class="flex flex-col gap-3">
+        {rows.map(([name, row]) => (
+          <div key={name} class="grid grid-cols-[22ch_1fr_6ch] items-center gap-3 text-xs">
+            <span class="text-muted">{name}</span>
+            <StackedBar segments={row} max={max} />
+            <span class="text-right tabular-nums">{row.reduce((sum, s) => sum + s.value, 0).toFixed(1)}</span>
+          </div>
+        ))}
+        <div class="grid grid-cols-[22ch_1fr_6ch] items-center gap-3 text-xs">
+          <span class="text-muted">no max: the full width</span>
+          <StackedBar segments={segments} />
+          <span />
+        </div>
+      </div>
+      <Legend title="Colors" columns={2} items={segments.map((s) => ({ label: s.label, style: `background: var(--color-${s.color})` }))} note="One scale for the rows: max is the largest possible sum." />
+      <div class="flex gap-2">
+        <Button size="sm" onClick={() => setSegments((all) => all.map((s, i) => ({ ...s, value: Math.max(1, s.value + (i % 2 === 0 ? 8 : -6)) })))}>
+          Change
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setSegments(SEGMENTS)}>
           Reset
         </Button>
       </div>

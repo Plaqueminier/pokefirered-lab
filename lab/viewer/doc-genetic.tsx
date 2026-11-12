@@ -196,13 +196,15 @@ export function EvolutionsTabPage() {
         ["Refusals of the form", "a name with other characters than letters, digits, `-` and `_`; an Evolution that ended; an Evolution of another version of the Genetic bot or of the Fitness; a file of an older format. The server tells the reason in `/evolution/list.json`."],
         ["Older format", "the page also shows an Evolution file of format 1 (Genetic bot version 1): it has no Race, and it does not continue. A Genome of version 1 has the group `walk` only: its groups `choice` and `battle` show “not in the Genetic bot version 1”, with the weight 0."],
         ["Best Genome", "the best Genome of the Evolution is the best Genome of the last Generation with a new best: only a new best writes a Run record. “Born in Generation n” is the first Generation that holds its id: an elite keeps its id and its parents. An elite plays again in each Generation, and its Fitness can change when the frame limit grows."],
+        ["Scale of the bars", "the bars of a Generation card share one scale: the full width is the largest sum of the points of the terms, the sum of the best Genome. So the length of a bar compares two Genomes, and the length of a segment compares two terms."],
+        ["Fitness version 1", "a file of the Fitness version 1 has no term `triggers`: the legend tells “not in Fitness v1”, and the bars have no segment for it."],
         ["Server routes", "`/evolution/list.json` lists the Evolutions of `runs/evolutions/`, each with its end or the reason why it does not continue; `/evolution/file/<name>` gives the file of one Evolution."],
       ]}
     >
       <div class={GRID3}>
         <DocCard icon={LayoutDashboard} title="Header" lines={["the Select of the Evolutions of `runs/evolutions/`", "its state: running, stops after, stopped after Generation n, ended, does not continue", "the button “Race of the bests”"]} />
         <DocCard icon={Gauge} title="Five numbers" lines={["the Generations, with the versions of the bot and of the Fitness", "the best Fitness and its Genome, the mean of the last Generation", "the Milestones of the best, the frame limit and the Runs that end at Stuck 60"]} />
-        <DocCard icon={ChartLine} title="Fitness by Generation" lines={["the best Fitness (accent) and the mean Fitness (info) of each Generation", "a dot at each new best", "a click opens the Race of the Generation; the Select under the chart does the same with the keyboard"]} />
+        <DocCard icon={ChartLine} title="Fitness by Generation" lines={["the best Fitness (accent) and the mean Fitness (info) of each Generation", "a dot at each new best", "a click shows the Generation in the card under the chart; the Select under the chart does the same with the keyboard"]} />
       </div>
       <div class={BLOCKS2}>
         <Block label="Start, continue, stop" sub="The card at the right of the chart.">
@@ -223,6 +225,16 @@ export function EvolutionsTabPage() {
               ["Weights", "each weight from −1 to 1 on a bar from a centre line, in three columns: `walk`, `choice` and `battle`."],
               ["Fitness", "the points and the count of each term."],
               ["Replay its Run", "replays its Run record in the Lab tab."],
+            ]}
+          />
+        </Block>
+        <Block label="Generation n" sub="The card between the chart and the best Genome: how the Fitness of each Genome is made, to tune the points of the Fitness.">
+          <Terms
+            rows={[
+              ["Mean", "the mean Fitness of the Generation on a bar, and the mean points of each term with its part of the mean Fitness, in the legend of the colors."],
+              ["Rows", "the Genomes by Fitness: the rank, the Genome id, a bar of the points of each term (`milestones`, `maps`, `exits`, `texts`, `triggers`, `levels`, one color each), the Fitness, the points of `frames`, the end of the Run and the Milestones. A hover on a bar gives the points of each term."],
+              ["frames", "its points are negative and small: the row gives them as a number, out of the bar."],
+              ["Race of Generation n", "opens the Race of the Generation in the Race tab. A file of format 1 has no Race."],
             ]}
           />
         </Block>
