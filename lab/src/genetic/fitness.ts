@@ -1,7 +1,7 @@
 import type { RunEvent, RunRecord } from "../harness/record";
 
 /** A change of a weight or of a count is a new version. */
-export const FITNESS_VERSION = "2";
+export const FITNESS_VERSION = "3";
 
 type Term = "milestones" | "maps" | "exits" | "texts" | "triggers" | "levels" | "frames";
 
@@ -42,7 +42,8 @@ type ActionEvent = Extract<RunEvent, { type: "action" }>;
 // The record has no text event and does not tell a sign from a person: the text of a sign counts too.
 const isTalk = (event: ActionEvent) => event.action.name === "interact" && event.result.status === "done";
 
-const isTrigger = (event: ActionEvent) => event.result.status === "interrupted" && (event.result.reason === "trigger" || event.result.reason === "script");
+// The reason `script` is a sign that the game reads when the walk bumps into it ("Press START to open the MENU!"): it is not a trigger of the story.
+const isTrigger = (event: ActionEvent) => event.result.status === "interrupted" && event.result.reason === "trigger";
 
 /** The texts that the `readText` actions read after each action that `starts` accepts. */
 function textsAfter(events: readonly RunEvent[], starts: (event: ActionEvent) => boolean): string[][] {

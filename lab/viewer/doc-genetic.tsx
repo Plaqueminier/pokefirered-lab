@@ -88,7 +88,7 @@ export function FitnessPage() {
         ["Only distinct things", "a map, an exit and a text count one time each. A Run that walks between Pallet Town and Route 1 again and again gets no more points than a Run that walks there one time: it only has more frames."],
         ["Exits", "the record has no exit event. Each change of map is the exit from the old map to the new map, so the way back is another exit. Two doors between the same two maps count as one exit."],
         ["Texts", "the record has no event for the text of a person. A text is what the `readText` actions read after an `interact` that is `done`, as the Atlas joins it. The record does not tell a sign from a person, so the text of a sign counts too. A text that the game shows with no `interact` (a trigger, a battle) does not count here."],
-        ["Triggers", "an action that the game stops with the reason `trigger` or `script`, for example PROF. OAK who stops the player at the north of Pallet Town. Its first text tells the trigger, so a trigger that stops the player again with the same text (“Don't go away yet!”) counts one time. Version 2 adds this term: in version 1, a Run that met PROF. OAK got no points for it."],
+        ["Triggers", "an action that the game stops with the reason `trigger`, for example PROF. OAK who stops the player at the north of Pallet Town. Its first text tells the trigger, so a trigger that stops the player again with the same text (“Don't go away yet!”) counts one time. The reason `script` does not count: it is a sign that the game reads when the walk bumps into it. Version 2 added this term with the reason `script` too; version 3 keeps only `trigger`."],
         ["Levels", "the sum of the levels of the party in the last `team` entry of the State track. The logarithm makes the first levels important, and many levels with no progress are not."],
         ["Frames", "the frames of the Run result. A Continued Run counts the whole Run."],
         ["Detail", "the Fitness gives the note and, for each term, its count and its points: they show why a Genome got its note."],
@@ -102,7 +102,7 @@ export function FitnessPage() {
             ["10 × new maps", "the different maps of the `map` events, the first map included"],
             ["3 × new exits", "the different changes of map, from one map to another"],
             ["2 × new texts of people", "the different texts after an `interact`"],
-            ["10 × new triggers", "the different first texts after an action that a trigger or a script stops"],
+            ["10 × new triggers", "the different first texts after an action that a trigger stops"],
             ["20 × log2(1 + levels)", "the sum of the levels of the party at the end of the Run"],
             ["− frames / 100 000", "the frames of the Run"],
           ]}
