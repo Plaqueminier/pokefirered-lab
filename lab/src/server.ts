@@ -4,7 +4,8 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
-import { evolutionRaceNames, evolutionRecordNames } from "./genetic/evolution";
+import { evolutionList, evolutionRaceNames, evolutionRecordNames, shownEvolution } from "./genetic/evolution";
+import { EvolveProcess } from "./genetic/evolve-process";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
@@ -225,6 +226,12 @@ const live = new LivePlay(run);
 const pool = new RunPool(MAX_RUNS - 1);
 const grid = new GridPlay(pool);
 const writtenRecords = new Map<number, string>();
+// After a Generation, the Evolution can have a new Run record for the Select of the top bar.
+const evolution = new EvolveProcess((evolutionRun, problem) => {
+  send({ type: "evolution", run: evolutionRun });
+  if (problem) send({ type: "notice", text: problem });
+  if (evolutionRun?.played === 0) void sendRecords();
+});
 const settled = new Set<number>();
 
 /** What the Viewer sends of the Run that it shows. */
@@ -591,6 +598,14 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
     case "extend-run":
       send({ type: "notice", text: await extendRun(message.record, message.limit) });
       break;
+    case "start-evolution": {
+      const refusal = evolution.start(message.name, message.parallel);
+      if (refusal) send({ type: "notice", text: refusal });
+      break;
+    }
+    case "stop-evolution":
+      evolution.stop();
+      break;
     case "stop-run": {
       const poolRun = pool.runs.find((r) => r.id === message.runId);
       if (!poolRun || poolRun.end) break;
@@ -765,6 +780,11 @@ Bun.serve({
     "/race/world.json": () => (raceWorld === null ? new Response("The world of the Race did not load: see the log of the server", { status: 500 }) : new Response(raceWorld, { headers: { "content-type": "application/json" } })),
     "/race/list.json": async () => Response.json([...(await raceNames()), ...(await evolutionRaceNames()).sort()]),
     "/race/file/:name": (req) => raceFile(req.params.name),
+    "/evolution/list.json": async () => Response.json(await evolutionList()),
+    "/evolution/file/:name": async (req) => {
+      const file = await shownEvolution(req.params.name).catch(() => null);
+      return file ? Response.json(file) : new Response("Not found", { status: 404 });
+    },
   },
   fetch(req, server) {
     if (new URL(req.url).pathname === "/ws" && server.upgrade(req)) return;
@@ -786,6 +806,7 @@ Bun.serve({
       sendMap(shown.state(), ws);
       sendSight(ws);
       sendInventory(ws);
+      send({ type: "evolution", run: evolution.run }, ws);
     },
     close(ws) {
       clients.delete(ws);

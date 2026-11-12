@@ -1,4 +1,4 @@
-import { BookOpen, Flag, Grid2x2, LayoutGrid, Shapes } from "lucide-preact";
+import { BookOpen, Dna, Flag, Grid2x2, LayoutGrid, Shapes } from "lucide-preact";
 import { render } from "preact";
 import { Tabs } from "./components";
 import { DOC_PARAM } from "./doc";
@@ -7,6 +7,7 @@ const TABS = [
   { id: "lab", label: "Lab", icon: <LayoutGrid size={15} /> },
   { id: "grid", label: "Grid", icon: <Grid2x2 size={15} /> },
   { id: "race", label: "Race", icon: <Flag size={15} /> },
+  { id: "evolutions", label: "Evolutions", icon: <Dna size={15} /> },
   { id: "doc", label: "Doc", icon: <BookOpen size={15} /> },
   { id: "components", label: "Components", icon: <Shapes size={15} /> },
 ] as const;

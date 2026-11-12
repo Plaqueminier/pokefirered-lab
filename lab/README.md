@@ -76,6 +76,8 @@ The command starts the **Evolution** `<name>` (letters, digits, `-` and `_`), or
 
 The folder holds `evolution.json` (the settings, the seeds, the **Fitness** version, each **Genome** of each **Generation** with its id, the ids of its parents, its **Fitness** and the points of each term, and the results of the tests on the test seeds), and a **Run record** for each **Generation** that gives a new best **Fitness**. The header of this record holds the **Genome**, its id, the **Fitness** version and the **Fitness**. The folder also holds the **Races** of the **Evolution** (see "Make a Race"). The Select of the top bar of the Viewer replays these records, in a group for each **Evolution**. The page "Evolution" of the Doc tab gives the settings.
 
+The Evolutions tab of the Viewer does the same as the command: it starts an **Evolution** or continues it, with the same name and the same number of **Runs** at the same time. The server of the Viewer then plays `bun run evolve`, one **Evolution** at a time. The tab shows the **Generations** of each **Evolution** of `runs/evolutions/`: the best and the mean **Fitness** of each **Generation**, the best **Genome** and its weights, and a button that opens the **Race** of a **Generation** in the Race tab. Its button "Stop after this Generation" stops the **Evolution** when the **Generation** that plays ends, so no **Generation** is lost. The page "Page of the Evolutions" of the Doc tab tells the tab.
+
 ## Test the learn-move prompt
 
 `bun run learn-lab` asks models again at the learn-move questions of the **Run records**, with the recorded prompt or with a changed prompt. No game runs. The files go to `evals/learn-move/`, which Git ignores.
@@ -111,7 +113,7 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/game.ts` and the files next to it: the reads of the game state (battle, menus, Bag, PC, shop, party).
 - `src/harness/`: the API of the **Bot**, the **Atlas**, the **Run record** and the pool of **Runs**.
 - `src/model/`: the parts of the model bot (request, prompt, answer).
-- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria), the **Fitness** of a **Run record**, and the **Evolution** with its command.
+- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria), the **Fitness** of a **Run record**, and the **Evolution** with its command, which the Viewer can also start.
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.

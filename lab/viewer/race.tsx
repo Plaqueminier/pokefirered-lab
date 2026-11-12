@@ -306,8 +306,9 @@ async function readRace(name: string): Promise<RaceFile> {
 // The list of the Races, the Race file and the world.
 const LOAD_STEPS = 3;
 
-function RaceRoot({ shown }: { shown: Store<boolean> }) {
+function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name: string } | null> }) {
   const visible = useStore(shown);
+  const askedRace = useStore(asked);
   const [names, setNames] = useState<string[] | null>(null);
   const [name, setName] = useState("");
   const [view, setView] = useState<RaceView | null>(null);
@@ -330,6 +331,10 @@ function RaceRoot({ shown }: { shown: Store<boolean> }) {
       })
       .catch((failure) => setListError(String(failure)));
   }, [visible]);
+
+  useEffect(() => {
+    if (askedRace) setName(askedRace.name);
+  }, [askedRace]);
 
   useEffect(() => {
     if (!name) return;
@@ -398,9 +403,16 @@ function RaceRoot({ shown }: { shown: Store<boolean> }) {
 
 export class RaceTab {
   readonly #shown = new Store(false);
+  // A new object at each ask: the same Race asked again opens again after a change of the Select.
+  readonly #asked = new Store<{ name: string } | null>(null);
 
   constructor(root: HTMLElement) {
-    render(<RaceRoot shown={this.#shown} />, root);
+    render(<RaceRoot shown={this.#shown} asked={this.#asked} />, root);
+  }
+
+  /** Opens this Race, for example a Race of an Evolution from the page of the Evolutions. */
+  open(name: string): void {
+    this.#asked.set({ name });
   }
 
   onTab(shown: boolean): void {

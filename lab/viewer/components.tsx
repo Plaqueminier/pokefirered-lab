@@ -268,6 +268,20 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
   );
 }
 
+/** A value from −max to max: the fill goes from the centre line to the right for a positive value, to the left for a negative value. */
+export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; max?: number; tone?: Tone }) {
+  const part = fraction(Math.abs(value), max) * 50;
+  return (
+    <div class="relative h-1.5 overflow-hidden rounded-full bg-track">
+      <span
+        class={`absolute inset-y-0 transition-[left,width] duration-300 ease-out ${TONES[tone].fill} ${value < 0 ? "rounded-l-full" : "rounded-r-full"}`}
+        style={{ left: `${value < 0 ? 50 - part : 50}%`, width: `${part}%` }}
+      />
+      <span class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-fg/45" />
+    </div>
+  );
+}
+
 // The value that the user sent, until the value from the server is the same or the time is over: the control does not flicker back to the old value.
 export function usePending<T>(server: T, same: (a: T, b: T) => boolean, ms: number): [T, (sent: T) => void] {
   const [pending, setPending] = useState<{ value: T } | null>(null);

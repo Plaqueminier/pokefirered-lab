@@ -2,7 +2,8 @@
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { geneticBot } from "../../bots/genetic";
-import { endOf, evolutionDir, evolve, type Generation, type Player, readEvolution } from "./evolution";
+import { endOf, evolutionDir, evolve, type Generation, type Player, readEvolution, SETTINGS } from "./evolution";
+import { type EvolveNews, STOP_EVOLUTION } from "./evolve-process";
 import type { EvolveEnd, EvolveJob } from "./evolve-worker";
 
 const USAGE = "Usage: bun run evolve <name> [--parallel <1 to 18>]";
@@ -17,6 +18,13 @@ if (positionals.length !== 1 || !Number.isInteger(parallel) || parallel < 1 || p
   process.exit(1);
 }
 const [name] = positionals;
+
+// Started from the page of the Evolutions: the Viewer server gets the news over IPC, and can ask for a stop.
+const tell = (news: EvolveNews) => process.send?.(news);
+let stopAsked = false;
+process.on("message", (message) => {
+  if (message === STOP_EVOLUTION) stopAsked = true;
+});
 
 /** Each worker plays one Run at a time; the Runs wait in a queue for a free worker. */
 class EvolvePool {
@@ -47,6 +55,7 @@ class EvolvePool {
     }).then(({ played, error }) => {
       if (!played) throw new Error(`a Run of the Evolution did not play: ${error}`);
       if (error) console.error(`A Run stops with an error of the Bot (its Run record counts): ${error}`);
+      tell({ kind: "run" });
       if (played.record.header.seed !== seed) throw new Error(`the Run plays on the seed ${played.record.header.seed}, not on the seed ${seed} of the Evolution`);
       return played;
     });
@@ -77,6 +86,7 @@ const pool = new EvolvePool(parallel);
 const seed = before ? undefined : crypto.getRandomValues(new Uint32Array(1))[0];
 console.log(before ? `The Evolution ${name} continues after Generation ${before.generations.length}, in ${relative(process.cwd(), dir)}` : `A new Evolution ${name}, seed ${seed}, in ${relative(process.cwd(), dir)}`);
 console.log(`${parallel} Runs at the same time`);
+tell({ kind: "start", generation: (before?.generations.length ?? 0) + 1, population: (before?.settings ?? SETTINGS).population });
 let start = performance.now();
 const onGeneration = ({ number, frameBudget, genomes, record, tests }: Generation) => {
   const seconds = (performance.now() - start) / 1000;
@@ -87,6 +97,13 @@ const onGeneration = ({ number, frameBudget, genomes, record, tests }: Generatio
   const newBest = record === undefined ? "" : `, new best: Run record ${relative(process.cwd(), `${dir}/${record}`)}`;
   console.log(`Generation ${number}: best Fitness ${best.fitness.toFixed(2)} (Genome ${best.id}, ${best.frames} frames, ${best.endReason}, ${milestones}), mean ${mean.toFixed(2)}, frame limit ${frameBudget}, ${seconds.toFixed(1)} s${newBest}`);
   for (const test of tests ?? []) console.log(`  Test of Genome ${best.id} on the seed 0x${test.seed.toString(16)}: Fitness ${test.fitness.toFixed(2)}, ${test.frames} frames, ${test.endReason}, ${test.milestones.join(", ") || "no Milestone"}`);
+  tell({ kind: "generation", number, seconds });
+  // The file holds this Generation: the next one has played nothing yet.
+  if (stopAsked) {
+    console.log(`The Evolution ${name} stops after Generation ${number}, as asked.`);
+    pool.close();
+    process.exit(0);
+  }
 };
 try {
   const evolution = await evolve(dir, { play: pool.play, seed, onGeneration });
@@ -96,4 +113,6 @@ try {
   process.exitCode = 1;
 } finally {
   pool.close();
+  // An open IPC channel keeps the process alive.
+  process.disconnect?.();
 }

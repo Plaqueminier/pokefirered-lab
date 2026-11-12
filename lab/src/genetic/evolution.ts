@@ -21,7 +21,7 @@ const ROM_SEED = 0x4c41;
 const TEST_SEEDS = [0x0001, 0x1234, 0xbeef];
 
 // The settings of v1 (spec #88). The file keeps them, so that a continued Evolution keeps the settings of its start.
-const SETTINGS = {
+export const SETTINGS = {
   population: 50,
   elites: 5,
   parents: 25,
@@ -196,6 +196,25 @@ async function writeEvolution(dir: string, evolution: Evolution): Promise<void> 
   const path = join(dir, EVOLUTION_FILE);
   await Bun.write(`${path}.tmp`, JSON.stringify(evolution));
   await rename(`${path}.tmp`, path);
+}
+
+/** An Evolution of the folder for the page of the Evolutions. `problem`: why it does not continue, as its file has an older format. */
+export type EvolutionFacts = { name: string; generations: number; bot: Evolution["bot"]; end: string | null; problem: string | null };
+
+/** The page of the Evolutions also shows a file of an older format: this read does not check the format. */
+export async function shownEvolution(name: string): Promise<Evolution | null> {
+  const file = Bun.file(join(evolutionDir(name), EVOLUTION_FILE));
+  return (await file.exists()) ? file.json() : null;
+}
+
+export async function evolutionList(): Promise<EvolutionFacts[]> {
+  const names = (await readdir(EVOLUTIONS_DIR).catch(() => [])).filter((name) => NAME.test(name)).sort();
+  const all = await Promise.all(names.map(async (name) => ({ name, evolution: await shownEvolution(name).catch(() => null) })));
+  return all.flatMap(({ name, evolution }) => {
+    if (!evolution) return [];
+    const problem = evolution.format === EVOLUTION_FORMAT ? null : `the format of its file is ${evolution.format}, not ${EVOLUTION_FORMAT}`;
+    return [{ name, generations: evolution.generations.length, bot: evolution.bot, end: endOf(evolution), problem }];
+  });
 }
 
 /** The Genome with this id in any Generation of the Evolution `name`, and what its Run in the Evolution used: the same Genome and `run` give the same Run. */

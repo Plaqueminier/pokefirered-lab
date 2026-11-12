@@ -1,11 +1,11 @@
 // Issue #61. The Doc tells what the lab can do; lab/README.md gives only the setup and the commands.
-import { Bike, Bot, Brain, CircleStop, Construction, Dna, FileClock, Flag, Gamepad2, Ghost, Grid2x2, Lightbulb, ListTree, Medal, MessageSquareText, Monitor, Plug, Sprout, Swords, Workflow } from "lucide-preact";
+import { Bike, Bot, Brain, CircleStop, Construction, Dna, FileClock, Flag, Gamepad2, Ghost, Grid2x2, LayoutDashboard, Lightbulb, ListTree, Medal, MessageSquareText, Monitor, Plug, Sprout, Swords, Workflow } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, render } from "preact";
 import { useRef, useState } from "preact/hooks";
 import type { BotInfo } from "../src/protocol";
 import { Button, LABEL } from "./components";
 import type { Readable } from "./cursor";
-import { EvolutionPage, EvolutionRacesPage, FitnessPage, GenomePage } from "./doc-genetic";
+import { EvolutionPage, EvolutionRacesPage, EvolutionsTabPage, FitnessPage, GenomePage } from "./doc-genetic";
 import { EndPage, MacroPage, MilestonesPage, NotYetPage, RecordPage, SpeedPage } from "./doc-harness";
 import { BotsContext, BotsPage, DoubleBattlePage, MemoryPage, ProgressPage, PromptPage, ProvidersPage } from "./doc-model";
 import { GridPage, LoopPage, PrinciplePage, RacePage, ViewerPage } from "./doc-overview";
@@ -53,6 +53,7 @@ const GROUPS: { title: string; pages: DocPage[] }[] = [
       { id: "fitness", title: "Fitness", icon: Medal, render: () => <FitnessPage /> },
       { id: "evolution", title: "Evolution", icon: Sprout, render: () => <EvolutionPage /> },
       { id: "evolution-races", title: "Races of an Evolution", icon: Ghost, render: () => <EvolutionRacesPage /> },
+      { id: "evolutions-tab", title: "Page of the Evolutions", heading: "The page of the Evolutions", icon: LayoutDashboard, render: () => <EvolutionsTabPage /> },
     ],
   },
 ];

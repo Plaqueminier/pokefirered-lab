@@ -3,6 +3,7 @@ import type { RunEvent } from "../src/harness/record";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { mountDocTab } from "./doc";
+import { EvolutionsTab } from "./evolutions";
 import { ScreenFeed, SharedCursor, Store } from "./cursor";
 import { GridTab } from "./grid";
 import { runKey } from "./runs";
@@ -58,21 +59,33 @@ let gridShown = false;
 const fromGrid = new Store<string | null>(null);
 const gridTab = new GridTab($("grid"), { send, screens, fromGrid, openLab: () => tabs.show("lab") });
 const raceTab = new RaceTab($("race"));
+const bots = new Store<BotInfo[] | null>(null);
+const evolutionsTab = new EvolutionsTab($("evolutions"), bots, {
+  send,
+  openRace: (name) => {
+    raceTab.open(name);
+    tabs.show("race");
+  },
+  replay: (name) => {
+    send({ type: "replay", name });
+    tabs.show("lab");
+  },
+});
 const tabs = new ViewerTabs(
   {
     nav: $("nav"),
-    tabs: { lab: $("lab"), grid: $("grid"), race: $("race"), doc: $("doc"), components: $("components") },
+    tabs: { lab: $("lab"), grid: $("grid"), race: $("race"), evolutions: $("evolutions"), doc: $("doc"), components: $("components") },
   },
   (tab) => {
     if (tab !== "lab") releaseKeys();
     gridShown = tab === "grid";
     gridTab.onTab(gridShown);
     raceTab.onTab(tab === "race");
+    evolutionsTab.onTab(tab === "evolutions");
     syncAudio();
   },
 );
 mountComponentsTab($("components"));
-const bots = new Store<BotInfo[] | null>(null);
 mountDocTab($("doc"), bots);
 const cellTip = new Store<CellTip | null>(null);
 const map = new WholeMap(send, cellTip);
@@ -192,6 +205,9 @@ function onMessage(message: ServerMessage): void {
       break;
     case "events-added":
       onEvents([...runEvents.slice(0, message.from), ...message.events]);
+      break;
+    case "evolution":
+      evolutionsTab.onRun(message.run);
       break;
   }
 }

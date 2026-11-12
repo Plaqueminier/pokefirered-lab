@@ -96,9 +96,9 @@ const LAB_SPOTS = [
 export function ViewerPage() {
   return (
     <Page
-      lead="Five tabs: Lab, Grid, Race, Doc and Components; a change of tab stops no Run. This page tells the Lab tab; the Grid and the Race have their own pages."
+      lead="Six tabs: Lab, Grid, Race, Evolutions, Doc and Components; a change of tab stops no Run. This page tells the Lab tab; the Grid, the Race and the Evolutions have their own pages."
       details={[
-        ["Keyboard", "in the Grid, Race, Doc and Components tabs, the keyboard does not play. In the Grid, Doc and Components tabs, the arrow keys scroll the page."],
+        ["Keyboard", "in the Grid, Race, Evolutions, Doc and Components tabs, the keyboard does not play. In the Grid, Evolutions, Doc and Components tabs, the arrow keys scroll the page."],
         ["Top bar", "on one line: the Run (choose another Run, or a Run record to replay, in its list), a button “Bots” (start N Runs of a Bot with their maximum total cost or tokens, stop the shown Run), the cost or the tokens with the limit, the Stuck counter, the Model calls, the badges, the money, the map and the time."],
         ["Replay", "a hover on the button next to the Run shows the facts of the Run record, with the number of its Game events."],
         ["Screen controls", "pause, the speeds from ×1 to ×16 and Max, the overlay with its legend on a hover, the sound and its volume, the savestate, the Starting save, and the keys on a hover."],
@@ -121,10 +121,10 @@ export function ViewerPage() {
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],
-        ["Doc", "the fourth tab: 17 short pages in 3 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
+        ["Doc", "the fifth tab: 22 short pages in 4 groups, in a side list; the page is in the URL (`?doc=<page>`), and each page ends with Details."],
         [
           "Components",
-          "the fifth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
+          "the sixth tab: the design system of the Viewer (ADR 0004), each component in all its states, in five groups (Base, Controls, Data, Surfaces, Lab). Also the type colors, the PP, EXP and stat bars, the Pokémon card and its hover card, the popover, the toast, the badges, the filter chip, the collapsible block, the list row, the prompt text with colors, the card at the pointer, the legend and the key list; the tooltip is in the top layer. A new part of the Viewer uses these components.",
         ],
       ]}
     >
