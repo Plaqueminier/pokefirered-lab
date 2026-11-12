@@ -55,10 +55,22 @@ At each walk **Decision point**, the **Bot** lists the seen exits, people and si
 In `lab/`:
 
 ```
-bun run bot genetic --genome <Genome file> [player|full]
+bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full]
 ```
 
-The **Run** starts from the Starting save, and ends with `no progress` when the **Stuck counter** reaches 60. The command writes the **Run record** to `runs/` as for the model bot, and the Viewer replays it. The Viewer cannot start the **Genetic bot**.
+`<Evolution>:<Genome id>` plays a **Genome** of an **Evolution**, for example `first:104`. The **Run** starts from the Starting save, and ends with `no progress` when the **Stuck counter** reaches 60. The command writes the **Run record** to `runs/` as for the model bot, and the Viewer replays it. The Viewer cannot start the **Genetic bot**.
+
+## Run an Evolution
+
+In `lab/`:
+
+```
+bun run evolve <name> [--parallel <1 to 18>]
+```
+
+The command starts the **Evolution** `<name>` (letters, digits, `-` and `_`), or continues it when its file `runs/evolutions/<name>/evolution.json` exists. It ends when the best **Genome** of a **Generation** reaches `first-rival-battle`, or after 100 **Generations**. To stop it, press Ctrl-C. To continue it, give the same command again: it plays again only the **Generation** that the stop interrupted, and the next **Generations** are the same as with no stop. The command plays 12 **Runs** at the same time, or the number of `--parallel`. These **Runs** do not use the places of the Viewer.
+
+The folder holds `evolution.json` (the settings, the seeds, the **Fitness** version, and each **Genome** of each **Generation** with its id, the ids of its parents, its **Fitness** and the points of each term), and a **Run record** for each **Generation** that gives a new best **Fitness**. The header of this record holds the **Genome**, the **Fitness** version and the **Fitness**. The Select of the top bar of the Viewer replays these records, in a group for each **Evolution**. The page "Evolution" of the Doc tab gives the settings.
 
 ## Test the learn-move prompt
 
@@ -93,7 +105,7 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/game.ts` and the files next to it: the reads of the game state (battle, menus, Bag, PC, shop, party).
 - `src/harness/`: the API of the **Bot**, the **Atlas**, the **Run record** and the pool of **Runs**.
 - `src/model/`: the parts of the model bot (request, prompt, answer).
-- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria) and the **Fitness** of a **Run record**.
+- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria), the **Fitness** of a **Run record**, and the **Evolution** with its command.
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.

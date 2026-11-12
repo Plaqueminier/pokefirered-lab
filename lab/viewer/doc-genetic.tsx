@@ -1,4 +1,4 @@
-import { Footprints, ListChecks, Scale } from "lucide-preact";
+import { Footprints, GitFork, ListChecks, Repeat, Scale, Shuffle } from "lucide-preact";
 import type { WalkCriterion } from "../src/genetic/genome";
 import { FITNESS_VERSION } from "../src/genetic/fitness";
 import { Block, BLOCKS2, DocCard, GRID3, Page, Terms } from "./doc-parts";
@@ -45,7 +45,7 @@ export function GenomePage() {
           <Terms numbered rows={Object.entries(WALK_DOC).map(([criterion, text]) => [`\`${criterion}\``, text] as const)} />
         </Block>
         <Block label="Play one Genome" sub="In `lab/`, from the Starting save. The Run record goes to `runs/`, and the Viewer replays it as the Run of any Bot.">
-          <Terms rows={[["`bun run bot genetic --genome <Genome file> [player|full]`", "plays the Genome at the `player` Knowledge level, or at `full`."]]} />
+          <Terms rows={[["`bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full]`", "plays the Genome of the file, or a Genome of an Evolution, at the `player` Knowledge level, or at `full`."]]} />
         </Block>
       </div>
     </Page>
@@ -79,6 +79,46 @@ export function FitnessPage() {
           ]}
         />
       </Block>
+    </Page>
+  );
+}
+
+export function EvolutionPage() {
+  return (
+    <Page
+      lead="An Evolution makes Generations of Genomes. Each Genome of a Generation plays one Run from the Starting save, the Fitness ranks the Runs, and the best Genomes make the next Generation. The loop asks the Harness nothing itself: it receives a player, “play this Genome on this seed”, so the Runs can play in workers."
+      details={[
+        ["Ids", "each Genome gets an id when it is born, and the ids follow one another across the Evolution: 1 to 50 in the first Generation, then 51, 52… It keeps the ids of its two parents. A Genome that passes unchanged keeps its id and its parents."],
+        ["Seeds", "the Evolution has its own seed for its random choices. The random choices of a Generation come from this seed and the number of the Generation only: a continued Evolution makes the same Generations as an Evolution that did not stop. The Runs play on one seed of the game: now the seed of the ROM."],
+        ["Limits of a Run", "a Run ends with `no progress` when the Stuck counter reaches 60. Its frame limit is the higher of 30 000 and 2 × the frames of the Run of the best Genome of the previous Generation: a safety only."],
+        ["Parallel Runs", "`bun run evolve` plays 12 Runs at the same time, or the number of `--parallel` (18 at most), in its own workers. They do not use the places of the Viewer."],
+        ["Stop and continue", "the Evolution writes its file after each Generation. A stop loses only the Generation that plays: the same command plays it again. The command refuses to continue an Evolution of another version of the Genetic bot or of the Fitness."],
+        ["End", "the best Genome of a Generation reaches `first-rival-battle`, or 100 Generations."],
+      ]}
+    >
+      <div class={GRID3}>
+        <DocCard icon={Repeat} title="The 5 best" lines={["they pass unchanged to the next Generation", "same id, same weights", "the best Genome is never lost"]} />
+        <DocCard icon={GitFork} title="Parents" lines={["the 25 best Genomes", "drawn by pairs at random", "each pair gives one child: 45 children"]} />
+        <DocCard icon={Shuffle} title="Child" lines={["uniform crossover: each weight from one parent or the other", "Gaussian mutation, σ = 0.1, on each weight with the probability 0.2", "a weight stays from −1 to 1"]} />
+      </div>
+      <div class={BLOCKS2}>
+        <Block label="Commands" sub="In `lab/`. The first Generation has random weights from −1 to 1.">
+          <Terms
+            rows={[
+              ["`bun run evolve <name> [--parallel <1 to 18>]`", "starts the Evolution `<name>`, or continues it from its file."],
+              ["`bun run bot genetic --genome <name>:<Genome id>`", "plays one Genome of the Evolution again, with its Run record in `runs/`."],
+            ]}
+          />
+        </Block>
+        <Block label="The folder runs/evolutions/<name>/" sub="The Select of the top bar replays its Run records, in a group for each Evolution.">
+          <Terms
+            rows={[
+              ["`evolution.json`", "the settings, the seeds, the Fitness version and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones."],
+              ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, the Fitness version and the Fitness. Any other Run comes back from its Genome."],
+            ]}
+          />
+        </Block>
+      </div>
     </Page>
   );
 }

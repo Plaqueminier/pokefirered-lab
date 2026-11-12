@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
+import { evolutionRecordNames } from "./genetic/evolution";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
@@ -318,9 +319,10 @@ async function writeStartSave(): Promise<string> {
   return "Starting save written to lab/saves/start.sav (the old one is kept next to it).";
 }
 
+// The Run records of the Evolutions come after the others, in their folders: `evolutions/<name>/<file>`.
 async function recordNames(): Promise<string[]> {
   const names = await readdir(RUNS_DIR).catch(() => []);
-  return names.filter((name) => name.endsWith(".json")).sort().reverse();
+  return [...names.filter((name) => name.endsWith(".json")).sort().reverse(), ...(await evolutionRecordNames()).sort().reverse()];
 }
 
 async function sendRecords(to?: ServerWebSocket<unknown>): Promise<void> {
@@ -353,7 +355,7 @@ function replayModel(player: RecordPlayer, continued: Continuation | null): Repl
 }
 
 async function openRecord(name: string): Promise<RunRecord | string> {
-  if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/.`;
+  if (!(await recordNames()).includes(name)) return `No Run record ${name} in lab/runs/ or in the folders of the Evolutions.`;
   return (await readRunRecord(name)) ?? `${name} is not a Run record.`;
 }
 

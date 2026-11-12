@@ -7,6 +7,7 @@
     "bot": "bun run src/harness/play.ts",
     "migrate": "bun run src/harness/migrate.ts",
     "race": "bun run src/race/make.ts",
+    "evolve": "bun run src/genetic/evolve.ts",
     "learn-lab": "bun run src/model/learn-lab.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Game, Milestone } from "../game";
 import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
+import type { Fitness } from "../genetic/fitness";
 import type { TrainerNames } from "../save-file";
 import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
@@ -158,12 +159,12 @@ export function modelTotals(events: readonly RunEvent[]): ModelTotals {
   return totals;
 }
 
-type RunBot = Pick<Bot, "name" | "version" | "model">;
+type RunBot = Pick<Bot, "name" | "version" | "model" | "genome">;
 
 type RunPart = Continuation & { bot: RunBot; result: RunResult };
 
-/** `parent`: the file in lab/runs/ of the Run record that this Run continues. */
-export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; parts?: RunPart[] };
+/** `parent`: the file in lab/runs/ of the Run record that this Run continues. `fitness`: in the Run record of a new best of an Evolution. */
+export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; parts?: RunPart[]; fitness?: Fitness };
 
 export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; state?: StateEntry[]; result: RunResult };
 

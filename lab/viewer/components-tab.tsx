@@ -880,7 +880,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Run select",
-    rule: "The Select of the top bar: the Run of the Viewer, the Runs of the Bots and the Run records to replay.",
+    rule: "The Select of the top bar: the Run of the Viewer, the Runs of the Bots and the Run records to replay. The Run records of an Evolution have a group for each Evolution, after the other Run records.",
     demo: () => <RunSelectDemo />,
   },
   {

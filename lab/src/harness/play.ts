@@ -1,6 +1,7 @@
 import { basename, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
+import { evolutionGenome } from "../genetic/evolution";
 import { type Genome, readGenome } from "../genetic/genome";
 import { providerProblem } from "../model/providers";
 import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
@@ -8,7 +9,7 @@ import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, typ
 import { limitOf, modelTotals, providerOf, readRecord, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full]
-       bun run bot genetic --genome <Genome file> [player|full]
+       bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full]
        bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--coach <model id>] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
@@ -31,13 +32,15 @@ const bot = await loadBot(name, model, genome).catch((error: unknown) => {
   process.exit(1);
 });
 if (bot.genome && !genome) {
-  console.error(`The Bot ${name} plays with a Genome: bun run bot ${name} --genome <Genome file>`);
+  console.error(`The Bot ${name} plays with a Genome: bun run bot ${name} --genome <Genome file>|<Evolution>:<Genome id>`);
   process.exit(1);
 }
 
+// `<Evolution>:<Genome id>`: a Genome of an Evolution of runs/evolutions/. Any other value is the path of a Genome file.
 async function genomeFile(path: string): Promise<Genome> {
+  const ofEvolution = /^([\w-]+):(\d+)$/.exec(path);
   try {
-    return readGenome(await Bun.file(path).json());
+    return ofEvolution ? await evolutionGenome(ofEvolution[1], Number(ofEvolution[2])) : readGenome(await Bun.file(path).json());
   } catch (error) {
     console.error(`${path} is not a Genome: ${errorText(error)}`);
     process.exit(1);

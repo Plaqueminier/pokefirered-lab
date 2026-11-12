@@ -228,7 +228,7 @@ export function RunSelectDemo() {
       {DEMO_SHOWN.map(({ label, shown }) => (
         <div key={label}>
           <p class="mb-1.5 text-xs text-faint">{label}</p>
-          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "00016-model-9-2026-10-27T08-40-44.237Z.json"]} send={() => {}} />
+          <RunSelect shown={shown} runs={DEMO_RUNS} records={[RECORD, "00016-model-9-2026-10-27T08-40-44.237Z.json", "evolutions/first/00002-genetic-1-2026-11-12T10-20-31.512Z.json", "evolutions/first/00001-genetic-1-2026-11-12T10-02-12.004Z.json"]} send={() => {}} />
         </div>
       ))}
     </div>

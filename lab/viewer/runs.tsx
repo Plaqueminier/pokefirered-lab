@@ -72,12 +72,18 @@ function shownValue(shown: ShownRun): string {
   return shown.replay ? `replay:${shown.replay.name}` : VIEWER;
 }
 
+// A Run record of an Evolution is in its folder, `evolutions/<name>/<file>`: one group for each Evolution.
+function recordOption(name: string): { label: string; group: string } {
+  const [, evolution, file] = /^evolutions\/([^/]+)\/(.+)$/.exec(name) ?? [];
+  return evolution ? { label: file, group: `Replay a Run record of the Evolution ${evolution}` } : { label: name, group: "Replay a Run record" };
+}
+
 // One Select for all that the Viewer can show: its own Run, the Runs of the Bots and the replay of a Run record.
 export function RunSelect({ shown, runs, records, send }: { shown: ShownRun | null; runs: readonly RunSummary[]; records: readonly string[]; send: Send }) {
   const options = [
     { value: VIEWER, label: "Viewer Run (keyboard)", group: "Viewer Run" },
     ...runs.map((run) => ({ value: `run:${run.id}`, label: runLabel(run), group: "Runs of the Bots" })),
-    ...records.map((name) => ({ value: `replay:${name}`, label: name, group: "Replay a Run record" })),
+    ...records.map((name) => ({ value: `replay:${name}`, ...recordOption(name) })),
   ];
   const value = shown ? shownValue(shown) : VIEWER;
   return (

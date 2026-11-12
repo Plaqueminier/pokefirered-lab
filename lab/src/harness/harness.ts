@@ -332,7 +332,7 @@ export class Harness {
       planLimit = error.planLimit;
     } finally {
       result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}), ...(planLimit === undefined ? {} : { planLimit }) };
-      this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}) }, result };
+      this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}), ...(bot.genome ? { genome: bot.genome } : {}) }, result };
     }
     return result;
   }

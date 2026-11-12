@@ -8,7 +8,7 @@ export type Weights<C extends string> = Partial<Record<C, number>>;
 
 export type Genome = { walk: Weights<WalkCriterion> };
 
-const GROUPS: Record<keyof Genome, readonly string[]> = { walk: WALK_CRITERIA };
+export const GROUPS: Record<keyof Genome, readonly string[]> = { walk: WALK_CRITERIA };
 
 /** Each value of `criteria` is from 0 to 1, and each weight from −1 to 1. */
 export function scoreOf<C extends string>(weights: Weights<C>, criteria: Partial<Record<C, number>>): number {

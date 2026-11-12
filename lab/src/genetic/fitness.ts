@@ -9,7 +9,7 @@ type Term = "milestones" | "maps" | "exits" | "texts" | "levels" | "frames";
 /** `count`: what the record holds for the term (for `levels`, the sum of the levels of the party). `points`: what the term adds to the note. */
 type FitnessTerm = { count: number; points: number };
 
-type Fitness = { version: string; note: number; terms: Record<Term, FitnessTerm> };
+export type Fitness = { version: string; note: number; terms: Record<Term, FitnessTerm> };
 
 const POINTS: Record<Term, (count: number) => number> = {
   milestones: (count) => 1000 * count,

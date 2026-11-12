@@ -271,7 +271,7 @@ export function RecordPage() {
     <Page
       lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and from its origin, its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider, its Coach if it has one, and its cost limit or Token limit; a record with no provider played on `openrouter`), keys at each frame, events, track, State track and result."],
+        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider, its Coach if it has one, and its cost limit or Token limit; a record with no provider played on `openrouter`; the Genome of a Genetic bot), the Fitness of a new best of an Evolution, keys at each frame, events, track, State track and result."],
         ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
@@ -289,7 +289,7 @@ export function RecordPage() {
           "the checkbox of the form “Bots” after “continue”: an Extended Run plays on with the model, the Coach and the Model provider of the record, and the Bot version of now. It keeps the id, and its new record replaces the file under the same name, so it has no new parent. The header lists each earlier part with its Bot, its result and its end. The limit counts from 0. The checkbox is disabled when another record names this one as its parent, or when a Run plays from it.",
         ],
         ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
-        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit."],
+        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit. An Evolution plays its own Runs out of this limit (page “Evolution”)."],
       ]}
     >
       <div class={BLOCKS2}>
@@ -299,7 +299,8 @@ export function RecordPage() {
             rows={[
               ["Format version", "a record before format 1 has only map, battle and Milestone events; a record before format 2 has no track; a record before format 3 has no State track"],
               ["Origin", "ROM, seed, save, and the names that the Run wrote in its copy of the save"],
-              ["Bot", "its name and version; for an Extended Run, those of the last part"],
+              ["Bot", "its name and version, and the Genome of a Genetic bot; for an Extended Run, those of the last part"],
+              ["Fitness", "only for the Run record of a new best of an Evolution: the Fitness version, the note and the points of each term"],
               ["Parts", "only for an Extended Run: the Bot, the result and the end of each earlier part"],
               ["Keys", "the buttons at each frame"],
               ["Events", "the Game events, the Model calls"],
