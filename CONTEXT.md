@@ -247,7 +247,7 @@ _Avoid_: savestate
 A snapshot of the full emulator state at one frame. It becomes invalid after each rebuild, because code addresses move.
 
 **Run**:
-One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed.
+One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed. An **Evolution** plays its own **Runs** out of this limit, 12 at the same time by default.
 _Avoid_: game, instance, session
 
 **Milestone**:
@@ -299,11 +299,11 @@ The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each 
 _Avoid_: wall, multiview, dashboard
 
 **Race**:
-A file that a command makes from a set of **Run records**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost or its tokens and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
+A file that a command makes from a set of **Run records**, or that an **Evolution** writes for each **Generation** and for the best **Genome** of each **Generation**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost or its tokens and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
-One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok; for a **Run** with a **Coach**, the family of the AI model of the **Run**, and the name shows both models. A **Run record** of an older date holds an alias of the claude command, and the **Race** shows the full id of that alias. A **Ghost** whose **Run** ends with a whiteout stays on the cell where it lost: it does not go to the Pokémon Center. A **Ghost** of another model and a group of **Ghosts** have no dot.
+One **Run** in a **Race**, drawn with its own sprite and the number of its **Run**. The number is the Run id at the start of the file name of its **Run record**. The sprite comes from this Run id alone, so a **Run** has the same face in every **Race**. A dot shows the family of its model: DeepSeek, Claude, GPT or Grok; for a **Run** with a **Coach**, the family of the AI model of the **Run**, and the name shows both models. A **Run record** of an older date holds an alias of the claude command, and the **Race** shows the full id of that alias. A **Ghost** whose **Run** ends with a whiteout stays on the cell where it lost: it does not go to the Pokémon Center. A **Ghost** of another model and a group of **Ghosts** have no dot. A **Ghost** of a **Genetic bot** has the number of its **Genome**, which each **Genome** gets when it is born, and the dot of the **Genetic bot**: a **Genome** that passes unchanged to the next **Generation** keeps its face.
 _Avoid_: player, avatar
 
 **State track**:
