@@ -150,7 +150,6 @@ function HitCard({ view, hit }: { view: RaceView; hit: RaceHit }) {
 
 type RaceChoiceProps = { names: readonly string[]; name: string; onName: (name: string) => void };
 
-// A Race of an Evolution is in its folder, `evolutions/<name>/<race>`: one group for each Evolution.
 function raceOption(value: string): { value: string; label: string; group?: string } {
   const [, evolution, race] = /^evolutions\/([^/]+)\/(.+)$/.exec(value) ?? [];
   if (!evolution) return { value, label: value };
@@ -326,7 +325,6 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
       .then((list: string[]) => {
         setListError(null);
         setNames(list);
-        // The Races of the Evolutions come after the Races of the lab: the last Race of the lab opens first.
         setName((current) => current || (list.findLast((race) => !race.startsWith("evolutions/")) ?? list.at(-1) ?? ""));
       })
       .catch((failure) => setListError(String(failure)));
@@ -410,7 +408,6 @@ export class RaceTab {
     render(<RaceRoot shown={this.#shown} asked={this.#asked} />, root);
   }
 
-  /** Opens this Race, for example a Race of an Evolution from the page of the Evolutions. */
   open(name: string): void {
     this.#asked.set({ name });
   }

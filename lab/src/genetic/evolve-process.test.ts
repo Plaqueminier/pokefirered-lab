@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type EvolutionRun, EvolveProcess } from "./evolve-process";
 
-// No emulator: a small script tells what `bun run evolve` tells, and stops as it does.
 async function fakeEvolve(code: string): Promise<(name: string, parallel: number) => string[]> {
   const script = join(await mkdtemp(join(tmpdir(), "evolve-")), "evolve.ts");
   await Bun.write(script, code);

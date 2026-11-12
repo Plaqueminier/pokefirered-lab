@@ -23,7 +23,6 @@ export type GhostPlace = { kind: "world"; x: number; y: number; scale: number } 
 export type GhostNow = {
   run: number;
   number: number;
-  /** The name of the Bot and its version. */
   bot: string;
   model: string;
   coach?: string;

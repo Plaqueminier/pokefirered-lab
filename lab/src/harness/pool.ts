@@ -10,7 +10,6 @@ import type { Continuation, ModelSettings, Replay, RunEvent, RunRecord } from ".
 // A choice: the machine plays about 12 Runs at full speed. 10 is the Viewer Run and a Grid of 9 (#72).
 export const MAX_RUNS = 10;
 
-/** `genome`: the Genome of a Genetic bot. */
 export type RunSpec = { bot: string; model?: ModelSettings; genome?: Genome; from?: RunFrom } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
 
 export type RunEnd = { record: RunRecord | null; error: string | null };

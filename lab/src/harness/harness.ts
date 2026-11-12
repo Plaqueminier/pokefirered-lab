@@ -180,7 +180,6 @@ type SummaryCallListener = (event: SummaryEvent, harness: Harness) => void;
 export type HarnessOptions = {
   knowledge?: KnowledgeLevel;
   startSave?: string;
-  /** The seed of the game RNG, from 0 to 0xffff. By default the seed of the parent, else the seed of the ROM. */
   seed?: number;
   onAction?: ActionListener;
   onFrame?: (harness: Harness) => void;

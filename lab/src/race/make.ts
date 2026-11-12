@@ -60,7 +60,6 @@ function playUntilEnd({ events, track, state, result }: CurrentRecord): Pick<Cur
   return { track: track.slice(0, end), state: state.filter((entry) => entry.frame <= whiteout.frame) };
 }
 
-/** `number`: the Run id, or the id of the Genome for a Run of the Genetic bot. `name`: where the Run comes from. */
 export function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
   const { events, header } = record;
   const lastFrame = new RecordPlayer(record).frames;
@@ -107,7 +106,6 @@ function continuedBy(chosen: readonly string[], records: ReadonlyMap<string, Run
   return continued;
 }
 
-/** `wanted`: names of records of `dir`, or paths in `dir` such as `evolutions/<name>/<file>` for a Run record of an Evolution. With none, the Race has all the records of `dir` that a Race can show. */
 export async function makeRace(dir = RUNS_DIR, wanted?: readonly string[]): Promise<RaceFile> {
   const files = [...(await readdir(dir)).filter((name) => name.endsWith(".json")), ...(wanted ?? []).filter((name) => name.includes("/"))];
   const records = new Map<string, RunRecord>();
@@ -143,7 +141,6 @@ export async function writeRace(name: string, race: RaceFile, dir = RACES_DIR): 
   return path;
 }
 
-/** Null when the Race file does not exist. */
 export async function readRace(name: string, dir = RACES_DIR): Promise<RaceFile | null> {
   const file = Bun.file(join(dir, `${name}${RACE_SUFFIX}`));
   if (!(await file.exists())) return null;

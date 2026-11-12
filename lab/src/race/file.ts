@@ -31,12 +31,10 @@ export type RaceRun = {
 
 export const RACE_VERSION = 3;
 
-/** The name of the Genetic bot in `RaceRun.bot`, before its version. */
 export const GENETIC_BOT = "genetic";
 
 type ModelFamily = "deepseek" | "claude" | "gpt" | "grok";
 
-/** The dot of a Ghost: the family of its model, or "genetic" for a Run of the Genetic bot. */
 export type Dot = ModelFamily | "genetic";
 
 export function shortModelId(id: string): string {

@@ -1,17 +1,10 @@
-// The Viewer server starts `bun run evolve` for the page of the Evolutions: one Evolution at a time, out of the places of the Viewer.
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 
-/** What `bun run evolve` tells the process that started it, over IPC. */
 export type EvolveNews = { kind: "start"; generation: number; population: number } | { kind: "run" } | { kind: "generation"; number: number; seconds: number };
 
-/** The message that asks `bun run evolve` to stop after the Generation that plays. */
 export const STOP_EVOLUTION = "stop";
 
-/**
- * `generation`: the Generation that plays, null while the process reads its file. `played`: the Runs of this Generation that ended.
- * `lastSeconds`: the time of the last Generation. `stopping`: a person asked to stop after this Generation.
- */
 export type EvolutionRun = { name: string; parallel: number; generation: number | null; played: number; population: number; lastSeconds: number | null; stopping: boolean };
 
 type Command = (name: string, parallel: number) => string[];
@@ -24,7 +17,6 @@ export class EvolveProcess {
   #run: EvolutionRun | null = null;
   #child: Subprocess | null = null;
 
-  /** `problem`: the last line of the errors of a process that ended with an error. */
   constructor(
     private readonly onChange: (run: EvolutionRun | null, problem: string | null) => void,
     private readonly command: Command = evolveCommand,
@@ -34,7 +26,6 @@ export class EvolveProcess {
     return this.#run;
   }
 
-  /** Starts the Evolution `name`, or continues it from its file. The text of a refusal, or null. */
   start(name: string, parallel: number): string | null {
     if (this.#run) return `The Evolution ${this.#run.name} plays: one Evolution at a time.`;
     this.#run = { name, parallel, generation: null, played: 0, population: 0, lastSeconds: null, stopping: false };
@@ -61,7 +52,6 @@ export class EvolveProcess {
     return null;
   }
 
-  /** The Evolution stops after the Generation that plays: a stop now would lose its Runs. */
   stop(): void {
     if (!this.#run || !this.#child) return;
     this.#child.send(STOP_EVOLUTION);

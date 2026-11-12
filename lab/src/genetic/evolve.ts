@@ -1,4 +1,3 @@
-// `bun run evolve <name>`: starts the Evolution of that name, or continues it from its file.
 import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { geneticBot } from "../../bots/genetic";
@@ -7,7 +6,6 @@ import { type EvolveNews, STOP_EVOLUTION } from "./evolve-process";
 import type { EvolveEnd, EvolveJob } from "./evolve-worker";
 
 const USAGE = "Usage: bun run evolve <name> [--parallel <1 to 18>]";
-// The spec (#88): 12 Runs at the same time by default, 18 at most. They play out of the 10 emulators of the Viewer.
 const PARALLEL = 12;
 const MAX_PARALLEL = 18;
 
@@ -19,14 +17,12 @@ if (positionals.length !== 1 || !Number.isInteger(parallel) || parallel < 1 || p
 }
 const [name] = positionals;
 
-// Started from the page of the Evolutions: the Viewer server gets the news over IPC, and can ask for a stop.
 const tell = (news: EvolveNews) => process.send?.(news);
 let stopAsked = false;
 process.on("message", (message) => {
   if (message === STOP_EVOLUTION) stopAsked = true;
 });
 
-/** Each worker plays one Run at a time; the Runs wait in a queue for a free worker. */
 class EvolvePool {
   readonly #free: Worker[] = [];
   readonly #waiting: { job: EvolveJob; done: (end: EvolveEnd) => void }[] = [];
@@ -76,7 +72,6 @@ class EvolvePool {
 
 const dir = evolutionDir(name);
 const before = await readEvolution(dir);
-// The Evolution also refuses it after the first Generation that plays: this check saves the time of that Generation.
 const { version } = geneticBot();
 if (before?.bot && before.bot.version !== version) {
   console.error(`The Evolution ${name} plays the Genetic bot version ${before.bot.version}, and the Genetic bot is now version ${version}: start a new Evolution.`);
@@ -98,7 +93,6 @@ const onGeneration = ({ number, frameBudget, genomes, record, tests }: Generatio
   console.log(`Generation ${number}: best Fitness ${best.fitness.toFixed(2)} (Genome ${best.id}, ${best.frames} frames, ${best.endReason}, ${milestones}), mean ${mean.toFixed(2)}, frame limit ${frameBudget}, ${seconds.toFixed(1)} s${newBest}`);
   for (const test of tests ?? []) console.log(`  Test of Genome ${best.id} on the seed 0x${test.seed.toString(16)}: Fitness ${test.fitness.toFixed(2)}, ${test.frames} frames, ${test.endReason}, ${test.milestones.join(", ") || "no Milestone"}`);
   tell({ kind: "generation", number, seconds });
-  // The file holds this Generation: the next one has played nothing yet.
   if (stopAsked) {
     console.log(`The Evolution ${name} stops after Generation ${number}, as asked.`);
     pool.close();

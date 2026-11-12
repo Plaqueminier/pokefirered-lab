@@ -268,7 +268,6 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
   );
 }
 
-/** A value from −max to max: the fill goes from the centre line to the right for a positive value, to the left for a negative value. */
 export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; max?: number; tone?: Tone }) {
   const part = fraction(Math.abs(value), max) * 50;
   return (

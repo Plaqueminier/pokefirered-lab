@@ -369,7 +369,6 @@ function SignedBarDemo() {
   );
 }
 
-// The best and the mean Fitness of a real Evolution of 6 Generations.
 const GENERATIONS: GenerationPoint[] = [
   [64.79, 16.59, true],
   [66.59, 25.86, true],

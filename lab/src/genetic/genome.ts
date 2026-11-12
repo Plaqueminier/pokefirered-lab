@@ -10,7 +10,6 @@ export type BattleCriterion = (typeof BATTLE_CRITERIA)[number];
 /** A criterion with no weight has the weight 0: a Genome of an older version of the Genetic bot has no weight for a new criterion. */
 export type Weights<C extends string> = Partial<Record<C, number>>;
 
-/** Version 1 of the Genetic bot had the group `walk` only. */
 export type Genome = { walk: Weights<WalkCriterion>; choice: Weights<ChoiceCriterion>; battle: Weights<BattleCriterion> };
 
 export const GROUPS: Record<keyof Genome, readonly string[]> = { walk: WALK_CRITERIA, choice: CHOICE_CRITERIA, battle: BATTLE_CRITERIA };

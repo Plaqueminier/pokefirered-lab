@@ -3,7 +3,6 @@ import type { BattleCriterion, ChoiceCriterion, WalkCriterion } from "../src/gen
 import { FITNESS_VERSION } from "../src/genetic/fitness";
 import { Block, BLOCKS2, DocCard, GRID3, Page, Terms } from "./doc-parts";
 
-// In the order of the spec (#88): the numbers of the list are the numbers of the criteria.
 const WALK_DOC: Record<WalkCriterion, string> = {
   notUsed: "1 for an exit that the player did not take, a person that the player did not talk to, or a sign that the player did not read.",
   distance: "the steps from the player to the target or the cell, divided by the width + the height of the map (1 at most). For an edge, the steps to the edge.",

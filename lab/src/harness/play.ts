@@ -40,11 +40,9 @@ if (loaded.genome && !genome) {
   console.error(`The Bot ${name} plays with a Genome: bun run bot ${name} --genome <Genome file>|<Evolution>:<Genome id>`);
   process.exit(1);
 }
-// A Genome of an Evolution plays as in the Evolution: with its goal, its frame limit, its Stuck limit and, with no --seed, its training seed.
 const evolutionRun = genome?.run;
 const bot = evolutionRun ? { ...loaded, goal: evolutionRun.goal, frameBudget: evolutionRun.frameBudget, noProgressLimit: evolutionRun.noProgressLimit } : loaded;
 
-// `<Evolution>:<Genome id>`: a Genome of an Evolution of runs/evolutions/. Any other value is the path of a Genome file.
 async function genomeFile(path: string): Promise<{ genome: Genome; id?: number; run?: PlayerRun }> {
   const ofEvolution = /^([\w-]+):(\d+)$/.exec(path);
   try {
@@ -99,7 +97,6 @@ const error = await harness.play(bot).then(
   () => null,
   (e: unknown) => e,
 );
-// The Run record of a Genome of an Evolution holds the Genome id, so that its Ghost in a Race has the number and the face of the Genome.
 const played = harness.record();
 const record = genome?.id === undefined ? played : { ...played, header: { ...played.header, genomeId: genome.id } };
 console.log(`Run record: ${relative(process.cwd(), await writeRecord(record))}`);

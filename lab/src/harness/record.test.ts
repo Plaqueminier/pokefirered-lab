@@ -210,7 +210,6 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(replayed.events.length).toBeGreaterThan(0);
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());
-    // The replay plays with the seed of the header: with another seed, the same buttons give another game.
     expect((await replay({ ...record, header: { ...record.header, seed: 1 } })).screen).not.toBe(harness.screenHash());
   });
 

@@ -14,7 +14,6 @@ type WalkTarget =
 
 export type WalkAction = { target: WalkTarget; criteria: Partial<Record<WalkCriterion, number>> };
 
-/** What the Bot remembers: the cells where the player stood at a walk Decision point, by map, and the maps where the player arrived, in order. */
 export type WalkMemory = { walked: ReadonlyMap<string, ReadonlySet<string>>; arrivals: readonly string[] };
 
 function distance(a: Cell, b: Cell): number {
@@ -25,7 +24,6 @@ function stepsToEdge({ width, height }: AtlasMap, { x, y }: Cell, side: Directio
   return { north: y + 1, south: height - y, west: x + 1, east: width - x }[side];
 }
 
-// 0 visits gives 0, 1 visit 0.5, 3 visits 0.75: the value stays below 1.
 function share(count: number): number {
   return count / (1 + count);
 }
@@ -42,7 +40,6 @@ function onMapEdge({ width, height }: AtlasMap, { x, y }: Cell): boolean {
   return x === 0 || y === 0 || x === width - 1 || y === height - 1;
 }
 
-/** The seen exits, people and signs of the map, then each seen cell that the player can reach, in the order of one search from the player. */
 export function walkActions(overworld: Overworld, { walked, arrivals }: WalkMemory): WalkAction[] {
   const { atlas, map, player, grid, people } = overworld;
   const here = mapNamed(atlas, map.name);
@@ -61,7 +58,7 @@ export function walkActions(overworld: Overworld, { walked, arrivals }: WalkMemo
   });
   const exits = here.warps.map(({ x, y, to }): WalkAction => ({ target: { kind: "exit", cell: { x, y }, to }, criteria: exitCriteria(to, distance(player, { x, y })) }));
   const edges = here.edges.map(({ side, to }): WalkAction => ({ target: { kind: "edge", side, to }, criteria: exitCriteria(to, stepsToEdge(here, player, side)) }));
-  // As for the model bot: a person that left the map, for example the Poké Ball of the starter, is not a target.
+  // A person that left the map, for example the Poké Ball of the starter, is not a target.
   const present = new Set(people.map((p) => p.localId));
   const talks = here.people.filter((p) => present.has(p.localId)).map(({ localId, x, y, texts }): WalkAction => {
     const cell = people.find((p) => p.localId === localId && p.loaded) ?? { x, y };

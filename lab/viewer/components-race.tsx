@@ -11,7 +11,6 @@ export function MonIcon({ src, species, level }: { src: string | null; species: 
   );
 }
 
-/** `bot`: the name of the Bot and its version. A Run of the Genetic bot has no model: it shows its Bot. */
 export function ModelName({ id, bot = "", coach, short }: { id: string; bot?: string; coach?: string; short?: boolean }) {
   const family = dotOf({ bot, model: id });
   const name = (model: string) => (short ? shortModelId(model) : model);

@@ -2,21 +2,19 @@ import type { AvailableAction, BattleState } from "../harness/harness";
 import { isDamageMove } from "../party";
 import type { BattleCriterion } from "./genome";
 
-// The type multiplier of a move is from 0 to 4 (2 × 2 on a foe with two weak types).
+// The highest type multiplier: 2 × 2 on a foe with two weak types.
 const MAX_EFFECT = 4;
-// EXPLOSION has the best power of the game.
+// EXPLOSION has the highest power of the game.
 const MAX_POWER = 250;
 
 type BattleMove = { name: "fight"; move: number } | { name: "run" };
 
 export type BattleAction = { action: BattleMove; criteria: Partial<Record<BattleCriterion, number>> };
 
-/** The key of a move of the Pokémon that the player chooses for now, for the memory of the moves used in a battle. */
 export function moveKey(battle: BattleState, move: number): string {
   return `${battle.player.partyIndex}:${battle.player.moves[move]?.name}`;
 }
 
-/** The moves that the Harness gives, then `run` against a wild Pokémon. `used`: the keys of the moves that the Bot played in this battle. */
 export function battleActions(battle: BattleState, available: AvailableAction[], used: ReadonlySet<string>): BattleAction[] {
   return available.flatMap((action): BattleAction[] => {
     if (action.name === "run") return [{ action, criteria: { run: 1 } }];

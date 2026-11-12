@@ -19,7 +19,6 @@ export type RunState = { state: GameState | null; grid: MapGrid | null; actors: 
 export class Run {
   #origin: RunOrigin;
   #save: Uint8Array | null = null;
-  /** The value of `gLabRngSeed` in the ROM file (src/lab.c): the seed of a Run that asks for no other seed. */
   readonly #romSeed: number;
 
   private constructor(
@@ -32,7 +31,6 @@ export class Run {
     this.#romSeed = origin.seed;
   }
 
-  /** `seed`: the seed of the game RNG, from 0 to 0xffff. The Run writes it in the ROM image before the boot. */
   static async open({ startSave = START_SAVE, names = null, seed }: { startSave?: string; names?: TrainerNames | null; seed?: number } = {}): Promise<Run> {
     if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
     const core = await Core.open(ROM_FILE);
@@ -58,7 +56,7 @@ export class Run {
     for (const [keys, frames] of holds) for (let i = 0; i < frames; i++) this.runFrame(keys);
   }
 
-  // The game reads gLabRngSeed from the ROM at the boot: a patch of the ROM image stays after a reset, and only in this core.
+  // The game reads gLabRngSeed from the ROM at boot, and a patch of the ROM image stays after a reset in this core.
   private boot(save: Uint8Array | null, names: TrainerNames | null, seed: number): void {
     if (names && !save) throw new Error("no Starting save to write the names in");
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff) throw new Error(`the seed ${seed} is not a whole number from 0 to 0xffff`);

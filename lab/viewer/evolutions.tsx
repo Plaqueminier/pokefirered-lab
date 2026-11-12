@@ -1,4 +1,3 @@
-// The page of the Evolutions (#96, form A "Dashboard" of #95): it starts, continues and stops an Evolution, and shows its Generations.
 import { Dna, Flag, Gauge, Layers, Milestone, Play, RotateCcw, Square, Timer, Trophy, Users } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -13,7 +12,6 @@ import { Store, useStore } from "./cursor";
 
 type Member = Generation["genomes"][number];
 
-// The limits of `bun run evolve --parallel` (src/genetic/evolve.ts).
 const PARALLEL = 12;
 const MAX_PARALLEL = 18;
 const NAME = /^[\w-]+$/;
@@ -32,7 +30,6 @@ async function json<T>(url: string): Promise<T> {
   return response.json();
 }
 
-/** Why the Evolution `facts` does not continue with the Genetic bot of version `version`, or null. */
 function continueProblem(facts: EvolutionFacts, version: string | null): string | null {
   if (facts.end) return `It ended: ${facts.end}.`;
   if (facts.problem) return `It does not continue: ${facts.problem}.`;
@@ -48,7 +45,6 @@ function stateOf(facts: EvolutionFacts | undefined, run: EvolutionRun | null): {
   return { tone: "warn", text: `stopped after Generation ${facts.generations}` };
 }
 
-/** The first Generation that holds this id: an elite keeps its id and its parents in the next Generations. */
 function bornIn({ generations }: Evolution, id: number): number {
   return generations.find((g) => g.genomes.some((m) => m.id === id))?.number ?? 0;
 }
@@ -187,19 +183,16 @@ function BestCard({ evolution, best, record, actions, name }: { evolution: Evolu
 
 const COLUMNS = "grid grid-cols-1 gap-4 @5xl:grid-cols-[1fr_340px]";
 
-/** `side`: the card that starts, continues or stops an Evolution. */
 function Dashboard({ name, evolution, races, actions, side }: { name: string; evolution: Evolution; races: ReadonlySet<string>; actions: Actions; side: ComponentChildren }) {
   const { generations, settings } = evolution;
   const [pick, setPick] = useState(String(generations.length));
   const last = generations[generations.length - 1];
-  // The Run record of a Generation is written only at a new best: the last one is the best of the Evolution.
   const bestGeneration = generations.findLast((g) => g.record) ?? last;
   const best = bestGeneration.genomes[0];
   const meanOf = (g: Generation) => g.genomes.reduce((sum, m) => sum + m.fitness, 0) / g.genomes.length;
   const stuck = last.genomes.filter((m) => m.endReason === "no progress").length;
   const openRace = (generation: number) => actions.openRace(raceOf(name, generation));
   const picked = Number(pick) || generations.length;
-  // An Evolution of an older format has no Races.
   const hasRaces = races.has(raceOf(name, generations[0].number));
   return (
     <>
@@ -248,7 +241,6 @@ function EvolutionsRoot({ shown, run: runStore, bots: botStore, actions }: Props
   const [name, setName] = useState("");
   const [evolution, setEvolution] = useState<Evolution | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The files change after each Generation and at the end of the process.
   const changes = run ? `${run.name}:${run.generation}` : "none";
   useEffect(() => {
     if (!visible) return;

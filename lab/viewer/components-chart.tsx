@@ -1,9 +1,7 @@
-// A line chart of a value by Generation: the best value and the mean value of each Generation of an Evolution.
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { LABEL, useWidth } from "./components";
 
-/** `newBest`: the best value of this Generation is higher than the best value of all the Generations before it. */
 export type GenerationPoint = { generation: number; best: number; mean: number; newBest: boolean };
 
 const HEIGHT = 220;
@@ -69,10 +67,6 @@ function Values({ point, format }: { point: GenerationPoint; format: (value: num
   );
 }
 
-/**
- * The best value as an accent line, the mean as an info line, and a dot at each new best. The header gives the values of the last Generation, or of the Generation under the pointer.
- * `onPick`: a click on the chart gives the Generation under the pointer.
- */
 export function GenerationChart({
   points,
   label,
@@ -83,7 +77,6 @@ export function GenerationChart({
   points: readonly GenerationPoint[];
   label: string;
   format?: (value: number) => string;
-  /** What a click does, in the header during a hover. */
   pickText?: string;
   onPick?: (generation: number) => void;
 }) {
@@ -129,7 +122,7 @@ export function GenerationChart({
           </span>
         )}
       </div>
-      {/* A pointer control on the chart; the keyboard opens the same Races with the controls of the page. */}
+      {/* A pointer control only: the keyboard opens the same Races with the controls of the page. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: see above. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above. */}
       <div

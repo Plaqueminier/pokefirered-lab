@@ -251,7 +251,6 @@ export type ServerMessage =
   /** `quiet`: the events after a jump; the Viewer gives no toast for them. */
   | { type: "events"; events: RunEvent[]; quiet?: boolean }
   | { type: "events-added"; from: number; events: RunEvent[] }
-  /** The Evolution that the server plays for the page of the Evolutions, or null. */
   | { type: "evolution"; run: EvolutionRun | null };
 
 export type ClientMessage =
@@ -282,9 +281,7 @@ export type ClientMessage =
   | { type: "grid-add"; name: string; cell: number }
   | { type: "grid-remove"; cell: number }
   | ({ type: "grid-cursor" } & GridCursorControl)
-  /** Starts the Evolution `name` of `runs/evolutions/`, or continues it. */
   | { type: "start-evolution"; name: string; parallel: number }
-  /** The Evolution stops after the Generation that plays. */
   | { type: "stop-evolution" };
 
 /** The track of a Run record: `TRACK_POINT` numbers at each change of cell, map or facing: the frame, the map group and number, the cell and the facing (0 south, 1 north, 2 west, 3 east). */

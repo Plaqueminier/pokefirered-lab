@@ -1,4 +1,3 @@
-// One worker plays the Runs of an Evolution one after the other. It posts only the end of each Run: no screen, no state, as nobody watches it live.
 import { geneticBot } from "../../bots/genetic";
 import type { Milestone } from "../game";
 import { errorText, Harness } from "../harness/harness";
@@ -10,7 +9,6 @@ declare const self: Worker;
 
 export type EvolveJob = { job: number; genome: Genome; seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone };
 
-/** `error`: the Bot stopped with an error, and the Run record holds the Run until then. */
 export type EvolveEnd = { job: number } & ({ played: Played; error: string | null } | { played: null; error: string });
 
 self.onmessage = async ({ data: { job, genome, seed, frameBudget, noProgressLimit, goal } }: MessageEvent<EvolveJob>) => {

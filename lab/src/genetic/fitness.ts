@@ -1,4 +1,3 @@
-// The Fitness reads the Run record only, so it can rank a Run long after it played, and a new version can rank old Runs again.
 import type { RunEvent, RunRecord } from "../harness/record";
 
 /** A change of a weight or of a count is a new version. */
@@ -6,7 +5,6 @@ export const FITNESS_VERSION = "1";
 
 type Term = "milestones" | "maps" | "exits" | "texts" | "levels" | "frames";
 
-/** `count`: what the record holds for the term (for `levels`, the sum of the levels of the party). `points`: what the term adds to the note. */
 type FitnessTerm = { count: number; points: number };
 
 export type Fitness = { version: string; note: number; terms: Record<Term, FitnessTerm> };
@@ -26,7 +24,7 @@ export function fitness(record: RunRecord): Fitness {
   const counts: Record<Term, number> = {
     milestones: record.result.milestones.length,
     maps: new Set(maps).size,
-    // The record has no exit event: each change of map is the exit from the old map to the new map.
+    // The record has no exit event: each change of map is an exit.
     exits: new Set(maps.slice(1).map((map, i) => `${maps[i]} > ${map}`)).size,
     texts: new Set(textsOfPeople(record.events)).size,
     levels: team?.kind === "team" ? team.team.reduce((sum, mon) => sum + mon.level, 0) : 0,
@@ -36,8 +34,7 @@ export function fitness(record: RunRecord): Fitness {
   return { version: FITNESS_VERSION, note: Object.values(terms).reduce((note, term) => note + term.points, 0), terms };
 }
 
-// The record has no event for a text of a person: a text is what the `readText` actions read after an `interact` that is done, as the Atlas joins it.
-// The record does not tell a sign from a person, so the text of a sign counts too.
+// The record has no text event and does not tell a sign from a person: the text of a sign counts too.
 function textsOfPeople(events: readonly RunEvent[]): string[] {
   const texts: string[] = [];
   let talk: string[] | null = null;

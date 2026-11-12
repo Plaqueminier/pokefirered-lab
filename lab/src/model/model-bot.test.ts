@@ -553,7 +553,6 @@ describe.skipIf(!ready)("model bot", () => {
     expect(continued.result.frames).toBe(record.result.frames + harness.frame - parentFrame);
     const replayed = await replay(continued);
     expect([replayed.frame, replayed.screen]).toEqual([harness.frame, harness.screenHash()]);
-    // A Continued Run plays with the seed of its parent: it refuses another one.
     await expect(Harness.open({ seed: 1, parent: { name: "parent.json", record } })).rejects.toThrow("the Run record does not replay here: different seed");
   });
 

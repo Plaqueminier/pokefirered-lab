@@ -7,20 +7,16 @@ import { type Cell, cellKey } from "../src/harness/path";
 import { B_PRESSES } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld } from "../src/model/targets";
 
-// The spec (#88): a Run of a Genome ends when the Stuck counter reaches 60.
 const NO_PROGRESS_LIMIT = 60;
 const MAX_UNCOVERED = 3;
 
-/** `impossible`: the Harness answered `impossible`, and the game did not change. */
 type Candidate = { score: number; play: () => Promise<{ impossible: boolean }> };
 
-/** A group with no weights, for example in a Genome of version 1, has the weight 0 for each criterion. */
 export function geneticBot(weights: Partial<Genome> = {}): Bot {
   const genome: Genome = { walk: {}, choice: {}, battle: {}, ...weights };
   return { name: "genetic", version: "2", genome, noProgressLimit: NO_PROGRESS_LIMIT, play: (harness) => new GeneticPlay(harness, genome).play() };
 }
 
-// The Genome has no criteria for these Decision points: a fixed rule plays. A name stays empty: the game keeps its name.
 const FIXED_RULES: Partial<Record<WaitingFor["kind"], (available: AvailableAction[]) => MacroAction[]>> = {
   naming: () => [{ name: "name", text: "" }],
   learnMove: () => [{ name: "keep" }],
@@ -30,7 +26,6 @@ const FIXED_RULES: Partial<Record<WaitingFor["kind"], (available: AvailableActio
   pokemonPc: () => [{ name: "leave" }],
 };
 
-/** Each option of a choice, YES/NO and `multichoice`, in the order of the menu. */
 function choiceCriteria(options: string[]): Partial<Record<ChoiceCriterion, number>>[] {
   return options.map((option, i) => ({ isYes: Number(option === "YES"), isNo: Number(option === "NO"), rank: options.length === 1 ? 0 : i / (options.length - 1) }));
 }
@@ -41,7 +36,6 @@ function nothingPlayed(result: ActionResult): { impossible: boolean } {
 
 class GeneticPlay {
   readonly #walked = new Map<string, Set<string>>();
-  // The moves that the Bot played since the last walk: a battle ends on the overworld.
   readonly #usedMoves = new Set<string>();
   #uncovered = 0;
 
@@ -80,7 +74,6 @@ class GeneticPlay {
     return (FIXED_RULES[waiting.kind]?.(this.harness.availableActions()) ?? []).map((action) => this.candidate(0, action));
   }
 
-  /** `played`: what the Bot remembers when the action is not impossible. */
   private candidate(score: number, action: MacroAction, played?: () => void): Candidate {
     return {
       score,
@@ -92,7 +85,6 @@ class GeneticPlay {
     };
   }
 
-  /** An impossible action leaves the list, and the next best plays. A tie goes to the first action of the list. False: no action is possible. */
   private async playBest(candidates: Candidate[]): Promise<boolean> {
     const left = [...candidates];
     while (left.length > 0) {
@@ -132,7 +124,6 @@ class GeneticPlay {
     return { impossible: true };
   }
 
-  /** A walk next to the person or the sign, then an interaction from there. `locate` gives its cell after the walk, as a person can move. */
   private async talkTo(kind: "person" | "sign", cell: Cell, locate: (now: Overworld) => Cell | null, sides: Cell[], overworld: Overworld): Promise<{ impossible: boolean }> {
     const at = interactCell({ kind, cell }, overworld.grid, overworld.player);
     if (at) return nothingPlayed(await this.harness.interact(at.x, at.y));

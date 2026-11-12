@@ -9,7 +9,6 @@ import { evolve, type Player } from "./evolution";
 import { fitness } from "./fitness";
 import type { Genome } from "./genome";
 
-// No emulator: the note of a Genome is the sum of its weights, so the Generations change fast and the same Genome always gets the same note.
 const fakePlayer: Player = async (genome, { seed }) => {
   const record: RunRecord = {
     format: 3,

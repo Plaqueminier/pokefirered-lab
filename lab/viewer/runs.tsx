@@ -72,7 +72,6 @@ function shownValue(shown: ShownRun): string {
   return shown.replay ? `replay:${shown.replay.name}` : VIEWER;
 }
 
-// A Run record of an Evolution is in its folder, `evolutions/<name>/<file>`: one group for each Evolution.
 function recordOption(name: string): { label: string; group: string } {
   const [, evolution, file] = /^evolutions\/([^/]+)\/(.+)$/.exec(name) ?? [];
   return evolution ? { label: file, group: `Replay a Run record of the Evolution ${evolution}` } : { label: name, group: "Replay a Run record" };

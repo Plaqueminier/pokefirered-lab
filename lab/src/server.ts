@@ -78,7 +78,6 @@ class LivePlay {
     return this.atlas.sight();
   }
 
-  /** `seed`: by default the seed of the ROM, so that the keyboard plays the game of the ROM after a replay with another seed. */
   async reset(names: TrainerNames | null = null, knowledge: KnowledgeLevel = "player", seed?: number): Promise<void> {
     this.endReplay();
     await this.run.reset(names, seed);
@@ -226,7 +225,6 @@ const live = new LivePlay(run);
 const pool = new RunPool(MAX_RUNS - 1);
 const grid = new GridPlay(pool);
 const writtenRecords = new Map<number, string>();
-// After a Generation, the Evolution can have a new Run record for the Select of the top bar.
 const evolution = new EvolveProcess((evolutionRun, problem) => {
   send({ type: "evolution", run: evolutionRun });
   if (problem) send({ type: "notice", text: problem });
@@ -327,7 +325,6 @@ async function writeStartSave(): Promise<string> {
   return "Starting save written to lab/saves/start.sav (the old one is kept next to it).";
 }
 
-// The Run records of the Evolutions come after the others, in their folders: `evolutions/<name>/<file>`.
 async function recordNames(): Promise<string[]> {
   const names = await readdir(RUNS_DIR).catch(() => []);
   return [...names.filter((name) => name.endsWith(".json")).sort().reverse(), ...(await evolutionRecordNames()).sort().reverse()];
@@ -452,7 +449,6 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
     return `No Run: ${errorText(error)}.`;
   }
   const { model } = bot;
-  // A Genetic bot continues a Run record with the Genome of its header.
   const genome = bot.genome && start?.record.header.bot.genome;
   const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) }, count, start && continuationOf(start.record));
   show(botRun(started[0]));
@@ -738,7 +734,6 @@ function loop(): void {
 const raceWorld = safely(() => JSON.stringify(buildWorld(run.game)));
 if (raceWorld === null) console.error("The world of the Race did not load: the Race tab will not open");
 
-// A Race of an Evolution is in its folder, `evolutions/<name>/<race>`: only a name of the list opens it.
 async function raceFile(name: string): Promise<Response> {
   const ofEvolution = name.startsWith("evolutions/");
   if (ofEvolution && !(await evolutionRaceNames()).includes(name)) return new Response("Not found", { status: 404 });
