@@ -3,7 +3,7 @@ import { h, render } from "preact";
 import type { EndReason } from "../src/harness/harness";
 import { TILE } from "../src/race/file";
 import type { Tone } from "./components";
-import type { ModelFamily } from "./race-ghosts";
+import type { Dot } from "../src/race/file";
 
 export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | undefined }> = {
   goal: { icon: Flag, tone: "ok" },
@@ -18,7 +18,7 @@ export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | und
   "unknown screen": { icon: CircleQuestionMark, tone: "info" },
 };
 
-export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; black: string; modelColor: (family: ModelFamily) => string; font: string; textSm: string; radius: number };
+export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; black: string; modelColor: (family: Dot) => string; font: string; textSm: string; radius: number };
 
 export function raceTheme(element: Element): RaceTheme {
   const style = getComputedStyle(element);
@@ -81,7 +81,7 @@ export type GhostLabel = {
   crown: boolean;
   result: EndReason | null;
   selected: string | null;
-  family: ModelFamily | null;
+  family: Dot | null;
 };
 
 export class RaceMarks {
@@ -125,7 +125,7 @@ export class RaceMarks {
     ctx.fill();
   }
 
-  #dot(ctx: CanvasRenderingContext2D, x: number, y: number, family: ModelFamily): void {
+  #dot(ctx: CanvasRenderingContext2D, x: number, y: number, family: Dot): void {
     ctx.fillStyle = this.#theme.modelColor(family);
     ctx.strokeStyle = this.#theme.black;
     ctx.lineWidth = 1;
@@ -136,7 +136,7 @@ export class RaceMarks {
   }
 
   /** The label of a Ghost with no number shown: the dot takes the place of the pill. */
-  dotAlone(ctx: CanvasRenderingContext2D, x: number, y: number, family: ModelFamily | null): Box {
+  dotAlone(ctx: CanvasRenderingContext2D, x: number, y: number, family: Dot | null): Box {
     if (family) this.#dot(ctx, x, y, family);
     const w = family ? DOT_SIZE : 0;
     return { x: x - w / 2, y: y - LABEL_HEIGHT / 2, w, h: LABEL_HEIGHT };

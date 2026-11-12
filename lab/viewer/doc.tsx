@@ -5,7 +5,7 @@ import { useRef, useState } from "preact/hooks";
 import type { BotInfo } from "../src/protocol";
 import { Button, LABEL } from "./components";
 import type { Readable } from "./cursor";
-import { EvolutionPage, FitnessPage, GenomePage } from "./doc-genetic";
+import { EvolutionPage, EvolutionRacesPage, FitnessPage, GenomePage } from "./doc-genetic";
 import { EndPage, MacroPage, MilestonesPage, NotYetPage, RecordPage, SpeedPage } from "./doc-harness";
 import { BotsContext, BotsPage, DoubleBattlePage, MemoryPage, ProgressPage, PromptPage, ProvidersPage } from "./doc-model";
 import { GridPage, LoopPage, PrinciplePage, RacePage, ViewerPage } from "./doc-overview";
@@ -52,6 +52,7 @@ const GROUPS: { title: string; pages: DocPage[] }[] = [
       { id: "genome", title: "Genome and criteria", icon: Dna, render: () => <GenomePage /> },
       { id: "fitness", title: "Fitness", icon: Medal, render: () => <FitnessPage /> },
       { id: "evolution", title: "Evolution", icon: Sprout, render: () => <EvolutionPage /> },
+      { id: "evolution-races", title: "Races of an Evolution", icon: Ghost, render: () => <EvolutionRacesPage /> },
     ],
   },
 ];

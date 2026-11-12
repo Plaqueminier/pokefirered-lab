@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
-import { evolutionRecordNames } from "./genetic/evolution";
+import { evolutionRaceNames, evolutionRecordNames } from "./genetic/evolution";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
@@ -720,8 +720,11 @@ function loop(): void {
 const raceWorld = safely(() => JSON.stringify(buildWorld(run.game)));
 if (raceWorld === null) console.error("The world of the Race did not load: the Race tab will not open");
 
+// A Race of an Evolution is in its folder, `evolutions/<name>/<race>`: only a name of the list opens it.
 async function raceFile(name: string): Promise<Response> {
-  const file = Bun.file(join(RACES_DIR, `${basename(name)}${RACE_SUFFIX}`));
+  const ofEvolution = name.startsWith("evolutions/");
+  if (ofEvolution && !(await evolutionRaceNames()).includes(name)) return new Response("Not found", { status: 404 });
+  const file = Bun.file(ofEvolution ? join(RUNS_DIR, `${name}${RACE_SUFFIX}`) : join(RACES_DIR, `${basename(name)}${RACE_SUFFIX}`));
   if (!(await file.exists())) return new Response("Not found", { status: 404 });
   return new Response(file, { headers: { "content-type": "application/gzip" } });
 }
@@ -757,7 +760,7 @@ Bun.serve({
   routes: {
     "/": viewerPage,
     "/race/world.json": () => (raceWorld === null ? new Response("The world of the Race did not load: see the log of the server", { status: 500 }) : new Response(raceWorld, { headers: { "content-type": "application/json" } })),
-    "/race/list.json": async () => Response.json(await raceNames()),
+    "/race/list.json": async () => Response.json([...(await raceNames()), ...(await evolutionRaceNames()).sort()]),
     "/race/file/:name": (req) => raceFile(req.params.name),
   },
   fetch(req, server) {

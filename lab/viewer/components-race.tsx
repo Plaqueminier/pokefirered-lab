@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { rowButton } from "./components";
-import { modelFamily, shortModelId } from "./race-ghosts";
+import { dotOf, shortModelId } from "../src/race/file";
 
 export function MonIcon({ src, species, level }: { src: string | null; species: string; level?: number }) {
   return (
@@ -11,14 +11,16 @@ export function MonIcon({ src, species, level }: { src: string | null; species: 
   );
 }
 
-export function ModelName({ id, coach, short }: { id: string; coach?: string; short?: boolean }) {
-  if (!id) return null;
-  const family = modelFamily(id);
+/** `bot`: the name of the Bot and its version. A Run of the Genetic bot has no model: it shows its Bot. */
+export function ModelName({ id, bot = "", coach, short }: { id: string; bot?: string; coach?: string; short?: boolean }) {
+  const family = dotOf({ bot, model: id });
   const name = (model: string) => (short ? shortModelId(model) : model);
+  const text = family === "genetic" ? `Genetic bot ${bot.slice(bot.indexOf(" ") + 1)}` : coach ? `${name(id)} + coach ${name(coach)}` : name(id);
+  if (!text) return null;
   return (
     <span class="flex min-w-0 items-center gap-1.5 text-xs text-muted">
       {family && <span class="size-2 shrink-0 rounded-full border border-black" style={{ backgroundColor: `var(--color-model-${family})` }} />}
-      <span class="truncate">{coach ? `${name(id)} + coach ${name(coach)}` : name(id)}</span>
+      <span class="truncate">{text}</span>
     </span>
   );
 }
@@ -34,6 +36,7 @@ export function LeaderboardRow({
   cost,
   state,
   model,
+  bot,
   coach,
   faded,
   selected,
@@ -47,6 +50,7 @@ export function LeaderboardRow({
   cost: string;
   state: ComponentChildren;
   model: string;
+  bot?: string;
   coach?: string;
   faded?: boolean;
   selected?: boolean;
@@ -60,7 +64,7 @@ export function LeaderboardRow({
         <span class="flex items-center gap-2">
           <span class="shrink-0 font-mono font-semibold">{id}</span>
           <span class="min-w-0 flex-1">
-            <ModelName id={model} coach={coach} short />
+            <ModelName id={model} bot={bot} coach={coach} short />
           </span>
           <span class="w-[128px] shrink-0">{state}</span>
           <span class="w-[9ch] shrink-0 whitespace-nowrap text-right text-muted tabular-nums">{cost}</span>

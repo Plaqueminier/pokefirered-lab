@@ -1,10 +1,10 @@
 import { GBA_FPS } from "../src/protocol";
-import { CELL, type RaceFile } from "../src/race/file";
+import { CELL, dotOf, type RaceFile } from "../src/race/file";
 import type { Door, IslandLink, World, WorldGym, WorldMap, WorldPlace } from "../src/race/world";
 import { Store } from "./cursor";
 import { fitCanvas, RaceArt } from "./race-art";
 import { RaceCamera } from "./race-camera";
-import { framedBox, type GhostNow, modelFamily, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
+import { framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
 import { type Box, inBox, RaceMarks, type RaceTheme, raceTheme } from "./race-marks";
 import { FRAME_WIDTH, SHEET_HEIGHT } from "./race-sprite";
 
@@ -58,7 +58,7 @@ export function nearestGhost(hits: readonly GhostHit[], x: number, y: number): G
 }
 
 function runName(ghost: GhostNow): string {
-  return `Run ${ghost.number}${ghost.result ? ` · ${ghost.result}` : ""}`;
+  return `${dotOf(ghost) === "genetic" ? "Genome" : "Run"} ${ghost.number}${ghost.result ? ` · ${ghost.result}` : ""}`;
 }
 
 export class RaceView {
@@ -303,7 +303,7 @@ export class RaceView {
     const crown = members.some((member) => member.ghost.run === this.moment.leader);
     const selected = members.find((member) => member.ghost.run === this.selected.value)?.ghost;
     const group = members.length > 1;
-    const family = group ? null : modelFamily(ghost.model);
+    const family = group ? null : dotOf(ghost);
     const shown = zoom >= NUMBERS_ZOOM || group || fights.length > 0 || crown || selected !== undefined;
     if (!shown) return marks.dotAlone(ctx, x, y, family);
     return marks.label(ctx, {

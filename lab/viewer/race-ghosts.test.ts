@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import type { BattleSide, StateEntry } from "../src/protocol";
 import { RACE_VERSION, type RaceFile, type RaceRun } from "../src/race/file";
-import { framedBox, type GhostWorld, modelFamily, RaceGhosts, shortModelId } from "./race-ghosts";
+import { modelFamily, shortModelId } from "../src/race/file";
+import { framedBox, type GhostWorld, RaceGhosts } from "./race-ghosts";
 
 const PALLET = "3.0";
 const ROUTE = "3.1";

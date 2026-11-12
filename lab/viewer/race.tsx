@@ -150,10 +150,18 @@ function HitCard({ view, hit }: { view: RaceView; hit: RaceHit }) {
 
 type RaceChoiceProps = { names: readonly string[]; name: string; onName: (name: string) => void };
 
+// A Race of an Evolution is in its folder, `evolutions/<name>/<race>`: one group for each Evolution.
+function raceOption(value: string): { value: string; label: string; group?: string } {
+  const [, evolution, race] = /^evolutions\/([^/]+)\/(.+)$/.exec(value) ?? [];
+  if (!evolution) return { value, label: value };
+  const generation = /^generation-(\d+)$/.exec(race)?.[1];
+  return { value, label: generation ? `Generation ${Number(generation)}` : race === "bests" ? "The bests" : race, group: `Races of the Evolution ${evolution}` };
+}
+
 function RaceChoice({ names, name, onName }: RaceChoiceProps) {
   return (
     <div class="w-24 min-[900px]:w-44">
-      <Select options={names.map((value) => ({ value, label: value }))} value={name} title="Open a Race of the lab" placeholder="Choose a Race" onChange={onName} />
+      <Select options={names.map(raceOption)} value={name} title="Open a Race of the lab" placeholder="Choose a Race" onChange={onName} />
     </div>
   );
 }
@@ -317,7 +325,8 @@ function RaceRoot({ shown }: { shown: Store<boolean> }) {
       .then((list: string[]) => {
         setListError(null);
         setNames(list);
-        setName((current) => current || (list.at(-1) ?? ""));
+        // The Races of the Evolutions come after the Races of the lab: the last Race of the lab opens first.
+        setName((current) => current || (list.findLast((race) => !race.startsWith("evolutions/")) ?? list.at(-1) ?? ""));
       })
       .catch((failure) => setListError(String(failure)));
   }, [visible]);

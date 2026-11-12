@@ -31,6 +31,30 @@ export type RaceRun = {
 
 export const RACE_VERSION = 3;
 
+/** The name of the Genetic bot in `RaceRun.bot`, before its version. */
+export const GENETIC_BOT = "genetic";
+
+type ModelFamily = "deepseek" | "claude" | "gpt" | "grok";
+
+/** The dot of a Ghost: the family of its model, or "genetic" for a Run of the Genetic bot. */
+export type Dot = ModelFamily | "genetic";
+
+export function shortModelId(id: string): string {
+  return id.slice(id.lastIndexOf("/") + 1);
+}
+
+export function modelFamily(id: string): ModelFamily | null {
+  const short = shortModelId(id);
+  if (short.startsWith("deepseek")) return "deepseek";
+  if (short.startsWith("gpt-")) return "gpt";
+  if (short.startsWith("grok-")) return "grok";
+  return short.startsWith("claude") ? "claude" : null;
+}
+
+export function dotOf({ bot, model }: Pick<RaceRun, "bot" | "model">): Dot | null {
+  return bot.startsWith(`${GENETIC_BOT} `) ? "genetic" : modelFamily(model);
+}
+
 export type RaceFile = { version: typeof RACE_VERSION; runs: RaceRun[] };
 
 const DELTA_FIELDS = [TRACK_FIELD.frame, TRACK_FIELD.x, TRACK_FIELD.y];

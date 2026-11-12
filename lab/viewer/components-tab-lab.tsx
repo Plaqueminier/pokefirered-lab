@@ -551,6 +551,7 @@ export function ModelNameDemo() {
       <ModelName id="claude-haiku-5-5" />
       <ModelName id="gpt-6.1-terra" />
       <ModelName id="grok-4.7" />
+      <ModelName id="" bot="genetic 2" />
       <ModelName id="mistralai/mistral-large" />
       <div class="w-24">
         <ModelName id="deepseek/deepseek-v4.1-flash" short />

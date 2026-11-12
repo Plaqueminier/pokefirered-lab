@@ -22,6 +22,7 @@ function Row({ view, ghost, rank, selected }: { view: RaceView; ghost: GhostNow;
       cost={spendShort({ unit: ghost.unit, amount: ghost.stats.cost })}
       state={<GhostState ghost={ghost} />}
       model={ghost.model}
+      bot={ghost.bot}
       coach={ghost.coach}
       faded={ghost.result !== null}
       selected={selected}

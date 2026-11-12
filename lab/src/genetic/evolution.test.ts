@@ -3,6 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunRecord } from "../harness/record";
+import { dotOf } from "../race/file";
+import { readRace } from "../race/make";
 import { evolve, type Player } from "./evolution";
 import { fitness } from "./fitness";
 import type { Genome } from "./genome";
@@ -10,9 +12,12 @@ import type { Genome } from "./genome";
 // No emulator: the note of a Genome is the sum of its weights, so the Generations change fast and the same Genome always gets the same note.
 const fakePlayer: Player = async (genome, { seed }) => {
   const record: RunRecord = {
+    format: 3,
     header: { rom: "", seed, startSave: null, knowledge: "player", bot: { name: "genetic", version: "1", genome } },
     buttons: [],
     events: [],
+    track: [10, 4, 1, 6, 6, 1],
+    state: [],
     result: { endReason: "no progress", frames: 1000, milestones: [], rawInputs: 0 },
   };
   return { record, fitness: { ...fitness(record), note: noteOf(genome) } };
@@ -48,4 +53,17 @@ test("an Evolution that stops in a Generation and continues from its file gives 
   await expect(evolve(dir, { play: stops, seed: 7, until: 3 })).rejects.toThrow("the Mac sleeps");
   const continued = await evolve(dir, { play: fakePlayer, until: 3 });
   expect(continued.generations.map((g) => g.genomes)).toEqual(whole.generations.map((g) => g.genomes));
+});
+
+test("each Generation writes its Race from the Run records in memory, with the number of each Genome and the dot genetic, and the Race of the bests grows by the best Genome of each Generation", async () => {
+  const dir = await evolutionDir();
+  const { generations } = await evolve(dir, { play: fakePlayer, seed: 7, until: 2 });
+  for (const { number, genomes } of generations) {
+    const race = await readRace(`generation-000${number}`, dir);
+    expect(race?.runs.map((run) => run.number)).toEqual(genomes.map((g) => g.id).sort((a, b) => a - b));
+    expect(new Set(race?.runs.map(dotOf))).toEqual(new Set(["genetic"]));
+  }
+  const bests = await readRace("bests", dir);
+  expect(bests?.runs.map((run) => run.number)).toEqual(generations.map((g) => g.genomes[0].id));
+  expect(bests?.runs.map(dotOf)).toEqual(["genetic", "genetic"]);
 });

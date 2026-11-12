@@ -3,7 +3,9 @@ import { mkdir, readdir, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Milestone } from "../game";
 import type { EndReason } from "../harness/harness";
-import { RUNS_DIR, type RunRecord, writeRecord } from "../harness/record";
+import { isCurrentRecord, RUNS_DIR, type RunRecord, writeRecord } from "../harness/record";
+import { RACE_VERSION, type RaceRun } from "../race/file";
+import { RACE_SUFFIX, raceRun, readRace, writeRace } from "../race/make";
 import { FITNESS_VERSION, type Fitness } from "./fitness";
 import { GROUPS, type Genome } from "./genome";
 
@@ -11,6 +13,7 @@ const EVOLUTIONS_DIR =join(RUNS_DIR, "evolutions");
 const EVOLUTION_FILE = "evolution.json";
 const EVOLUTION_FORMAT = 1;
 const NAME = /^[\w-]+$/;
+const BESTS_RACE = "bests";
 
 // The seed of `gLabRngSeed` in the ROM (src/lab.c). A Run cannot take another seed yet (#94).
 const ROM_SEED = 0x4c41;
@@ -93,8 +96,21 @@ async function playGeneration(dir: string, evolution: Evolution, play: Player): 
   const genomes = ranked.map(({ genome, played: { record, fitness } }): Member => ({ ...genome, fitness: fitness.note, terms: fitness.terms, frames: record.result.frames, milestones: record.result.milestones, endReason: record.result.endReason }));
   const bestBefore = Math.max(Number.NEGATIVE_INFINITY, ...generations.map((g) => g.genomes[0].fitness));
   const best = ranked[0].played;
-  const record = best.fitness.note > bestBefore ? basename(await writeRecord({ ...best.record, header: { ...best.record.header, fitness: best.fitness } }, dir)) : undefined;
+  const record = best.fitness.note > bestBefore ? basename(await writeRecord({ ...best.record, header: { ...best.record.header, fitness: best.fitness, genomeId: ranked[0].genome.id } }, dir)) : undefined;
+  await writeRaces(dir, number, ranked.map(({ genome, played }) => ({ id: genome.id, record: played.record })));
   return { generation: { number, frameBudget, genomes, ...(record === undefined ? {} : { record }) }, bot: { name, version } };
+}
+
+// The Races come from the Run records in memory: the Evolution keeps no Run record file for each Genome. `ranked`: from the best Fitness to the worst.
+async function writeRaces(dir: string, number: number, ranked: { id: number; record: RunRecord }[]): Promise<void> {
+  const name = basename(dir);
+  // `record`: the Genome for `bun run bot genetic --genome <Evolution>:<Genome id>`, which plays the Run again.
+  const runOf = ({ id, record }: (typeof ranked)[number]): RaceRun[] => (isCurrentRecord(record) && record.track.length > 0 ? [raceRun(id, `${name}:${id}`, record)] : []);
+  await writeRace(`generation-${String(number).padStart(4, "0")}`, { version: RACE_VERSION, runs: ranked.flatMap(runOf).sort((a, b) => a.number - b.number) }, dir);
+  // A Generation that plays again after a stop replaces its best in the Race of the bests.
+  const bests = await readRace(BESTS_RACE, dir);
+  const before = bests?.version === RACE_VERSION ? bests.runs.slice(0, number - 1) : [];
+  await writeRace(BESTS_RACE, { version: RACE_VERSION, runs: [...before, ...runOf(ranked[0])] }, dir);
 }
 
 function firstGenomes({ seed, settings }: Evolution): Born[] {
@@ -172,9 +188,18 @@ export async function evolutionGenome(name: string, id: number): Promise<Genome>
   return member.genome;
 }
 
-/** The Run records of all the Evolutions, as paths in the runs folder: `evolutions/<name>/<file>`. */
-export async function evolutionRecordNames(): Promise<string[]> {
+/** The files of all the Evolutions, as paths in the runs folder: `evolutions/<name>/<file>`. */
+async function evolutionFiles(): Promise<string[]> {
   const names = await readdir(EVOLUTIONS_DIR).catch(() => []);
-  const files = await Promise.all(names.map(async (name) => (await readdir(join(EVOLUTIONS_DIR, name)).catch(() => [])).filter((file) => file.endsWith(".json") && file !== EVOLUTION_FILE).map((file) => `evolutions/${name}/${file}`)));
+  const files = await Promise.all(names.map(async (name) => (await readdir(join(EVOLUTIONS_DIR, name)).catch(() => [])).map((file) => `evolutions/${name}/${file}`)));
   return files.flat();
+}
+
+export async function evolutionRecordNames(): Promise<string[]> {
+  return (await evolutionFiles()).filter((path) => path.endsWith(".json") && basename(path) !== EVOLUTION_FILE);
+}
+
+/** The Races of all the Evolutions, as names without the suffix: `evolutions/<name>/<race>`. */
+export async function evolutionRaceNames(): Promise<string[]> {
+  return (await evolutionFiles()).filter((path) => path.endsWith(RACE_SUFFIX)).map((path) => path.slice(0, -RACE_SUFFIX.length));
 }

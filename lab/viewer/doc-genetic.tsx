@@ -1,4 +1,4 @@
-import { Footprints, GitFork, ListChecks, Repeat, Scale, Shuffle } from "lucide-preact";
+import { Footprints, Ghost, GitFork, ListChecks, Repeat, Scale, Shuffle, Trophy, Users } from "lucide-preact";
 import type { BattleCriterion, ChoiceCriterion, WalkCriterion } from "../src/genetic/genome";
 import { FITNESS_VERSION } from "../src/genetic/fitness";
 import { Block, BLOCKS2, DocCard, GRID3, Page, Terms } from "./doc-parts";
@@ -141,11 +141,42 @@ export function EvolutionPage() {
           <Terms
             rows={[
               ["`evolution.json`", "the settings, the seeds, the Fitness version and, for each Generation, each Genome from the best Fitness to the worst, with its id, its parents, its Fitness, the points of each term, its frames and its Milestones."],
-              ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, the Fitness version and the Fitness. Any other Run comes back from its Genome."],
+              ["Run records", "one for each Generation that gives a new best Fitness. Its header holds the Genome, its id, the Fitness version and the Fitness. Any other Run comes back from its Genome."],
+              ["Races", "the Race of each Generation and the Race of the bests (see Races of an Evolution)."],
             ]}
           />
         </Block>
       </div>
+    </Page>
+  );
+}
+
+export function EvolutionRacesPage() {
+  return (
+    <Page
+      lead="An Evolution gives Races. After each Generation, it writes the Race of the Generation and the Race of the bests in its folder, from the Run records in memory: it keeps no Run record file for each Genome. The Race tab plays them."
+      details={[
+        ["Ghost", "the number of a Ghost is the id of its Genome, and its face comes from this number. A Genome that passes unchanged keeps its face from Race to Race. A Genome id and a Run id with the same number have the same face."],
+        ["Dot", "purple: “genetic”, for each Ghost of the Genetic bot. Its card shows “Genetic bot” and its version in place of a model."],
+        ["Race of the bests", "the best Genome of each Generation, in the order of the Generations. A Genome that stays the best for two Generations has two Ghosts with the same number and the same face."],
+        ["Stop and continue", "a Generation that plays again after a stop writes its Race again and replaces its best in the Race of the bests."],
+        ["Play again", "each Ghost names its Genome as `<Evolution>:<Genome id>`: `bun run bot genetic --genome <Evolution>:<Genome id>` plays it again."],
+        ["Race command", "it also takes a Run record of the Genetic bot. The Run record of a new best of an Evolution holds the id of its Genome, so its Ghost has the number of the Genome. A Run record of `bun run bot genetic` holds no id: its Ghost has the Run id."],
+      ]}
+    >
+      <div class={GRID3}>
+        <DocCard icon={Users} title="Race of a Generation" lines={["the 50 Ghosts of one Generation", "they leave the same bedroom", "`generation-0001`, `generation-0002`…"]} />
+        <DocCard icon={Trophy} title="Race of the bests" lines={["the best Genome of each Generation", "it grows at each Generation", "`bests`"]} />
+        <DocCard icon={Ghost} title="Race tab" lines={["the list of the bar has a group for each Evolution", "“Generation 1”, “Generation 2”…, “The bests”", "the Races of the lab come first"]} />
+      </div>
+      <Block label="The folder runs/evolutions/<name>/" sub="Next to `evolution.json` and the Run records of the new bests.">
+        <Terms
+          rows={[
+            ["`generation-<n>.json.gz`", "the Race of Generation n, with a Ghost for each Genome."],
+            ["`bests.json.gz`", "the Race of the bests."],
+          ]}
+        />
+      </Block>
     </Page>
   );
 }

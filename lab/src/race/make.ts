@@ -1,15 +1,15 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type CurrentRecord, isCurrentRecord, limitOf, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
 import { NORMAL_TRAINER, shownCharacter } from "../model/character";
 import { modelEvents, parseRunId, type SpendUnit, spentIn, TRACK_FIELD, TRACK_POINT } from "../protocol";
-import { encodeTrack, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
+import { encodeTrack, GENETIC_BOT, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
 
 export const RACE_SUFFIX = ".json.gz";
 
-const MODEL_BOT = "model";
+const RACE_BOTS = ["model", GENETIC_BOT];
 const COST_STEP = 0.01;
 const TOKEN_STEP = 10_000;
 
@@ -60,7 +60,8 @@ function playUntilEnd({ events, track, state, result }: CurrentRecord): Pick<Cur
   return { track: track.slice(0, end), state: state.filter((entry) => entry.frame <= whiteout.frame) };
 }
 
-function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
+/** `number`: the Run id, or the id of the Genome for a Run of the Genetic bot. `name`: where the Run comes from. */
+export function raceRun(number: number, name: string, record: CurrentRecord): RaceRun {
   const { events, header } = record;
   const lastFrame = new RecordPlayer(record).frames;
   const unit = header.bot.model ? limitOf(header.bot.model).unit : "dollars";
@@ -106,24 +107,25 @@ function continuedBy(chosen: readonly string[], records: ReadonlyMap<string, Run
   return continued;
 }
 
+/** `wanted`: names of records of `dir`, or paths in `dir` such as `evolutions/<name>/<file>` for a Run record of an Evolution. With none, the Race has all the records of `dir` that a Race can show. */
 export async function makeRace(dir = RUNS_DIR, wanted?: readonly string[]): Promise<RaceFile> {
-  const files = (await readdir(dir)).filter((name) => name.endsWith(".json"));
+  const files = [...(await readdir(dir)).filter((name) => name.endsWith(".json")), ...(wanted ?? []).filter((name) => name.includes("/"))];
   const records = new Map<string, RunRecord>();
   for (const name of files) {
     const record = readRecord(await Bun.file(join(dir, name)).json().catch(() => null));
     if (record) records.set(name, record);
   }
   const names = [...records.keys()];
-  const modelRuns = names.filter((name) => records.get(name)?.header.bot.name === MODEL_BOT);
-  const chosen = wanted?.map((name) => findRecord(names, name)) ?? modelRuns;
-  for (const name of chosen) if (!modelRuns.includes(name)) throw new Error(`${name} is not a Run of a model bot`);
+  const raceRuns = names.filter((name) => RACE_BOTS.includes(records.get(name)?.header.bot.name ?? ""));
+  const chosen = wanted?.map((name) => findRecord(names, name)) ?? raceRuns;
+  for (const name of chosen) if (!raceRuns.includes(name)) throw new Error(`${name} is not a Run of a model bot or of the Genetic bot`);
   const continued = continuedBy(chosen, records);
   const runs: RaceRun[] = [];
   for (const name of new Set(chosen)) {
     const record = records.get(name);
     if (!record) continue;
     if (!isCurrentRecord(record)) throw new Error(`${name} is below format ${RECORD_FORMAT}: run "bun run migrate" first`);
-    const number = parseRunId(name);
+    const number = record.header.genomeId ?? parseRunId(basename(name));
     if (number === null) console.warn(`${name} has no Run id at the start of its name: it stays out of the Race`);
     else if (continued.has(name)) console.warn(`${name} stays out of the Race: a Run of the Race continues it`);
     else if (record.track.length === 0) console.warn(`${name} has no point in its track: it stays out of the Race`);
@@ -139,6 +141,13 @@ export async function writeRace(name: string, race: RaceFile, dir = RACES_DIR): 
   await Bun.write(`${path}.tmp`, Bun.gzipSync(JSON.stringify(race)));
   await rename(`${path}.tmp`, path);
   return path;
+}
+
+/** Null when the Race file does not exist. */
+export async function readRace(name: string, dir = RACES_DIR): Promise<RaceFile | null> {
+  const file = Bun.file(join(dir, `${name}${RACE_SUFFIX}`));
+  if (!(await file.exists())) return null;
+  return JSON.parse(new TextDecoder().decode(Bun.gunzipSync(await file.bytes())));
 }
 
 export async function raceNames(dir = RACES_DIR): Promise<string[]> {
