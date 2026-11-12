@@ -46,7 +46,7 @@ The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`
 
 ## Run the Genetic bot
 
-The **Genetic bot** (`bots/genetic.ts`, version 2, no goal) plays with a **Genome**, and asks no AI model (ADR 0008). The **Genome** is a JSON file of weights from -1 to 1, for example:
+The **Genetic bot** (`bots/genetic.ts`, version 3, no goal) plays with a **Genome**, and asks no AI model (ADR 0008). The **Genome** is a JSON file of weights from -1 to 1, for example:
 
 ```
 {"walk": {"notUsed": 1, "isExit": 1, "previousMap": -1, "isSign": -1, "unknownNeighbours": 1, "distance": -0.2},

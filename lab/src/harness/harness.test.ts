@@ -135,7 +135,7 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
 }
 
-const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null };
+const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "3", goal: null, costLimit: null };
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
   expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) }]);

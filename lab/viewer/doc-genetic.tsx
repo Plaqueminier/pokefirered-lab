@@ -44,11 +44,12 @@ export function GenomePage() {
       details={[
         ["Version", "the Genetic bot (`bots/genetic.ts`) has a version, as the model bot has: the page “Bots” gives it. A new criterion makes a new version, and an older Genome gets the weight 0 for it."],
         ["Version 2", "the groups `choice` and `battle` (criteria 14 to 23). A Genome of version 1 has the group `walk` only: it gets the weight 0 for each criterion of the choices and of the battles."],
+        ["Version 3", "a `blocked` action leaves the list, as an `impossible` action does. In version 2, the Bot played a `blocked` action again at each Decision point (for example a cell where PROF. OAK stands in his lab) until the Stuck counter ended the Run."],
         ["Genome file", 'JSON with a group of weights for each kind of Decision point (`walk`, `choice`, `battle`), for example `{"walk": {"notUsed": 1, "isExit": 1, "previousMap": -1}, "choice": {"isYes": 1}}`. A group or a criterion with no weight has the weight 0. An unknown group, an unknown criterion or a weight out of −1 to 1 is refused.'],
         ["Tie", "two actions with the same score: the first action of the list plays. At a walk, the list has the exits (the warps, then the edges), the people, the signs, then the cells. At a choice, the options in the order of the menu. At a battle, the moves in the order of the Pokémon, then `run`. So the Run of a Genome is always the same."],
         ["People", "a person that the Atlas keeps but that is not on the map now, for example a Poké Ball that a player took, is not a target."],
         ["Fixed rules", "the Genome has no criteria for the other Decision points. A name: none, the game keeps its name. A new move: `keep`. A Pokémon to send in a battle: the first Pokémon that can go. A shop or a PC: `leave`."],
-        ["Impossible", "an action that the Harness answers as `impossible` leaves the list for this Decision point, and the next best action plays. When no action is left, the Bot stops."],
+        ["Impossible", "an action that the Harness answers as `impossible` or `blocked` leaves the list for this Decision point, and the next best action plays. When no action is left, the Bot stops."],
         ["Knowledge level", "the Bot takes its facts from the Atlas and `observe()`, as the model bot: it sees only the cells, the exits, the people and the signs that the player saw."],
         ["Texts", "the code reads the texts. When `readText` is impossible, it presses B 3 times. After 3 screens in a row that no action covers, the Run ends with `unknown screen`."],
         ["Memory", "the Bot keeps the cells where the player stood at each walk Decision point, for each map. The maps where the player arrived come from the `map` events of the Run."],

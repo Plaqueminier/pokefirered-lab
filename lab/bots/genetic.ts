@@ -10,12 +10,15 @@ import { approaches, interactCell, type Overworld } from "../src/model/targets";
 export const NO_PROGRESS_LIMIT = 60;
 const MAX_UNCOVERED = 3;
 
-/** `play` gives false when the Harness answers `impossible`: nothing played. */
+/** `play` gives false when the Harness answers `impossible` or `blocked`: the action leaves the list. */
 type Candidate = { score: number; play: () => Promise<boolean> };
+
+// A `blocked` action that stayed in the list got the same best score at the next Decision point, so the Bot played it again until the Stuck counter ended the Run (Oak on the way in his lab).
+const didPlay = (result: ActionResult) => result.status !== "impossible" && result.status !== "blocked";
 
 export function geneticBot(weights: Partial<Genome> = {}): Bot {
   const genome: Genome = { walk: {}, choice: {}, battle: {}, ...weights };
-  return { name: "genetic", version: "2", genome, noProgressLimit: NO_PROGRESS_LIMIT, play: (harness) => new GeneticPlay(harness, genome).play() };
+  return { name: "genetic", version: "3", genome, noProgressLimit: NO_PROGRESS_LIMIT, play: (harness) => new GeneticPlay(harness, genome).play() };
 }
 
 const FIXED_RULES: Partial<Record<WaitingFor["kind"], (available: AvailableAction[]) => MacroAction[]>> = {
@@ -87,14 +90,14 @@ class GeneticPlay {
     return {
       score,
       play: async () => {
-        const done = (await this.harness.perform(action)).status !== "impossible";
+        const done = didPlay(await this.harness.perform(action));
         if (done) played?.();
         return done;
       },
     };
   }
 
-  // The best score plays first, and a tie keeps the order of the list. An `impossible` action leaves the list.
+  // The best score plays first, and a tie keeps the order of the list. An `impossible` or `blocked` action leaves the list.
   private async playBest(candidates: Candidate[]): Promise<boolean> {
     for (const candidate of candidates.toSorted((a, b) => b.score - a.score)) if (await candidate.play()) return true;
     return false;
@@ -108,7 +111,7 @@ class GeneticPlay {
   private async walk({ target }: WalkAction, overworld: Overworld): Promise<boolean> {
     switch (target.kind) {
       case "cell":
-        return (await this.harness.goTo(target.cell.x, target.cell.y)).status !== "impossible";
+        return didPlay(await this.harness.goTo(target.cell.x, target.cell.y));
       case "person":
       case "sign":
         return this.talkTo(target, overworld);
@@ -120,14 +123,14 @@ class GeneticPlay {
   private async goToFirst(cells: Cell[]): Promise<ActionResult | null> {
     for (const cell of cells) {
       const result = await this.harness.goTo(cell.x, cell.y);
-      if (result.status !== "impossible") return result;
+      if (didPlay(result)) return result;
     }
     return null;
   }
 
   private async talkTo(target: Extract<WalkTarget, { kind: "person" | "sign" }>, overworld: Overworld): Promise<boolean> {
     const at = interactCell(target, overworld.grid, overworld.player);
-    if (at) return (await this.harness.interact(at.x, at.y)).status !== "impossible";
+    if (at) return didPlay(await this.harness.interact(at.x, at.y));
     const walked = await this.goToFirst(approaches(target, overworld));
     if (walked?.status !== "done" || this.harness.waitingFor().kind !== "walk") return walked !== null;
     const now = this.harness.observe();
