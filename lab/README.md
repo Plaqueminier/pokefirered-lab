@@ -93,7 +93,7 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/game.ts` and the files next to it: the reads of the game state (battle, menus, Bag, PC, shop, party).
 - `src/harness/`: the API of the **Bot**, the **Atlas**, the **Run record** and the pool of **Runs**.
 - `src/model/`: the parts of the model bot (request, prompt, answer).
-- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria).
+- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria) and the **Fitness** of a **Run record**.
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.
