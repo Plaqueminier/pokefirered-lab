@@ -136,7 +136,7 @@ async function toRivalBattle(harness: Harness) {
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
   expect(await botInfos()).toEqual([
-    { name: "genetic", kind: "genetic", version: "1", goal: null, costLimit: null },
+    { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null },
     { name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) },
   ]);
 });
@@ -146,7 +146,7 @@ test("a Bot that does not load gives its error in the list of the Bots", async (
   process.env.LAB_COST_LIMIT = "abc";
   try {
     expect(await botInfos()).toEqual([
-      { name: "genetic", kind: "genetic", version: "1", goal: null, costLimit: null },
+      { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null },
       { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' },
     ]);
   } finally {
