@@ -52,7 +52,10 @@ describe.skipIf(!ready)("the Fitness on Run records", () => {
       },
     };
     const bedroom = await recordOf(stayer, Harness.open({ noProgressLimit: 10 }));
-    expect(fitness(await playScriptedPath()).note).toBeGreaterThan(fitness(bedroom).note);
+    const scripted = fitness(await playScriptedPath());
+    expect(scripted.note).toBeGreaterThan(fitness(bedroom).note);
+    // PROF. OAK stops the scripted path at the north of Pallet Town.
+    expect(scripted.terms.triggers.count).toBeGreaterThan(0);
   });
 
   test("a Run that walks between Pallet Town and Route 1 again and again has a low note: no higher than a Run that walks there once", async () => {
