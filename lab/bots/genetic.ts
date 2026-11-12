@@ -1,16 +1,17 @@
 import { isDecisionPoint, type WaitingFor } from "../src/game";
 import { battleActions, moveKey } from "../src/genetic/battle";
 import { type ChoiceCriterion, type Genome, scoreOf } from "../src/genetic/genome";
-import { type WalkAction, walkActions } from "../src/genetic/walk";
-import type { ActionResult, AvailableAction, Bot, Harness, MacroAction } from "../src/harness/harness";
+import { type WalkAction, type WalkTarget, walkActions } from "../src/genetic/walk";
+import type { ActionResult, AvailableAction, Bot, Harness, MacroAction, Observation } from "../src/harness/harness";
 import { type Cell, cellKey } from "../src/harness/path";
 import { B_PRESSES } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld } from "../src/model/targets";
 
-const NO_PROGRESS_LIMIT = 60;
+export const NO_PROGRESS_LIMIT = 60;
 const MAX_UNCOVERED = 3;
 
-type Candidate = { score: number; play: () => Promise<{ impossible: boolean }> };
+/** `play` gives false when the Harness answers `impossible`: nothing played. */
+type Candidate = { score: number; play: () => Promise<boolean> };
 
 export function geneticBot(weights: Partial<Genome> = {}): Bot {
   const genome: Genome = { walk: {}, choice: {}, battle: {}, ...weights };
@@ -30,8 +31,8 @@ function choiceCriteria(options: string[]): Partial<Record<ChoiceCriterion, numb
   return options.map((option, i) => ({ isYes: Number(option === "YES"), isNo: Number(option === "NO"), rank: options.length === 1 ? 0 : i / (options.length - 1) }));
 }
 
-function nothingPlayed(result: ActionResult): { impossible: boolean } {
-  return { impossible: result.status === "impossible" };
+function cellNow(target: Extract<WalkTarget, { kind: "person" | "sign" }>, now: Overworld): Cell | null {
+  return target.kind === "person" ? (now.people.find((p) => p.localId === target.localId && p.loaded) ?? null) : target.cell;
 }
 
 class GeneticPlay {
@@ -52,16 +53,24 @@ class GeneticPlay {
         continue;
       }
       this.#uncovered = 0;
-      if (!(await this.playBest(this.candidates(waiting)))) return;
+      const observation = this.harness.observe();
+      if (waiting.kind === "walk") this.startWalk(observation);
+      if (!(await this.playBest(this.candidates(waiting, observation)))) return;
     }
   }
 
-  private candidates(waiting: WaitingFor): Candidate[] {
-    const observation = this.harness.observe();
-    if (waiting.kind === "walk") {
-      this.#usedMoves.clear();
-      return observation.mode === "overworld" ? this.walkCandidates(observation) : [];
-    }
+  // A walk Decision point: the battle is over, so its moves count as unused again. The cell of the player counts as walked.
+  private startWalk(observation: Observation): void {
+    this.#usedMoves.clear();
+    if (observation.mode !== "overworld") return;
+    const { map, player } = observation;
+    const walked = this.#walked.get(map.name) ?? new Set();
+    walked.add(cellKey(player));
+    this.#walked.set(map.name, walked);
+  }
+
+  private candidates(waiting: WaitingFor, observation: Observation): Candidate[] {
+    if (waiting.kind === "walk") return observation.mode === "overworld" ? this.walkCandidates(observation) : [];
     if (waiting.kind === "choice") return choiceCriteria(waiting.options).map((criteria, i) => this.candidate(scoreOf(this.genome.choice, criteria), { name: "choose", option: waiting.options[i] }));
     if (observation.mode === "battle" && (waiting.kind === "battleAction" || waiting.kind === "battleMove")) {
       const { battle } = observation;
@@ -78,62 +87,55 @@ class GeneticPlay {
     return {
       score,
       play: async () => {
-        const result = nothingPlayed(await this.harness.perform(action));
-        if (!result.impossible) played?.();
-        return result;
+        const done = (await this.harness.perform(action)).status !== "impossible";
+        if (done) played?.();
+        return done;
       },
     };
   }
 
+  // The best score plays first, and a tie keeps the order of the list. An `impossible` action leaves the list.
   private async playBest(candidates: Candidate[]): Promise<boolean> {
-    const left = [...candidates];
-    while (left.length > 0) {
-      const best = left.reduce((top, candidate, i) => (candidate.score > left[top].score ? i : top), 0);
-      if (!(await left[best].play()).impossible) return true;
-      left.splice(best, 1);
-    }
+    for (const candidate of candidates.toSorted((a, b) => b.score - a.score)) if (await candidate.play()) return true;
     return false;
   }
 
   private walkCandidates(overworld: Overworld): Candidate[] {
-    const { map, player } = overworld;
-    const walked = this.#walked.get(map.name) ?? new Set();
-    walked.add(cellKey(player));
-    this.#walked.set(map.name, walked);
     const arrivals = this.harness.events.flatMap((e) => (e.type === "map" ? [e.map] : []));
     return walkActions(overworld, { walked: this.#walked, arrivals }).map((action) => ({ score: scoreOf(this.genome.walk, action.criteria), play: () => this.walk(action, overworld) }));
   }
 
-  private async walk({ target }: WalkAction, overworld: Overworld): Promise<{ impossible: boolean }> {
+  private async walk({ target }: WalkAction, overworld: Overworld): Promise<boolean> {
     switch (target.kind) {
       case "cell":
-        return nothingPlayed(await this.harness.goTo(target.cell.x, target.cell.y));
+        return (await this.harness.goTo(target.cell.x, target.cell.y)).status !== "impossible";
       case "person":
       case "sign":
-        return this.talkTo(target.kind, target.cell, (now) => (target.kind === "person" ? (now.people.find((p) => p.localId === target.localId && p.loaded) ?? null) : target.cell), approaches(target, overworld), overworld);
+        return this.talkTo(target, overworld);
       default:
-        return this.goToFirst(approaches(target, overworld));
+        return (await this.goToFirst(approaches(target, overworld))) !== null;
     }
   }
 
-  private async goToFirst(cells: Cell[]): Promise<{ impossible: boolean; result?: ActionResult }> {
+  private async goToFirst(cells: Cell[]): Promise<ActionResult | null> {
     for (const cell of cells) {
       const result = await this.harness.goTo(cell.x, cell.y);
-      if (result.status !== "impossible") return { impossible: false, result };
+      if (result.status !== "impossible") return result;
     }
-    return { impossible: true };
+    return null;
   }
 
-  private async talkTo(kind: "person" | "sign", cell: Cell, locate: (now: Overworld) => Cell | null, sides: Cell[], overworld: Overworld): Promise<{ impossible: boolean }> {
-    const at = interactCell({ kind, cell }, overworld.grid, overworld.player);
-    if (at) return nothingPlayed(await this.harness.interact(at.x, at.y));
-    const walked = await this.goToFirst(sides);
-    if (walked.result?.status !== "done" || this.harness.waitingFor().kind !== "walk") return walked;
+  private async talkTo(target: Extract<WalkTarget, { kind: "person" | "sign" }>, overworld: Overworld): Promise<boolean> {
+    const at = interactCell(target, overworld.grid, overworld.player);
+    if (at) return (await this.harness.interact(at.x, at.y)).status !== "impossible";
+    const walked = await this.goToFirst(approaches(target, overworld));
+    if (walked?.status !== "done" || this.harness.waitingFor().kind !== "walk") return walked !== null;
     const now = this.harness.observe();
-    const there = now.mode === "overworld" ? locate(now) : null;
-    const next = now.mode === "overworld" && there && interactCell({ kind, cell: there }, now.grid, now.player);
+    if (now.mode !== "overworld") return true;
+    const there = cellNow(target, now);
+    const next = there && interactCell({ kind: target.kind, cell: there }, now.grid, now.player);
     if (next) await this.harness.interact(next.x, next.y);
-    return { impossible: false };
+    return true;
   }
 
   private async readText(): Promise<void> {

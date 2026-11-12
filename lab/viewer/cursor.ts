@@ -5,6 +5,13 @@ import { runKey } from "./runs";
 
 export type Span = { from: number; to: number };
 
+/** The response of a GET, or an error with the text that the server gave. */
+export async function fetched(url: string): Promise<Response> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${await response.text()}`);
+  return response;
+}
+
 // The call is the Model call picked by a click. Calls can share one frame, so the frame alone does not tell which one.
 export type Cursor = { frame: number; call: number | null };
 

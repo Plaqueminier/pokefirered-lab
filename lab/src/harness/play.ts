@@ -5,8 +5,9 @@ import { evolutionGenome, type PlayerRun } from "../genetic/evolution";
 import { type Genome, readGenome } from "../genetic/genome";
 import { providerProblem } from "../model/providers";
 import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
+import { isSeed } from "../run";
 import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
-import { limitOf, modelTotals, providerOf, readRecord, writeRecord } from "./record";
+import { limitOf, modelTotals, providerOf, readRecord, withGenome, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full] [--seed <0 to 0xffff>]
        bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full] [--seed <0 to 0xffff>]
@@ -27,11 +28,11 @@ if (!name || ids.length > 1) {
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
 const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: values.coach === undefined ? undefined : { id: values.coach }, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: values["no-stop-at-whiteout"] ? false : undefined };
 const seed = values.seed === undefined ? undefined : Number(values.seed);
-if (seed !== undefined && !(Number.isInteger(seed) && seed >= 0 && seed <= 0xffff)) {
+if (seed !== undefined && !isSeed(seed)) {
   console.error(`The seed ${values.seed} is not a whole number from 0 to 0xffff.`);
   process.exit(1);
 }
-const genome = values.genome === undefined ? undefined : await genomeFile(values.genome);
+const genome = values.genome === undefined ? undefined : await readGenomeArg(values.genome);
 const loaded = await loadBot(name, model, genome?.genome).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);
@@ -43,7 +44,7 @@ if (loaded.genome && !genome) {
 const evolutionRun = genome?.run;
 const bot = evolutionRun ? { ...loaded, goal: evolutionRun.goal, frameBudget: evolutionRun.frameBudget, noProgressLimit: evolutionRun.noProgressLimit } : loaded;
 
-async function genomeFile(path: string): Promise<{ genome: Genome; id?: number; run?: PlayerRun }> {
+async function readGenomeArg(path: string): Promise<{ genome: Genome; id?: number; run?: PlayerRun }> {
   const ofEvolution = /^([\w-]+):(\d+)$/.exec(path);
   try {
     if (!ofEvolution) return { genome: readGenome(await Bun.file(path).json()) };
@@ -98,7 +99,7 @@ const error = await harness.play(bot).then(
   (e: unknown) => e,
 );
 const played = harness.record();
-const record = genome?.id === undefined ? played : { ...played, header: { ...played.header, genomeId: genome.id } };
+const record = genome?.id === undefined ? played : withGenome(played, genome.id);
 console.log(`Run record: ${relative(process.cwd(), await writeRecord(record))}`);
 if (error) console.error(`The Bot stops with an error: ${errorText(error)}`);
 

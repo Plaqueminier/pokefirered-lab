@@ -163,7 +163,13 @@ type RunBot = Pick<Bot, "name" | "version" | "model" | "genome">;
 
 type RunPart = Continuation & { bot: RunBot; result: RunResult };
 
+/** `parent`: the file in lab/runs/ of the Run record that this Run continues. `genomeId`: the id of the Genome in its Evolution. `fitness`: the Fitness of the Run, at a new best of an Evolution. */
 export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; parts?: RunPart[]; fitness?: Fitness; genomeId?: number };
+
+/** The Run record with the id of its Genome in the header, and the Fitness of the Run when it is given. */
+export function withGenome(record: RunRecord, genomeId: number, fitness?: Fitness): RunRecord {
+  return { ...record, header: { ...record.header, genomeId, ...(fitness ? { fitness } : {}) } };
+}
 
 export type RunRecord = { format?: number; header: RunHeader; buttons: ButtonHold[]; events: RunEvent[]; track?: Track; state?: StateEntry[]; result: RunResult };
 

@@ -59,8 +59,7 @@ let gridShown = false;
 const fromGrid = new Store<string | null>(null);
 const gridTab = new GridTab($("grid"), { send, screens, fromGrid, openLab: () => tabs.show("lab") });
 const raceTab = new RaceTab($("race"));
-const bots = new Store<BotInfo[] | null>(null);
-const evolutionsTab = new EvolutionsTab($("evolutions"), bots, {
+const evolutionsTab = new EvolutionsTab($("evolutions"), {
   send,
   openRace: (name) => {
     raceTab.open(name);
@@ -86,6 +85,7 @@ const tabs = new ViewerTabs(
   },
 );
 mountComponentsTab($("components"));
+const bots = new Store<BotInfo[] | null>(null);
 mountDocTab($("doc"), bots);
 const cellTip = new Store<CellTip | null>(null);
 const map = new WholeMap(send, cellTip);

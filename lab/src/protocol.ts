@@ -302,6 +302,34 @@ export function parseRunId(fileName: string): number | null {
   return id === undefined ? null : Number(id);
 }
 
+/** The name of an Evolution or of a Race: letters, digits, "-" and "_". */
+export const PLAIN_NAME = /^[\w-]+$/;
+
+export const DEFAULT_PARALLEL = 12;
+
+export const MAX_PARALLEL = 18;
+
+export const BESTS_RACE = "bests";
+
+/** The files of an Evolution are in `runs/evolutions/<name>/`. The server and the Viewer name them `evolutions/<name>/<file>`. */
+export function evolutionPath(evolution: string, file: string): string {
+  return `evolutions/${evolution}/${file}`;
+}
+
+export function parseEvolutionPath(path: string): { evolution: string; file: string } | null {
+  const [, evolution, file] = /^evolutions\/([^/]+)\/(.+)$/.exec(path) ?? [];
+  return evolution === undefined ? null : { evolution, file };
+}
+
+export function generationRace(number: number): string {
+  return `generation-${String(number).padStart(4, "0")}`;
+}
+
+export function parseGenerationRace(race: string): number | null {
+  const number = /^generation-(\d+)$/.exec(race)?.[1];
+  return number === undefined ? null : Number(number);
+}
+
 export type TeamMon = { species: string; nickname: string; level: number; maxHp: number; moves: string[] };
 
 export type MonHealth = { hp: number; status: Status };

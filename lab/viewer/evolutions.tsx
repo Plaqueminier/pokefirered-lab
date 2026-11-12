@@ -3,37 +3,31 @@ import { type ComponentChildren, render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { Evolution, EvolutionFacts, Generation } from "../src/genetic/evolution";
 import type { EvolutionRun } from "../src/genetic/evolve-process";
-import { GROUPS, type Genome } from "../src/genetic/genome";
-import type { BotInfo, ClientMessage } from "../src/protocol";
-import { Bar, Button, Card, Code, Field, Input, LABEL, Pill, SignedBar, Slider, StatTile, TermList, type Tone, Tooltip } from "./components";
-import { GenerationChart } from "./components-chart";
+import { GROUP_NAMES, GROUPS, type Genome, weightOf } from "../src/genetic/genome";
+import { BESTS_RACE, type ClientMessage, DEFAULT_PARALLEL, evolutionPath, generationRace, MAX_PARALLEL, PLAIN_NAME } from "../src/protocol";
+import { Bar, Button, Card, Code, Field, Input, LABEL, Pill, Slider, StatTile, TermList, type Tone, Tooltip } from "./components";
+import { GenerationChart, SignedBar } from "./components-chart";
 import { Select } from "./components-layers";
-import { Store, useStore } from "./cursor";
+import { fetched, Store, useStore } from "./cursor";
 
 type Member = Generation["genomes"][number];
 
-const PARALLEL = 12;
-const MAX_PARALLEL = 18;
-const NAME = /^[\w-]+$/;
 
 const fitnessText = (value: number) => value.toFixed(2);
 const count = (value: number) => value.toLocaleString("en-US");
-const raceOf = (evolution: string, generation: number | "bests") => `evolutions/${evolution}/${generation === "bests" ? "bests" : `generation-${String(generation).padStart(4, "0")}`}`;
+const raceOf = (evolution: string, generation: number | typeof BESTS_RACE) => evolutionPath(evolution, generation === BESTS_RACE ? BESTS_RACE : generationRace(generation));
 
 function command(name: string, parallel: number): string {
-  return `bun run evolve ${name || "<name>"}${parallel === PARALLEL ? "" : ` --parallel ${parallel}`}`;
+  return `bun run evolve ${name || "<name>"}${parallel === DEFAULT_PARALLEL ? "" : ` --parallel ${parallel}`}`;
 }
 
 async function json<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${url}: ${await response.text()}`);
-  return response.json();
+  return (await fetched(url)).json();
 }
 
-function continueProblem(facts: EvolutionFacts, version: string | null): string | null {
+function continueProblem(facts: EvolutionFacts): string | null {
   if (facts.end) return `It ended: ${facts.end}.`;
   if (facts.problem) return `It does not continue: ${facts.problem}.`;
-  if (facts.bot && version && facts.bot.version !== version) return `It plays the Genetic bot version ${facts.bot.version}, and the Genetic bot is now version ${version}: start a new Evolution.`;
   return null;
 }
 
@@ -52,40 +46,37 @@ function bornIn({ generations }: Evolution, id: number): number {
 function Weights({ genome, version }: { genome: Partial<Genome>; version: string }) {
   return (
     <div class="grid grid-cols-1 gap-5 @3xl:grid-cols-3">
-      {(Object.keys(GROUPS) as (keyof Genome)[]).map((group) => {
-        const weights = genome[group] as Record<string, number> | undefined;
-        return (
-          <div key={group} class="flex min-w-0 flex-col gap-1.5">
-            <span class={LABEL}>{group}</span>
-            {weights === undefined ? (
-              <span class="text-xs text-muted">Not in the Genetic bot version {version}: each weight of this group is 0.</span>
-            ) : (
-              GROUPS[group].map((criterion) => {
-                const weight = weights[criterion] ?? 0;
-                return (
-                  <div key={criterion} class="grid grid-cols-[18ch_1fr_5ch] items-center gap-2 text-xs">
-                    <span class="truncate font-mono text-muted">{criterion}</span>
-                    <SignedBar value={weight} />
-                    <span class="text-right tabular-nums">{weight.toFixed(2)}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        );
-      })}
+      {GROUP_NAMES.map((group) => (
+        <div key={group} class="flex min-w-0 flex-col gap-1.5">
+          <span class={LABEL}>{group}</span>
+          {genome[group] === undefined ? (
+            <span class="text-xs text-muted">Not in the Genetic bot version {version}: each weight of this group is 0.</span>
+          ) : (
+            GROUPS[group].map((criterion) => {
+              const weight = weightOf(genome, group, criterion);
+              return (
+                <div key={criterion} class="grid grid-cols-[18ch_1fr_5ch] items-center gap-2 text-xs">
+                  <span class="truncate font-mono text-muted">{criterion}</span>
+                  <SignedBar value={weight} />
+                  <span class="text-right tabular-nums">{weight.toFixed(2)}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 type Actions = { send: (message: ClientMessage) => void; openRace: (name: string) => void; replay: (name: string) => void };
 
-function StartCard({ list, initial, version, send, onStart }: { list: readonly EvolutionFacts[]; initial: string; version: string | null; send: Actions["send"]; onStart: (name: string) => void }) {
+function StartCard({ list, initial, send, onStart }: { list: readonly EvolutionFacts[]; initial: string; send: Actions["send"]; onStart: (name: string) => void }) {
   const [name, setName] = useState(initial);
-  const [parallel, setParallel] = useState(PARALLEL);
+  const [parallel, setParallel] = useState(DEFAULT_PARALLEL);
   useEffect(() => setName(initial), [initial]);
   const known = list.find((facts) => facts.name === name);
-  const error = name !== "" && !NAME.test(name) ? 'Only letters, digits, "-" and "_".' : known ? (continueProblem(known, version) ?? undefined) : undefined;
+  const error = name !== "" && !PLAIN_NAME.test(name) ? 'Only letters, digits, "-" and "_".' : known ? (continueProblem(known) ?? undefined) : undefined;
   const hint = known ? `It has ${known.generations} Generations: Continue plays Generation ${known.generations + 1}.` : "A new folder runs/evolutions/<name>/.";
   return (
     <Card>
@@ -100,7 +91,7 @@ function StartCard({ list, initial, version, send, onStart }: { list: readonly E
           </span>
           <Slider value={parallel} max={MAX_PARALLEL} label="Runs at the same time" live onSeek={(value) => setParallel(Math.max(1, value))} />
           <span class="text-xs text-faint">
-            {PARALLEL} by default, {MAX_PARALLEL} at most. They play out of the places of the Viewer.
+            {DEFAULT_PARALLEL} by default, {MAX_PARALLEL} at most. They play out of the places of the Viewer.
           </span>
         </div>
         <Button
@@ -153,7 +144,7 @@ function RunningCard({ run, send }: { run: EvolutionRun; send: Actions["send"] }
 }
 
 function BestCard({ evolution, best, record, actions, name }: { evolution: Evolution; best: Member; record: string | undefined; actions: Actions; name: string }) {
-  const version = evolution.bot?.version ?? "?";
+  const { version } = evolution.bot;
   const parents = best.parents.length > 0 ? `parents ${best.parents.join(" × ")}` : "random weights";
   return (
     <Card>
@@ -164,7 +155,7 @@ function BestCard({ evolution, best, record, actions, name }: { evolution: Evolu
             born in Generation {bornIn(evolution, best.id)} · {parents} · {count(best.frames)} frames · {best.endReason}
           </span>
           <span class="ml-auto">
-            <Button size="sm" disabled={!record} onClick={() => record && actions.replay(`evolutions/${name}/${record}`)}>
+            <Button size="sm" disabled={!record} onClick={() => record && actions.replay(evolutionPath(name, record))}>
               <Play size={12} /> Replay its Run
             </Button>
           </span>
@@ -197,7 +188,7 @@ function Dashboard({ name, evolution, races, actions, side }: { name: string; ev
   return (
     <>
       <div class="grid grid-cols-2 gap-3 @3xl:grid-cols-3 @5xl:grid-cols-5">
-        <StatTile size="lg" label="Generations" value={generations.length} total={settings.generations} detail={`bot v${evolution.bot?.version ?? "?"} · Fitness v${evolution.fitnessVersion}`} icon={Layers} />
+        <StatTile size="lg" label="Generations" value={generations.length} total={settings.generations} detail={`bot v${evolution.bot.version} · Fitness v${evolution.fitnessVersion}`} icon={Layers} />
         <StatTile size="lg" label="Best Fitness" value={fitnessText(best.fitness)} detail={`Genome ${best.id}, Generation ${bestGeneration.number}`} icon={Trophy} tone="accent" />
         <StatTile size="lg" label="Mean, last Generation" value={meanOf(last).toFixed(1)} detail={`from ${meanOf(generations[0]).toFixed(1)} in Generation 1`} icon={Gauge} />
         <StatTile size="lg" label="Milestones of the best" value={best.milestones.length} detail={best.milestones.join(", ") || `goal: ${settings.goal}`} icon={Milestone} />
@@ -230,12 +221,11 @@ function Dashboard({ name, evolution, races, actions, side }: { name: string; ev
   );
 }
 
-type Props = { shown: Store<boolean>; run: Store<EvolutionRun | null>; bots: Store<BotInfo[] | null>; actions: Actions };
+type Props = { shown: Store<boolean>; run: Store<EvolutionRun | null>; actions: Actions };
 
-function EvolutionsRoot({ shown, run: runStore, bots: botStore, actions }: Props) {
+function EvolutionsRoot({ shown, run: runStore, actions }: Props) {
   const visible = useStore(shown);
   const run = useStore(runStore);
-  const bots = useStore(botStore);
   const [list, setList] = useState<EvolutionFacts[] | null>(null);
   const [races, setRaces] = useState<ReadonlySet<string>>(new Set());
   const [name, setName] = useState("");
@@ -265,11 +255,9 @@ function EvolutionsRoot({ shown, run: runStore, bots: botStore, actions }: Props
     };
   }, [visible, facts?.name, facts?.generations]);
   if (!visible) return null;
-  const genetic = bots?.find((bot) => bot.name === "genetic");
-  const version = genetic && "version" in genetic ? genetic.version : null;
   const state = stateOf(facts, run);
   const shownFile = evolution && facts && evolution.generations.length > 0 ? evolution : null;
-  const side = run ? <RunningCard run={run} send={actions.send} /> : <StartCard list={list ?? []} initial={name} version={version} send={actions.send} onStart={setName} />;
+  const side = run ? <RunningCard run={run} send={actions.send} /> : <StartCard list={list ?? []} initial={name} send={actions.send} onStart={setName} />;
   const options = [...(list ?? []).map((f) => f.name), ...(run && !list?.some((f) => f.name === run.name) ? [run.name] : [])];
   return (
     <div class="@container mx-auto flex max-w-[1300px] flex-col gap-4 p-4 min-[900px]:p-6">
@@ -307,8 +295,8 @@ export class EvolutionsTab {
   readonly #shown = new Store(false);
   readonly #run = new Store<EvolutionRun | null>(null);
 
-  constructor(root: HTMLElement, bots: Store<BotInfo[] | null>, actions: Actions) {
-    render(<EvolutionsRoot shown={this.#shown} run={this.#run} bots={bots} actions={actions} />, root);
+  constructor(root: HTMLElement, actions: Actions) {
+    render(<EvolutionsRoot shown={this.#shown} run={this.#run} actions={actions} />, root);
   }
 
   onTab(shown: boolean): void {

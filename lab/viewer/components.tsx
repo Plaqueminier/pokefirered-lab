@@ -207,7 +207,7 @@ export function Tabs<T extends string>({
 
 export type Tone = "ok" | "warn" | "bad" | "info" | "accent";
 
-const TONES: Record<Tone, { text: string; fill: string }> = {
+export const TONES: Record<Tone, { text: string; fill: string }> = {
   ok: { text: "text-ok", fill: "bg-ok" },
   warn: { text: "text-warn", fill: "bg-warn" },
   bad: { text: "text-bad", fill: "bg-bad" },
@@ -251,7 +251,7 @@ export function TypeChip({ type }: { type: string }) {
   );
 }
 
-function fraction(value: number, max: number): number {
+export function fraction(value: number, max: number): number {
   return max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
 }
 
@@ -264,19 +264,6 @@ export function Bar({ value, max, tone = "accent", type }: { value: number; max:
         class={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${type ? "" : TONES[tone].fill}`}
         style={{ width, background: type ? `var(--color-${typeToken(type)})` : undefined }}
       />
-    </div>
-  );
-}
-
-export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; max?: number; tone?: Tone }) {
-  const part = fraction(Math.abs(value), max) * 50;
-  return (
-    <div class="relative h-1.5 overflow-hidden rounded-full bg-track">
-      <span
-        class={`absolute inset-y-0 transition-[left,width] duration-300 ease-out ${TONES[tone].fill} ${value < 0 ? "rounded-l-full" : "rounded-r-full"}`}
-        style={{ left: `${value < 0 ? 50 - part : 50}%`, width: `${part}%` }}
-      />
-      <span class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-fg/45" />
     </div>
   );
 }

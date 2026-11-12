@@ -14,6 +14,18 @@ export type Genome = { walk: Weights<WalkCriterion>; choice: Weights<ChoiceCrite
 
 export const GROUPS: Record<keyof Genome, readonly string[]> = { walk: WALK_CRITERIA, choice: CHOICE_CRITERIA, battle: BATTLE_CRITERIA };
 
+export const GROUP_NAMES = Object.keys(GROUPS) as (keyof Genome)[];
+
+/** The weight of a criterion: 0 when the group or the criterion has none. */
+export function weightOf(genome: Partial<Genome>, group: keyof Genome, criterion: string): number {
+  return (genome[group] as Record<string, number | undefined> | undefined)?.[criterion] ?? 0;
+}
+
+/** A Genome with a weight for each criterion of each group. */
+export function genomeOf(weight: (group: keyof Genome, criterion: string) => number): Genome {
+  return Object.fromEntries(GROUP_NAMES.map((group) => [group, Object.fromEntries(GROUPS[group].map((criterion) => [criterion, weight(group, criterion)]))])) as Genome;
+}
+
 /** Each value of `criteria` is from 0 to 1, and each weight from −1 to 1. */
 export function scoreOf<C extends string>(weights: Weights<C>, criteria: Partial<Record<C, number>>): number {
   return Object.entries(criteria).reduce((sum, [criterion, value]) => sum + (weights[criterion as C] ?? 0) * (value as number), 0);
@@ -28,7 +40,7 @@ export function readGenome(json: unknown): Genome {
   const genome: Genome = { walk: {}, choice: {}, battle: {} };
   for (const [group, weights] of Object.entries(json)) {
     const criteria = GROUPS[group as keyof Genome];
-    if (!criteria) throw new Error(`a Genome has no group "${group}": the groups are ${Object.keys(GROUPS).join(", ")}`);
+    if (!criteria) throw new Error(`a Genome has no group "${group}": the groups are ${GROUP_NAMES.join(", ")}`);
     if (!isObject(weights)) throw new Error(`the group "${group}" of a Genome is an object of weights`);
     for (const [criterion, weight] of Object.entries(weights)) {
       if (!criteria.includes(criterion)) throw new Error(`the group "${group}" has no criterion "${criterion}": the criteria are ${criteria.join(", ")}`);

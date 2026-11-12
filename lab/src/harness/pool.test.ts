@@ -125,6 +125,22 @@ export const modelBot = (options) => real(options, () => (_prompt, { signal }) =
     }
   });
 
+  test("a Run in a worker plays the Genome of its spec, and a Run that continues a Run record of the Genetic bot plays the Genome of the header", async () => {
+    const genome = { walk: { isExit: 1 }, choice: {}, battle: {} };
+    const name = `00000-pool-test-genetic-${process.pid}.json`;
+    const path = join(RUNS_DIR, name);
+    const { record: first } = await new RunPool().start({ bot: "genetic", genome, frameBudget: 300 }).done;
+    expect(first?.header.bot).toMatchObject({ name: "genetic", genome });
+    await Bun.write(path, JSON.stringify(first));
+    try {
+      const { record, error } = await new RunPool().start({ bot: "genetic", genome: first?.header.bot.genome, from: { record: name, kind: "continued" }, frameBudget: 300 }).done;
+      expect(error).toBeNull();
+      expect(record?.header).toMatchObject({ parent: name, bot: { name: "genetic", genome } });
+    } finally {
+      await rm(path);
+    }
+  });
+
   test("a Grid replay of a Run with names boots with these names: it reaches the last screen of the Run, then goes back", async () => {
     const harness = await Harness.open();
     await harness.play({

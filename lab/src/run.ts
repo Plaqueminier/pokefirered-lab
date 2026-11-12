@@ -12,6 +12,11 @@ export const ROM_NAME = process.env.LAB_ROM ?? "pokefirered_modern_lab";
 export const ROM_FILE = join(REPO_DIR, `${ROM_NAME}.gba`);
 const ROM_ADDRESS = 0x08000000;
 
+/** The seed of the game is a u16 in the ROM. */
+export function isSeed(seed: number): boolean {
+  return Number.isInteger(seed) && seed >= 0 && seed <= 0xffff;
+}
+
 export type RunOrigin = { rom: string; seed: number; startSave: string | null; names: TrainerNames | null };
 
 export type RunState = { state: GameState | null; grid: MapGrid | null; actors: MapActors | null; camera: Camera | null };
@@ -59,7 +64,7 @@ export class Run {
   // The game reads gLabRngSeed from the ROM at boot, and a patch of the ROM image stays after a reset in this core.
   private boot(save: Uint8Array | null, names: TrainerNames | null, seed: number): void {
     if (names && !save) throw new Error("no Starting save to write the names in");
-    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff) throw new Error(`the seed ${seed} is not a whole number from 0 to 0xffff`);
+    if (!isSeed(seed)) throw new Error(`the seed ${seed} is not a whole number from 0 to 0xffff`);
     const played = save && names ? this.game.namedSave(save, names) : save;
     const seedGlobal = this.game.mem.global("gLabRngSeed");
     this.core.patch16(seedGlobal.addr, seed);

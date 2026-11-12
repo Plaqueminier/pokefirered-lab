@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { rowButton } from "./components";
-import { dotOf, shortModelId } from "../src/race/file";
+import { botVersion, dotOf, shortModelId } from "../src/race/file";
 
 export function MonIcon({ src, species, level }: { src: string | null; species: string; level?: number }) {
   return (
@@ -14,7 +14,7 @@ export function MonIcon({ src, species, level }: { src: string | null; species: 
 export function ModelName({ id, bot = "", coach, short }: { id: string; bot?: string; coach?: string; short?: boolean }) {
   const family = dotOf({ bot, model: id });
   const name = (model: string) => (short ? shortModelId(model) : model);
-  const text = family === "genetic" ? `Genetic bot ${bot.slice(bot.indexOf(" ") + 1)}` : coach ? `${name(id)} + coach ${name(coach)}` : name(id);
+  const text = family === "genetic" ? `Genetic bot ${botVersion(bot)}` : coach ? `${name(id)} + coach ${name(coach)}` : name(id);
   if (!text) return null;
   return (
     <span class="flex min-w-0 items-center gap-1.5 text-xs text-muted">

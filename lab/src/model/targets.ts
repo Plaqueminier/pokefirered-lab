@@ -296,7 +296,7 @@ function whereFrom(player: Overworld["player"], cell: Cell): string {
   return [dy < 0 ? `${-dy} north` : dy > 0 ? `${dy} south` : "", dx > 0 ? `${dx} east` : dx < 0 ? `${-dx} west` : ""].filter(Boolean).join(", ");
 }
 
-function edgeSteps(map: AtlasMap, { x, y }: Cell, side: Direction): number {
+export function edgeSteps(map: AtlasMap, { x, y }: Cell, side: Direction): number {
   return { north: y + 1, south: map.height - y, west: x + 1, east: map.width - x }[side];
 }
 
@@ -352,6 +352,6 @@ function nextTo(a: Cell, b: Cell): boolean {
   return distance(a, b) === 1;
 }
 
-function distance(a: Cell, b: Cell): number {
+export function distance(a: Cell, b: Cell): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }

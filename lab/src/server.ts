@@ -2,9 +2,10 @@
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
+import { geneticBot } from "../bots/genetic";
 import viewerPage from "../viewer/index.html";
 import { type Camera, readAreas, safely } from "./game";
-import { evolutionList, evolutionRaceNames, evolutionRecordNames, shownEvolution } from "./genetic/evolution";
+import { evolutionDir, evolutionList, evolutionRaceNames, evolutionRecordNames, readEvolution } from "./genetic/evolution";
 import { EvolveProcess } from "./genetic/evolve-process";
 import { type InventoryAt, InventoryHistory } from "./inventory";
 import { AtlasWatch, type Sight } from "./harness/atlas";
@@ -25,6 +26,7 @@ import {
   type Jump,
   modelLabel,
   type ModelProvider,
+  parseEvolutionPath,
   type ReplayModel,
   type ReplayStatus,
   type RunFrom,
@@ -450,6 +452,7 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
   }
   const { model } = bot;
   const genome = bot.genome && start?.record.header.bot.genome;
+  if (bot.genome && !genome) return "No Run: the Genetic bot plays the Genome of a Run record. Continue a Run record of the Genetic bot, or start an Evolution in the tab Evolutions.";
   const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) }, count, start && continuationOf(start.record));
   show(botRun(started[0]));
   for (const run of started) void run.done.then((end) => onBotEnd(run, end));
@@ -735,11 +738,21 @@ const raceWorld = safely(() => JSON.stringify(buildWorld(run.game)));
 if (raceWorld === null) console.error("The world of the Race did not load: the Race tab will not open");
 
 async function raceFile(name: string): Promise<Response> {
-  const ofEvolution = name.startsWith("evolutions/");
+  const ofEvolution = parseEvolutionPath(name) !== null;
   if (ofEvolution && !(await evolutionRaceNames()).includes(name)) return new Response("Not found", { status: 404 });
   const file = Bun.file(ofEvolution ? join(RUNS_DIR, `${name}${RACE_SUFFIX}`) : join(RACES_DIR, `${basename(name)}${RACE_SUFFIX}`));
   if (!(await file.exists())) return new Response("Not found", { status: 404 });
   return new Response(file, { headers: { "content-type": "application/gzip" } });
+}
+
+async function evolutionFile(name: string): Promise<Response> {
+  try {
+    const evolution = await readEvolution(evolutionDir(name));
+    if (evolution) return Response.json(evolution);
+  } catch (error) {
+    return new Response(errorText(error), { status: 404 });
+  }
+  return new Response("Not found", { status: 404 });
 }
 
 let handling = Promise.resolve();
@@ -775,11 +788,8 @@ Bun.serve({
     "/race/world.json": () => (raceWorld === null ? new Response("The world of the Race did not load: see the log of the server", { status: 500 }) : new Response(raceWorld, { headers: { "content-type": "application/json" } })),
     "/race/list.json": async () => Response.json([...(await raceNames()), ...(await evolutionRaceNames()).sort()]),
     "/race/file/:name": (req) => raceFile(req.params.name),
-    "/evolution/list.json": async () => Response.json(await evolutionList()),
-    "/evolution/file/:name": async (req) => {
-      const file = await shownEvolution(req.params.name).catch(() => null);
-      return file ? Response.json(file) : new Response("Not found", { status: 404 });
-    },
+    "/evolution/list.json": async () => Response.json(await evolutionList(geneticBot())),
+    "/evolution/file/:name": (req) => evolutionFile(req.params.name),
   },
   fetch(req, server) {
     if (new URL(req.url).pathname === "/ws" && server.upgrade(req)) return;

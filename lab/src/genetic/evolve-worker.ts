@@ -1,13 +1,12 @@
 import { geneticBot } from "../../bots/genetic";
-import type { Milestone } from "../game";
 import { errorText, Harness } from "../harness/harness";
-import type { Played } from "./evolution";
+import type { Played, PlayerRun } from "./evolution";
 import { fitness } from "./fitness";
 import type { Genome } from "./genome";
 
 declare const self: Worker;
 
-export type EvolveJob = { job: number; genome: Genome; seed: number; frameBudget: number; noProgressLimit: number; goal: Milestone };
+export type EvolveJob = { job: number; genome: Genome } & PlayerRun;
 
 export type EvolveEnd = { job: number } & ({ played: Played; error: string | null } | { played: null; error: string });
 

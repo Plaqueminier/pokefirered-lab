@@ -41,8 +41,14 @@ One step of an **Evolution**: its **Population** plays, then the best **Genomes*
 _Avoid_: epoch, iteration
 
 **Evolution**:
-The whole search of a **Genetic bot** for better **Genomes**: its **Generations** in order, with one version of the **Fitness**. It can stop and continue later.
+The whole search of a **Genetic bot** for better **Genomes**: its **Generations** in order, with one version of the **Fitness**. All its **Runs** play on the **training seed**, and it tests the best **Genome** of some **Generations** on the **test seeds**. It can stop and continue later.
 _Avoid_: training, learning
+
+**Training seed**:
+The seed of the game on which all the **Runs** of an **Evolution** play: the seed of the **Lab build** (`gLabRngSeed`).
+
+**Test seed**:
+A seed of the game, other than the **training seed**, that an **Evolution** does not use to rank the **Genomes**. Every 10 **Generations**, the best **Genome** plays one **Run** on each test seed, to show if it plays well on any seed.
 
 **Neural bot**:
 A **Bot** that a neural network controls. The lab does not have it yet.
@@ -247,7 +253,7 @@ _Avoid_: savestate
 A snapshot of the full emulator state at one frame. It becomes invalid after each rebuild, because code addresses move.
 
 **Run**:
-One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed. An **Evolution** plays its own **Runs** out of this limit, 12 at the same time by default.
+One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed. An **Evolution** plays its own **Runs** out of this limit, 12 at the same time by default. A **Run** plays on one seed of the game: the seed of the **Lab build** unless a person gives another one, and its **Run record** keeps it.
 _Avoid_: game, instance, session
 
 **Milestone**:
@@ -328,7 +334,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Run** of a model bot has one AI model, and at most one **Coach** on the same **Model provider**. Only the **Coach** writes a **Coach advice**.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - An **Extended Run** has one **Run record**: each new part replaces the file, and only an **Extended Run** changes a **Run record** after its **Run** ended (`bun run migrate` adds only data from the replay).
-- The lab has three kinds of **Bot** that grow with the story: the model bot, the **Genetic bot** and the **Neural bot**. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
+- The lab has two kinds of **Bot** that grow with the story: the model bot and the **Genetic bot**. A **Neural bot** is planned: the lab does not have it yet. The scripted bot is a tool to test the **Harness**: it does not grow with the story.
 - A **Genetic bot** plays one **Genome** in each **Run**.
 - The **Viewer** shows several **Runs** in its **Grid**, and one **Run** in detail: the shown **Run**. The **Harness** owns all **Runs**.
 - A **Race** holds many **Run records**. Each of its **Ghosts** is one **Run**. A **Run** that another **Run** of the **Race** continues has no **Ghost**: the **Continued Run** already holds its play. The **Viewer** plays a **Race** in the browser: no **Run** plays in the **Harness** for it.

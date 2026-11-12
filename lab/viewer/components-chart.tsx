@@ -1,6 +1,19 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { LABEL, useWidth } from "./components";
+import { fraction, LABEL, TONES, type Tone, useWidth } from "./components";
+
+export function SignedBar({ value, max = 1, tone = "accent" }: { value: number; max?: number; tone?: Tone }) {
+  const part = fraction(Math.abs(value), max) * 50;
+  return (
+    <div class="relative h-1.5 overflow-hidden rounded-full bg-track">
+      <span
+        class={`absolute inset-y-0 transition-[left,width] duration-300 ease-out ${TONES[tone].fill} ${value < 0 ? "rounded-l-full" : "rounded-r-full"}`}
+        style={{ left: `${value < 0 ? 50 - part : 50}%`, width: `${part}%` }}
+      />
+      <span class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-fg/45" />
+    </div>
+  );
+}
 
 export type GenerationPoint = { generation: number; best: number; mean: number; newBest: boolean };
 

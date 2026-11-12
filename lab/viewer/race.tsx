@@ -1,12 +1,12 @@
 import { Eye, EyeOff, PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { GBA_FPS } from "../src/protocol";
+import { BESTS_RACE, GBA_FPS, parseEvolutionPath, parseGenerationRace } from "../src/protocol";
 import { RACE_VERSION, type RaceFile } from "../src/race/file";
 import type { World } from "../src/race/world";
 import { Button, Card, Code, Cover, Pill, Slider, Tabs, Tooltip } from "./components";
 import { PointerCard, Select } from "./components-layers";
-import { Store, useStore } from "./cursor";
+import { fetched, Store, useStore } from "./cursor";
 import { fitCanvas } from "./race-art";
 import { Leaderboard } from "./race-board";
 import { GhostsCard } from "./race-cards";
@@ -151,10 +151,10 @@ function HitCard({ view, hit }: { view: RaceView; hit: RaceHit }) {
 type RaceChoiceProps = { names: readonly string[]; name: string; onName: (name: string) => void };
 
 function raceOption(value: string): { value: string; label: string; group?: string } {
-  const [, evolution, race] = /^evolutions\/([^/]+)\/(.+)$/.exec(value) ?? [];
-  if (!evolution) return { value, label: value };
-  const generation = /^generation-(\d+)$/.exec(race)?.[1];
-  return { value, label: generation ? `Generation ${Number(generation)}` : race === "bests" ? "The bests" : race, group: `Races of the Evolution ${evolution}` };
+  const path = parseEvolutionPath(value);
+  if (!path) return { value, label: value };
+  const generation = parseGenerationRace(path.file);
+  return { value, label: generation ? `Generation ${generation}` : path.file === BESTS_RACE ? "The bests" : path.file, group: `Races of the Evolution ${path.evolution}` };
 }
 
 function RaceChoice({ names, name, onName }: RaceChoiceProps) {
@@ -288,12 +288,6 @@ function RaceMap({ view, panel }: { view: RaceView; panel: boolean }) {
   );
 }
 
-async function fetched(url: string): Promise<Response> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${url}: ${await response.text()}`);
-  return response;
-}
-
 async function readRace(name: string): Promise<RaceFile> {
   const { body } = await fetched(`/race/file/${encodeURIComponent(name)}`);
   if (!body) throw new Error(`the Race ${name} is empty`);
@@ -325,7 +319,7 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
       .then((list: string[]) => {
         setListError(null);
         setNames(list);
-        setName((current) => current || (list.findLast((race) => !race.startsWith("evolutions/")) ?? list.at(-1) ?? ""));
+        setName((current) => current || (list.findLast((race) => parseEvolutionPath(race) === null) ?? list.at(-1) ?? ""));
       })
       .catch((failure) => setListError(String(failure)));
   }, [visible]);

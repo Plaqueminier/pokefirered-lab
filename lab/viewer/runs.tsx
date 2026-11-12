@@ -1,7 +1,7 @@
 import { Play, Square } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, modelLabel, type ModelProvider, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, modelLabel, type ModelProvider, parseEvolutionPath, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
 import type { SpendLimit } from "../src/harness/record";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
@@ -73,8 +73,8 @@ function shownValue(shown: ShownRun): string {
 }
 
 function recordOption(name: string): { label: string; group: string } {
-  const [, evolution, file] = /^evolutions\/([^/]+)\/(.+)$/.exec(name) ?? [];
-  return evolution ? { label: file, group: `Replay a Run record of the Evolution ${evolution}` } : { label: name, group: "Replay a Run record" };
+  const path = parseEvolutionPath(name);
+  return path ? { label: path.file, group: `Replay a Run record of the Evolution ${path.evolution}` } : { label: name, group: "Replay a Run record" };
 }
 
 // One Select for all that the Viewer can show: its own Run, the Runs of the Bots and the replay of a Run record.
@@ -165,9 +165,14 @@ type FormSlots = { startFrom: ComponentChildren; keepSameRun: ComponentChildren;
 
 type FormProps = FormSlots & { bots: readonly BotInfo[]; providers: readonly ProviderStatus[]; places: Places; send: Send };
 
-function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSameRun, stop }: FormProps & { parent: string | undefined }) {
+function kindOf(info: BotInfo | undefined): string | undefined {
+  return info && "kind" in info ? info.kind : undefined;
+}
+
+// `parent` is the Run record to continue and `parentBot` its Bot. A Genetic bot plays the Genome of a Run record: a plain start cannot give it one.
+function NewRunForm({ parent, parentBot, bots, providers, places, send, startFrom, keepSameRun, stop }: FormProps & { parent: string | undefined; parentBot: string | undefined }) {
   const freePlaces = places.free;
-  const names = bots.map((info) => info.name);
+  const names = bots.filter((info) => parent !== undefined || kindOf(info) !== "genetic").map((info) => info.name);
   const [bot, setBot] = useState("");
   const [model, setModel] = useState("");
   const [provider, setProvider] = useState<ModelProvider>(DEFAULT_PROVIDER);
@@ -181,70 +186,81 @@ function NewRunForm({ parent, bots, providers, places, send, startFrom, keepSame
   const [countText, setCountText] = useState("1");
   const count = Number(countText);
   const countOk = Number.isInteger(count) && count >= 1 && count <= freePlaces;
-  const chosenBot = names.includes(bot) ? bot : (names[0] ?? "");
+  const chosenBot = names.includes(bot) ? bot : (names.find((name) => name === parentBot) ?? names[0] ?? "");
   const chosenInfo = bots.find((info) => info.name === chosenBot);
+  const modelBot = kindOf(chosenInfo) === "model";
   const unit: SpendUnit = isPlanProvider(provider) ? "tokens" : "dollars";
   const plan = unit === "tokens";
-  const problem = problemIn(providers, provider);
+  const problem = modelBot ? problemIn(providers, provider) : null;
   const words = SPEND_WORDS[unit];
   const defaultLimit = plan ? DEFAULT_TOKEN_LIMIT : chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
   const limit = plan ? tokenLimit : costLimit;
   const canStart = chosenBot !== "" && countOk && problem === null;
   const start = () => {
     if (!canStart) return;
-    const options = {
-      id: model.trim() || undefined,
-      provider: option(provider, DEFAULT_PROVIDER),
-      ...limitOption(unit, limit),
-      reasoning: option(reasoning, DEFAULT_REASONING),
-      thinking: option(thinking, DEFAULT_THINKING),
-      coach: coach.trim() ? { id: coach.trim() } : undefined,
-      starter: option(starter, DEFAULT_STARTER),
-      stopAtWhiteout,
-    };
+    const options = modelBot
+      ? {
+          id: model.trim() || undefined,
+          provider: option(provider, DEFAULT_PROVIDER),
+          ...limitOption(unit, limit),
+          reasoning: option(reasoning, DEFAULT_REASONING),
+          thinking: option(thinking, DEFAULT_THINKING),
+          coach: coach.trim() ? { id: coach.trim() } : undefined,
+          starter: option(starter, DEFAULT_STARTER),
+          stopAtWhiteout,
+        }
+      : {};
     send({ type: "start-bot", name: chosenBot, model: options, count, ...(parent === undefined ? {} : { parent }) });
   };
   return (
     <>
       <div class="grid grid-cols-2 gap-3">
-        <Field label="Bot">
+        <Field label="Bot" hint={kindOf(chosenInfo) === "genetic" ? "Plays the Genome of the Run record to continue." : undefined}>
           <Select options={names.map((name) => ({ value: name, label: name }))} value={chosenBot} placeholder="no Bot" onChange={setBot} />
         </Field>
         {startFrom}
-        <Field label="Provider" hint="openrouter bills each call. claude-code, codex and grok use your subscription." error={problem ?? undefined}>
-          <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemIn(providers, name) ?? undefined }))} value={provider} onChange={setProvider} />
-        </Field>
-        {plan ? (
-          <LimitField unit={unit} value={tokenLimit} onInput={setTokenLimit} placeholder={String(DEFAULT_TOKEN_LIMIT / MILLION)} hint={`In millions of tokens. Empty: ${DEFAULT_TOKEN_LIMIT / MILLION}. All the input and output tokens of this Run.`} />
-        ) : (
-          <LimitField unit={unit} value={costLimit} onInput={setCostLimit} placeholder="0.50" hint="Empty: LAB_COST_LIMIT, or 0.50 $." />
+        {modelBot && (
+          <>
+            <Field label="Provider" hint="openrouter bills each call. claude-code, codex and grok use your subscription." error={problem ?? undefined}>
+              <Select options={MODEL_PROVIDERS.map((name) => ({ value: name, label: name, disabledReason: problemIn(providers, name) ?? undefined }))} value={provider} onChange={setProvider} />
+            </Field>
+            {plan ? (
+              <LimitField unit={unit} value={tokenLimit} onInput={setTokenLimit} placeholder={String(DEFAULT_TOKEN_LIMIT / MILLION)} hint={`In millions of tokens. Empty: ${DEFAULT_TOKEN_LIMIT / MILLION}. All the input and output tokens of this Run.`} />
+            ) : (
+              <LimitField unit={unit} value={costLimit} onInput={setCostLimit} placeholder="0.50" hint="Empty: LAB_COST_LIMIT, or 0.50 $." />
+            )}
+            <Field label="Model" hint="Empty: the default model.">
+              <Input value={model} placeholder={DEFAULT_MODELS[provider]} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
+            </Field>
+            <Field label="Reasoning" hint={hasNoReasoningOff(provider) ? `For the usual decisions. ${provider} has no off: off plays as low.` : "For the usual decisions. off is cheaper, but the model makes more mistakes."}>
+              <Select options={LEVEL_OPTIONS} value={reasoning} onChange={setReasoning} />
+            </Field>
+            <Field label="Thinking" hint="For the Character, Reflection and Review turns. With a Coach: for all the calls of the Coach.">
+              <Select options={LEVEL_OPTIONS} value={thinking} onChange={setThinking} />
+            </Field>
+            <Field label="Coach" hint="Empty: no Coach. A model of the same provider for the Character, Reflection and Review turns, the summaries and the move to forget.">
+              <Input value={coach} placeholder="no Coach" autocomplete="off" onInput={(event) => setCoach(event.currentTarget.value)} />
+            </Field>
+            <Field label="Starter" hint="free: the character of the model chooses.">
+              <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
+            </Field>
+          </>
         )}
-        <Field label="Model" hint="Empty: the default model.">
-          <Input value={model} placeholder={DEFAULT_MODELS[provider]} autocomplete="off" onInput={(event) => setModel(event.currentTarget.value)} />
-        </Field>
-        <Field label="Reasoning" hint={hasNoReasoningOff(provider) ? `For the usual decisions. ${provider} has no off: off plays as low.` : "For the usual decisions. off is cheaper, but the model makes more mistakes."}>
-          <Select options={LEVEL_OPTIONS} value={reasoning} onChange={setReasoning} />
-        </Field>
-        <Field label="Thinking" hint="For the Character, Reflection and Review turns. With a Coach: for all the calls of the Coach.">
-          <Select options={LEVEL_OPTIONS} value={thinking} onChange={setThinking} />
-        </Field>
-        <Field label="Coach" hint="Empty: no Coach. A model of the same provider for the Character, Reflection and Review turns, the summaries and the move to forget.">
-          <Input value={coach} placeholder="no Coach" autocomplete="off" onInput={(event) => setCoach(event.currentTarget.value)} />
-        </Field>
-        <Field label="Starter" hint="free: the character of the model chooses.">
-          <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
-        </Field>
         <Field label="Count" hint={`Runs of the Bot to start: 1 to ${freePlaces}, the free places.`} error={countError(countOk, places)}>
           <Input type="number" min="1" max={String(freePlaces)} step="1" invalid={!countOk} value={countText} onInput={(event) => setCountText(event.currentTarget.value)} />
         </Field>
-        <Field label={`Maximum total ${words.name.toLowerCase()}`} hint={`Each Run keeps its own ${words.limit.toLowerCase()}.`}>
-          <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalLimit(countOk ? count : 1, limit, defaultLimit, unit)}</p>
-        </Field>
+        {modelBot && (
+          <Field label={`Maximum total ${words.name.toLowerCase()}`} hint={`Each Run keeps its own ${words.limit.toLowerCase()}.`}>
+            <p class="flex h-8 items-center font-mono text-sm tabular-nums">{totalLimit(countOk ? count : 1, limit, defaultLimit, unit)}</p>
+          </Field>
+        )}
       </div>
       {keepSameRun}
-      <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
-        Stop at a whiteout: the Run ends when all the Pokémon of the party faint
-      </Checkbox>
+      {modelBot && (
+        <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
+          Stop at a whiteout: the Run ends when all the Pokémon of the party faint
+        </Checkbox>
+      )}
       <div class="flex items-center gap-2">
         <Button variant="primary" disabled={!canStart} onClick={start}>
           <Play size={14} />
@@ -272,18 +288,18 @@ function ExtendedRunForm({ facts, onStart, bots, providers, places, startFrom, k
         {startFrom}
         {model && (
           <>
-            <LockedField label="Provider" value={model.provider} error={problem ?? undefined} />
-            {model.limit.unit === "tokens" ? (
-              <LimitField unit="tokens" value={limit} onInput={setLimit} placeholder={String(model.limit.amount / MILLION)} hint={`In millions of tokens. Empty: ${model.limit.amount / MILLION}, the limit of the Run record. It counts the new calls only.`} />
-            ) : (
-              <LimitField unit="dollars" value={limit} onInput={setLimit} placeholder={String(model.limit.amount)} hint={`Empty: ${model.limit.amount} $, the limit of the Run record. It counts the new calls only.`} />
-            )}
-            <LockedField label="Model" value={model.id} />
-            <LockedField label="Reasoning" value={model.reasoning} />
-            <LockedField label="Thinking" value={model.thinking} />
-            {model.coach && <LockedField label="Coach" value={model.coach.id} hint="At the thinking level." />}
-            <LockedField label="Starter" value={model.starter} />
-            <LockedField label="Stop at a whiteout" value={model.stopAtWhiteout ? "yes" : "no"} />
+              <LockedField label="Provider" value={model.provider} error={problem ?? undefined} />
+              {model.limit.unit === "tokens" ? (
+                <LimitField unit="tokens" value={limit} onInput={setLimit} placeholder={String(model.limit.amount / MILLION)} hint={`In millions of tokens. Empty: ${model.limit.amount / MILLION}, the limit of the Run record. It counts the new calls only.`} />
+              ) : (
+                <LimitField unit="dollars" value={limit} onInput={setLimit} placeholder={String(model.limit.amount)} hint={`Empty: ${model.limit.amount} $, the limit of the Run record. It counts the new calls only.`} />
+              )}
+              <LockedField label="Model" value={model.id} />
+              <LockedField label="Reasoning" value={model.reasoning} />
+              <LockedField label="Thinking" value={model.thinking} />
+              {model.coach && <LockedField label="Coach" value={model.coach.id} hint="At the thinking level." />}
+              <LockedField label="Starter" value={model.starter} />
+              <LockedField label="Stop at a whiteout" value={model.stopAtWhiteout ? "yes" : "no"} />
           </>
         )}
       </div>
@@ -350,7 +366,7 @@ export function BotsPanel({ shown, runs, bots, providers, records, recordFacts, 
   const form = { bots, providers, places, ...slots };
   return (
     <div class="flex w-[560px] max-w-full flex-col gap-4">
-      {extended ? <ExtendedRunForm key={chosenFrom} facts={extended} onStart={extend} {...form} /> : <NewRunForm parent={fromRecord ? chosenFrom : undefined} send={send} {...form} />}
+      {extended ? <ExtendedRunForm key={chosenFrom} facts={extended} onStart={extend} {...form} /> : <NewRunForm parent={fromRecord ? chosenFrom : undefined} parentBot={facts?.bot} send={send} {...form} />}
       {run?.model && <p class="font-mono text-xs text-muted">{shownModel(run)}</p>}
       <p class="text-xs leading-relaxed text-faint">
         The Runs of the Bots play at the same time, at full speed, with no sound. They share {places.limit} places with the replays of the Grid. To show another Run does not stop them. "Stop the shown Run" ends it with

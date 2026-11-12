@@ -7,6 +7,7 @@ import { isDecisionPoint } from "../game";
 import { Memory } from "../memory";
 import type { BoxMon } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
+import type { BotInfo } from "../protocol";
 import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
@@ -134,21 +135,17 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
 }
 
+const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null };
+
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
-  expect(await botInfos()).toEqual([
-    { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null },
-    { name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) },
-  ]);
+  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
   const costLimit = process.env.LAB_COST_LIMIT;
   process.env.LAB_COST_LIMIT = "abc";
   try {
-    expect(await botInfos()).toEqual([
-      { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null },
-      { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' },
-    ]);
+    expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' }]);
   } finally {
     if (costLimit === undefined) delete process.env.LAB_COST_LIMIT;
     else process.env.LAB_COST_LIMIT = costLimit;

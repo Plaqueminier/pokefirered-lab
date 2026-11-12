@@ -49,8 +49,17 @@ export function modelFamily(id: string): ModelFamily | null {
   return short.startsWith("claude") ? "claude" : null;
 }
 
-export function dotOf({ bot, model }: Pick<RaceRun, "bot" | "model">): Dot | null {
-  return bot.startsWith(`${GENETIC_BOT} `) ? "genetic" : modelFamily(model);
+/** `bot` of a Ghost is "<name> <version>". */
+export function isGeneticRun({ bot }: Pick<RaceRun, "bot">): boolean {
+  return bot.startsWith(`${GENETIC_BOT} `);
+}
+
+export function botVersion(bot: string): string {
+  return bot.slice(bot.indexOf(" ") + 1);
+}
+
+export function dotOf(run: Pick<RaceRun, "bot" | "model">): Dot | null {
+  return isGeneticRun(run) ? "genetic" : modelFamily(run.model);
 }
 
 export type RaceFile = { version: typeof RACE_VERSION; runs: RaceRun[] };

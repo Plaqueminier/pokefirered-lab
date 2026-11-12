@@ -27,9 +27,10 @@ function noteOf(genome: Genome): number {
 }
 
 const evolutionDir = () => mkdtemp(join(tmpdir(), "evolution-"));
+const bot = { name: "genetic", version: "1" };
 
 test("the 5 best Genomes pass unchanged to the next Generation with their ids, and the children get new ids and the ids of their parents", async () => {
-  const [first, second] = (await evolve(await evolutionDir(), { play: fakePlayer, seed: 7, until: 2 })).generations;
+  const [first, second] = (await evolve(await evolutionDir(), { play: fakePlayer, bot, seed: 7, until: 2 })).generations;
   expect(first.genomes.map((g) => g.id).sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
   const ranked = [...first.genomes].sort((a, b) => b.fitness - a.fitness);
   const byId = (genomes: typeof ranked) => genomes.map(({ id, genome }) => ({ id, genome })).sort((a, b) => a.id - b.id);
@@ -45,18 +46,18 @@ test("the 5 best Genomes pass unchanged to the next Generation with their ids, a
 });
 
 test("an Evolution that stops in a Generation and continues from its file gives the same next Generation as an Evolution that did not stop", async () => {
-  const whole = await evolve(await evolutionDir(), { play: fakePlayer, seed: 7, until: 3 });
+  const whole = await evolve(await evolutionDir(), { play: fakePlayer, bot, seed: 7, until: 3 });
   const dir = await evolutionDir();
   let plays = 0;
   const stops: Player = (genome, run) => (++plays === 75 ? Promise.reject(new Error("the Mac sleeps")) : fakePlayer(genome, run));
-  await expect(evolve(dir, { play: stops, seed: 7, until: 3 })).rejects.toThrow("the Mac sleeps");
-  const continued = await evolve(dir, { play: fakePlayer, until: 3 });
+  await expect(evolve(dir, { play: stops, bot, seed: 7, until: 3 })).rejects.toThrow("the Mac sleeps");
+  const continued = await evolve(dir, { play: fakePlayer, bot, until: 3 });
   expect(continued.generations.map((g) => g.genomes)).toEqual(whole.generations.map((g) => g.genomes));
 });
 
 test("each Generation writes its Race from the Run records in memory, with the number of each Genome and the dot genetic, and the Race of the bests grows by the best Genome of each Generation", async () => {
   const dir = await evolutionDir();
-  const { generations } = await evolve(dir, { play: fakePlayer, seed: 7, until: 2 });
+  const { generations } = await evolve(dir, { play: fakePlayer, bot, seed: 7, until: 2 });
   for (const { number, genomes } of generations) {
     const race = await readRace(`generation-000${number}`, dir);
     expect(race?.runs.map((run) => run.number)).toEqual(genomes.map((g) => g.id).sort((a, b) => a - b));
@@ -65,4 +66,18 @@ test("each Generation writes its Race from the Run records in memory, with the n
   const bests = await readRace("bests", dir);
   expect(bests?.runs.map((run) => run.number)).toEqual(generations.map((g) => g.genomes[0].id));
   expect(bests?.runs.map(dotOf)).toEqual(["genetic", "genetic"]);
+});
+
+test("an Evolution ends after the Generation that plays when it is asked to stop, and a later Evolution continues from there", async () => {
+  const dir = await evolutionDir();
+  let stopAsked = false;
+  const stopped = await evolve(dir, { play: fakePlayer, bot, seed: 7, stop: () => stopAsked, onGeneration: () => void (stopAsked = true) });
+  expect(stopped.generations).toHaveLength(1);
+  expect((await evolve(dir, { play: fakePlayer, bot, until: 2 })).generations).toHaveLength(2);
+});
+
+test("an Evolution does not continue with another version of the Genetic bot", async () => {
+  const dir = await evolutionDir();
+  await evolve(dir, { play: fakePlayer, bot, seed: 7, until: 1 });
+  await expect(evolve(dir, { play: fakePlayer, bot: { name: "genetic", version: "2" }, until: 2 })).rejects.toThrow("it plays the Genetic bot version 1, and the Genetic bot is now version 2: start a new Evolution");
 });

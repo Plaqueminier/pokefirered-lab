@@ -1,13 +1,12 @@
 import { Ban, BookOpen, Bot, Brain, ChartColumn, ClipboardCheck, Clock, Coins, Copy, Eye, Flame, Heart, LayoutGrid, ListTree, Map as MapIcon, MessageSquare, Pause, Play, RotateCcw, Search, Shapes, Skull, Square, Swords } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Badges, Bar, Breadcrumb, Button, Checkbox, Code, ExpBar, FilterChip, Field, Input, KeyList, LABEL, Legend, ListRow, Metric, Num, NumberBadge, Pill, SignedBar, Slider, StatBar, StatTile, Switch, TermList, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
-import { GenerationChart, type GenerationPoint } from "./components-chart";
+import { Badges, Bar, Breadcrumb, Button, Checkbox, Code, ExpBar, FilterChip, Field, Input, KeyList, LABEL, Legend, ListRow, Metric, Num, NumberBadge, Pill, Slider, StatBar, StatTile, Switch, TermList, Tabs, toggled, Tooltip, TYPES, TypeChip, hpTone, typeToken } from "./components";
 import { Select } from "./components-layers";
 import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
-import { BotsDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, TimelineDemo } from "./components-tab-lab";
+import { BotsDemo, GenerationChartDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, SignedBarDemo, TimelineDemo } from "./components-tab-lab";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -335,85 +334,6 @@ function BarDemo() {
         <Button size="sm" onClick={() => setCost((c) => Math.min(0.5, c + 0.02))}>
           Model call
         </Button>
-      </div>
-    </div>
-  );
-}
-
-function SignedBarDemo() {
-  const [weights, setWeights] = useState([1, 0.62, 0.05, 0, -0.4, -1, 1.6]);
-  const names = ["1 (the end)", "0.62", "0.05", "0", "−0.40", "−1 (the end)", "1.6 (stops at 1)"];
-  return (
-    <div class="flex max-w-[520px] flex-col gap-3">
-      {weights.map((weight, i) => (
-        <div key={names[i]} class="grid grid-cols-[16ch_1fr_6ch] items-center gap-3 text-xs">
-          <span class="text-muted">{names[i]}</span>
-          <SignedBar value={weight} />
-          <span class="text-right tabular-nums">{weight.toFixed(2)}</span>
-        </div>
-      ))}
-      <div class="grid grid-cols-[16ch_1fr_6ch] items-center gap-3 text-xs">
-        <span class="text-muted">tone info, max 50</span>
-        <SignedBar value={-20} max={50} tone="info" />
-        <span class="text-right tabular-nums">−20</span>
-      </div>
-      <div class="flex gap-2">
-        <Button size="sm" onClick={() => setWeights((all) => all.map((w) => Math.max(-1, Math.min(1, -w * 0.8))))}>
-          Mutate
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setWeights([1, 0.62, 0.05, 0, -0.4, -1, 1.6])}>
-          Reset
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-const GENERATIONS: GenerationPoint[] = [
-  [64.79, 16.59, true],
-  [66.59, 25.86, true],
-  [66.37, 33.93, false],
-  [70.81, 39.88, true],
-  [94.77, 50.71, true],
-  [94.77, 49.65, false],
-].map(([best, mean, newBest], i) => ({ generation: i + 1, best: best as number, mean: mean as number, newBest: newBest as boolean }));
-
-function GenerationChartDemo() {
-  const [points, setPoints] = useState(GENERATIONS);
-  const [picked, setPicked] = useState<number | null>(null);
-  const add = () =>
-    setPoints((all) => {
-      const last = all[all.length - 1];
-      const best = last.best + (all.length % 3 === 0 ? 6 : 0);
-      return [...all, { generation: last.generation + 1, best, mean: Math.min(best, last.mean + 3), newBest: best > last.best }];
-    });
-  return (
-    <div class="flex flex-col gap-5">
-      <div class="flex flex-col gap-2">
-        <GenerationChart points={points} label="Fitness by Generation" pickText="its Race" onPick={setPicked} />
-        <div class="flex items-center gap-2">
-          <Button size="sm" onClick={add}>
-            Add a Generation
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPoints(GENERATIONS)}>
-            Reset
-          </Button>
-          <span class="text-xs text-muted">{picked === null ? "A click picks a Generation." : `Picked: Generation ${picked}.`}</span>
-        </div>
-      </div>
-      <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <div>
-          <p class="mb-1.5 text-xs text-faint">one Generation: a dot for each line</p>
-          <GenerationChart points={GENERATIONS.slice(0, 1)} label="Fitness" />
-        </div>
-        <div>
-          <p class="mb-1.5 text-xs text-faint">negative values: a line at 0</p>
-          <GenerationChart points={GENERATIONS.map((p) => ({ ...p, mean: p.mean - 40 }))} label="Fitness" />
-        </div>
-        <div>
-          <p class="mb-1.5 text-xs text-faint">no Generation</p>
-          <GenerationChart points={[]} label="Fitness" />
-        </div>
       </div>
     </div>
   );

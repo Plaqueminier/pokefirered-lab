@@ -2,7 +2,7 @@ import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { type CurrentRecord, isCurrentRecord, limitOf, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
 import { NORMAL_TRAINER, shownCharacter } from "../model/character";
-import { modelEvents, parseRunId, type SpendUnit, spentIn, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { modelEvents, parseEvolutionPath, parseRunId, PLAIN_NAME, type SpendUnit, spentIn, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { encodeTrack, GENETIC_BOT, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
@@ -107,7 +107,8 @@ function continuedBy(chosen: readonly string[], records: ReadonlyMap<string, Run
 }
 
 export async function makeRace(dir = RUNS_DIR, wanted?: readonly string[]): Promise<RaceFile> {
-  const files = [...(await readdir(dir)).filter((name) => name.endsWith(".json")), ...(wanted ?? []).filter((name) => name.includes("/"))];
+  // A Run record of an Evolution is in a folder of `dir`: it joins the Race only when its path is named.
+  const files = [...(await readdir(dir)).filter((name) => name.endsWith(".json")), ...(wanted ?? []).filter((name) => parseEvolutionPath(name) !== null)];
   const records = new Map<string, RunRecord>();
   for (const name of files) {
     const record = readRecord(await Bun.file(join(dir, name)).json().catch(() => null));
@@ -133,7 +134,7 @@ export async function makeRace(dir = RUNS_DIR, wanted?: readonly string[]): Prom
 }
 
 export async function writeRace(name: string, race: RaceFile, dir = RACES_DIR): Promise<string> {
-  if (!/^[\w-]+$/.test(name)) throw new Error(`the name of a Race has only letters, digits, "-" and "_": ${name}`);
+  if (!PLAIN_NAME.test(name)) throw new Error(`the name of a Race has only letters, digits, "-" and "_": ${name}`);
   await mkdir(dir, { recursive: true });
   const path = join(dir, `${name}${RACE_SUFFIX}`);
   await Bun.write(`${path}.tmp`, Bun.gzipSync(JSON.stringify(race)));

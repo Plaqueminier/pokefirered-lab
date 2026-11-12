@@ -1,5 +1,5 @@
 import { GBA_FPS } from "../src/protocol";
-import { CELL, dotOf, type RaceFile } from "../src/race/file";
+import { CELL, dotOf, isGeneticRun, type RaceFile } from "../src/race/file";
 import type { Door, IslandLink, World, WorldGym, WorldMap, WorldPlace } from "../src/race/world";
 import { Store } from "./cursor";
 import { fitCanvas, RaceArt } from "./race-art";
@@ -58,7 +58,7 @@ export function nearestGhost(hits: readonly GhostHit[], x: number, y: number): G
 }
 
 function runName(ghost: GhostNow): string {
-  return `${dotOf(ghost) === "genetic" ? "Genome" : "Run"} ${ghost.number}${ghost.result ? ` · ${ghost.result}` : ""}`;
+  return `${isGeneticRun(ghost) ? "Genome" : "Run"} ${ghost.number}${ghost.result ? ` · ${ghost.result}` : ""}`;
 }
 
 export class RaceView {

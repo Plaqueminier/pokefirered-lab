@@ -4,6 +4,7 @@ import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
 import type { BotInfo, ClientMessage, ProviderStatus, RecordFacts, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Badges, Button, Tabs } from "./components";
+import { GenerationChart, type GenerationPoint, SignedBar } from "./components-chart";
 import { PopoverBody } from "./components-layers";
 import { LeaderboardRow, ModelName, MonIcon } from "./components-race";
 import { ScreenFeed, type Span } from "./cursor";
@@ -18,6 +19,7 @@ import { availableKinds, Timeline } from "./timeline";
 import { type TimelineKind, timelineEvents } from "./timeline-events";
 
 export const RECORD = "00017-model-10-2026-10-27T09-38-59.686Z.json";
+const GENETIC_RECORD = "00020-genetic-2-2026-11-11T10-02-31.512Z.json";
 
 function move(name: string, type: string, power: number | null, accuracy: number | null, pp: number, maxPp: number, description: string): PartyMove {
   return { name, type, effect: 0, power, accuracy, pp, maxPp, description };
@@ -242,6 +244,7 @@ const DEMO_PROVIDERS: ProviderStatus[] = [
 ];
 
 const DEMO_BOTS: BotInfo[] = [
+  { name: "genetic", kind: "genetic", version: "2", goal: null, costLimit: null },
   { name: "model", kind: "model", version: "29", goal: null, costLimit: 0.5 },
   { name: "starter", kind: "scripted", version: "4", goal: null, costLimit: null },
 ];
@@ -253,10 +256,13 @@ const BOTS_STATES = {
   full: { label: "No free place", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 0, limit: 9 } },
   none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null }, bots: [], places: { free: 9, limit: 9 } },
   same: { label: "Keep the same Run", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: RECORD, sameRun: true } },
+  genetic: { label: "Continue a Run of the Genetic bot", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: GENETIC_RECORD, sameRun: false } },
   busy: { label: "A Run plays from the record", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, runs: [{ ...DEMO_RUNS[0], from: { record: RECORD, kind: "continued" } }], initial: { from: RECORD, sameRun: false } },
 } satisfies Record<string, BotsState>;
 
 const CONTINUED_RECORD = "00016-model-9-2026-10-27T08-40-44.237Z.json";
+
+const DEMO_RECORDS = [RECORD, CONTINUED_RECORD, GENETIC_RECORD];
 
 const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
   [RECORD]: {
@@ -271,6 +277,7 @@ const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
     model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "dollars", amount: 1 }, stopAtWhiteout: true },
     continued: true,
   },
+  [GENETIC_RECORD]: { bot: "genetic", version: "2", model: null, continued: false },
 };
 
 export function BotsDemo() {
@@ -280,7 +287,7 @@ export function BotsDemo() {
     <div class="flex flex-col items-start gap-3">
       <Tabs kind="segmented" items={Object.entries(BOTS_STATES).map(([id, { label }]) => ({ id: id as keyof typeof BOTS_STATES, label }))} value={state} onChange={setState} />
       <PopoverBody>
-        <BotsPanel key={state} shown={shown} runs={runs ?? []} bots={bots} providers={DEMO_PROVIDERS} records={[RECORD, CONTINUED_RECORD]} recordFacts={DEMO_RECORD_FACTS} places={places} initial={initial} send={() => {}} />
+        <BotsPanel key={state} shown={shown} runs={runs ?? []} bots={bots} providers={DEMO_PROVIDERS} records={DEMO_RECORDS} recordFacts={DEMO_RECORD_FACTS} places={places} initial={initial} send={() => {}} />
       </PopoverBody>
     </div>
   );
@@ -502,7 +509,7 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
 const DEMO_GRID_ACTIONS: GridActions = { send: () => {}, setSize: () => {}, focus: () => {} };
 
 const demoBotsForm: BotsForm = (continued) => (
-  <BotsPanel shown={{ kind: "viewer", replay: null }} runs={[]} bots={DEMO_BOTS} providers={DEMO_PROVIDERS} records={[RECORD, CONTINUED_RECORD]} recordFacts={DEMO_RECORD_FACTS} places={{ free: 6, limit: 9 }} initial={continued === undefined ? undefined : { from: continued, sameRun: true }} send={() => {}} />
+  <BotsPanel shown={{ kind: "viewer", replay: null }} runs={[]} bots={DEMO_BOTS} providers={DEMO_PROVIDERS} records={DEMO_RECORDS} recordFacts={DEMO_RECORD_FACTS} places={{ free: 6, limit: 9 }} initial={continued === undefined ? undefined : { from: continued, sameRun: true }} send={() => {}} />
 );
 
 export function GridCellDemo() {
@@ -577,6 +584,85 @@ export function LeaderboardRowDemo() {
       {rows.map(({ rank, id, ghost, model, cost, size, got, faded }, i) => (
         <LeaderboardRow key={id} rank={rank} face={<span class="block h-9 w-6 rounded-sm bg-raised" />} id={id} team={team(size)} badges={badges(got)} cost={cost} state={<GhostState ghost={ghost} />} model={model} faded={faded} selected={selected === i} onClick={() => setSelected(i)} />
       ))}
+    </div>
+  );
+}
+
+export function SignedBarDemo() {
+  const [weights, setWeights] = useState([1, 0.62, 0.05, 0, -0.4, -1, 1.6]);
+  const names = ["1 (the end)", "0.62", "0.05", "0", "−0.40", "−1 (the end)", "1.6 (stops at 1)"];
+  return (
+    <div class="flex max-w-[520px] flex-col gap-3">
+      {weights.map((weight, i) => (
+        <div key={names[i]} class="grid grid-cols-[16ch_1fr_6ch] items-center gap-3 text-xs">
+          <span class="text-muted">{names[i]}</span>
+          <SignedBar value={weight} />
+          <span class="text-right tabular-nums">{weight.toFixed(2)}</span>
+        </div>
+      ))}
+      <div class="grid grid-cols-[16ch_1fr_6ch] items-center gap-3 text-xs">
+        <span class="text-muted">tone info, max 50</span>
+        <SignedBar value={-20} max={50} tone="info" />
+        <span class="text-right tabular-nums">−20</span>
+      </div>
+      <div class="flex gap-2">
+        <Button size="sm" onClick={() => setWeights((all) => all.map((w) => Math.max(-1, Math.min(1, -w * 0.8))))}>
+          Mutate
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setWeights([1, 0.62, 0.05, 0, -0.4, -1, 1.6])}>
+          Reset
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const GENERATIONS: GenerationPoint[] = [
+  [64.79, 16.59, true],
+  [66.59, 25.86, true],
+  [66.37, 33.93, false],
+  [70.81, 39.88, true],
+  [94.77, 50.71, true],
+  [94.77, 49.65, false],
+].map(([best, mean, newBest], i) => ({ generation: i + 1, best: best as number, mean: mean as number, newBest: newBest as boolean }));
+
+export function GenerationChartDemo() {
+  const [points, setPoints] = useState(GENERATIONS);
+  const [picked, setPicked] = useState<number | null>(null);
+  const add = () =>
+    setPoints((all) => {
+      const last = all[all.length - 1];
+      const best = last.best + (all.length % 3 === 0 ? 6 : 0);
+      return [...all, { generation: last.generation + 1, best, mean: Math.min(best, last.mean + 3), newBest: best > last.best }];
+    });
+  return (
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-2">
+        <GenerationChart points={points} label="Fitness by Generation" pickText="its Race" onPick={setPicked} />
+        <div class="flex items-center gap-2">
+          <Button size="sm" onClick={add}>
+            Add a Generation
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setPoints(GENERATIONS)}>
+            Reset
+          </Button>
+          <span class="text-xs text-muted">{picked === null ? "A click picks a Generation." : `Picked: Generation ${picked}.`}</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <div>
+          <p class="mb-1.5 text-xs text-faint">one Generation: a dot for each line</p>
+          <GenerationChart points={GENERATIONS.slice(0, 1)} label="Fitness" />
+        </div>
+        <div>
+          <p class="mb-1.5 text-xs text-faint">negative values: a line at 0</p>
+          <GenerationChart points={GENERATIONS.map((p) => ({ ...p, mean: p.mean - 40 }))} label="Fitness" />
+        </div>
+        <div>
+          <p class="mb-1.5 text-xs text-faint">no Generation</p>
+          <GenerationChart points={[]} label="Fitness" />
+        </div>
+      </div>
     </div>
   );
 }
