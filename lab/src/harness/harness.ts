@@ -12,6 +12,7 @@ import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
+import type { Genome } from "../genetic/genome";
 import { isStateEvent, withoutFormat } from "./game-events";
 import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
@@ -130,12 +131,18 @@ export async function botNames(): Promise<string[]> {
   return (await readdir(BOTS_DIR)).flatMap((file) => (file.endsWith(".ts") ? [file.slice(0, -3)] : [])).sort();
 }
 
-export async function loadBot(name: string, model: ModelOptions = {}): Promise<Bot> {
+export async function loadBot(name: string, model: ModelOptions = {}, genome?: Genome): Promise<Bot> {
   const path = isAbsolute(name) ? name : join(BOTS_DIR, `${name}.ts`);
   const file = path === name ? name : `bots/${name}.ts`;
   const module = await import(path);
+  const withModel = Object.values(model).some((option) => option !== undefined);
+  if (genome && typeof module.geneticBot !== "function") throw new Error(`${file} is not a Genetic bot: it does not export geneticBot(genome)`);
   if (typeof module.modelBot === "function") return module.modelBot(model);
-  if (Object.values(model).some((option) => option !== undefined)) throw new Error(`${file} is not a model bot: it does not export modelBot(model)`);
+  if (typeof module.geneticBot === "function") {
+    if (withModel) throw new Error(`${file} plays with a Genome, not with a model: bun run bot ${name} --genome <file>`);
+    return module.geneticBot(genome);
+  }
+  if (withModel) throw new Error(`${file} is not a model bot: it does not export modelBot(model)`);
   const bot: Bot | undefined = module.default;
   if (typeof bot?.play !== "function") throw new Error(`${file} must export by default a Bot: { name, version, play(harness) }`);
   return bot;
@@ -145,7 +152,7 @@ export async function botInfos(): Promise<BotInfo[]> {
   return Promise.all(
     (await botNames()).map((name) =>
       loadBot(name).then(
-        (bot): BotInfo => ({ name, kind: bot.model ? "model" : "scripted", version: bot.version, goal: bot.goal ?? null, costLimit: bot.model?.costLimit ?? null }),
+        (bot): BotInfo => ({ name, kind: bot.model ? "model" : bot.genome ? "genetic" : "scripted", version: bot.version, goal: bot.goal ?? null, costLimit: bot.model?.costLimit ?? null }),
         (error: unknown): BotInfo => ({ name, error: errorText(error) }),
       ),
     ),
@@ -193,7 +200,9 @@ export type Bot = {
   version: string;
   goal?: Milestone;
   model?: ModelSettings;
+  genome?: Genome;
   frameBudget?: number;
+  noProgressLimit?: number;
   play(harness: Harness): Promise<void>;
 };
 
@@ -306,7 +315,7 @@ export class Harness {
     const { frame: start, rawInputs } = this.#playStart ?? { frame: this.frame, rawInputs: this.rawInputs };
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
-    const noProgressLimit = this.#noProgressLimit ?? Number.POSITIVE_INFINITY;
+    const noProgressLimit = this.#noProgressLimit ?? bot.noProgressLimit ?? Number.POSITIVE_INFINITY;
     const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
     const tokenLimit = bot.model?.tokenLimit ?? Number.POSITIVE_INFINITY;
     const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, costLimit, tokenLimit, progress: this.progress(), firstEvent: this.#events.length, stopAtWhiteout: bot.model?.stopAtWhiteout ?? false });

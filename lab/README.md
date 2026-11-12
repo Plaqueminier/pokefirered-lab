@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has one **Bot**: the model bot (`bots/model.ts`, version 41, no goal). It asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
+The lab has two **Bots**: the model bot (`bots/model.ts`, version 41, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -41,6 +41,24 @@ bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|
 The default models are `deepseek/deepseek-v4.1-flash`, `claude-haiku-5-5`, `gpt-5.6-luna` and `grok-4.7`. On `claude-code`, the aliases `haiku`, `sonnet`, `opus` and `fable` become the full ids `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`. To use a later version, give its full id. A **Plan provider** (`claude-code`, `codex`, `grok`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. `--coach` gives the **Run** a **Coach** on the same provider: it plays the Character, Reflection and Review turns, the Summary calls and the move to forget, at the `--thinking` level, which the player then never uses. A Coach with the model of the Run is no Coach. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
 
 The command writes the **Run record** to `runs/<id>-<bot>-<version>-<date>.json`: `<id>` is the number of the **Run**, on 5 digits (`00001`), so the files sort in the order of the **Runs**. The Viewer can start a **Bot** (button "Bots"), continue a **Run**, keep the same **Run** (the checkbox "Keep the same Run": an **Extended Run** replaces the file of its **Run record**, with the same name, so the version in the name can be older than the version in the header), and replay a **Run record** (the Select of the top bar).
+
+## Run the Genetic bot
+
+The **Genetic bot** (`bots/genetic.ts`, version 1, no goal) plays with a **Genome**, and asks no AI model (ADR 0008). The **Genome** is a JSON file of weights from -1 to 1, for example:
+
+```
+{"walk": {"notUsed": 1, "isExit": 1, "previousMap": -1, "isPerson": -1, "isSign": -1, "unknownNeighbours": 1, "distance": -0.2}}
+```
+
+At each walk **Decision point**, the **Bot** lists the seen exits, people and signs, and each seen cell that the player can reach. It gives each action the score Σ weight × criterion, and plays the action with the best score. A criterion with no weight has the weight 0. Version 1 has the criteria of the walk only: at a choice, a battle or another menu, it plays the first action of the **Harness**, after `leave` and `keep`. The page "Genome and criteria" of the Doc tab gives each criterion.
+
+In `lab/`:
+
+```
+bun run bot genetic --genome <Genome file> [player|full]
+```
+
+The **Run** starts from the Starting save, and ends with `no progress` when the **Stuck counter** reaches 60. The command writes the **Run record** to `runs/` as for the model bot, and the Viewer replays it. The Viewer cannot start the **Genetic bot**.
 
 ## Test the learn-move prompt
 
@@ -75,6 +93,7 @@ In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 - `src/game.ts` and the files next to it: the reads of the game state (battle, menus, Bag, PC, shop, party).
 - `src/harness/`: the API of the **Bot**, the **Atlas**, the **Run record** and the pool of **Runs**.
 - `src/model/`: the parts of the model bot (request, prompt, answer).
+- `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria).
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
 - `src/server.ts` and `viewer/`: the Viewer.
 - `bots/`: the **Bots**.

@@ -220,7 +220,7 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
     lines: ["no more frames, when a budget is given", "the scripted test bot: 30 000"],
     detail: "no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000).",
   },
-  "no progress": { icon: Repeat, tone: "warn", lines: ["the stuck counter reaches N, when the Run gives N"], detail: "the stuck counter reaches N, when the Run gives N." },
+  "no progress": { icon: Repeat, tone: "warn", lines: ["the stuck counter reaches N, when the Bot or the Run gives N", "the Genetic bot: 60"], detail: "the stuck counter reaches N, when the Bot or the Run gives N (the Genetic bot: 60)." },
   whiteout: {
     icon: Skull,
     tone: "bad",
@@ -232,7 +232,7 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
     icon: CircleHelp,
     tone: "bad",
     lines: ["B on 3 screens in a row that no action covers"],
-    detail: "the model bot pressed B for 3 screens in a row that no action covers, with no Model call between them. The result keeps the last text of the game.",
+    detail: "the model bot pressed B for 3 screens in a row that no action covers, with no Model call between them, or the Genetic bot pressed B for 3 screens in a row with no Decision point between them. The result keeps the last text of the game.",
   },
 };
 const END_ROWS = Object.entries(END);

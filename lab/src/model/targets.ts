@@ -300,7 +300,10 @@ function edgeSteps(map: AtlasMap, { x, y }: Cell, side: Direction): number {
   return { north: y + 1, south: map.height - y, west: x + 1, east: map.width - x }[side];
 }
 
-export function approaches(target: LocalTarget, { grid, player, people }: Overworld): Cell[] {
+/** The fields of a target that `approaches` reads: a `LocalTarget` of the model bot, or a walk target of the Genetic bot. */
+type Approached = { kind: "exit" | "frontier" | "person"; cell: Cell } | { kind: "edge"; side: Direction } | { kind: "sign"; cell: Cell; facing: Direction | "any" };
+
+export function approaches(target: Approached, { grid, player, people }: Overworld): Cell[] {
   const isFree = (c: Cell) => free({ ...grid, people }, c);
   const nearest = (cells: Cell[]) => cells.filter(isFree).toSorted((a, b) => distance(a, player) - distance(b, player));
   switch (target.kind) {

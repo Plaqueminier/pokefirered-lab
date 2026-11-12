@@ -1,18 +1,20 @@
 import { basename, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { safely } from "../game";
+import { type Genome, readGenome } from "../genetic/genome";
 import { providerProblem } from "../model/providers";
 import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
 import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
 import { limitOf, modelTotals, providerOf, readRecord, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full]
+       bun run bot genetic --genome <Genome file> [player|full]
        bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--coach <model id>] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
-  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" } },
+  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" }, genome: { type: "string" } },
 });
 const [name, ...rest] = positionals;
 const isLevel = (arg: string): arg is KnowledgeLevel => (KNOWLEDGE_LEVELS as readonly string[]).includes(arg);
@@ -22,11 +24,25 @@ if (!name || ids.length > 1) {
   process.exit(1);
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
-const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: { id: values.coach }, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: !values["no-stop-at-whiteout"] };
-const bot = await loadBot(name, model).catch((error: unknown) => {
+const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: values.coach === undefined ? undefined : { id: values.coach }, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: values["no-stop-at-whiteout"] ? false : undefined };
+const genome = values.genome === undefined ? undefined : await genomeFile(values.genome);
+const bot = await loadBot(name, model, genome).catch((error: unknown) => {
   console.error(errorText(error));
   process.exit(1);
 });
+if (bot.genome && !genome) {
+  console.error(`The Bot ${name} plays with a Genome: bun run bot ${name} --genome <Genome file>`);
+  process.exit(1);
+}
+
+async function genomeFile(path: string): Promise<Genome> {
+  try {
+    return readGenome(await Bun.file(path).json());
+  } catch (error) {
+    console.error(`${path} is not a Genome: ${errorText(error)}`);
+    process.exit(1);
+  }
+}
 const provider = bot.model ? providerOf(bot.model) : DEFAULT_PROVIDER;
 const problem = bot.model ? await providerProblem(provider) : null;
 if (problem) {

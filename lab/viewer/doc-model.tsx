@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Cpu, Eye, Repeat } from "lucide-preact";
+import { Bot, ChevronRight, Cpu, Dna, Eye, Repeat } from "lucide-preact";
 import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import type { BotInfo } from "../src/protocol";
@@ -23,13 +23,15 @@ export function BotsPage() {
       lead="A Bot decides what to do, and acts only through the Harness."
       details={[
         ["model", "plays past the first rival battle, to the cost limit or the Token limit, a plan limit, a user stop, a whiteout, an unknown screen or `badge-8`. At each Decision point, it asks an AI model for the action (a Model call), except when a walk continues after a wild battle or after a trigger with no text. The code reads the texts alone."],
+        ["genetic", "plays with a Genome, with no AI model: at each Decision point, its code gives each action a score with the weights of the Genome, and plays the action with the best score. It starts from the command line only (`bun run bot genetic --genome <Genome file>`). The page “Genome and criteria” tells how it chooses."],
         ["Model provider", "who answers the calls of a Run: `openrouter` (the default, it bills each call), or a Plan provider, `claude-code` or `codex`, which uses a subscription. The page “Model providers” tells how to use them."],
         ["starter", "the scripted bot is a tool for the tests of the Harness only: it is not in the list."],
         ["The list", "comes from the server: each module of `bots/`, with its kind, version and goal, or the error of a module that does not load."],
       ]}
     >
-      <div class={GRID2}>
+      <div class={GRID3}>
         <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call), except when a walk continues after a wild battle or after a trigger with no text", "the code reads the texts alone", "plays to its limit, a user stop, a whiteout, an unknown screen or `badge-8`"]} />
+        <DocCard icon={Dna} title="genetic" lines={["plays with a Genome: weights over criteria", "no AI model", "starts from the command line only"]} />
         <DocCard icon={Cpu} title="starter (scripted)" lines={["a tool for the tests of the Harness only", "not in the list"]} />
       </div>
       <Block label="🤖 The Bots of the server">

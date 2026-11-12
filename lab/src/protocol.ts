@@ -139,7 +139,7 @@ export const SPEEDS = [1, 2, 4, 8, 16, "max"] as const;
 
 export type Speed = (typeof SPEEDS)[number];
 
-type BotKind = "scripted" | "model";
+type BotKind = "scripted" | "model" | "genetic";
 
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });

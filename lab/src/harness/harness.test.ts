@@ -134,15 +134,21 @@ async function toRivalBattle(harness: Harness) {
   await harness.readText();
 }
 
-test("the list of the Bots gives the model bot only, with its kind, its version, its goal and its cost limit", async () => {
-  expect(await botInfos()).toEqual([{ name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) }]);
+test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
+  expect(await botInfos()).toEqual([
+    { name: "genetic", kind: "genetic", version: "1", goal: null, costLimit: null },
+    { name: "model", kind: "model", version: "41", goal: null, costLimit: expect.any(Number) },
+  ]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
   const costLimit = process.env.LAB_COST_LIMIT;
   process.env.LAB_COST_LIMIT = "abc";
   try {
-    expect(await botInfos()).toEqual([{ name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' }]);
+    expect(await botInfos()).toEqual([
+      { name: "genetic", kind: "genetic", version: "1", goal: null, costLimit: null },
+      { name: "model", error: 'the cost limit must be a number of dollars above 0, not "abc"' },
+    ]);
   } finally {
     if (costLimit === undefined) delete process.env.LAB_COST_LIMIT;
     else process.env.LAB_COST_LIMIT = costLimit;

@@ -1,10 +1,11 @@
 // Issue #61. The Doc tells what the lab can do; lab/README.md gives only the setup and the commands.
-import { Bike, Bot, Brain, CircleStop, Construction, FileClock, Flag, Gamepad2, Ghost, Grid2x2, Lightbulb, ListTree, MessageSquareText, Monitor, Plug, Swords, Workflow } from "lucide-preact";
+import { Bike, Bot, Brain, CircleStop, Construction, Dna, FileClock, Flag, Gamepad2, Ghost, Grid2x2, Lightbulb, ListTree, MessageSquareText, Monitor, Plug, Swords, Workflow } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, render } from "preact";
 import { useRef, useState } from "preact/hooks";
 import type { BotInfo } from "../src/protocol";
 import { Button, LABEL } from "./components";
 import type { Readable } from "./cursor";
+import { GenomePage } from "./doc-genetic";
 import { EndPage, MacroPage, MilestonesPage, NotYetPage, RecordPage, SpeedPage } from "./doc-harness";
 import { BotsContext, BotsPage, DoubleBattlePage, MemoryPage, ProgressPage, PromptPage, ProvidersPage } from "./doc-model";
 import { GridPage, LoopPage, PrinciplePage, RacePage, ViewerPage } from "./doc-overview";
@@ -44,6 +45,10 @@ const GROUPS: { title: string; pages: DocPage[] }[] = [
       { id: "progress", title: "Stuck, reflection, review", heading: "Stuck, reflection and review", icon: Brain, render: () => <ProgressPage /> },
       { id: "memory", title: "Memory tree", icon: ListTree, render: () => <MemoryPage /> },
     ],
+  },
+  {
+    title: "Genetic bot",
+    pages: [{ id: "genome", title: "Genome and criteria", icon: Dna, render: () => <GenomePage /> }],
   },
 ];
 
