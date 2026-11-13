@@ -42,6 +42,27 @@ async function walkToRoute1(times: number): Promise<RunRecord> {
   return recordOf(walker, Harness.open({ parent: { name: "scripted.json", record } }));
 }
 
+// Track points: frame, map group, map number, x, y, facing. The Fitness names the map of a point with the `map` events.
+function walkFromViridianCity(parcel: boolean): RunRecord {
+  const maps = ["ViridianCity", ...(parcel ? ["ViridianCity_Mart", "ViridianCity"] : []), "Route1", "PalletTown"];
+  const cells = [[36, 20], ...(parcel ? [[4, 7], [36, 20]] : []), [12, 0], [16, 14], [16, 19]];
+  const frameOf = (i: number) => 100 * (Math.min(i, maps.length - 1) + 1) + (i >= maps.length ? 50 : 0);
+  return {
+    events: maps.map((map, i) => ({ type: "map", frame: frameOf(i), map })),
+    track: cells.flatMap(([x, y], i) => [frameOf(i), 3, 0, x, y, 0]),
+    result: { milestones: [], frames: 1000 },
+  } as unknown as RunRecord;
+}
+
+test("with OAK'S PARCEL, the walk from the Viridian City shop to the cell below the lab door gets 81 of the 90 cells toward Oak, and the step back does not lose them; with no parcel, the same walk gets nothing", () => {
+  const withParcel = fitness(walkFromViridianCity(true));
+  expect(withParcel.terms.parcel.count).toBe(1);
+  expect(withParcel.terms.towardOak.count).toBe(81);
+  const noParcel = fitness(walkFromViridianCity(false));
+  expect(noParcel.terms.parcel.count).toBe(0);
+  expect(noParcel.terms.towardOak.count).toBe(0);
+});
+
 describe.skipIf(!ready)("the Fitness on Run records", () => {
   test("the record of the scripted path has a higher note than a Run that stays in the bedroom", async () => {
     const stayer: Bot = {

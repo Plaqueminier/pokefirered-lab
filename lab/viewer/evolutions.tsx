@@ -15,10 +15,10 @@ import { GhostState } from "./race-cards";
 type Member = Generation["genomes"][number];
 
 // The terms of the bars, in the order of the series colors. `frames` is negative and small: the rows give its value as a number.
-const BAR_TERMS = ["milestones", "maps", "exits", "texts", "triggers", "levels"] as const;
+const BAR_TERMS = ["milestones", "maps", "exits", "texts", "triggers", "levels", "parcel", "towardOak"] as const;
 type Terms = Partial<Fitness["terms"]>;
 
-/** The points of each term of the bars, with `undefined` for a term that the Fitness version of the file does not have (`triggers` before version 2). */
+/** The points of each term of the bars, with `undefined` for a term that the Fitness version of the file does not have (`triggers` before version 2, `parcel` and `towardOak` before version 4). */
 const pointsOf = (terms: Terms) => BAR_TERMS.map((term) => terms[term]?.points);
 const seriesOf = (i: number) => `series-${i + 1}`;
 const segmentsOf = (points: readonly (number | undefined)[]) => points.flatMap((value, i) => (value === undefined ? [] : [{ label: BAR_TERMS[i], value, color: seriesOf(i) }]));
