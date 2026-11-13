@@ -7,7 +7,7 @@ import { type Cell, cellKey } from "../src/harness/path";
 import { B_PRESSES } from "../src/model/prompt";
 import { approaches, interactCell, type Overworld } from "../src/model/targets";
 
-export const NO_PROGRESS_LIMIT = 60;
+export const NO_PROGRESS_LIMIT = 200;
 const MAX_UNCOVERED = 3;
 
 /** `play` gives false when the Harness answers `impossible` or `blocked`: the action leaves the list. */
