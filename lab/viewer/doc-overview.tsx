@@ -1,4 +1,4 @@
-import { Backpack, Bot, Camera, ChartColumn, Cpu, DoorOpen, Eye, Gauge, Hand, ListTree, Map as MapIcon, MonitorPlay, PanelRightOpen, Play, Shapes, SlidersHorizontal, Trophy } from "lucide-preact";
+import { Backpack, Bot, Camera, ChartColumn, Cpu, DoorOpen, Eye, Gauge, Hand, ListTree, Map as MapIcon, MonitorPlay, PanelRightOpen, Play, Shapes, Skull, SlidersHorizontal, Trophy } from "lucide-preact";
 import { Card, NumberBadge } from "./components";
 import { LoopDiagram } from "./doc-diagrams";
 import { RAW_INPUT_FORM } from "./doc-harness";
@@ -228,7 +228,7 @@ export function RacePage() {
     <Page
       lead="Many Run records on a map of Kanto, with no emulator. Each Run is a Ghost, and all the Ghosts start at frame 0."
       details={[
-        ["Race file", "the track and the State track of each Run on one game time, with its names and its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens and its Run result. A Run that ends with a whiteout stops at the cell where it lost, with no warp to the Pokémon Center and no heal; a Run that plays on after a whiteout keeps them. A Race file of an older version does not open: make it again."],
+        ["Race file", "the track and the State track of each Run on one game time, with its names and its character (“Normal trainer” for a Run with no readable character), its battles, its trainers, its Milestones, its faints, its money, its cost or its tokens, its Run result and its whiteouts, each with the last faint, the foe that knocked out the last Pokémon and the last 3 answers of the model. A Run that ends with a whiteout stops at the cell where it lost, with no warp to the Pokémon Center and no heal; a Run that plays on after a whiteout keeps them. A Race file of an older version does not open: make it again."],
         ["Choice of records", "a record is a file name, or the start of one file name (`00012`). A record of an Evolution is its path in `runs/`: `evolutions/<name>/<file>`. With no record named, the command takes all the records of the model bots and of the Genetic bot in `runs/`. A record of another Bot or below format 3 is refused. A record with no Run id at the start of its name or with an empty track stays out."],
         ["Continued Run", "a Continued Run replays all of its parent, so a Run that another Run of the Race continues has no Ghost. The command names the records that stay out."],
         ["Rank", "at this frame, the most Milestones first, then the first to reach them, then the highest sum of levels, then the lowest number. The crown goes to the first."],
@@ -276,6 +276,11 @@ export function RacePage() {
           <DocCard icon={Trophy} title="Leaderboard" lines={["the first tab of the panel at the right", "rank, sprite, Run id, model with no prefix (and its Coach: `model + coach coach`), state, cost or tokens, team and badges of each Run"]} />
           <DocCard icon={PanelRightOpen} title="Interiors in play" lines={["the second tab of the panel: only the interiors where a Run still plays", "the interiors with the most Ghosts come first"]} />
           <DocCard icon={Trophy} title="Gyms" lines={["each gym shows its badge"]} />
+          <DocCard
+            icon={Skull}
+            title="Graveyard"
+            lines={["the skull button: a tombstone drops at each whiteout, with its killer and the last words of the model", "the Deaths tab of the panel: the map turns grey, with the places that kill; “All ends” adds the Runs that stopped", "Tour: the whiteouts one by one, for a video; N, P, Space, Esc"]}
+          />
         </div>
       </Block>
     </Page>

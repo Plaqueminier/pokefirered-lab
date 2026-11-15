@@ -5,6 +5,8 @@ import { Store } from "./cursor";
 import { fitCanvas, RaceArt } from "./race-art";
 import { RaceCamera } from "./race-camera";
 import { framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
+import { GraveMarks } from "./race-grave-marks";
+import { type Grave, RaceGraveyard } from "./race-graveyard";
 import { type Box, inBox, RaceMarks, type RaceTheme, raceTheme } from "./race-marks";
 import { FRAME_WIDTH, SHEET_HEIGHT } from "./race-sprite";
 
@@ -31,14 +33,14 @@ const SPRITE_FRAMES = [
 ];
 const FACING_RIGHT = 3;
 
-export type RaceHit = { kind: "door"; door: RaceDoor } | { kind: "open"; key: string } | { kind: "ghosts"; ghosts: GhostNow[]; nearest: GhostNow };
+export type RaceHit = { kind: "door"; door: RaceDoor } | { kind: "open"; key: string } | { kind: "ghosts"; ghosts: GhostNow[]; nearest: GhostNow } | { kind: "grave"; grave: Grave };
 
 type Item = { ghost: GhostNow; x: number; y: number };
 
 /** `box`: the sprite and its label on the screen. */
 export type GhostHit = { box: Box; ghost: GhostNow; group: GhostNow[] };
 
-type Surface = { canvas: HTMLCanvasElement; theme: RaceTheme; marks: RaceMarks };
+type Surface = { canvas: HTMLCanvasElement; theme: RaceTheme; marks: RaceMarks; graves: GraveMarks };
 
 type DrawFrame = { ctx: CanvasRenderingContext2D; theme: RaceTheme; marks: RaceMarks; width: number; height: number };
 
@@ -72,6 +74,7 @@ export class RaceView {
   readonly selected = new Store<number | null>(null);
   frame = 0;
   moment: RaceMoment;
+  readonly graveyard: RaceGraveyard;
   readonly #ghosts: RaceGhosts;
   /** The floor of a building is the busiest one at the click: it stays while the building is open. */
   readonly #opened = new Map<string, { door: Door; map: string }>();
@@ -93,6 +96,8 @@ export class RaceView {
     this.#gyms = world.gyms;
     this.#ghosts = new RaceGhosts(race, { places: this.#places, maps: world.maps });
     this.moment = this.#ghosts.at(0);
+    const ghosts = this.#ghosts;
+    this.graveyard = new RaceGraveyard({ race, camera: this.camera, art: this.art, ghostAt: (run, frame) => ghosts.ghost(run, frame), titleOf: (map) => this.titleOf(map) });
   }
 
   get lastFrame(): number {
@@ -113,7 +118,8 @@ export class RaceView {
       return;
     }
     const theme = raceTheme(canvas);
-    this.#surface = { canvas, theme, marks: new RaceMarks(theme) };
+    const marks = new RaceMarks(theme);
+    this.#surface = { canvas, theme, marks, graves: new GraveMarks(theme, marks, (species) => this.art.icon(species)) };
   }
 
   /** The loop runs only when the tab shows: the clock stands still while it is hidden. */
@@ -136,6 +142,7 @@ export class RaceView {
 
   seek(frame: number): void {
     this.frame = frame;
+    this.graveyard.settle();
     this.camera.snap();
   }
 
@@ -164,6 +171,8 @@ export class RaceView {
 
   /** In the inverse of the order of the drawing. */
   hit(x: number, y: number): RaceHit | null {
+    const grave = this.#surface && this.graveyard.hit(this.#surface.graves, x, y);
+    if (grave) return { kind: "grave", grave };
     const door = this.#doorHits.find(({ box }) => inBox(box, x, y))?.door;
     if (door) return { kind: "door", door };
     const ghost = nearestGhost(this.#ghostHits, x, y);
@@ -179,7 +188,7 @@ export class RaceView {
 
   #draw(): void {
     if (!this.#surface) return;
-    const { canvas, theme, marks } = this.#surface;
+    const { canvas, theme, marks, graves } = this.#surface;
     const fitted = fitCanvas(canvas);
     if (!fitted) return;
     const { ctx, width, height } = fitted;
@@ -187,7 +196,7 @@ export class RaceView {
     ctx.fillRect(0, 0, width, height);
     const { aim } = this.camera;
     const followed = aim === "selected" && this.selected.value !== null ? this.moment.ghosts[this.selected.value] : null;
-    const box = aim === "free" ? null : framedBox(followed ? [followed] : this.moment.ghosts);
+    const box = aim === "free" ? null : (this.graveyard.box(this.frame) ?? framedBox(followed ? [followed] : this.moment.ghosts));
     if (box) this.camera.frame(box, width, height);
     const frame: DrawFrame = { ctx, theme, marks, width, height };
     this.#drawLinks(frame);
@@ -196,15 +205,17 @@ export class RaceView {
     const { hits, labels } = this.#drawGhosts(frame, this.#outdoorItems(width, height), Math.max(this.camera.zoom, MIN_SPRITE_SCALE), this.camera.zoom);
     this.#ghostHits = [...hits, ...this.#openHits.flatMap((open) => open.hits)];
     this.#doorHits = [];
-    if (!this.showMarks) return;
-    const gyms = this.#drawGyms(frame);
-    this.#doorHits = this.moment.doors.flatMap((door) => this.#drawDoor(frame, door));
-    this.#drawNames(frame, [...labels, ...gyms, ...this.#doorHits.map((hit) => hit.box)]);
+    if (this.showMarks) {
+      const gyms = this.#drawGyms(frame);
+      this.#doorHits = this.moment.doors.flatMap((door) => this.#drawDoor(frame, door));
+      this.#drawNames(frame, [...labels, ...gyms, ...this.#doorHits.map((hit) => hit.box)]);
+    }
+    this.graveyard.draw(ctx, graves, { frame: this.frame, moment: this.moment, width, height, now: performance.now() });
   }
 
   #outdoorItems(width: number, height: number): Item[] {
     return this.moment.ghosts.flatMap((ghost) => {
-      if (ghost.place.kind !== "world") return [];
+      if (ghost.place.kind !== "world" || this.graveyard.hides(ghost)) return [];
       const x = this.camera.screenX(ghost.place.x + 0.5 * ghost.place.scale);
       const y = this.camera.screenY(ghost.place.y + ghost.place.scale);
       return x > -OFF_SCREEN && y > -OFF_SCREEN && x < width + OFF_SCREEN && y < height + OFF_SCREEN ? [{ ghost, x, y }] : [];
@@ -381,7 +392,7 @@ export class RaceView {
     const top = box.y + (box.h - map.height * CELL * fit) / 2;
     ctx.imageSmoothingEnabled = fit < 1;
     ctx.drawImage(this.art.paint(key), left, top, map.width * CELL * fit, map.height * CELL * fit);
-    const items = (this.moment.inside.get(key) ?? []).map((ghost): Item => ({ ghost, x: left + (ghost.x + 0.5) * CELL * fit, y: top + (ghost.y + 1) * CELL * fit }));
+    const items = (this.moment.inside.get(key) ?? []).filter((ghost) => !this.graveyard.hides(ghost)).map((ghost): Item => ({ ghost, x: left + (ghost.x + 0.5) * CELL * fit, y: top + (ghost.y + 1) * CELL * fit }));
     return this.#drawGhosts({ ctx, theme, marks, width: box.w, height: box.h }, items, Math.max(fit, 0.6), Math.max(fit, NUMBERS_ZOOM)).hits;
   }
 

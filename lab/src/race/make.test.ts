@@ -82,7 +82,7 @@ test("a Race holds the Runs of the model bots with the Run id of their file, the
   });
 
   const race = await makeRace(dir);
-  expect(race.version).toBe(3);
+  expect(race.version).toBe(4);
   expect(race.runs.map((run) => [run.number, run.record])).toEqual([[1, OLDEST], [3, MIDDLE], [4, LAST]]);
 
   const last = race.runs[2];
@@ -175,4 +175,67 @@ test("a Race file is JSON in gzip", async () => {
   expect(path).toBe(join(out, "day3.json.gz"));
   expect(JSON.parse(new TextDecoder().decode(Bun.gunzipSync(await Bun.file(path).bytes())))).toEqual(race);
   await expect(writeRace("../day3", race, out)).rejects.toThrow('the name of a Race has only letters, digits, "-" and "_": ../day3');
+});
+
+function turn(frame: number, reason: string, say?: string): ModelEvent {
+  return { ...call(frame, 0), error: null, decision: { reason, action: "press A", mission: "", objective: "", note: "", ...(say ? { say } : {}) } };
+}
+
+function foe(frame: number, trainer: string | null, species: string, level: number): StateEntry {
+  return { frame, kind: "battle", trainer, player: null, foe: { species, nickname: species, level, maxHp: 20, hp: 20, status: "none" } };
+}
+
+const WHITEOUT_END: RunRecord["result"] = { endReason: "whiteout", frames: 90, milestones: [], rawInputs: 0 };
+
+test("a Race has each whiteout of a Run: the last faint of the player before it, the foe that knocked out the last Pokémon, and the last 3 answers of the model", async () => {
+  const dir = await runsDir({
+    [OLDEST]: record({
+      events: [
+        turn(5, "First."),
+        { frame: 10, type: "battle", state: "start", trainer: true },
+        turn(12, "Second."),
+        turn(14, "Third.", "Bob is fine!"),
+        { frame: 20, type: "faint", species: "SQUIRTLE", side: "player" },
+        turn(22, "Fourth."),
+        { frame: 25, type: "whiteout" },
+        { frame: 26, type: "battle", state: "end" },
+      ],
+      state: [foe(11, "BUG CATCHER RICK", "WEEDLE", 6), foe(18, "BUG CATCHER RICK", "CATERPIE", 7)],
+      result: WHITEOUT_END,
+    }),
+  });
+  const [run] = (await makeRace(dir)).runs;
+  expect(run.whiteouts).toEqual([
+    {
+      frame: 20,
+      killer: { poison: false, trainer: "BUG CATCHER RICK", species: "CATERPIE", level: 7 },
+      lastWords: [{ reason: "Second." }, { reason: "Third.", say: "Bob is fine!" }, { reason: "Fourth." }],
+    },
+  ]);
+});
+
+test("a faint out of battle is a poison death after the foe of the battle before; a Run that plays on keeps each whiteout; a whiteout with no faint of its own is at its own frame", async () => {
+  const dir = await runsDir({
+    [OLDEST]: record({
+      events: [
+        { frame: 10, type: "battle", state: "start", trainer: false },
+        { frame: 20, type: "battle", state: "end" },
+        { frame: 30, type: "faint", species: "BULBASAUR", side: "player" },
+        { frame: 31, type: "whiteout" },
+        { frame: 40, type: "battle", state: "start", trainer: false },
+        { frame: 45, type: "faint", species: "PIDGEY", side: "enemy" },
+        { frame: 50, type: "faint", species: "BULBASAUR", side: "player" },
+        { frame: 52, type: "whiteout" },
+        { frame: 60, type: "battle", state: "start", trainer: false },
+        { frame: 70, type: "whiteout" },
+      ],
+      state: [foe(12, null, "WEEDLE", 3), foe(41, null, "SPEAROW", 4), foe(61, null, "RATTATA", 5)],
+    }),
+  });
+  const [run] = (await makeRace(dir)).runs;
+  expect(run.whiteouts).toEqual([
+    { frame: 30, killer: { poison: true, trainer: null, species: "WEEDLE", level: 3 }, lastWords: [] },
+    { frame: 50, killer: { poison: false, trainer: null, species: "SPEAROW", level: 4 }, lastWords: [] },
+    { frame: 70, killer: { poison: false, trainer: null, species: "RATTATA", level: 5 }, lastWords: [] },
+  ]);
 });

@@ -7,6 +7,7 @@ import { PromptText } from "./prompt-text";
 import { SPEED_TABS } from "./screen-controls";
 import { clock } from "./stats-format";
 import { BotsDemo, GenerationChartDemo, GridCellDemo, LeaderboardRowDemo, ModelNameDemo, MonIconDemo, PokemonCardDemo, PokemonSummaryDemo, RECORD, RecordCardDemo, RunSelectDemo, ScreenControlsDemo, SignedBarDemo, StackedBarDemo, TimelineDemo } from "./components-tab-lab";
+import { DeathCardDemo, DeathRowDemo, EpitaphDemo, GraveMarksDemo, StarterRowDemo } from "./components-tab-graveyard";
 import { CardDemo, CollapsibleDemo, CoverDemo, HoverCardDemo, InfoCardDemo, PointerCardDemo, PopoverDemo, ToastDemo, TooltipDemo } from "./components-tab-surfaces";
 import { OVERLAY_SWATCHES } from "./mapdraw";
 
@@ -829,6 +830,36 @@ const ENTRIES: Entry[] = [
     demo: () => <ModelNameDemo />,
   },
   { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
+  {
+    category: "data",
+    title: "DeathCard",
+    rule: "A whiteout of a Race, in the PointerCard of its tombstone: the sprite and the Run id, a red Pill (“whiteout”, or “whiteout, played on” when the Run went on), the starter of the Run, the killer, the last words of the model, the team, the model, the character, the place and the game time. The killer is the icon of the foe with its level, or a PSN Pill (as the status of a Pokémon) for a poison out of battle, after the foe of the battle before. With no foe, the line says so; with no words, the line goes away.",
+    demo: () => <DeathCardDemo />,
+  },
+  {
+    category: "data",
+    title: "DeathRow",
+    rule: "A whiteout in the Deaths panel of a Race: the sprite, the starter, its level and the Run id, then the last words in one muted line. A hover or the keyboard focus selects the row, with the accent border, and the memorial flies to its tombstone.",
+    demo: () => <DeathRowDemo />,
+  },
+  {
+    category: "data",
+    title: "StarterRow",
+    rule: "A starter in the Deaths panel of a Race: its icon and name, its Runs and whiteouts at the cursor, then a Pill for each badge with the number of its Runs that got it. A Pill with 0 is red.",
+    demo: () => <StarterRowDemo />,
+  },
+  {
+    category: "data",
+    title: "Epitaph",
+    rule: "The big card of the Tour of the whiteouts, for a video, over a dark picture: “Here lies”, the icon and the name of the starter in 56 px, its species, level and killer, the last words in 28 px that the Tour types, then the model, the place and the game time. The text has a dark shadow, so that it stays clear on the map.",
+    demo: () => <EpitaphDemo />,
+  },
+  {
+    category: "data",
+    title: "Graveyard marks",
+    rule: "The canvas of the graveyard of a Race, in the colors of the theme. A tombstone has a base in the type color of the starter of its Run (muted with no starter), and the killer at its top right: the icon of the foe in a disc, or a small PSN tag with a line, so that it stays clear on the map. A whiteout drops its stone: the Ghost rises, the stone falls and bounces in a dust, then the killer shows. The end of a Run with no whiteout is the icon of its result in a disc. Memorial: a grey map, a red heat and a label for each place that kills, the stones in the starter color, an accent ring under the stone of the selected row. Tour: a night with a vignette, and a candle at each stone; a stone that the Tour did not show yet is faint, with no killer.",
+    demo: () => <GraveMarksDemo />,
+  },
   {
     category: "data",
     title: "PromptText",

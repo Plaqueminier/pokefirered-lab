@@ -40,7 +40,7 @@ function deltas(points: number[][]): number[] {
 
 function run(fields: Partial<RaceRun> & { points: number[][] }): RaceRun {
   const { points, ...rest } = fields;
-  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", character: "Normal trainer", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, state: [], cost: [], faints: [], money: [], ...rest };
+  return { number: 1, record: "r.json", bot: "model 12", model: "a/b", character: "Normal trainer", track: deltas(points), battles: [], trainers: [], milestones: [], end: { frame: 1000, result: "user stop" }, state: [], cost: [], faints: [], money: [], whiteouts: [], ...rest };
 }
 
 function ghostsOf(...runs: RaceRun[]): RaceGhosts {

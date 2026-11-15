@@ -15,6 +15,13 @@ export function stuckTone(stuck: number): Tone {
   return STUCK_TONES[stuckLevel(stuck)];
 }
 
+/** The game time of a Race, always with the hours: h:mm:ss. */
+export function raceTime(frames: number): string {
+  const total = Math.floor(frames / GBA_FPS);
+  const minutes = Math.floor(total / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 export function clock(frame: number): string {
   const seconds = Math.round(frame / GBA_FPS);
   const minutes = Math.floor(seconds / 60);

@@ -9,6 +9,15 @@ export const NUM_PRIMARY = 640;
 
 export type RaceBattle = [start: number, end: number];
 
+/** `poison`: the Pokémon fainted out of battle; the foe is the one of the battle before. */
+export type RaceKiller = { poison: boolean; trainer: string | null; species: string; level: number };
+
+/** `say`: since bot version 43. */
+export type RaceWords = { reason: string; say?: string };
+
+/** `frame`: the last faint of the player, not the whiteout. `lastWords`: the oldest first. */
+export type RaceWhiteout = { frame: number; killer: RaceKiller | null; lastWords: RaceWords[] };
+
 export type RaceRun = {
   number: number;
   record: string;
@@ -27,9 +36,10 @@ export type RaceRun = {
   cost: [frame: number, cost: number, calls: number][];
   faints: number[];
   money: [frame: number, money: number][];
+  whiteouts: RaceWhiteout[];
 };
 
-export const RACE_VERSION = 3;
+export const RACE_VERSION = 4;
 
 export const GENETIC_BOT = "genetic";
 

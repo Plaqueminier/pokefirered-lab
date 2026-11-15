@@ -222,6 +222,10 @@ export class RaceGhosts {
     return { ghosts, doors: doorsOf(ghosts), inside, ranking, leader: first && first.stats.milestones > 0 ? first.run : null };
   }
 
+  ghost(run: number, frame: number): GhostNow {
+    return this.#ghostAt(this.#ghosts[run], run, frame);
+  }
+
   winners(milestone: string, frame: number): number {
     return this.#ghosts.filter(({ run }) => run.milestones.some(([at, name]) => name === milestone && at <= frame)).length;
   }

@@ -2,7 +2,7 @@ import { CircleDollarSign, CircleQuestionMark, Crown, Flag, House, type LucideIc
 import { h, render } from "preact";
 import type { EndReason } from "../src/harness/harness";
 import { TILE } from "../src/race/file";
-import type { Tone } from "./components";
+import { type Tone, typeToken } from "./components";
 import type { Dot } from "../src/race/file";
 
 export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | undefined }> = {
@@ -18,7 +18,7 @@ export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | und
   "unknown screen": { icon: CircleQuestionMark, tone: "info" },
 };
 
-export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; black: string; modelColor: (family: Dot) => string; font: string; textSm: string; radius: number };
+export type RaceTheme = { accent: string; accentFg: string; bg: string; fg: string; faint: string; muted: string; ok: string; info: string; bad: string; warn: string; line: string; black: string; modelColor: (family: Dot) => string; typeColor: (type: string) => string; font: string; textSm: string; radius: number };
 
 export function raceTheme(element: Element): RaceTheme {
   const style = getComputedStyle(element);
@@ -38,6 +38,7 @@ export function raceTheme(element: Element): RaceTheme {
     line: token("line-strong"),
     black: token("black"),
     modelColor: (family) => token(`model-${family}`),
+    typeColor: (type) => value(`color-${typeToken(type)}`),
     font: value("font-sans"),
     textSm: value("text-sm"),
     radius: Number.parseFloat(value("radius-sm")),
@@ -107,7 +108,7 @@ export class RaceMarks {
     this.#townFont = `700 ${theme.textSm} ${theme.font}`;
   }
 
-  #disc(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, ring: string | null): void {
+  disc(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, ring: string | null): void {
     ctx.fillStyle = this.#theme.bg;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -135,6 +136,11 @@ export class RaceMarks {
     ctx.stroke();
   }
 
+  /** The icon of a Run result, in the color of its tone. */
+  resultIcon(result: EndReason): HTMLImageElement {
+    return this.#results[result];
+  }
+
   /** The label of a Ghost with no number shown: the dot takes the place of the pill. */
   dotAlone(ctx: CanvasRenderingContext2D, x: number, y: number, family: Dot | null): Box {
     if (family) this.#dot(ctx, x, y, family);
@@ -154,8 +160,8 @@ export class RaceMarks {
     ctx.fillText(text, x, y + 0.5);
     if (result) {
       const left = x - width / 2 - ICON - 3;
-      this.#disc(ctx, left + ICON / 2, y, ICON / 2 + 2.5, null);
-      ctx.drawImage(this.#results[result], left, y - ICON / 2, ICON, ICON);
+      this.disc(ctx, left + ICON / 2, y, ICON / 2 + 2.5, null);
+      ctx.drawImage(this.resultIcon(result), left, y - ICON / 2, ICON, ICON);
     }
     let top = y - LABEL_HEIGHT / 2;
     if (family) {
@@ -168,7 +174,7 @@ export class RaceMarks {
     }
     if (battle) {
       const center = x + width / 2 + ICON / 2 + 4;
-      this.#disc(ctx, center, y, ICON / 2 + 3, battle.trainer ? bad : warn);
+      this.disc(ctx, center, y, ICON / 2 + 3, battle.trainer ? bad : warn);
       ctx.drawImage(this.#swords, center - ICON / 2, y - ICON / 2, ICON, ICON);
       if (battle.count > 1) {
         ctx.fillStyle = warn;
@@ -231,7 +237,7 @@ export class RaceMarks {
     const { accentFg, line, warn } = this.#theme;
     const radius = size / 2 + 3;
     const disc: Box = { x: x - radius, y: y - radius, w: radius * 2, h: radius * 2 };
-    this.#disc(ctx, x, y, radius, winners > 0 ? warn : line);
+    this.disc(ctx, x, y, radius, winners > 0 ? warn : line);
     ctx.save();
     if (winners === 0) {
       ctx.filter = "grayscale(1) brightness(0.75)";

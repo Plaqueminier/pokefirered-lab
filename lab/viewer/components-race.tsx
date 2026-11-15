@@ -1,6 +1,8 @@
+import { Bot, Skull } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { rowButton } from "./components";
-import { botVersion, dotOf, shortModelId } from "../src/race/file";
+import { botVersion, dotOf, type RaceKiller, shortModelId } from "../src/race/file";
+import { Pill, rowButton } from "./components";
+import { Name } from "./pokemon";
 
 export function MonIcon({ src, species, level }: { src: string | null; species: string; level?: number }) {
   return (
@@ -74,5 +76,169 @@ export function LeaderboardRow({
         </span>
       </span>
     </button>
+  );
+}
+
+type IconOf = (species: string) => string | null;
+
+type DeadMon = { species: string; nickname: string; level: number };
+
+/** `face`: the sprite of the Ghost. `lead`: the starter of the Run, or its evolution. */
+export type DeathFacts = {
+  face: ComponentChildren;
+  icon: IconOf;
+  run: string;
+  endedRun: boolean;
+  lead: DeadMon | undefined;
+  killer: RaceKiller | null;
+  epitaph: string;
+  team: readonly DeadMon[];
+  model: string;
+  coach?: string;
+  character: string;
+  place: string;
+  time: string;
+};
+
+function foeName({ trainer, species }: RaceKiller): string {
+  return trainer ? `${trainer}'s ${species}` : `a wild ${species}`;
+}
+
+function WhiteoutPill({ endedRun }: { endedRun: boolean }) {
+  return (
+    <Pill tone="bad">
+      <span class="inline-flex items-center gap-1">
+        <Skull size={12} />
+        {endedRun ? "whiteout" : "whiteout, played on"}
+      </span>
+    </Pill>
+  );
+}
+
+function KillerLine({ killer, icon }: { killer: RaceKiller | null; icon: IconOf }) {
+  if (!killer) return <span class="text-xs text-muted">No foe before the whiteout</span>;
+  return (
+    <span class="flex min-w-0 items-center gap-1.5 text-xs">
+      <span class="shrink-0 text-muted">Killed by</span>
+      {killer.poison ? (
+        <>
+          <Pill tone="warn">PSN</Pill>
+          <span class="truncate text-muted">after {foeName(killer)}</span>
+        </>
+      ) : (
+        <>
+          <MonIcon src={icon(killer.species)} species={killer.species} level={killer.level} />
+          <span class="truncate font-semibold">{foeName(killer)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** `typed`: the share of the text that shows, from 0 to 1. */
+function LastWords({ text, size = "sm", typed = 1 }: { text: string; size?: "sm" | "lg"; typed?: number }) {
+  if (!text) return null;
+  const done = typed >= 1;
+  return (
+    <span class={`flex gap-1.5 ${size === "lg" ? "text-2xl leading-snug" : "text-xs"}`}>
+      <Bot size={size === "lg" ? 24 : 14} class="mt-0.5 shrink-0 text-muted" />
+      <span>
+        “{done ? text : text.slice(0, Math.round(text.length * Math.max(0, typed)))}
+        {done && "”"}
+      </span>
+    </span>
+  );
+}
+
+export function DeathCard({ death }: { death: DeathFacts }) {
+  const { lead, icon } = death;
+  return (
+    <div class="flex w-[320px] flex-col gap-2">
+      <div class="flex items-center gap-2">
+        {death.face}
+        <span class="font-mono text-sm font-semibold">{death.run}</span>
+        <span class="ml-auto">
+          <WhiteoutPill endedRun={death.endedRun} />
+        </span>
+      </div>
+      {lead && (
+        <div class="flex items-center gap-2">
+          <MonIcon src={icon(lead.species)} species={lead.species} level={lead.level} />
+          <Name mon={lead} />
+        </div>
+      )}
+      <KillerLine killer={death.killer} icon={icon} />
+      <LastWords text={death.epitaph} />
+      <div class="flex flex-wrap gap-1">
+        {death.team.map((mon, i) => (
+          <MonIcon key={i} src={icon(mon.species)} species={mon.species} level={mon.level} />
+        ))}
+      </div>
+      <ModelName id={death.model} coach={death.coach} />
+      <span class="text-xs">{death.character}</span>
+      <span class="text-xs text-muted">
+        {death.place} · <span class="font-mono">{death.time}</span>
+      </span>
+    </div>
+  );
+}
+
+/** `onFocus` and `onLeave`: the pointer or the keyboard focus comes to the row, or goes from it. */
+export function DeathRow({ death, focused, onFocus, onLeave }: { death: DeathFacts; focused: boolean; onFocus: () => void; onLeave: () => void }) {
+  const { lead } = death;
+  return (
+    <button type="button" aria-pressed={focused} onPointerEnter={onFocus} onFocus={onFocus} onPointerLeave={onLeave} onBlur={onLeave} class={`w-full !flex-col !items-stretch gap-0.5 py-1.5 ${rowButton(focused)}`}>
+      <span class="flex items-center gap-2">
+        {death.face}
+        {lead ? <Name mon={lead} /> : <span class="text-muted">No Pokémon</span>}
+        {lead && <span class="shrink-0 text-muted">Lv. {lead.level}</span>}
+        <span class="ml-auto shrink-0 font-mono text-muted">{death.run}</span>
+      </span>
+      {death.epitaph && <span class="truncate pl-6 text-muted">“{death.epitaph}”</span>}
+    </button>
+  );
+}
+
+export function Epitaph({ death, typed }: { death: DeathFacts; typed?: number }) {
+  const { lead, killer, icon } = death;
+  const src = lead && icon(lead.species);
+  return (
+    <div class="flex w-[640px] max-w-full flex-col gap-3 text-fg [text-shadow:0_2px_8px_rgb(0_0_0/0.9)]">
+      <span class="text-lg text-muted">Here lies</span>
+      <div class="flex items-end gap-4">
+        {src && <img src={src} alt="" class="size-20 shrink-0 [image-rendering:pixelated]" />}
+        <div class="flex min-w-0 flex-col gap-2">
+          <span class="truncate text-[56px] leading-none font-semibold">{lead?.nickname ?? death.run}</span>
+          <span class="text-xl text-muted">
+            {lead && `${lead.species} Lv. ${lead.level}`}
+            {killer && ` · ${killer.poison ? `poison, after ${foeName(killer)}` : foeName(killer)}`}
+          </span>
+        </div>
+      </div>
+      <LastWords text={death.epitaph} size="lg" typed={typed} />
+      <span class="flex items-center gap-2 text-sm text-muted">
+        <ModelName id={death.model} coach={death.coach} /> · {death.place} · <span class="font-mono">{death.time}</span>
+      </span>
+    </div>
+  );
+}
+
+/** `badges`: for each badge, the number of Runs of this starter that got it. */
+export function StarterRow({ src, starter, runs, whiteouts, badges }: { src: string | null; starter: string; runs: number; whiteouts: number; badges: readonly { badge: number; runs: number }[] }) {
+  return (
+    <div class="flex h-9 items-center gap-2">
+      <MonIcon src={src} species={starter} />
+      <span class="w-28 text-sm font-semibold">{starter}</span>
+      <span class="text-xs text-muted">
+        {runs} Runs · {whiteouts} whiteouts
+      </span>
+      <span class="ml-auto flex gap-1">
+        {badges.map(({ badge, runs: got }) => (
+          <Pill key={badge} tone={got === 0 ? "bad" : undefined}>
+            badge {badge} · {got}
+          </Pill>
+        ))}
+      </span>
+    </div>
   );
 }

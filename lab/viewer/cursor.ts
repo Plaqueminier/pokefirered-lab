@@ -79,6 +79,15 @@ export function useStore<T>(store: Readable<T>): T {
   return store.value;
 }
 
+/** Draws the component again each `ms`: for a part that reads a value with no Store, as the clock of a Race. */
+export function useRefresh(ms: number): void {
+  const [, setTicks] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTicks((ticks) => ticks + 1), ms);
+    return () => clearInterval(id);
+  }, [ms]);
+}
+
 function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boolean {
   if (after.length < before.length) return false;
   const last = before.at(-1);

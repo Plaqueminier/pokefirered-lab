@@ -71,6 +71,7 @@ export class RaceArt {
   readonly #sheets = new Map<number, HTMLCanvasElement>();
   readonly #faces = new Map<number, string>();
   readonly #icons: Map<string, WorldIcon>;
+  readonly #iconCanvases = new Map<string, HTMLCanvasElement | null>();
   readonly #iconUrls = new Map<string, string | null>();
 
   constructor(world: World) {
@@ -100,11 +101,15 @@ export class RaceArt {
     });
   }
 
-  iconUrl(species: string): string | null {
-    return cached(this.#iconUrls, species, () => {
+  icon(species: string): HTMLCanvasElement | null {
+    return cached(this.#iconCanvases, species, () => {
       const icon = this.#icons.get(species);
-      return icon ? spriteCanvas(icon).toDataURL() : null;
+      return icon ? spriteCanvas(icon) : null;
     });
+  }
+
+  iconUrl(species: string): string | null {
+    return cached(this.#iconUrls, species, () => this.icon(species)?.toDataURL() ?? null);
   }
 
   paint(key: string): HTMLCanvasElement {

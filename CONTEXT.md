@@ -305,7 +305,7 @@ The view of the **Viewer** that shows 2, 4 or 9 **Runs** at the same time, each 
 _Avoid_: wall, multiview, dashboard
 
 **Race**:
-A file that a command makes from a set of **Run records**, or that an **Evolution** writes for each **Generation** and for the best **Genome** of each **Generation**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost or its tokens and its **Run result**. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
+A file that a command makes from a set of **Run records**, or that an **Evolution** writes for each **Generation** and for the best **Genome** of each **Generation**: the track and the **State track** of each **Run** on one game time from frame 0, with its battles, its **Milestones**, its cost or its tokens, its **Run result** and its whiteouts: for each one, the last faint, the foe that knocked out the last Pokémon and the last 3 answers of the model. Also the tab of the **Viewer** that plays it, on a map of Kanto with no emulator.
 _Avoid_: ghost map, replay (a replay is what you watch from a Run record in an emulator)
 
 **Ghost**:
@@ -319,6 +319,10 @@ _Avoid_: state stream, party log
 **Leaderboard**:
 The list of the **Runs** of a **Race** by rank at the cursor: most **Milestones**, then the first to reach them, then the highest sum of levels, then the lowest Run id. Each row also shows the model of its **Run**, with its dot and with no prefix. It is the first tab of the panel at the right of the Race tab.
 _Avoid_: ranking table, scoreboard
+
+**Graveyard**:
+A mode of the Race tab: a tombstone at the cell of each whiteout of a **Ghost**, also a whiteout that its **Run** played on after, with the foe that knocked out the last Pokémon and the last answers of the model before it. A filter also shows the end of each **Run** that stopped with no whiteout. While the Deaths tab of the panel shows, the map is the memorial: grey, with the places that kill. The Tour shows the whiteouts one after the other, in the order of the **Runs**, for a video. The **Race** file holds each whiteout. In the Viewer, a death is a whiteout with its **Run**, its starter and its epitaph: the line that the model said in its last answer, else the first sentence of the reason of that answer.
+_Avoid_: death map, cemetery mode (the cemetery is the Graveyard while the Race plays)
 
 **Timeline**:
 The band at the bottom of the Lab tab of the **Viewer**: the **Game events** of the shown **Run** as icons, from frame 0 to the end, with a time that is linear. It shows the **Game events** only, not the **Model calls** or the cost. A click on it moves the cursor, or jumps a replay to that frame; a drag selects a range.

@@ -1,17 +1,20 @@
-import { Eye, EyeOff, PanelRightClose, PanelRightOpen, Pause, Play, Scan } from "lucide-preact";
+import { Eye, EyeOff, PanelRightClose, PanelRightOpen, Pause, Play, Scan, Skull } from "lucide-preact";
 import { type ComponentChildren, render } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { BESTS_RACE, GBA_FPS, parseEvolutionPath, parseGenerationRace } from "../src/protocol";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { BESTS_RACE, parseEvolutionPath, parseGenerationRace } from "../src/protocol";
 import { RACE_VERSION, type RaceFile } from "../src/race/file";
 import type { World } from "../src/race/world";
 import { Button, Card, Code, Cover, Pill, Slider, Tabs, Tooltip } from "./components";
 import { PointerCard, Select } from "./components-layers";
-import { fetched, Store, useStore } from "./cursor";
+import { fetched, Store, useRefresh, useStore } from "./cursor";
 import { fitCanvas } from "./race-art";
 import { Leaderboard } from "./race-board";
 import { GhostsCard } from "./race-cards";
 import type { GhostNow, RaceDoor } from "./race-ghosts";
+import type { GraveMode } from "./race-graveyard";
+import { DeathsPanel, GraveCard, GraveyardLayer } from "./race-graveyard-parts";
 import { type GhostHit, nearestGhost, type RaceHit, RaceView } from "./race-view";
+import { raceTime } from "./stats-format";
 
 const SPEEDS = [1, 4, 20, 60, 200].map((speed) => ({ id: String(speed), label: `×${speed}` }));
 const BAR_REFRESH_MS = 100;
@@ -24,21 +27,7 @@ const PANEL_CARD_HEIGHT = 200;
 const DOOR_CARD_WIDTH = 270;
 const DOOR_CARD_HEIGHT = 170;
 
-function raceTime(frames: number): string {
-  const total = Math.floor(frames / GBA_FPS);
-  const minutes = Math.floor(total / 60);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
 type Pointer = { x: number; y: number; client: { x: number; y: number } };
-
-function useRefresh(ms: number): void {
-  const [, setTicks] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTicks((ticks) => ticks + 1), ms);
-    return () => clearInterval(id);
-  }, [ms]);
-}
 
 function Count({ n }: { n: number }) {
   return <span class="inline-block w-[3ch] text-right tabular-nums">{n}</span>;
@@ -103,9 +92,19 @@ function Interiors({ view, interiors }: { view: RaceView; interiors: { map: stri
   );
 }
 
-type PanelTab = "leaderboard" | "interiors";
+type PanelTab = "leaderboard" | "interiors" | "deaths";
 
-function RacePanel({ view, tab, onTab }: { view: RaceView; tab: PanelTab; onTab: (tab: PanelTab) => void }) {
+/** `on`: the person turned the graveyard on; the panel then tells the cemetery from the memorial. */
+type GraveChoice = "off" | "on" | "tour";
+
+function graveMode(choice: GraveChoice, panel: boolean, tab: PanelTab): GraveMode {
+  if (choice !== "on") return choice;
+  return panel && tab === "deaths" ? "memorial" : "cemetery";
+}
+
+type RacePanelProps = { view: RaceView; tab: PanelTab; onTab: (tab: PanelTab) => void; graveyard: boolean; onTour: () => void };
+
+function RacePanel({ view, tab, onTab, graveyard, onTour }: RacePanelProps) {
   useRefresh(PANEL_REFRESH_MS);
   const interiors = [...view.moment.inside.entries()]
     .map(([map, ghosts]) => ({ map, playing: ghosts.filter((ghost) => !ghost.result) }))
@@ -117,11 +116,18 @@ function RacePanel({ view, tab, onTab }: { view: RaceView; tab: PanelTab; onTab:
         items={[
           { id: "leaderboard", label: "Leaderboard" },
           { id: "interiors", label: `Interiors in play · ${interiors.length}` },
+          ...(graveyard ? [{ id: "deaths" as const, label: `Deaths · ${view.graveyard.visible(view.frame).length}` }] : []),
         ]}
         value={tab}
         onChange={onTab}
       />
-      {tab === "leaderboard" ? <Leaderboard view={view} /> : <Interiors view={view} interiors={interiors} />}
+      {
+        {
+          leaderboard: () => <Leaderboard view={view} />,
+          interiors: () => <Interiors view={view} interiors={interiors} />,
+          deaths: () => <DeathsPanel view={view} onTour={onTour} />,
+        }[tab]()
+      }
     </aside>
   );
 }
@@ -145,6 +151,7 @@ function DoorCard({ view, door }: { view: RaceView; door: RaceDoor }) {
 
 function HitCard({ view, hit }: { view: RaceView; hit: RaceHit }) {
   if (hit.kind === "open") return <span class="text-xs">Click to close the building</span>;
+  if (hit.kind === "grave") return <GraveCard view={view} grave={hit.grave} />;
   return hit.kind === "door" ? <DoorCard view={view} door={hit.door} /> : <GhostsCard view={view} ghosts={hit.ghosts} />;
 }
 
@@ -177,9 +184,9 @@ function IconTip({ tip, pressed, onClick, children }: { tip: string; pressed?: b
 
 const BAR = "flex h-14 shrink-0 flex-nowrap items-center gap-3 border-b border-line px-4 [&>*]:shrink-0";
 
-type BarProps = RaceChoiceProps & { view: RaceView; panel: boolean; onPanel: () => void };
+type BarProps = RaceChoiceProps & { view: RaceView; panel: boolean; onPanel: () => void; graveyard: boolean; onGraveyard: () => void };
 
-function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
+function Bar({ view, names, name, onName, panel, onPanel, graveyard, onGraveyard }: BarProps) {
   useRefresh(BAR_REFRESH_MS);
   const { ghosts } = view.moment;
   return (
@@ -216,6 +223,9 @@ function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
       <IconTip tip={view.showMarks ? "Hide the icons on the map" : "Show the icons on the map"} pressed={view.showMarks} onClick={() => (view.showMarks = !view.showMarks)}>
         {view.showMarks ? <Eye size={15} /> : <EyeOff size={15} />}
       </IconTip>
+      <IconTip tip={graveyard ? "Leave the graveyard" : "Show the graveyard: a tombstone at each whiteout"} pressed={graveyard} onClick={onGraveyard}>
+        <Skull size={15} />
+      </IconTip>
       <IconTip tip={panel ? "Close the panel" : "Open the panel"} pressed={panel} onClick={onPanel}>
         {panel ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
       </IconTip>
@@ -223,7 +233,7 @@ function Bar({ view, names, name, onName, panel, onPanel }: BarProps) {
   );
 }
 
-function RaceMap({ view, panel }: { view: RaceView; panel: boolean }) {
+function RaceMap({ view, panel, children }: { view: RaceView; panel: boolean; children?: ComponentChildren }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [pointer, setPointer] = useState<Pointer | null>(null);
@@ -259,7 +269,7 @@ function RaceMap({ view, panel }: { view: RaceView; panel: boolean }) {
     else if (hit?.kind === "door") {
       if (view.isOpen(hit.door.key)) view.closeBuilding(hit.door.key);
       else view.openBuilding(hit.door);
-    } else view.select(hit ? hit.nearest.run : null);
+    } else if (hit?.kind !== "grave") view.select(hit ? hit.nearest.run : null);
   };
   const hit = pointer && view.hit(pointer.x, pointer.y);
   return (
@@ -284,6 +294,7 @@ function RaceMap({ view, panel }: { view: RaceView; panel: boolean }) {
       <PointerCard at={hit && pointer ? pointer.client : null} glass>
         {hit && <HitCard view={view} hit={hit} />}
       </PointerCard>
+      {children}
     </div>
   );
 }
@@ -310,6 +321,11 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
   const [loaded, setLoaded] = useState(0);
   const [panel, setPanel] = useState(true);
   const [panelTab, setPanelTab] = useState<PanelTab>("leaderboard");
+  const [graveyard, setGraveyard] = useState<GraveChoice>("off");
+  const mode = graveMode(graveyard, panel, panelTab);
+  const tour = mode === "tour";
+  const leaveTour = useCallback(() => setGraveyard("on"), []);
+  useLayoutEffect(() => view?.graveyard.show(mode), [view, mode]);
   const world = useRef<Promise<World> | null>(null);
 
   useEffect(() => {
@@ -331,6 +347,7 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
   useEffect(() => {
     if (!name) return;
     setView(null);
+    setGraveyard((choice) => (choice === "tour" ? "on" : choice));
     setRaceError(null);
     setLoaded(1);
     world.current ??= fetched("/race/world.json").then((response) => response.json());
@@ -384,10 +401,29 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
     );
   return (
     <div class="flex h-full min-h-0 flex-col">
-      <Bar view={view} names={names} name={name} onName={setName} panel={panel} onPanel={() => setPanel((open) => !open)} />
+      <Bar
+        view={view}
+        names={names}
+        name={name}
+        onName={setName}
+        panel={panel}
+        onPanel={() => setPanel((open) => !open)}
+        graveyard={graveyard !== "off"}
+        onGraveyard={() => {
+          setGraveyard((mode) => (mode === "off" ? "on" : "off"));
+          setPanelTab((tab) => (tab === "deaths" ? "leaderboard" : tab));
+        }}
+      />
       <div class="flex min-h-0 flex-1">
-        <RaceMap view={view} panel={panel} />
-        {panel && <RacePanel view={view} tab={panelTab} onTab={setPanelTab} />}
+        <RaceMap view={view} panel={panel && !tour}>
+          <GraveyardLayer view={view} mode={mode} onLeave={leaveTour} />
+        </RaceMap>
+        {panel && !tour && <RacePanel view={view} tab={panelTab} onTab={setPanelTab} graveyard={graveyard === "on"} onTour={() => {
+              view.seek(view.lastFrame);
+              view.playing = false;
+              view.graveyard.show("tour");
+              setGraveyard("tour");
+            }} />}
       </div>
     </div>
   );

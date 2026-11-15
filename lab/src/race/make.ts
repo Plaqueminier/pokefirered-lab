@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { type CurrentRecord, isCurrentRecord, limitOf, RECORD_FORMAT, RecordPlayer, readRecord, RUNS_DIR, type RunEvent, type RunRecord } from "../harness/record";
 import { NORMAL_TRAINER, shownCharacter } from "../model/character";
 import { modelEvents, parseEvolutionPath, parseRunId, PLAIN_NAME, type SpendUnit, spentIn, TRACK_FIELD, TRACK_POINT } from "../protocol";
-import { encodeTrack, GENETIC_BOT, RACE_VERSION, type RaceBattle, type RaceFile, type RaceRun } from "./file";
+import { encodeTrack, GENETIC_BOT, RACE_VERSION, type RaceBattle, type RaceFile, type RaceKiller, type RaceRun, type RaceWhiteout, type RaceWords } from "./file";
 
 export const RACES_DIR = join(import.meta.dir, "..", "..", "races");
 
@@ -12,6 +12,7 @@ export const RACE_SUFFIX = ".json.gz";
 const RACE_BOTS = ["model", GENETIC_BOT];
 const COST_STEP = 0.01;
 const TOKEN_STEP = 10_000;
+const LAST_WORDS = 3;
 
 function battlesOf(events: readonly RunEvent[], lastFrame: number): RaceBattle[] {
   const battles: RaceBattle[] = [];
@@ -51,6 +52,38 @@ function moneyOf(events: readonly RunEvent[]): RaceRun["money"] {
   return changes.length === 0 ? [] : [[0, changes[0].before], ...changes.map(({ frame, after }): [number, number] => [frame, after])];
 }
 
+function killerAt({ events, state }: CurrentRecord, frame: number): RaceKiller | null {
+  const fight = state.findLast((entry) => entry.kind === "battle" && entry.foe !== null && entry.frame <= frame);
+  if (fight?.kind !== "battle" || !fight.foe) return null;
+  const battle = events.findLast((event) => event.type === "battle" && event.frame <= frame);
+  const poison = !(battle?.type === "battle" && battle.state === "start");
+  return { poison, trainer: fight.trainer, species: fight.foe.species, level: fight.foe.level };
+}
+
+function wordsUntil(events: readonly RunEvent[], frame: number): RaceWords[] {
+  const words: RaceWords[] = [];
+  for (const event of events) {
+    if (event.frame > frame) break;
+    if (event.type !== "model" || !event.decision) continue;
+    const { reason, say } = event.decision;
+    words.push(say ? { reason, say } : { reason });
+  }
+  return words.slice(-LAST_WORDS);
+}
+
+function whiteoutsOf(record: CurrentRecord): RaceWhiteout[] {
+  const { events } = record;
+  const whiteouts: RaceWhiteout[] = [];
+  let after = Number.NEGATIVE_INFINITY;
+  for (const whiteout of events) {
+    if (whiteout.type !== "whiteout") continue;
+    const frame = events.findLast((event) => event.type === "faint" && event.side === "player" && event.frame > after && event.frame <= whiteout.frame)?.frame ?? whiteout.frame;
+    whiteouts.push({ frame, killer: killerAt(record, frame), lastWords: wordsUntil(events, whiteout.frame) });
+    after = whiteout.frame;
+  }
+  return whiteouts;
+}
+
 // After a whiteout the game warps the player to a Pokémon Center and heals the party. A Run that ends there lost at the cell before: its Ghost stays on that cell, with its team as it lost. A Run that plays on after a whiteout keeps the warp.
 function playUntilEnd({ events, track, state, result }: CurrentRecord): Pick<CurrentRecord, "track" | "state"> {
   const whiteout = result.endReason === "whiteout" ? events.findLast((event) => event.type === "whiteout") : undefined;
@@ -82,6 +115,7 @@ export function raceRun(number: number, name: string, record: CurrentRecord): Ra
     cost: costOf(events, unit),
     faints: events.flatMap((e) => (e.type === "faint" && e.side === "player" ? [e.frame] : [])),
     money: moneyOf(events),
+    whiteouts: whiteoutsOf(record),
   };
 }
 
