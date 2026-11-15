@@ -1,5 +1,5 @@
 import { DIRECTION_STEP, type Direction, KIND, withSurf } from "../cells";
-import type { Game, MapActors, MapGrid, Obstacle, Warp } from "../game";
+import { type Game, type MapActors, type MapGrid, type Obstacle, type Warp, walkRemoves } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { hasSpinTiles, numberParts, spinDirection } from "./slides";
 import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type MapCells, type Place, walkable } from "./path";
@@ -93,7 +93,7 @@ export function mapNamed(atlas: Atlas, name: string): AtlasMap {
 export type Sight = Record<string, string>;
 
 type Visit = {
-  grid: AtlasGrid;
+  grid: MapGrid;
   seen: Uint8Array;
   entry: Cell | null;
   /** The destination of each warp taken, by cellKey. */
@@ -106,12 +106,10 @@ type Visit = {
   slidesTaken: Map<string, AtlasSlide>;
   parts: number[];
   people: Map<number, AtlasPerson>;
-  obstacles: Map<string, Obstacle>;
+  obstacles: Set<number>;
 };
 
-type AtlasGrid = MapGrid & { obstacles: Obstacle[] };
-
-type FieldUses = { closed: (map: string, obstacle: Obstacle) => boolean; surf: boolean };
+type FieldUses = { on: (grid: MapGrid) => { cells: MapCells; obstacles: Obstacle[] }; closed: (obstacle: Obstacle) => boolean; surf: boolean };
 
 type CaveGrid = Pick<MapGrid, "cave">;
 
@@ -119,7 +117,7 @@ type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 
 export class AtlasWatch {
   readonly #visits = new Map<string, Visit>();
-  readonly #grids = new Map<string, AtlasGrid | null>();
+  readonly #grids = new Map<string, MapGrid | null>();
   readonly #blocks = new Map<string, EdgeBlock | null>();
   #place: Place | null = null;
   #lastAction: ActionEntry | null = null;
@@ -233,6 +231,10 @@ export class AtlasWatch {
     if (visit) this.seeActors(visit, place);
   }
 
+  sawObstacle(map: string, localId: number): boolean {
+    return this.#visits.get(map)?.obstacles.has(localId) ?? false;
+  }
+
   atlas(): Atlas {
     const lastTalk = this.#lastTalk;
     const uses = this.fieldUsesNow();
@@ -273,11 +275,17 @@ export class AtlasWatch {
     return this.isDark(grid) ? DARK_AREA : SCREEN;
   }
 
+  // A map load returns each obstacle to its cell of the ROM. The scripts of a map can read flags that change on another map, so only the map of the player has live cells.
   private fieldUsesNow(): FieldUses {
     const usable = this.game.usableFieldMoves();
-    const here = this.#place?.map;
-    const live = here === undefined ? [] : (this.game.mapView(here)?.actors.obstacles ?? []);
-    return { closed: (map, o) => !usable.has(o.move) && (map !== here || live.some((l) => l.x === o.x && l.y === o.y)), surf: usable.has("SURF") };
+    const grid = this.game.grid();
+    const actors = grid && this.game.actors(grid);
+    const live = grid && actors ? { cells: grid, obstacles: actors.obstacles } : null;
+    return {
+      on: (map) => (live && map.name === live.cells.name ? live : { cells: map, obstacles: this.game.obstaclesOf(map) }),
+      closed: (o) => !walkRemoves(o, usable),
+      surf: usable.has("SURF"),
+    };
   }
 
   readonly blockOf: BlockOf = (map, side) => this.blockWith(map, side, this.game.usableFieldMoves().has("SURF"));
@@ -317,7 +325,7 @@ export class AtlasWatch {
     const actors = this.game.mapView(visit.grid.name)?.actors;
     const area = this.areaOf(visit.grid);
     for (const p of actors?.people ?? []) if (p.loaded && inArea(area, player, p)) this.seen(visit, p);
-    for (const o of actors?.obstacles ?? []) if (inArea(area, player, o) && inside(visit.grid, o)) visit.obstacles.set(cellKey(o), o);
+    for (const o of actors?.obstacles ?? []) if (inArea(area, player, o) && inside(visit.grid, o)) visit.obstacles.add(o.localId);
   }
 
   private seen(visit: Visit, { localId, graphics, x, y }: MapActors["people"][number]): AtlasPerson {
@@ -331,11 +339,8 @@ export class AtlasWatch {
     return Object.fromEntries([...this.#visits].map(([name, visit]) => [name, visit.seen.join("")]));
   }
 
-  private grid(name: string, group: number, num: number): AtlasGrid | null {
-    if (!this.#grids.has(name)) {
-      const grid = this.game.gridOf(group, num);
-      this.#grids.set(name, grid && { ...grid, obstacles: this.game.obstaclesOf(grid) });
-    }
+  private grid(name: string, group: number, num: number): MapGrid | null {
+    if (!this.#grids.has(name)) this.#grids.set(name, this.game.gridOf(group, num));
     return this.#grids.get(name)!;
   }
 
@@ -344,7 +349,7 @@ export class AtlasWatch {
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Map() };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Set<number>() };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -493,9 +498,10 @@ function seenEdges(visit: Visit): Edge[] {
 function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMap["dark"]): AtlasMap {
   const { grid, seen, entry, edgesTaken, signTexts, slidesTaken, people, obstacles } = visit;
   const isSeen = seenOn(visit);
-  const closed = (o: Obstacle) => uses.closed(grid.name, o);
-  const walls = new Set(grid.obstacles.filter(closed).map(cellKey));
-  const kinds = { ...grid, kinds: withSurf(grid.kinds, uses.surf) };
+  const now = uses.on(grid);
+  const closing = now.obstacles.filter(uses.closed);
+  const walls = new Set(closing.map(cellKey));
+  const kinds = { ...now.cells, kinds: withSurf(now.cells.kinds, uses.surf) };
   const kindOf = (cell: Cell) => (walls.has(cellKey(cell)) ? KIND.blocked : kindAt(kinds, cell));
   return {
     name: grid.name,
@@ -511,7 +517,7 @@ function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMa
     outside: grid.outside,
     signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
-    obstacles: [...obstacles.values()].filter(closed),
+    obstacles: closing.filter((o) => obstacles.has(o.localId)),
     entry,
     stepExits: grid.warps.flatMap((w) => (w.how === "step" && isSeen(w) ? [{ x: w.x, y: w.y }] : [])),
     slides: [...slidesTaken.values()],
@@ -521,7 +527,7 @@ function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMa
 }
 
 /** At the full level, the player knows a map as if it saw all its cells and took all its exits. */
-function fullVisit(grid: AtlasGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null, floors: Map<string, Cell>): Visit {
+function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null, floors: Map<string, Cell>): Visit {
   const full: Visit = {
     grid,
     seen: new Uint8Array(grid.mapWidth * grid.mapHeight).fill(1),
@@ -533,7 +539,7 @@ function fullVisit(grid: AtlasGrid, visit: Visit | undefined, arrivalOf: (warp: 
     slidesTaken: visit?.slidesTaken ?? new Map(),
     parts: visit?.parts ?? [],
     people: visit?.people ?? new Map(),
-    obstacles: visit?.obstacles ?? new Map(),
+    obstacles: visit?.obstacles ?? new Set(),
   };
   return { ...full, parts: partsOf(full) };
 }

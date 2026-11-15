@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BagItem, Teachable } from "../bag";
+import type { AtlasMap } from "../harness/atlas";
 import type { BattleState } from "../harness/harness";
 import type { BoxMon, PartyMon } from "../party";
 import { type Asked, MAX_SENTENCE, readAction, readDecision } from "./decision";
@@ -36,7 +37,7 @@ describe("readDecision", () => {
 });
 
 describe("readAction", () => {
-  const overworld = { teachables: [] as Teachable[] } as Overworld;
+  const overworld = { teachables: [] as Teachable[], strength: { usable: false, missingBadge: null, moved: false } } as unknown as Overworld;
   const battle = { player: { partyIndex: 0 } } as BattleState;
   const party: PartyMon[] = [];
   const edge: Target = { kind: "edge", name: "north edge", label: "north edge, 3 north: not taken", side: "north", to: null };
@@ -51,6 +52,16 @@ describe("readAction", () => {
     bagEmpty,
   });
   const choice: Asked = { kind: "choice", party, overworld, options: ["YES", "NO"] };
+
+  test("at a walk with a boulder that the party can push: push with a cell, a direction and steps, also in the form with parentheses", () => {
+    const boulder = { localId: 1, x: 7, y: 18, name: "PUSHABLE BOULDER", move: "STRENGTH" as const };
+    const map = { name: "VictoryRoad_1F", obstacles: [boulder] } as unknown as AtlasMap;
+    const pushing = (usable: boolean): Asked => ({ ...(walk(0) as Asked & { kind: "walk" }), overworld: { ...overworld, map: { name: "VictoryRoad_1F" }, atlas: { maps: [map], lastTalk: null }, strength: { usable, missingBadge: null, moved: false } } as unknown as Overworld });
+    expect(readAction("push 7 18 south", pushing(true))).toEqual({ name: "push", x: 7, y: 18, direction: "south" });
+    expect(readAction("push(7, 18, East, 3)", pushing(true))).toEqual({ name: "push", x: 7, y: 18, direction: "east", steps: 3 });
+    expect(() => readAction("push 7 18 south", pushing(false))).toThrow('"push" is not an action now');
+    expect(() => readAction("push 7 18", pushing(true))).toThrow('"push 7 18" is not an action: write push <x> <y> <direction> [steps], for example push 7 18 south 2');
+  });
 
   test("at a walk: a target, a cell of the map or of another map, or a Raw input, also in the form with parentheses", () => {
     expect(readAction("go C", walk(3))).toEqual({ name: "go", target: 2 });
@@ -69,7 +80,7 @@ describe("readAction", () => {
   test("teach: a TM or an HM of the Bag on a Pokémon of the party, only at a walk with a TM or an HM", () => {
     const iceBeam = { item: "TM13", move: { name: "ICE BEAM" } } as Teachable;
     const mons = [{ nickname: "Shelly" }, { nickname: "Pip" }] as PartyMon[];
-    const asked: Asked = { ...(walk(0, mons) as Asked & { kind: "walk" }), overworld: { teachables: [iceBeam] } as Overworld };
+    const asked: Asked = { ...(walk(0, mons) as Asked & { kind: "walk" }), overworld: { ...overworld, teachables: [iceBeam] } as Overworld };
     expect(readAction("teach TM13 on 2", asked)).toEqual({ name: "teach", item: "TM13", on: 1 });
     expect(readAction("teach TM13 (ICE BEAM) on 1", asked)).toEqual({ name: "teach", item: "TM13", on: 0 });
     expect(readAction("teach tm13 on Shelly", asked)).toEqual({ name: "teach", item: "TM13", on: 0 });

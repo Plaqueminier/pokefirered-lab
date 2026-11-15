@@ -14,6 +14,8 @@ const SLIDE_START_FRAMES = 4;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
 
 export type LegResult = "done" | "stuck" | "no move" | "no warp" | Interruption;
+export type FieldResult = "done" | "no move" | Interruption;
+export type Pushed = { result: FieldResult; moved: boolean; at: Cell | null };
 export type Slid = { slidTo?: Cell };
 
 /** The frames of a walk on the field: its steps, its speed and the Ride choice of the Bot. */
@@ -122,10 +124,61 @@ export class WalkDriver {
     return null;
   }
 
+  /** `at`: the cell of the boulder after the push, or null when it fell into a hole. */
+  pushOnce(direction: Direction, boulder: () => Cell | null): Pushed {
+    const start = boulder();
+    const moved = () => {
+      const now = boulder();
+      return start !== null && (now === null || now.x !== start.x || now.y !== start.y);
+    };
+    const result = start ? this.pushFrom(direction, moved) : "no move";
+    return { result, moved: moved(), at: boulder() };
+  }
+
+  private pushFrom(direction: Direction, moved: () => boolean): FieldResult {
+    const failed = (result: FieldResult) => result !== "done" && !(result === "script" && moved());
+    // With STRENGTH on, the turn to the boulder can push it already.
+    const ready = this.game.strengthActive() ? this.faceAfterWalk(direction) : this.useFieldMove(direction);
+    if (failed(ready)) return ready;
+    if (!moved()) {
+      const held = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, moved);
+      if (held === "limit") return "no move";
+      if (failed(held)) return held;
+    }
+    return this.afterPush();
+  }
+
+  // In the frame where the boulder stops, the game prepares the script of a switch and unlocks the field; the script starts one frame later.
+  private afterPush(): FieldResult {
+    const stopped = this.hold(0, SETTLE_FRAME_LIMIT, () => !this.game.fieldLocked());
+    if (stopped === "limit") throw new Error(`the boulder still moves after ${SETTLE_FRAME_LIMIT} frames`);
+    const now = stopped === "done" ? this.game.interruption() : stopped;
+    if (now === "script") return this.runSwitchScript();
+    return now ?? this.settle() ?? "done";
+  }
+
+  private runSwitchScript(): FieldResult {
+    for (let frames = 0; frames < SETTLE_FRAME_LIMIT; frames++) {
+      const now = this.game.interruption();
+      if (now === null) return this.settle() ?? "done";
+      if (now !== "script") return now;
+      this.frames.advance(0);
+    }
+    throw new Error(`the script of the switch still runs after ${SETTLE_FRAME_LIMIT} frames`);
+  }
+
+  private faceAfterWalk(direction: Direction): FieldResult {
+    const interruption = this.stopWalking();
+    if (interruption) return interruption;
+    const turned = this.face(direction);
+    if (turned.status === "interrupted") return turned.reason;
+    return turned.status === "done" ? "done" : "no move";
+  }
+
   private playMove({ direction, kind }: Leg["moves"][number]): LegResult {
     switch (kind) {
       case "push":
-        return this.push(direction);
+        return this.pushIntoWarp(direction);
       case "remove":
         return this.removeObstacle(direction);
       case "surf":
@@ -148,11 +201,9 @@ export class WalkDriver {
     return used !== "done" || at(this.game.playerPlace()) !== at(before) ? used : "no move";
   }
 
-  private useFieldMove(direction: Direction): LegResult {
-    const interruption = this.stopWalking();
-    if (interruption) return interruption;
-    const turned = this.face(direction);
-    if (turned.status !== "done") return turned.status === "interrupted" ? turned.reason : "no move";
+  private useFieldMove(direction: Direction): FieldResult {
+    const turned = this.faceAfterWalk(direction);
+    if (turned !== "done") return turned;
     const used = this.menus.useFieldMove();
     return used.status === "interrupted" ? used.reason : "done";
   }
@@ -174,7 +225,7 @@ export class WalkDriver {
     return people.some((p) => path.some((c) => c.x === p.x && c.y === p.y)) ? "stuck" : "no move";
   }
 
-  private push(direction: Direction): LegResult {
+  private pushIntoWarp(direction: Direction): LegResult {
     const result = this.hold(this.stepKeys(direction), STEP_FRAME_LIMIT, () => this.game.fieldLocked());
     return result === "limit" ? "no warp" : result;
   }

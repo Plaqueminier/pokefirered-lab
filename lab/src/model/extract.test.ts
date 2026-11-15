@@ -42,6 +42,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     boxes: [],
     pcItems: [],
     repelActive: false, riding: false, rideChosen: false, surfing: false,
+    strength: { usable: false, missingBadge: null, moved: false },
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },
@@ -357,7 +358,7 @@ describe("the clearest map", () => {
     expect(legend(atlasExtract(overworld(pond, [], at)).lines)).not.toContain("water");
   });
 
-  const blocks = room("...###", { obstacles: [{ x: 3, y: 0, name: "CUT TREE", move: "CUT" }, { x: 4, y: 0, name: "ROCK SMASH ROCK", move: "ROCK SMASH" }, { x: 5, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" }] });
+  const blocks = room("...###", { obstacles: [{ localId: 1, x: 3, y: 0, name: "CUT TREE", move: "CUT" }, { localId: 2, x: 4, y: 0, name: "ROCK SMASH ROCK", move: "ROCK SMASH" }, { localId: 3, x: 5, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" }] });
   test("with no HM and no Pokémon that knows the move, a fixed obstacle is # and no text tells of it", () => {
     const { lines } = atlasExtract(overworld(blocks, [], { x: 0, y: 0 }));
     expect(rows(lines)).toEqual(["y= 0  @..###"]);
@@ -379,8 +380,25 @@ describe("the clearest map", () => {
     expect(knownWorld({ atlas, bag: withItem("HM01"), party: [] }).join("\n")).toContain("Fixed obstacles: CUT TREE at (3, 0).");
   });
 
+  test("a boulder tells how push moves it when the party can use STRENGTH, else what it needs; a switch is s only with HM04 or STRENGTH", () => {
+    const puzzle = room("...#s.", { obstacles: [{ localId: 3, x: 3, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" }] });
+    const knows = { ...overworld(puzzle, [], { x: 0, y: 0 }), party: knowing("STRENGTH") };
+    const usable = atlasExtract({ ...knows, strength: { usable: true, missingBadge: null, moved: false } }).lines;
+    expect(rows(usable)).toEqual(["y= 0  @..bs."]);
+    expect(legend(usable)).toContain("b a boulder: push(x, y, direction) moves it");
+    expect(legend(usable)).toContain("s a switch: a boulder on it opens a way");
+    expect(usable.join("\n")).toContain("- PUSHABLE BOULDER at (3, 0). push(3, 0, direction) moves it.");
+    const noBadge = atlasExtract({ ...knows, strength: { usable: false, missingBadge: 4, moved: false } }).lines;
+    expect(legend(noBadge)).toContain("b a boulder that STRENGTH pushes");
+    expect(noBadge.join("\n")).toContain("- PUSHABLE BOULDER at (3, 0). A Pokémon of your party knows STRENGTH, but its use on the map needs badge 4.");
+    expect(atlasExtract({ ...overworld(puzzle, [], { x: 0, y: 0 }), bag: withItem("HM04") }).lines.join("\n")).toContain("- PUSHABLE BOULDER at (3, 0). Only a Pokémon that knows STRENGTH can push it.");
+    const none = atlasExtract(overworld(puzzle, [], { x: 0, y: 0 })).lines;
+    expect(rows(none)).toEqual(["y= 0  @..#.."]);
+    expect(legend(none)).not.toContain("switch");
+  });
+
   test("an obstacle that the party can remove is an open cell with no text, and the door past it is in the part of the player", () => {
-    const tree = { x: 3, y: 0, name: "CUT TREE", move: "CUT" as const };
+    const tree = { localId: 1, x: 3, y: 0, name: "CUT TREE", move: "CUT" as const };
     const door = { x: 5, y: 0, behavior: "MB_WARP_DOOR", place: "gym" as const, to: null, arrival: null };
     const usable = room("......", { warps: [door] });
     const atlas = { maps: [{ ...usable, outside: true }], lastTalk: null };
@@ -451,6 +469,7 @@ describe("what the prompt tells of the exits and of the unseen cells", () => {
   test("each kind of cell of an exit has its own word", () => {
     const exit = (x: number, behavior: string) => ({ x, y: 0, behavior, place: null, to: null, arrival: null });
     const lines = atlasExtract(overworld(town([exit(1, "MB_LADDER"), exit(3, "MB_UP_ESCALATOR"), exit(5, "MB_REGULAR_WARP"), exit(7, "MB_FALL_WARP"), exit(9, "MB_CAVE_DOOR"), exit(11, "MB_DOWN_LEFT_STAIR_WARP"), exit(13, "MB_SOUTH_ARROW_WARP")], open), [], { x: 8, y: 2 })).lines.join("\n");
+    expect(lines).toContain("hole at (7, 0) (a boulder pushed into it falls to the floor below)");
     for (const word of ["ladder at (1, 0)", "escalator at (3, 0)", "teleport pad at (5, 0)", "hole at (7, 0)", "entrance at (9, 0)", "stairs at (11, 0)", "exit mat at (13, 0)"]) expect(lines).toContain(word);
   });
 
@@ -548,7 +567,7 @@ describe("the extract of the Atlas", () => {
   });
 
   test("a cut tree is a fixed obstacle with its move, and not a target", () => {
-    const view = atlasExtract({ ...overworld({ ...LAB, obstacles: [{ x: 2, y: 1, name: "CUT TREE", move: "CUT" }] }, []), bag: withItem("HM01") });
+    const view = atlasExtract({ ...overworld({ ...LAB, obstacles: [{ localId: 1, x: 2, y: 1, name: "CUT TREE", move: "CUT" }] }, []), bag: withItem("HM01") });
     expect(view.lines).toContain("- CUT TREE at (2, 1). Only a Pokémon that knows CUT can remove it.");
     expect(view.targets.map((t) => t.label)).not.toContainEqual(expect.stringContaining("CUT TREE"));
   });
@@ -661,7 +680,7 @@ describe("the extract of the Atlas", () => {
     ]);
     const atlas = {
       maps: [
-        { ...town, obstacles: [{ x: 2, y: 2, name: "CUT TREE", move: "CUT" as const }] },
+        { ...town, obstacles: [{ localId: 1, x: 2, y: 2, name: "CUT TREE", move: "CUT" as const }] },
         map("Town_Mart", false, [door(1, "Town")]),
         map("Route1", true, [door(5, "Route1_Gate")], [{ side: "south", to: "Town" }]),
         map("Route1_Gate", false, [door(1, "Route1"), door(2, "Route1_Gate_2F")]),

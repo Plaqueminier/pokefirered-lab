@@ -9,6 +9,7 @@ export const TRAINER_FLAGS_COUNT = 768;
 export const FLAG_HIDDEN_ITEMS_START = 0x3e8;
 export const FLAG_HIDDEN_ITEMS_COUNT = 200;
 export const FLAG_SYS_FLASH_ACTIVE = 0x806;
+export const FLAG_SYS_USE_STRENGTH = 0x805;
 const LAST_TEMPORARY_FLAG = 0x1f;
 const TEMPORARY_FLAGS = Array.from({ length: LAST_TEMPORARY_FLAG }, (_, i) => i + 1);
 // TRAINER_CLASS_RIVAL_EARLY, TRAINER_CLASS_RIVAL_LATE and TRAINER_CLASS_CHAMPION: the name of these trainers is the name that the player gave to the rival.
@@ -103,10 +104,10 @@ export class EventReads {
     };
   }
 
-  flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean; temporary: number[]; flash: boolean } {
+  flagChanges(before: Uint8Array, after: Uint8Array): { trainers: number[]; itemBall: boolean; temporary: number[]; flash: boolean; strength: boolean } {
     const set = (id: number) => bitAt(before, id) === 0 && bitAt(after, id) === 1;
     const trainers = Array.from({ length: TRAINER_FLAGS_COUNT }, (_, i) => i).filter((i) => set(TRAINER_FLAGS_START + i));
-    return { trainers, itemBall: this.itemBallFlags.some(set), temporary: TEMPORARY_FLAGS.filter(set), flash: set(FLAG_SYS_FLASH_ACTIVE) };
+    return { trainers, itemBall: this.itemBallFlags.some(set), temporary: TEMPORARY_FLAGS.filter(set), flash: set(FLAG_SYS_FLASH_ACTIVE), strength: set(FLAG_SYS_USE_STRENGTH) };
   }
 
   trainerName(id: number): string {

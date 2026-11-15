@@ -1,7 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "./cells";
+import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, SWITCH, WALL } from "./cells";
 import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, type BerryPouchMenu, berryPouchMenu, findInBag, itemSceneRuns, readBag, readStones, readTeachables, type Stone, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   type Battle,
@@ -23,7 +23,7 @@ import {
   readBattle,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
-import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
+import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, FLAG_SYS_USE_STRENGTH, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
 import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
@@ -65,6 +65,7 @@ const MB_WALL: Record<number, string> = { 0x30: WALL.east, 0x31: WALL.west, 0x32
 const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
 const MB_SPIN: Record<number, string> = { 0x54: SPIN.east, 0x55: SPIN.west, 0x56: SPIN.north, 0x57: SPIN.south };
 const MB_STOP_SPINNING = 0x58;
+const MB_STRENGTH_BUTTON = 0x20;
 const MB_STRONG_WATER = new Set([0x11, 0x50, 0x51, 0x52, 0x53]);
 const TERRAIN_SHIFT = 9;
 const TERRAIN_MASK = 0x1f;
@@ -174,7 +175,7 @@ export type MapGrid = {
   /** Size of the map itself, inside the border. */
   mapWidth: number;
   mapHeight: number;
-  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), ↑ ↓ ← → spin tile, o stop tile, . open. */
+  /** One character per cell, row by row: # blocked, ~ water, " tall grass, ^ v < > ledge (jump direction), - _ [ ] open with a thin wall on its north, south, west or east side (no step across it in either direction: IsMetatileDirectionallyImpassable), ↑ ↓ ← → spin tile, o stop tile, s switch of a boulder puzzle, . open. */
   kinds: string;
   outside: boolean;
   cave: boolean;
@@ -204,11 +205,15 @@ function surfableKind(attrs: number, behavior: number): string {
 
 export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
 
-const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["ROCK SMASH", 6], ["SURF", 5]]);
+const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["STRENGTH", 4], ["ROCK SMASH", 6], ["SURF", 5]]);
 
 const FLASH_BADGE = 1;
 
-export type Obstacle = { x: number; y: number; name: string; move: FieldMove };
+export type Obstacle = { localId: number; x: number; y: number; name: string; move: FieldMove };
+
+export function walkRemoves({ move }: Pick<Obstacle, "move">, usable: ReadonlySet<FieldMove>): boolean {
+  return move !== "STRENGTH" && usable.has(move);
+}
 
 export type MapActors = {
   player: { x: number; y: number; facing: number } | null;
@@ -921,6 +926,10 @@ export class Game {
     return this.mem.global("gPlayerAvatar").field("flags").int();
   }
 
+  strengthActive(): boolean {
+    return this.flag(FLAG_SYS_USE_STRENGTH);
+  }
+
   hasRunningShoes(): boolean {
     return this.flag(FLAG_SYS_B_DASH);
   }
@@ -970,7 +979,7 @@ export class Game {
     for (const template of this.eventList(this.mem.global("gMapHeader"), "objectEvents", "objectEventCount")) {
       if (template.field("kind").int() !== OBJ_KIND_NORMAL || template.field("flagId").int() !== flag || template.field("localId").int() !== talked) continue;
       const obstacle = OBSTACLES[this.graphicsNames.get(template.field("graphicsId").int()) ?? ""];
-      if (obstacle) return { x: template.field("x").int(), y: template.field("y").int(), ...obstacle };
+      if (obstacle) return { localId: talked, x: template.field("x").int(), y: template.field("y").int(), ...obstacle };
     }
     return null;
   }
@@ -1062,6 +1071,7 @@ export class Game {
         : MB_WALL[behavior] ? MB_WALL[behavior]
         : MB_SPIN[behavior] ? MB_SPIN[behavior]
         : behavior === MB_STOP_SPINNING ? STOP
+        : behavior === MB_STRENGTH_BUTTON ? SWITCH
         : behavior < surfable.length && surfable.at(behavior).int() & 1 ? surfableKind(attrs ?? 0, behavior)
         : behavior === MB_TALL_GRASS ? KIND.grass
         : KIND.open);
@@ -1210,7 +1220,7 @@ export class Game {
       const graphics = this.graphicsNames.get(graphicsId) ?? `#${graphicsId}`;
       const obstacle = OBSTACLES[graphics];
       if (obstacle) {
-        obstacles.push({ x, y, ...obstacle });
+        obstacles.push({ localId, x, y, ...obstacle });
         continue;
       }
       const movement = normal.field("movementType").int();

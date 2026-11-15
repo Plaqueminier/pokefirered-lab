@@ -30,7 +30,18 @@ export function actionText({ name, ...args }: MacroAction | RawInput): string {
 
 /** What a Field move opens, for the model, the reasons of the Harness and the Viewer. */
 export function fieldMoveRemedy(move: string): string {
-  return move === "SURF" ? "Only a Pokémon that knows SURF can cross water" : `Only a Pokémon that knows ${move} can remove it`;
+  if (move === "SURF") return "Only a Pokémon that knows SURF can cross water";
+  return `Only a Pokémon that knows ${move} can ${move === "STRENGTH" ? "push" : "remove"} it`;
+}
+
+export type FieldMoveUse = { usable: boolean; missingBadge: number | null };
+
+export function moveRemedy(move: string, missingBadge: number | null): string {
+  return missingBadge === null ? fieldMoveRemedy(move) : badgeNeeded(move, missingBadge);
+}
+
+export function obstacleRemedy({ move, x, y }: { move: string; x: number; y: number }, { usable, missingBadge }: FieldMoveUse): string {
+  return move === "STRENGTH" && usable ? `push(${x}, ${y}, direction) moves it` : moveRemedy(move, missingBadge);
 }
 
 export function badgeNeeded(move: string, badge: number): string {

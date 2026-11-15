@@ -1,3 +1,5 @@
+import type { Direction } from "../cells";
+import { mapNamed } from "../harness/atlas";
 import { nicknamedSpecies } from "../menus";
 import { type BagItem, battleItems, depositableItems, holdableItems, type ItemUse, sellableItems, type Teachable, walkItems } from "../bag";
 import type { BattleState, Button, MacroAction, Observation, RawInput } from "../harness/harness";
@@ -63,7 +65,7 @@ type BoxAction = Extract<MacroAction, { name: "depositPokemon" | "withdrawPokemo
 
 type ActionVerb = Exclude<ModelAction["name"], BoxAction["name"]>;
 
-const NAMES = { go: 0, goTo: 0, swap: 0, teach: 0, give: 0, take: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
+const NAMES = { go: 0, goTo: 0, push: 0, swap: 0, teach: 0, give: 0, take: 0, choose: 0, fight: 0, switch: 0, send: 0, run: 0, use: 0, buy: 0, sell: 0, withdraw: 0, deposit: 0, leave: 0, name: 0, forget: 0, keep: 0, press: 0, viewAtlas: 0, zoom: 0 } satisfies Record<ActionVerb, 0>;
 
 /** All the names of the actions of the model. The type check fails when a new action is not in the list. */
 export const MODEL_ACTION_NAMES = Object.keys(NAMES) as ActionVerb[];
@@ -82,7 +84,7 @@ export type Asked = { party: PartyMon[] } & (
 export type AskedKind = Asked["kind"];
 
 const ACTIONS: Record<AskedKind, ActionVerb[]> = {
-  walk: ["go", "goTo", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"],
+  walk: ["go", "goTo", "push", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"],
   choice: ["choose", "zoom"],
   battleAction: ["fight", "switch", "run", "use", "zoom"],
   battleMove: ["fight", "zoom", "press"],
@@ -99,6 +101,8 @@ export function actionsOf(asked: Asked): ActionVerb[] {
     switch (name) {
       case "viewAtlas":
         return !(asked.kind === "walk" && asked.atlasShown);
+      case "push":
+        return asked.kind === "walk" && asked.overworld.strength.usable && mapNamed(asked.overworld.atlas, asked.overworld.map.name).obstacles.some((o) => o.move === "STRENGTH");
       case "swap":
         return asked.party.length > 1;
       case "switch":
@@ -380,6 +384,7 @@ function withSpaces(action: string): string {
 const FORMS: Record<ActionVerb, [form: string, example: string]> = {
   go: ["go <letter>", "go B"],
   goTo: ["goTo <x> <y>", "goTo 9 42"],
+  push: ["push <x> <y> <direction> [steps]", "push 7 18 south 2"],
   swap: ["swap <Pokémon> <Pokémon>", "swap 1 2"],
   choose: ["choose <option>", "choose YES"],
   fight: ["fight <0-3> [on <1 or 2>]", "fight 0"],
@@ -433,6 +438,7 @@ function parse(written: string): ParsedAction | null {
   if ((m = action.match(/^swap\s+(.+)$/i))) return { name: "swap", pokemon: m[1] };
   if ((m = action.match(/^go\s+(\S+)$/i))) return { name: "go", target: m[1] };
   if ((m = action.match(/^goto\s+(-?\d+)\s+(-?\d+)(?:\s+(\S+))?$/i))) return { name: "goTo", x: Number(m[1]), y: Number(m[2]), ...(m[3] ? { map: m[3] } : {}) };
+  if ((m = action.match(/^push\s+(-?\d+)\s+(-?\d+)\s+(north|south|west|east)(?:\s+([1-9]\d*))?$/i))) return { name: "push", x: Number(m[1]), y: Number(m[2]), direction: m[3].toLowerCase() as Direction, ...(m[4] ? { steps: Number(m[4]) } : {}) };
   if ((m = action.match(/^choose\s+(.+)$/i))) return { name: "choose", option: m[1] };
   if ((m = action.match(/^fight\s+([0-3])(?:\s+on\s+([12]))?$/i))) return { name: "fight", move: Number(m[1]), ...(m[2] ? { foe: Number(m[2]) } : {}) };
   if (/^run$/i.test(action)) return { name: "run" };

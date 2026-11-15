@@ -750,3 +750,132 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the Cycling R
     harness.close();
   });
 });
+
+const FLAG_BADGE04_GET = 0x823;
+const FLAG_HIDE_VICTORY_ROAD_2F_BOULDER = 0x58;
+const FLAG_STOPPED_SEAFOAM_B4F_CURRENT = 0x2d3;
+const MOVE_STRENGTH = 70;
+
+const strengthEvents = (harness: Harness) => harness.events.filter((e) => e.type === "strength");
+
+function learnStrength(run: Run): void {
+  setFlag(run, FLAG_BADGE04_GET);
+  setThirdMove(run, 0, MOVE_STRENGTH);
+}
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("STRENGTH, on real maps", () => {
+  test("push goes behind the boulder, starts STRENGTH with no question, and pushes it: the result gives the pushes, the cell and the cause of the stop", async () => {
+    const { harness, run } = await openAt("VictoryRoad_1F", 11, 20, false);
+    learnStrength(run);
+    const result = await harness.push(7, 18, "south", 1);
+    expect(result).toEqual({ status: "done", push: { pushes: 1, x: 7, y: 19, direction: "south", stop: "steps" }, frames: expect.any(Number) });
+    expect(overworld(harness).player).toMatchObject({ x: 7, y: 17 });
+    expect(strengthEvents(harness)).toEqual([{ type: "strength", frame: expect.any(Number), map: "VictoryRoad_1F", x: 7, y: 18, species: "SQUIRTLE" }]);
+    harness.close();
+  });
+
+  test("the 19 pushes of the known solution put the boulder of Victory Road 1F on the switch, and the barrier opens in the Atlas and for a route", async () => {
+    const { harness, run } = await openAt("VictoryRoad_1F", 11, 20, false);
+    learnStrength(run);
+    must(await harness.goTo(11, 17));
+    expect([cellOf(harness, "VictoryRoad_1F", 12, 14), cellOf(harness, "VictoryRoad_1F", 12, 15)]).toEqual(["#", "#"]);
+    expect(await harness.goTo(12, 15)).toMatchObject({ status: "impossible" });
+    const pushes: [number, number, "north" | "south" | "west" | "east", number][] = [
+      [7, 18, "south", 1],
+      [7, 19, "east", 5],
+      [12, 19, "north", 2],
+      [12, 17, "east", 7],
+      [19, 17, "north", 2],
+      [19, 15, "east", 1],
+    ];
+    for (const [x, y, direction, steps] of pushes) expect(await harness.push(x, y, direction, steps)).toMatchObject({ status: "done", push: { pushes: steps, stop: "steps" } });
+    expect(await harness.push(20, 15, "south", 3)).toMatchObject({ status: "done", push: { pushes: 1, x: 20, y: 16, stop: "switch" } });
+    expect(cellOf(harness, "VictoryRoad_1F", 12, 15)).not.toBe("#");
+    must(await harness.goTo(12, 15));
+    expect(strengthEvents(harness)).toHaveLength(1);
+    harness.close();
+  });
+
+  test("a boulder pushed into the hole of Victory Road 3F falls to 2F, where the Atlas shows it after the fall of the player", async () => {
+    const { harness, run } = await openAt("VictoryRoad_3F", 32, 18, false);
+    learnStrength(run);
+    setFlag(run, FLAG_HIDE_VICTORY_ROAD_2F_BOULDER);
+    const boulderOf2F = () => run.game.mapView("VictoryRoad_2F")?.actors.obstacles.some((o) => o.x === 33 && o.y === 19);
+    expect(boulderOf2F()).toBe(false);
+    expect(await harness.push(33, 18, "east", 2)).toEqual({ status: "done", push: { pushes: 1, x: 34, y: 18, direction: "east", stop: "hole", into: "VictoryRoad_2F" }, frames: expect.any(Number) });
+    expect(boulderOf2F()).toBe(true);
+    expect(await harness.goTo(34, 18)).toMatchObject({ status: "interrupted", reason: "script" });
+    while (harness.waitingFor().kind !== "walk") must(await harness.readText());
+    expect(overworld(harness)).toMatchObject({ map: { name: "VictoryRoad_2F" }, player: { x: 34, y: 19 } });
+    expect(mapNamed(harness.observe().atlas, "VictoryRoad_2F").obstacles).toContainEqual(expect.objectContaining({ x: 33, y: 19, move: "STRENGTH" }));
+    harness.close();
+  });
+
+  test("a push stops in front of a blocked cell, and the Warden's House boulder moves one cell", async () => {
+    const { harness, run } = await openAt("FuchsiaCity_WardensHouse", 6, 9, false);
+    learnStrength(run);
+    expect(await harness.push(11, 6, "north", 2)).toMatchObject({ status: "done", push: { pushes: 0, x: 11, y: 6, stop: "blocked" } });
+    expect(await harness.push(11, 6, "south")).toMatchObject({ status: "impossible", reason: "no route to (11, 5), the cell north of the boulder", frames: 0 });
+    expect(await harness.push(11, 6, "west", 0)).toMatchObject({ status: "impossible", reason: "steps is a whole number of 1 or more, not 0" });
+    expect(await harness.push(11, 6, "west")).toMatchObject({ status: "done", push: { pushes: 1, x: 10, y: 6, stop: "steps" } });
+    expect(overworld(harness).strength).toEqual({ usable: true, missingBadge: null, moved: true });
+    must(await harness.goTo(6, 9));
+    expect(overworld(harness).map.name).toBe("FuchsiaCity");
+    must(await harness.goTo(6, 8, "FuchsiaCity_WardensHouse"));
+    expect(overworld(harness).strength.moved).toBe(false);
+    expect(await harness.push(11, 6, "west")).toMatchObject({ status: "done", push: { pushes: 1, x: 10, y: 6 } });
+    expect(strengthEvents(harness)).toHaveLength(2);
+    expect(await harness.push(4, 4, "west")).toMatchObject({ status: "impossible", reason: "you saw no boulder at (4, 4) of FuchsiaCity_WardensHouse" });
+    harness.close();
+  });
+
+  test("a wild battle stops a push, and the result gives the pushes before it", async () => {
+    const { harness, run } = await openAt("VictoryRoad_2F", 34, 20);
+    learnStrength(run);
+    let result = await harness.push(33, 19, "west", 4);
+    for (let back = 0; back < 20 && result.status === "done"; back++) result = back % 2 === 0 ? await harness.push(29, 19, "east", 4) : await harness.push(33, 19, "west", 4);
+    expect(result).toMatchObject({ status: "interrupted", reason: "battle", push: { stop: "interrupted" } });
+    harness.close();
+  });
+
+  test("after the boulders stop the current of Seafoam Islands B4F, its cells are water that SURF crosses", async () => {
+    const run = await Run.open({ startSave: PARTY_SAVE });
+    const { onFrame } = warpPatch(run, { map: "SeafoamIslands_B4F", x: 15, y: 10 }, false);
+    const harness = await Harness.open({ onFrame }, run);
+    setFlag(run, FLAG_STOPPED_SEAFOAM_B4F_CURRENT);
+    learnSurf(run);
+    await harness.goTo(PALLET_DOOR.x, PALLET_DOOR.y);
+    const { grid } = overworld(harness);
+    const rom = run.game.gridOf(grid.group, grid.num);
+    if (!rom) throw new Error("no map SeafoamIslands_B4F");
+    const current = rom.behaviors.flatMap((b, i) => (rom.behaviorNames[b].endsWith("_CURRENT") ? [{ x: i % rom.width, y: Math.floor(i / rom.width) }] : []));
+    const live = (c: { x: number; y: number }) => (c.y - grid.y0) * grid.width + (c.x - grid.x0);
+    const stopped = current.filter((c) => !grid.behaviorNames[grid.behaviors[live(c)]].endsWith("_CURRENT"));
+    expect(stopped.length).toBeGreaterThan(100);
+    expect(new Set(stopped.map((c) => grid.kinds[live(c)]))).toEqual(new Set(["≈"]));
+    must(await harness.goTo(10, 14));
+    expect(overworld(harness)).toMatchObject({ player: { x: 10, y: 14 }, surfing: true });
+    expect(surfEvents(harness)).toHaveLength(1);
+    harness.close();
+  });
+
+  test("a push works on the BICYCLE, and the player stays on it", async () => {
+    const { harness, run } = await openAt("VictoryRoad_1F", 11, 20, false);
+    learnStrength(run);
+    giveBicycle(run);
+    must(await harness.use("BICYCLE"));
+    expect(await harness.push(7, 18, "south")).toMatchObject({ status: "done", push: { pushes: 1, x: 7, y: 19 } });
+    expect(overworld(harness).riding).toBe(true);
+    harness.close();
+  });
+
+  test("with no badge 4, push and a goTo to a boulder name the badge; with it, a goTo names push", async () => {
+    const { harness, run } = await openAt("VictoryRoad_1F", 11, 20, false);
+    setThirdMove(run, 0, MOVE_STRENGTH);
+    expect(await harness.push(7, 18, "south")).toMatchObject({ status: "impossible", reason: "A Pokémon of your party knows STRENGTH, but its use on the map needs badge 4" });
+    expect(await harness.goTo(7, 18)).toMatchObject({ status: "impossible", reason: expect.stringContaining("PUSHABLE BOULDER at VictoryRoad_1F (7, 18) blocks the way. A Pokémon of your party knows STRENGTH, but its use on the map needs badge 4") });
+    setFlag(run, FLAG_BADGE04_GET);
+    expect(await harness.goTo(7, 18)).toMatchObject({ status: "impossible", reason: expect.stringContaining("PUSHABLE BOULDER at VictoryRoad_1F (7, 18) blocks the way. push(7, 18, direction) moves it") });
+    harness.close();
+  });
+});

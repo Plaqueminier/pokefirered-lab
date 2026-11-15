@@ -1,3 +1,4 @@
+import { DIRECTION_STEP } from "../cells";
 import type { EventKeys, EventReads } from "../event-reads";
 import type { FieldMove, Game } from "../game";
 import type { WatchedMon } from "../party";
@@ -18,9 +19,10 @@ export type StateEvent =
   | { type: "obstacle"; move: FieldMove; map: string; x: number; y: number; species: string }
   | { type: "flash"; map: string; species: string }
   | { type: "surf"; map: string; x: number; y: number; species: string }
+  | { type: "strength"; map: string; x: number; y: number; species: string }
   | { type: "whiteout" };
 
-const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "surf", "whiteout"] satisfies StateEvent["type"][]);
+const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "surf", "strength", "whiteout"] satisfies StateEvent["type"][]);
 
 export function isStateEvent<E extends { type: string }>(event: E): event is Extract<E, { type: StateEvent["type"] }> {
   return STATE_EVENT_TYPES.has(event.type);
@@ -120,6 +122,7 @@ export class StateWatch {
     for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: reads.trainerName(id), id });
     events.push(...this.#obstacleEvents(flags?.temporary ?? [], after.party));
     if (flags?.flash) events.push(...this.#flashEvent(after.party));
+    if (flags?.strength) events.push(...this.#strengthEvent(after.party));
     return events;
   }
 
@@ -144,6 +147,14 @@ export class StateWatch {
     if (!before?.onLand || before.map !== now.map || !this.#game.surfing()) return [];
     const user = this.#seen?.party.find((mon) => mon.moves.includes("SURF"));
     return user ? [{ type: "surf", map: now.map, x: player.x, y: player.y, species: user.species }] : [];
+  }
+
+  #strengthEvent(party: WatchedMon[]): StateEvent[] {
+    const player = this.#game.player();
+    const user = party.find((mon) => mon.moves.includes("STRENGTH"));
+    if (!player || !user) return [];
+    const [dx, dy] = DIRECTION_STEP[player.facing];
+    return [{ type: "strength", map: this.#game.map().name, x: player.x + dx, y: player.y + dy, species: user.species }];
   }
 
   #flashEvent(party: WatchedMon[]): StateEvent[] {

@@ -59,7 +59,7 @@ describe.skipIf(!ready)("the panel Stats", () => {
       { name: "goTo", count: 2 },
       { name: "go", count: 1 },
       { name: "viewAtlas", count: 1 },
-      { name: "swap", count: 0 },
+      { name: "push", count: 0 },
     ]);
     expect(all.impossible).toEqual([{ name: expect.stringMatching(/^goTo: /), count: 1 }]);
     expect(all.unreadable).toEqual([{ name: '"fight" is not an action now: use go, goTo, viewAtlas, zoom or press', count: 1 }]);

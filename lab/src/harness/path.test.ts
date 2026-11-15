@@ -24,7 +24,7 @@ describe("a route on a map that is dark for the model", () => {
 
   test("an exit, a Fixed obstacle and an obstacle that the party can remove on an unseen cell are not on a route; the arrival of an exit stays known", () => {
     const warp = { x: 2, y: 0, to: "Next", warpId: 0, how: "step" as const };
-    const dark = onlySeen(map("Dark", ["......"], { warps: [warp], removable: [{ x: 4, y: 0 }], obstacles: [{ x: 3, y: 0, name: "CUT TREE", move: "CUT" }] }), (c) => c.x < 2);
+    const dark = onlySeen(map("Dark", ["......"], { warps: [warp], removable: [{ x: 4, y: 0 }], obstacles: [{ localId: 1, x: 3, y: 0, name: "CUT TREE", move: "CUT" }] }), (c) => c.x < 2);
     expect(dark.warps).toEqual([{ x: 2, y: 0, to: "Next", warpId: 0, how: "none" }]);
     expect(dark.removable).toEqual([]);
     expect(dark.obstacles).toEqual([]);

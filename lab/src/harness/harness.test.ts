@@ -138,7 +138,7 @@ async function toRivalBattle(harness: Harness) {
 const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "3", goal: null, costLimit: null };
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
-  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "44", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "45", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {

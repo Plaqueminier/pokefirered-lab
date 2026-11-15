@@ -4,6 +4,7 @@ export const KIND = { blocked: "#", water: "~", surf: "≈", grass: '"', open: "
 export const LEDGE: Record<Direction, string> = { north: "^", south: "v", west: "<", east: ">" };
 export const SPIN: Record<Direction, string> = { north: "↑", south: "↓", west: "←", east: "→" };
 export const STOP = "o";
+export const SWITCH = "s";
 export const WALL: Record<Direction, string> = { north: "-", south: "_", west: "[", east: "]" };
 /** The elevation of a cell is in bits 12-15 of its grid value. */
 export const ELEVATION_SHIFT = 12;

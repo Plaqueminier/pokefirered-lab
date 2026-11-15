@@ -424,7 +424,7 @@ const TIMELINE_STATES = {
 
 export function TimelineDemo() {
   const [state, setState] = useState<keyof typeof TIMELINE_STATES>("live");
-  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place", "obstacle", "flash", "surf"]));
+  const [kinds, setKinds] = useState<ReadonlySet<TimelineKind>>(new Set(["milestone", "faint", "catch", "evolution", "trainer", "heal", "place", "obstacle", "flash", "surf", "strength"]));
   const [cursor, setCursor] = useState<number | null>(null);
   const [selection, setSelection] = useState<Span | null>(null);
   const { events, end, now, reached, ended, available } = TIMELINE_STATES[state];

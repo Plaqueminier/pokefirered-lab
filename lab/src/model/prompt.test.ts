@@ -55,6 +55,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     boxes: [],
     pcItems: [],
     repelActive: false,
+    strength: { usable: false, missingBadge: null, moved: false },
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     teachables: [],
@@ -503,6 +504,36 @@ describe("SURF", () => {
   test("a walk on the water tells it, because the sign of the player hides the cell", () => {
     const surfing = { ...route1(22, []), surfing: true } as Observation;
     expect(userPrompt(surfing, askedOf(surfing, false)!, [], NO_TURN)).toContain("You are on the water with SURF.");
+  });
+});
+
+describe("STRENGTH", () => {
+  const boulder = { localId: 1, x: 2, y: 0, name: "PUSHABLE BOULDER", move: "STRENGTH" as const };
+  const withBoulder = (usable: boolean, moved = false): Observation => {
+    const walk = route1(22, []) as Extract<Observation, { mode: "overworld" }>;
+    const party = [{ ...walk.party[0], moves: [{ name: "STRENGTH" } as PartyMove] }];
+    return { ...walk, party, atlas: { ...walk.atlas, maps: [{ ...walk.atlas.maps[0], obstacles: [boulder] }] }, strength: { usable, missingBadge: usable ? null : 4, moved } };
+  };
+  const PUSH_LINE = "- push <x> <y> <direction> [steps]: walk behind the boulder at (x, y), then push it steps cells to the north, south, west or east (1 when you do not give steps), for example push 2 0 south. A walk never pushes a boulder.";
+  const MOVED_LINE = "Leave this map and return to it: each boulder then returns to its first cell.";
+
+  test("a walk lists push only when the party can use STRENGTH and the map has a boulder that you saw, and it tells how to return the boulders to their first cells", () => {
+    const usable = withBoulder(true);
+    expect(userPrompt(usable, askedOf(usable, false)!, [], NO_TURN)).toContain(PUSH_LINE);
+    expect(userPrompt(usable, askedOf(usable, false)!, [], NO_TURN)).not.toContain(MOVED_LINE);
+    const badge = withBoulder(false);
+    expect(userPrompt(badge, askedOf(badge, false)!, [], NO_TURN)).not.toContain("- push");
+    const moved = withBoulder(true, true);
+    expect(userPrompt(moved, askedOf(moved, false)!, [], NO_TURN)).toContain(MOVED_LINE);
+  });
+
+  test("the result of a push gives the pushes, the cell of the boulder and why it stopped", () => {
+    const pushed = (push: NonNullable<ActionEntry["result"]["push"]>, status: "done" | "interrupted" = "done") => [call("push 2 0 south 3"), played({ name: "push", x: 2, y: 0, direction: "south", steps: 3 }, { ...(status === "done" ? { status } : { status, reason: "battle" }), push, frames: 90 })];
+    expect(tries(pushed({ pushes: 3, x: 2, y: 3, direction: "south", stop: "steps" }), 0)).toEqual(["- push(2, 0, south, 3) ×1: done, 3 pushes: the boulder is at (2, 3)"]);
+    expect(tries(pushed({ pushes: 1, x: 2, y: 1, direction: "south", stop: "switch" }), 0)).toEqual(["- push(2, 0, south, 3) ×1: done, 1 push: the boulder is at (2, 1), on a switch"]);
+    expect(tries(pushed({ pushes: 0, x: 2, y: 0, direction: "south", stop: "blocked" }), 0)).toEqual(["- push(2, 0, south, 3) ×1: done, 0 pushes: the boulder cannot move to the south: (2, 1) is blocked"]);
+    expect(tries(pushed({ pushes: 1, x: 2, y: 1, direction: "south", stop: "hole", into: "VictoryRoad_2F" }), 0)).toEqual(["- push(2, 0, south, 3) ×1: done, 1 push: the boulder fell through the hole at (2, 1) to VictoryRoad_2F"]);
+    expect(tries(pushed({ pushes: 2, x: 2, y: 2, direction: "south", stop: "interrupted" }, "interrupted"), 0)).toEqual(["- push(2, 0, south, 3) ×1: interrupted (battle), 2 pushes: the boulder is at (2, 2)"]);
   });
 });
 

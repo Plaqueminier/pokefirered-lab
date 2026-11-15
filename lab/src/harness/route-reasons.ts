@@ -1,10 +1,12 @@
 import { KIND } from "../cells";
-import { destinationNow, type FieldMove } from "../game";
+import { destinationNow, type FieldMove, type Obstacle } from "../game";
 import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, personName, seenIn } from "./atlas";
 import { allCells, type BlockOf, type Cell, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
 import { partAt, partNear, slidesLeaving } from "./slides";
 
-export function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, blockOf: BlockOf, remedy: (move: FieldMove) => string): string | null {
+export type Remedies = { move: (move: FieldMove) => string; obstacle: (obstacle: Obstacle) => string };
+
+export function outsideReason(cell: Place, map: RouteMap | null, canExit: boolean, blockOf: BlockOf, remedy: Remedies["move"]): string | null {
   if (!map || inside(map, cell)) return null;
   const range = `the cells of ${map.name} are x from 0 to ${map.mapWidth - 1}, y from 0 to ${map.mapHeight - 1}`;
   const side = pastEdge(map, cell);
@@ -16,13 +18,13 @@ export function outsideReason(cell: Place, map: RouteMap | null, canExit: boolea
   return `no map connects to the ${side} edge of ${map.name}; ${range}`;
 }
 
-export function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas, remedy: (move: FieldMove) => string): string {
+export function noRouteReason(here: Place, destination: Destination, asked: Place, maps: MapSource, { maps: known }: Atlas, remedies: Remedies): string {
   const obstacle = obstacleOnRoute(here, destination, maps);
-  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${remedy(obstacle.move)}`;
+  if (obstacle) return `you cannot go there now: a ${obstacle.name} at ${at(obstacle)} blocks the way. ${remedies.obstacle(obstacle)}`;
   const map = known.find((m) => m.name === asked.map);
   if (map?.dark && !seenIn(map)(asked)) return `you did not see (${asked.x}, ${asked.y}) of ${asked.map}: on a dark map, you walk only on the cells that you saw`;
   const kind = map && seenIn(map)(asked) ? cellAt(map, asked) : null;
-  if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${remedy("SURF")}`;
+  if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${remedies.move("SURF")}`;
   if (kind === KIND.blocked) return `(${asked.x}, ${asked.y}) is a blocked cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
   if (map?.dark) return `no way to ${at(asked)} on the cells that you saw: on a dark map, you walk only on these`;
   const parts = map && here.map === asked.map ? noFootWayReason(map, here, asked) : null;

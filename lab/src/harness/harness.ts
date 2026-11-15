@@ -4,11 +4,11 @@ import { isAbsolute, join } from "node:path";
 import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, sellableItems, type Stone, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, withSurf } from "../cells";
-import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, OPPOSITE, SWITCH, withSurf } from "../cells";
+import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor, walkRemoves } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
-import { badgeNeeded, type BotInfo, fieldMoveRemedy, Keys } from "../protocol";
+import { type BotInfo, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
@@ -16,7 +16,7 @@ import type { Genome } from "../genetic/genome";
 import { isStateEvent, withoutFormat } from "./game-events";
 import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
+import { type Cell, type Destination, destinationOf, findRoute, headingAlong, kindAt, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
@@ -45,7 +45,7 @@ const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
-  walk: ["goTo", "walkOn", "interact", "swap", "use", "teach", "give", "take"],
+  walk: ["goTo", "walkOn", "interact", "push", "swap", "use", "teach", "give", "take"],
   choice: ["choose"],
   text: ["readText"],
   battleAction: ["fight", "switch", "run", "use"],
@@ -71,8 +71,10 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 /** `unbeatenTrainer`: a trainer that the player did not beat yet. A talk or its sight starts a battle. */
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
+export type StrengthUse = FieldMoveUse & { moved: boolean };
+
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -83,7 +85,9 @@ export type NoProgress = { stuck: number; since: number };
 
 export type Interruption = GameInterruption | "map";
 
-export type ActionResult = Outcome & Slid & {
+export type PushReport = { pushes: number; x: number; y: number; direction: Direction } & ({ stop: "steps" | "blocked" | "switch" | "interrupted" } | { stop: "hole"; into: string | null });
+
+export type ActionResult = Outcome & Slid & { push?: PushReport } & {
   frames: number;
   leftWordScreen?: true;
 };
@@ -94,6 +98,7 @@ export type MacroAction =
   | { name: "goTo"; x: number; y: number; map?: string }
   | { name: "walkOn"; x: number; y: number; direction: Direction }
   | { name: "interact"; x: number; y: number }
+  | { name: "push"; x: number; y: number; direction: Direction; steps?: number }
   | { name: "readText" }
   | { name: "choose"; option: string }
   | { name: "fight"; move: number; foe?: number }
@@ -115,9 +120,9 @@ export type MacroAction =
   | { name: "keep" };
 
 export type AvailableAction =
-  | { name: "goTo" | "walkOn" | "swap" | "name" }
+  | { name: "goTo" | "walkOn" | "push" | "swap" | "name" }
   | { name: "use" | "teach" | "give" | "buy" | "sell" | "withdraw" | "deposit"; item: string }
-  | Exclude<MacroAction, { name: "goTo" | "walkOn" | "swap" | "name" | "use" | "teach" | "give" | "buy" | "sell" | "withdraw" | "deposit" }>;
+  | Exclude<MacroAction, { name: "goTo" | "walkOn" | "push" | "swap" | "name" | "use" | "teach" | "give" | "buy" | "sell" | "withdraw" | "deposit" }>;
 
 export type Button = keyof typeof Keys;
 
@@ -431,7 +436,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), teachables: game.teachables(), stones: game.stones() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), strength: this.strengthUse(grid, actors), teachables: game.teachables(), stones: game.stones() };
   }
 
   availableActions(): AvailableAction[] {
@@ -446,6 +451,8 @@ export class Harness {
         case "name":
         case "keep":
           return [{ name }];
+        case "push":
+          return game.usableFieldMoves().has("STRENGTH") ? [{ name }] : [];
         case "forget":
           return waiting.kind === "learnMove" ? game.party()[waiting.slot].moves.flatMap((move) => (isHmMove(move.name) ? [] : [{ name, move: move.name }])) : [];
         case "swap":
@@ -509,7 +516,7 @@ export class Harness {
 
   private noRouteOutcome(here: Place, destination: Destination, asked: Place, maps: MapSource): Outcome | null {
     const why = whyNoRoute(here, destination, maps);
-    if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(), (move) => this.obstacleRemedyNow(move)) };
+    if (why.kind === "closed") return { status: "impossible", reason: noRouteReason(here, destination, asked, maps, this.#atlas.atlas(), { move: (move) => this.obstacleRemedyNow(move), obstacle: (o) => obstacleRemedy(o, this.fieldMoveUse(o.move)) }) };
     if (why.kind === "staying") return { status: "blocked", reason: stayingReason(why.person, this.#atlas.atlas()) };
     return null;
   }
@@ -598,6 +605,48 @@ export class Harness {
       if (!game.fieldLocked()) return { status: "impossible", reason: `nothing at (${x}, ${y}) starts a script` };
       return this.#menus.untilDecision();
     });
+  }
+
+  async push(x: number, y: number, direction: Direction, steps = 1): Promise<ActionResult> {
+    return this.act({ name: "push", x, y, direction, ...(steps === 1 ? {} : { steps }) }, () => this.pushBoulder({ x, y }, direction, steps));
+  }
+
+  private pushBoulder(cell: Cell, direction: Direction, steps: number): Outcome & { push?: PushReport } {
+    const game = this.#run.game;
+    const grid = game.grid();
+    if (!grid) throw new Error("a push needs the overworld");
+    if (!Number.isInteger(steps) || steps < 1) return { status: "impossible", reason: `steps is a whole number of 1 or more, not ${steps}` };
+    if (!game.usableFieldMoves().has("STRENGTH")) return { status: "impossible", reason: this.obstacleRemedyNow("STRENGTH") };
+    const { map } = game.playerPlace();
+    const boulders = () => game.mapView(map)?.actors.obstacles.filter((o) => o.move === "STRENGTH") ?? [];
+    const seen = boulders().find((o) => o.x === cell.x && o.y === cell.y && this.#atlas.sawObstacle(map, o.localId));
+    if (!seen) return { status: "impossible", reason: `you saw no boulder at (${cell.x}, ${cell.y}) of ${map}` };
+    const [dx, dy] = DIRECTION_STEP[direction];
+    const behind = (c: Cell): Cell => ({ x: c.x - dx, y: c.y - dy });
+    if (game.surfing() || kindAt(grid, behind(cell)) === KIND.water) return { status: "impossible", reason: "you push a boulder only from the land, not from the water" };
+    const boulder = () => boulders().find((o) => o.localId === seen.localId) ?? null;
+    let at: Cell = seen;
+    let pushes = 0;
+    const report = (stop: PushReport["stop"], into: string | null = null): PushReport => (stop === "hole" ? { pushes, x: at.x, y: at.y, direction, stop, into } : { pushes, x: at.x, y: at.y, direction, stop });
+    while (pushes < steps) {
+      const walked = this.walkTo({ map, ...behind(at) }, false);
+      if (walked.status !== "done") {
+        if (pushes > 0) return walked.status === "interrupted" ? { ...walked, push: report("interrupted") } : { status: "blocked", reason: walked.reason, push: report("interrupted") };
+        if (walked.status !== "impossible") return walked;
+        const { x, y } = behind(at);
+        return { status: "impossible", reason: `no route to (${x}, ${y}), the cell ${OPPOSITE[direction]} of the boulder` };
+      }
+      const pushed = this.#walk.pushOnce(direction, boulder);
+      if (pushed.moved) {
+        pushes++;
+        at = pushed.at ?? { x: at.x + dx, y: at.y + dy };
+      }
+      if (pushed.result === "no move") return { status: "done", push: report("blocked") };
+      if (pushed.result !== "done") return { status: "interrupted", reason: pushed.result, push: report("interrupted") };
+      if (pushed.at === null) return { status: "done", push: report("hole", grid.warps.find((w) => w.x === at.x && w.y === at.y)?.to ?? null) };
+      if (kindAt(grid, at) === SWITCH) return { status: "done", push: report("switch") };
+    }
+    return { status: "done", push: report("steps") };
   }
 
   async readText(): Promise<TextResult> {
@@ -693,6 +742,8 @@ export class Harness {
         return this.walkOn(action.x, action.y, action.direction);
       case "interact":
         return this.interact(action.x, action.y);
+      case "push":
+        return this.push(action.x, action.y, action.direction, action.steps);
       case "readText":
         return this.readText();
       case "choose":
@@ -863,8 +914,11 @@ export class Harness {
   }
 
   private obstacleRemedyNow(move: FieldMove): string {
-    const badge = this.#run.game.missingBadge(move);
-    return badge === null ? fieldMoveRemedy(move) : badgeNeeded(move, badge);
+    return moveRemedy(move, this.#run.game.missingBadge(move));
+  }
+
+  private fieldMoveUse(move: FieldMove): FieldMoveUse {
+    return { usable: this.#run.game.usableFieldMoves().has(move), missingBadge: this.#run.game.missingBadge(move) };
   }
 
   private routeMaps(): MapSource {
@@ -898,7 +952,16 @@ export class Harness {
 
   private fieldMovesOn(grid: MapGrid, { obstacles }: Pick<MapActors, "obstacles">): { kinds: string; usable: Obstacle[]; closed: Obstacle[] } {
     const moves = this.#run.game.usableFieldMoves();
-    return { kinds: withSurf(grid.kinds, moves.has("SURF")), usable: obstacles.filter((o) => moves.has(o.move)), closed: obstacles.filter((o) => !moves.has(o.move)) };
+    return { kinds: withSurf(grid.kinds, moves.has("SURF")), usable: obstacles.filter((o) => walkRemoves(o, moves)), closed: obstacles.filter((o) => !walkRemoves(o, moves)) };
+  }
+
+  private strengthUse(grid: MapGrid, { obstacles }: Pick<MapActors, "obstacles">): StrengthUse {
+    const first = new Map(this.#run.game.obstaclesOf(grid).map((o) => [o.localId, o]));
+    const moved = obstacles.some((o) => {
+      const start = first.get(o.localId);
+      return o.move === "STRENGTH" && start !== undefined && (start.x !== o.x || start.y !== o.y);
+    });
+    return { ...this.fieldMoveUse("STRENGTH"), moved };
   }
 
   private interactions(): AvailableAction[] {

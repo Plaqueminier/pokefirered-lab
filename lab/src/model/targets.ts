@@ -125,7 +125,8 @@ function edgeName(side: Direction): string {
 }
 
 function exitAt(w: AtlasWarp): string {
-  return `${exitName(w.behavior)} at (${w.x}, ${w.y})`;
+  const fall = /FALL_WARP/.test(w.behavior) ? " (a boulder pushed into it falls to the floor below)" : "";
+  return `${exitName(w.behavior)} at (${w.x}, ${w.y})${fall}`;
 }
 
 export function exitSight(w: AtlasWarp): string {

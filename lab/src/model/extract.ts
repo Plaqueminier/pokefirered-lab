@@ -1,9 +1,10 @@
-import { DIRECTION_STEPS, type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "../cells";
+import { DIRECTION_STEPS, type Direction, KIND, LEDGE, SPIN, STOP, SWITCH, WALL } from "../cells";
 import type { FieldMove, Obstacle } from "../game";
 import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, atlasCells, cellAt, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
 import { allCells, type Cell, cellKey, inside, kindAt, type MapCells } from "../harness/path";
+import type { StrengthUse } from "../harness/harness";
 import type { Slide } from "../harness/slides";
-import { fieldMoveRemedy } from "../protocol";
+import { fieldMoveRemedy, obstacleRemedy } from "../protocol";
 import { explorableCells, type LeftPlace, type Part, Parts, unknownSlides, unseenGroups } from "./parts";
 import { away, EXITS_GROUP, type Hops, hopsOf, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, exitLabels, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
@@ -37,9 +38,11 @@ const LEGEND: [signs: string, text: string][] = [
   ...Object.values(FIELD_MOVES).map(({ sign, legend }): [string, string] => [sign, `${sign} ${legend}`]),
   [SPIN_SIGNS.join(""), `${SPIN_SIGNS.join(" ")} a spin tile`],
   [STOP, `${STOP} a stop tile`],
+  [SWITCH, `${SWITCH} a switch: a boulder on it opens a way`],
   [LONG_MARK, `${LONG_MARK} a target after Z`],
 ];
-const SURF_LEGEND = LEGEND.map(([signs, text]): [string, string] => [signs, signs === FIELD_MOVES.SURF.sign ? `${signs} water: a walk crosses it with SURF` : text]);
+const SURF_TEXT = `${FIELD_MOVES.SURF.sign} water: a walk crosses it with SURF`;
+const PUSH_TEXT = `${FIELD_MOVES.STRENGTH.sign} a boulder: push(x, y, direction) moves it`;
 const OWN_PART_SEEN = "You saw all the cells that you can reach from here on this map. Other parts of it can have unseen cells: to go on, take an exit or a lead.";
 const MAP_SEEN = "You saw all the cells of this map.";
 const LEFT_TITLE = "What is left (from the game, not from your notes: if your Memory tree disagrees, this list is right):";
@@ -82,7 +85,7 @@ export function atlasExtract(overworld: Overworld): AtlasView {
   const parts = new Parts(atlas, here, overworld.grid, overworld.player, overworld.people.filter((p) => p.stays));
   const inWay = peopleInTheWay(overworld, here, parts);
   const near = [...leadTargets(parts, inWay), ...localTargets(overworld, here, parts, inWay)];
-  const view = [...drawnView(overworld, here, hasMove, near), ...seenLines(here, near, parts), ...partLines(parts), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here)];
+  const view = [...drawnView(overworld, here, hasMove, near), ...seenLines(here, near, parts), ...partLines(parts), ...edgeLines(here), ...peopleLines(here), ...obstacleLines(here, overworld.strength)];
   const outside = outsideLine(atlas, here, near);
   let neighbours: string[] = [];
   let targets = near;
@@ -126,7 +129,7 @@ export function localView(overworld: Overworld): string[] {
   return drawnView(overworld, mapNamed(atlas, overworld.map.name), hasMove, []);
 }
 
-function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove, targets: Target[]): string[] {
+function drawnView({ grid, player, strength }: Overworld, here: AtlasMap, hasMove: HasMove, targets: Target[]): string[] {
   const marks = new Map<string, string>();
   targets.forEach((t, i) => {
     const letter = targetLetter(i);
@@ -136,7 +139,7 @@ function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove
   const sign = cellSigns(here, grid, hasMove);
   const rows = cellRows(here, (c) => marks.get(cellKey(c)) ?? sign(c));
   const rule = here.parts.length > 0 ? [SPIN_RULE] : [];
-  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows, legendFor([here])), ...rule, ...gridLines(here, rows)];
+  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows, legendFor([here], strength)), ...rule, ...gridLines(here, rows)];
 }
 
 function partLines(parts: Parts): string[] {
@@ -172,12 +175,16 @@ function cellSigns(map: AtlasMap, view: MapCells, hasMove: HasMove): (c: Cell) =
     const kind = kindAt(view, c);
     if (kind === KIND.surf || (kind === KIND.water && hasMove("SURF"))) return FIELD_MOVES.SURF.sign;
     if (kind === KIND.water) return KIND.blocked;
+    if (kind === SWITCH && !hasMove("STRENGTH")) return KIND.open;
     return obstacles.get(cellKey(c)) ?? kind;
   };
 }
 
-function legendFor(maps: AtlasMap[]): [signs: string, text: string][] {
-  return maps.some((map) => map.cells.includes(KIND.surf)) ? SURF_LEGEND : LEGEND;
+function legendFor(maps: AtlasMap[], strength: StrengthUse): [signs: string, text: string][] {
+  const texts = new Map<string, string>();
+  if (maps.some((map) => map.cells.includes(KIND.surf))) texts.set(FIELD_MOVES.SURF.sign, SURF_TEXT);
+  if (strength.usable) texts.set(FIELD_MOVES.STRENGTH.sign, PUSH_TEXT);
+  return LEGEND.map(([signs, text]) => [signs, texts.get(signs) ?? text]);
 }
 
 function legendOf(rows: string[], legend: [signs: string, text: string][]): string {
@@ -249,7 +256,7 @@ export function fullAtlas(overworld: Overworld): string[] {
   let detailed = true;
   for (const { map, distance } of byDistance(atlas, overworld.map.name)) {
     const talked = talkedPeople(map);
-    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}${talked.length === 0 ? "" : ` People: ${talked.map(personText).join("; ")}.`}${obstaclesText(map)}`;
+    const about = `${away(distance)}. Exits: ${exitsText(map)}.${signsText(map)}${talked.length === 0 ? "" : ` People: ${talked.map(personText).join("; ")}.`}${obstaclesText(map, overworld.strength)}`;
     if (detailed) {
       const rows = cellRows(map, cellSigns(map, atlasCells(map), hasMove));
       const block = [`Map ${map.name}: ${ranges(map)}, ${about}`, ...gridLines(map, rows)];
@@ -264,7 +271,7 @@ export function fullAtlas(overworld: Overworld): string[] {
     }
     lines.push(`- ${map.name}, ${about}`);
   }
-  return [...title, ...(drawnRows.length === 0 ? [] : [legendOf(drawnRows, legendFor(atlas.maps))]), ...lines];
+  return [...title, ...(drawnRows.length === 0 ? [] : [legendOf(drawnRows, legendFor(atlas.maps, overworld.strength))]), ...lines];
 }
 
 function cellRows(map: AtlasMap, cell: (c: Cell) => string): string[] {
@@ -300,16 +307,16 @@ function peopleLines(map: AtlasMap): string[] {
   return talked.length === 0 ? [] : ["", "What the people of this map said to you:", ...talked.map((p) => `- ${personText(p)}`)];
 }
 
-function obstacleText({ name, x, y, move }: Obstacle): string {
-  return `${name} at (${x}, ${y}). ${fieldMoveRemedy(move)}.`;
+function obstacleText(obstacle: Obstacle, strength: StrengthUse): string {
+  return `${obstacle.name} at (${obstacle.x}, ${obstacle.y}). ${obstacle.move === "STRENGTH" ? obstacleRemedy(obstacle, strength) : fieldMoveRemedy(obstacle.move)}.`;
 }
 
-function obstacleLines(map: AtlasMap): string[] {
-  return map.obstacles.length === 0 ? [] : ["", "Fixed obstacles of this map, not targets:", ...map.obstacles.map((o) => `- ${obstacleText(o)}`)];
+function obstacleLines(map: AtlasMap, strength: StrengthUse): string[] {
+  return map.obstacles.length === 0 ? [] : ["", "Fixed obstacles of this map, not targets:", ...map.obstacles.map((o) => `- ${obstacleText(o, strength)}`)];
 }
 
-function obstaclesText(map: AtlasMap): string {
-  return map.obstacles.length === 0 ? "" : ` Fixed obstacles: ${map.obstacles.map(obstacleText).join(" ")}`;
+function obstaclesText(map: AtlasMap, strength: StrengthUse): string {
+  return map.obstacles.length === 0 ? "" : ` Fixed obstacles: ${map.obstacles.map((o) => obstacleText(o, strength)).join(" ")}`;
 }
 
 function personText(person: AtlasPerson): string {
