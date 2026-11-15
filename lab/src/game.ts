@@ -65,6 +65,12 @@ const MB_WALL: Record<number, string> = { 0x30: WALL.east, 0x31: WALL.west, 0x32
 const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x3a: LEDGE.north, 0x3b: LEDGE.south };
 const MB_SPIN: Record<number, string> = { 0x54: SPIN.east, 0x55: SPIN.west, 0x56: SPIN.north, 0x57: SPIN.south };
 const MB_STOP_SPINNING = 0x58;
+const MB_STRONG_WATER = new Set([0x11, 0x50, 0x51, 0x52, 0x53]);
+const TERRAIN_SHIFT = 9;
+const TERRAIN_MASK = 0x1f;
+const TILE_TERRAIN_WATER = 2;
+const PLAYER_AVATAR_FLAG_ON_LAND = (1 << 0) | (1 << 1) | (1 << 2);
+const PLAYER_AVATAR_FLAG_SURFING = 1 << 3;
 const PLAYER_AVATAR_FLAG_FORCED = 1 << 6;
 const PLAYER_AVATAR_FLAG_BICYCLE = (1 << 1) | (1 << 2);
 const PLAYER_AVATAR_FLAG_ON_WATER = (1 << 3) | (1 << 4);
@@ -191,9 +197,14 @@ const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
   PUSHABLE_BOULDER: { name: "PUSHABLE BOULDER", move: "STRENGTH" },
 };
 
+// SURF starts on the terrain water of a metatile, not on its behavior (IsPlayerFacingSurfableFishableWater).
+function surfableKind(attrs: number, behavior: number): string {
+  return ((attrs >> TERRAIN_SHIFT) & TERRAIN_MASK) === TILE_TERRAIN_WATER && !MB_STRONG_WATER.has(behavior) ? KIND.water : KIND.blocked;
+}
+
 export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
 
-const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["ROCK SMASH", 6]]);
+const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["ROCK SMASH", 6], ["SURF", 5]]);
 
 const FLASH_BADGE = 1;
 
@@ -898,17 +909,29 @@ export class Game {
     return new Set([...WALK_MOVE_BADGE].flatMap(([move, badge]) => (known.has(move) && this.flag(badgeFlag(badge)) ? [move] : [])));
   }
 
+  surfing(): boolean {
+    return (this.avatarFlags() & PLAYER_AVATAR_FLAG_SURFING) !== 0;
+  }
+
+  onLand(): boolean {
+    return (this.avatarFlags() & PLAYER_AVATAR_FLAG_ON_LAND) !== 0;
+  }
+
+  private avatarFlags(): number {
+    return this.mem.global("gPlayerAvatar").field("flags").int();
+  }
+
   hasRunningShoes(): boolean {
     return this.flag(FLAG_SYS_B_DASH);
   }
 
   riding(): boolean {
-    return (this.mem.global("gPlayerAvatar").field("flags").int() & PLAYER_AVATAR_FLAG_BICYCLE) !== 0;
+    return (this.avatarFlags() & PLAYER_AVATAR_FLAG_BICYCLE) !== 0;
   }
 
   // No metatile of FireRed forbids a bicycle, so the cell under the player does not count.
   canChangeBicycle(): boolean {
-    const onWater = (this.mem.global("gPlayerAvatar").field("flags").int() & PLAYER_AVATAR_FLAG_ON_WATER) !== 0;
+    const onWater = (this.avatarFlags() & PLAYER_AVATAR_FLAG_ON_WATER) !== 0;
     return this.mem.global("gMapHeader").field("bikingAllowed").int() !== 0 && !this.flag(FLAG_SYS_ON_CYCLING_ROAD) && !onWater;
   }
 
@@ -1039,7 +1062,7 @@ export class Game {
         : MB_WALL[behavior] ? MB_WALL[behavior]
         : MB_SPIN[behavior] ? MB_SPIN[behavior]
         : behavior === MB_STOP_SPINNING ? STOP
-        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? KIND.water
+        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? surfableKind(attrs ?? 0, behavior)
         : behavior === MB_TALL_GRASS ? KIND.grass
         : KIND.open);
     }
@@ -1206,11 +1229,13 @@ export class Game {
         const defeated = this.flag(TRAINER_FLAGS_START + trainerId);
         const directions = trainerType === TRAINER_TYPE_NORMAL ? (facing ? [facing] : []) : [1, 2, 3, 4];
         const sight: [number, number][] = [];
+        const onWater = kindAt(x, y) === KIND.water;
+        const sees = (kind: string) => kind !== KIND.blocked && (kind === KIND.water) === onWater;
         if (!defeated) {
           for (const dir of directions) {
             const [dx, dy] = DIRECTION_STEP[DIRECTION_OF_DIR[dir]];
             // The game stops the line at a cell the trainer cannot walk on.
-            for (let i = 1; i <= range && kindAt(x + dx * i, y + dy * i) !== "#"; i++) sight.push([x + dx * i, y + dy * i]);
+            for (let i = 1; i <= range && sees(kindAt(x + dx * i, y + dy * i)); i++) sight.push([x + dx * i, y + dy * i]);
           }
         }
         person.trainer = { id: trainerId, defeated, range, allDirections: trainerType !== TRAINER_TYPE_NORMAL, sight };

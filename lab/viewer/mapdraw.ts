@@ -3,7 +3,7 @@
 import { type Direction, LEDGE, SPIN, STOP } from "../src/cells";
 import type { Camera, ConnectionSide, MapActors, MapGrid, Warp } from "../src/game";
 import type { Cell } from "../src/harness/path";
-import { obstacleRemedy } from "../src/protocol";
+import { fieldMoveRemedy } from "../src/protocol";
 
 /** Where cell (0, 0) of the map is on the canvas, and the size of one cell, in canvas pixels. */
 export type View = { x: number; y: number; cell: number };
@@ -420,7 +420,7 @@ export function describe(grid: MapGrid, actors: MapActors | null, x: number, y: 
     }
     if (p.trainer?.sight.some(([sx, sy]) => sx === x && sy === y)) facts.push(`in the sight of trainer ${p.trainer.id}`);
   }
-  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) facts.push(`fixed obstacle: ${o.name}. ${obstacleRemedy(o.move)}`);
+  for (const o of actors?.obstacles ?? []) if (o.x === x && o.y === y) facts.push(`fixed obstacle: ${o.name}. ${fieldMoveRemedy(o.move)}`);
   if (actors?.player && actors.player.x === x && actors.player.y === y) facts.push("player");
   return {
     title: `Cell (${x}, ${y})${outside ? " · border (neighbour map)" : ""}`,

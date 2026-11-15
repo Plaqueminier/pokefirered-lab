@@ -16,7 +16,7 @@ export function LoopPage() {
         ["Viewer Run", "no Bot: the keyboard or a replay plays it, in real time."],
         ["`zoom`, `viewAtlas`", "no frames run: the model gets a new call at once, at the same Decision point."],
         ["Walk after a wild battle or a trigger with no text", "the model bot can continue a walk with no Model call (page “Stuck, reflection and review”)."],
-        ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text. During the animation of an evolution, the Harness removes B, so the press reaches the game after the animation.`],
+        ["Raw input", `\`${RAW_INPUT_FORM}\`: one press when no Macro-action fits. The Harness counts them. A in front of a cut tree or a rock that the party can remove uses the move, with no question and no text. A in front of water uses SURF when the party can use it. During the animation of an evolution, the Harness removes B, so the press reaches the game after the animation.`],
       ]}
     >
       <Card>
@@ -67,7 +67,7 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level), the exits taken with their destination and arrival cell (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level), the exits taken with their destination and arrival cell (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water while the party cannot use SURF, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
@@ -77,7 +77,7 @@ export function PrinciplePage() {
         <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH, the speed of a walk and an evolution that B cannot stop"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
         <DocCard icon={Eye} title="Knowledge level" lines={["`player` what a careful player knows", "`full` also the exact HP and stats of the enemy, and all the maps"]} />
-        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water, fixed obstacles"]} />
+        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water with no SURF, fixed obstacles"]} />
       </div>
     </Page>
   );
@@ -117,7 +117,7 @@ export function ViewerPage() {
         ["Bag and PC", "the five pockets of the Bag with their items (quantity and description), the items of the PC and the Pokémon of the boxes at the cursor, and the changes of the Bag and the PC with their times; a click on a change goes to it."],
         [
           "Timeline",
-          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, FLASH used, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
+          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, FLASH used, SURF used, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],

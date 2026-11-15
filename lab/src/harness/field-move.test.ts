@@ -15,6 +15,7 @@ setDefaultTimeout(60_000);
 const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_BADGE02_GET = 0x821;
+const FLAG_BADGE05_GET = 0x824;
 const FLAG_BADGE06_GET = 0x825;
 const MOVE_CUT = 15;
 const MOVE_FLASH = 148;
@@ -396,6 +397,101 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("a Fixed obsta
     expect(harness.observe().mode).toBe("battle");
     expect(obstacleEvents(harness)).toEqual([expect.objectContaining({ move: "ROCK SMASH", map: "RockTunnel_B1F", x: 2, y: 23, species: "SQUIRTLE" })]);
     harness.close();
+  });
+});
+
+const MOVE_SURF = 57;
+
+const surfEvents = (harness: Harness) => harness.events.filter((e) => e.type === "surf");
+
+function learnSurf(run: Run): void {
+  setFlag(run, FLAG_BADGE05_GET);
+  setThirdMove(run, 0, MOVE_SURF);
+}
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("SURF, on real maps", () => {
+  test("the model bot crosses the water from Pallet Town to Route 21 with one goTo, and the record has the event", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    must(await harness.goTo(6, 17, "PalletTown"));
+    learnSurf(run);
+    const before = harness.actions.length;
+    const users: string[] = [];
+    const client = firstAnswer(users, () => "goTo 12 3 Route21_North");
+    await expect(harness.play(modelBot({ costLimit: 1 }, () => client))).rejects.toThrow("3 answers in a row that the Bot cannot read");
+    expect(harness.actions.slice(before).map(({ action, result }: ActionEntry) => [action.name, result.status])).toEqual([["goTo", "done"]]);
+    expect(users[0]).toContain("w water: a walk crosses it with SURF");
+    expect(users[0]).not.toContain("You are on the water");
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route21_North" }, player: { x: 12, y: 3 }, surfing: false });
+    expect(surfEvents(harness)).toEqual([{ type: "surf", frame: expect.any(Number), map: "PalletTown", x: 6, y: 19, species: "SQUIRTLE" }]);
+    expect(users).toHaveLength(4);
+    harness.close();
+  });
+
+  test("with no badge 5, or with no Pokémon that knows SURF, the water and its edge are blocked and the reason is given; then A in front of it starts SURF, also from the BICYCLE", async () => {
+    const { harness, run } = await openAt("Route1", 3, 30, false);
+    must(await harness.goTo(5, 17, "PalletTown"));
+    const reasonWith = async () => {
+      const result = await harness.goTo(8, 18);
+      return "reason" in result ? result.reason : null;
+    };
+    expect(await reasonWith()).toContain("Only a Pokémon that knows SURF can cross water");
+    setThirdMove(run, 0, MOVE_SURF);
+    expect(await reasonWith()).toContain("badge 5");
+    expect(await harness.goTo(8, 20)).toMatchObject({ status: "impossible", reason: expect.stringContaining("south edge of PalletTown is water. A Pokémon of your party knows SURF, but its use on the map needs badge 5") });
+    const southEdge = () => mapNamed(harness.observe().atlas, "PalletTown").edges.find((edge) => edge.side === "south");
+    expect(southEdge()).toMatchObject({ blocked: "water" });
+    setFlag(run, FLAG_BADGE05_GET);
+    expect(southEdge()?.blocked).toBeUndefined();
+    giveBicycle(run);
+    must(await harness.use("BICYCLE"));
+    must(await harness.goTo(6, 17));
+    expect(overworld(harness)).toMatchObject({ riding: true });
+    const pressed = await harness.press("A");
+    expect(pressed).toEqual({ status: "done", frames: expect.any(Number) });
+    expect(overworld(harness)).toMatchObject({ player: { x: 7, y: 17 }, surfing: true });
+    expect(surfEvents(harness)).toHaveLength(1);
+    harness.close();
+  });
+
+  test("a wild battle on the water interrupts the walk, and the next walk starts from the water", async () => {
+    const { harness, run } = await openAt("Route21_North", 12, 3);
+    learnSurf(run);
+    for (let flag = TRAINER_FLAGS_START; flag < TRAINER_FLAGS_END; flag++) setFlag(run, flag);
+    let walk = await harness.goTo(10, 30);
+    for (let back = 0; back < 8 && walk.status === "done"; back++) walk = await harness.goTo(10, back % 2 === 0 ? 12 : 30);
+    expect(walk).toMatchObject({ status: "interrupted", reason: "battle" });
+    for (let waiting = harness.observe().waitingFor.kind; waiting !== "walk"; waiting = harness.observe().waitingFor.kind) must(waiting === "battleAction" ? await harness.run() : await harness.readText());
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route21_North" }, surfing: true });
+    must(await harness.goTo(12, 3));
+    expect(overworld(harness)).toMatchObject({ player: { x: 12, y: 3 }, surfing: false });
+    harness.close();
+  });
+
+  test("only the water where the game starts SURF is water, and a trainer does not see across the limit of water and land", async () => {
+    const run = await Run.open({ startSave: PARTY_SAVE });
+    const viewOf = (map: string) => {
+      const view = run.game.mapView(map);
+      if (!view) throw new Error(`no map ${map}`);
+      return view;
+    };
+    const kinds = (map: string, behavior: string) => {
+      const { grid } = viewOf(map);
+      const id = Number(Object.entries(grid.behaviorNames).find(([, name]) => name === behavior)?.[0]);
+      return new Set(grid.behaviors.flatMap((b, i) => (b === id ? [grid.kinds[i]] : [])));
+    };
+    expect(kinds("Route17", "MB_CYCLING_ROAD_WATER")).toEqual(new Set(["#"]));
+    expect(kinds("SeafoamIslands_B4F", "MB_NORTHWARD_CURRENT")).toEqual(new Set(["#"]));
+    expect(kinds("SeafoamIslands_B3F", "MB_FAST_WATER")).toEqual(new Set(["#"]));
+    expect(kinds("Route21_North", "MB_OCEAN_WATER")).toContain("~");
+    const swimmers = (map: string) => {
+      const { grid, actors } = viewOf(map);
+      const water = ([x, y]: [number, number]) => grid.kinds[(y - grid.y0) * grid.width + (x - grid.x0)] === "~";
+      return { water, swimmers: actors.people.filter((p) => p.trainer && water([p.x, p.y])) };
+    };
+    expect(swimmers("CeruleanCity_Gym").swimmers.find((p) => p.x === 10 && p.y === 12)?.trainer).toMatchObject({ defeated: false, range: 1, sight: [] });
+    const route = swimmers("Route21_North");
+    expect(route.swimmers.some((p) => p.trainer && p.trainer.sight.length > 0 && p.trainer.sight.every(route.water))).toBe(true);
+    run.core.close();
   });
 });
 

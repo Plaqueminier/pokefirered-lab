@@ -1,9 +1,9 @@
-import { type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "../cells";
+import { DIRECTION_STEPS, type Direction, KIND, LEDGE, SPIN, STOP, WALL } from "../cells";
 import type { FieldMove, Obstacle } from "../game";
-import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, atlasCells, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
-import { type Cell, cellKey, kindAt, type MapCells } from "../harness/path";
+import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, atlasCells, cellAt, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
+import { allCells, type Cell, cellKey, inside, kindAt, type MapCells } from "../harness/path";
 import type { Slide } from "../harness/slides";
-import { obstacleRemedy } from "../protocol";
+import { fieldMoveRemedy } from "../protocol";
 import { explorableCells, type LeftPlace, type Part, Parts, unknownSlides, unseenGroups } from "./parts";
 import { away, EXITS_GROUP, type Hops, hopsOf, edgeLabel, exitSight, isExit, LETTERS, leadTargets, localTargets, nearestUnseen, type Overworld, peopleInTheWay, checkName, exitLabels, TARGET_GROUPS, type Target, targetLetter, targetLines, warpLabel } from "./targets";
 
@@ -39,6 +39,7 @@ const LEGEND: [signs: string, text: string][] = [
   [STOP, `${STOP} a stop tile`],
   [LONG_MARK, `${LONG_MARK} a target after Z`],
 ];
+const SURF_LEGEND = LEGEND.map(([signs, text]): [string, string] => [signs, signs === FIELD_MOVES.SURF.sign ? `${signs} water: a walk crosses it with SURF` : text]);
 const OWN_PART_SEEN = "You saw all the cells that you can reach from here on this map. Other parts of it can have unseen cells: to go on, take an exit or a lead.";
 const MAP_SEEN = "You saw all the cells of this map.";
 const LEFT_TITLE = "What is left (from the game, not from your notes: if your Memory tree disagrees, this list is right):";
@@ -63,11 +64,16 @@ export function darkOfMap({ atlas, map }: Pick<Overworld, "atlas" | "map">): Atl
   return mapNamed(atlas, map.name).dark;
 }
 
-/** The current map has what this move works on: FLASH a map that is dark for the model, SURF an edge with water, CUT, ROCK SMASH and STRENGTH their Fixed obstacle. */
 export function moveObstacleHere(move: string, overworld: Overworld): boolean {
   if (move === "FLASH") return darkOfMap(overworld) !== undefined;
   const here = mapNamed(overworld.atlas, overworld.map.name);
-  return move === "SURF" ? here.edges.some((edge) => edge.blocked === "water") : here.obstacles.some((obstacle) => obstacle.move === move);
+  return move === "SURF" ? here.edges.some((edge) => edge.blocked === "water") || waterLeadsOn(here) : here.obstacles.some((obstacle) => obstacle.move === move);
+}
+
+function waterLeadsOn(map: AtlasMap): boolean {
+  const cells = atlasCells(map);
+  const unseen = (c: Cell) => inside(cells, c) && cellAt(map, c) === UNSEEN;
+  return allCells(cells).some((c) => cellAt(map, c) === KIND.water && DIRECTION_STEPS.some(([, [dx, dy]]) => unseen({ x: c.x + dx, y: c.y + dy })));
 }
 
 export function atlasExtract(overworld: Overworld): AtlasView {
@@ -130,7 +136,7 @@ function drawnView({ grid, player }: Overworld, here: AtlasMap, hasMove: HasMove
   const sign = cellSigns(here, grid, hasMove);
   const rows = cellRows(here, (c) => marks.get(cellKey(c)) ?? sign(c));
   const rule = here.parts.length > 0 ? [SPIN_RULE] : [];
-  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows), ...rule, ...gridLines(here, rows)];
+  return [`Map ${here.name}: ${ranges(here)}. You are at (${player.x}, ${player.y}), facing ${player.facing}.`, legendOf(rows, legendFor([here])), ...rule, ...gridLines(here, rows)];
 }
 
 function partLines(parts: Parts): string[] {
@@ -164,14 +170,19 @@ function cellSigns(map: AtlasMap, view: MapCells, hasMove: HasMove): (c: Cell) =
   return (c) => {
     if (!seen(c)) return explorable.has(cellKey(c)) ? UNSEEN : BLANK;
     const kind = kindAt(view, c);
-    if (kind === KIND.water) return hasMove("SURF") ? FIELD_MOVES.SURF.sign : KIND.blocked;
+    if (kind === KIND.surf || (kind === KIND.water && hasMove("SURF"))) return FIELD_MOVES.SURF.sign;
+    if (kind === KIND.water) return KIND.blocked;
     return obstacles.get(cellKey(c)) ?? kind;
   };
 }
 
-function legendOf(rows: string[]): string {
+function legendFor(maps: AtlasMap[]): [signs: string, text: string][] {
+  return maps.some((map) => map.cells.includes(KIND.surf)) ? SURF_LEGEND : LEGEND;
+}
+
+function legendOf(rows: string[], legend: [signs: string, text: string][]): string {
   const drawn = new Set(rows.join(""));
-  return `Legend: ${LEGEND.flatMap(([signs, text]) => ([...signs].some((sign) => drawn.has(sign)) ? [text] : [])).join("; ")}.`;
+  return `Legend: ${legend.flatMap(([signs, text]) => ([...signs].some((sign) => drawn.has(sign)) ? [text] : [])).join("; ")}.`;
 }
 
 function seenLines(here: AtlasMap, targets: Target[], parts: Parts): string[] {
@@ -253,7 +264,7 @@ export function fullAtlas(overworld: Overworld): string[] {
     }
     lines.push(`- ${map.name}, ${about}`);
   }
-  return [...title, ...(drawnRows.length === 0 ? [] : [legendOf(drawnRows)]), ...lines];
+  return [...title, ...(drawnRows.length === 0 ? [] : [legendOf(drawnRows, legendFor(atlas.maps))]), ...lines];
 }
 
 function cellRows(map: AtlasMap, cell: (c: Cell) => string): string[] {
@@ -290,7 +301,7 @@ function peopleLines(map: AtlasMap): string[] {
 }
 
 function obstacleText({ name, x, y, move }: Obstacle): string {
-  return `${name} at (${x}, ${y}). ${obstacleRemedy(move)}.`;
+  return `${name} at (${x}, ${y}). ${fieldMoveRemedy(move)}.`;
 }
 
 function obstacleLines(map: AtlasMap): string[] {

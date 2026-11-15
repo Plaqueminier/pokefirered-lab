@@ -4,11 +4,11 @@ import { isAbsolute, join } from "node:path";
 import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, sellableItems, type Stone, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, withSurf } from "../cells";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
-import { badgeNeeded, type BotInfo, Keys, obstacleRemedy } from "../protocol";
+import { badgeNeeded, type BotInfo, fieldMoveRemedy, Keys } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
@@ -16,7 +16,7 @@ import type { Genome } from "../genetic/genome";
 import { isStateEvent, withoutFormat } from "./game-events";
 import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, whyNoRoute } from "./path";
+import { type Cell, type Destination, destinationOf, findRoute, headingAlong, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
@@ -72,7 +72,7 @@ type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPock
 export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "graphics" | "loaded" | "stays"> & { unbeatenTrainer?: boolean };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -431,7 +431,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, teachables: game.teachables(), stones: game.stones() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), teachables: game.teachables(), stones: game.stones() };
   }
 
   availableActions(): AvailableAction[] {
@@ -545,7 +545,7 @@ export class Harness {
 
   private walkTo(asked: Place, canExit: boolean): Outcome {
     const destination = destinationOf(asked, canExit, this.routeMaps());
-    const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), canExit, this.#atlas.blockOf);
+    const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), canExit, this.#atlas.blockOf, (move) => this.obstacleRemedyNow(move));
     if (outside) return { status: "impossible", reason: outside };
     let tries = 0;
     let stuckAt: Place | null = null;
@@ -741,7 +741,7 @@ export class Harness {
   }
 
   async press(button: Button): Promise<ActionResult> {
-    return this.act({ name: "press", button }, () => (button === "A" && this.facesUsableObstacle() ? this.#menus.useFieldMove() : this.#menus.input(Keys[button])));
+    return this.act({ name: "press", button }, () => (button === "A" && this.facesFieldMoveTarget() ? this.#menus.useFieldMove() : this.#menus.input(Keys[button])));
   }
 
   private act(action: MacroAction | RawInput, body: () => Outcome): ActionResult;
@@ -843,7 +843,8 @@ export class Harness {
     const grid = game.grid();
     const actors = grid && game.actors(grid);
     if (!player || !grid || !actors) throw new Error("the player is not on the overworld");
-    return { player, grid: { ...game.withObstacles(grid, this.obstaclesByUse(actors).closed), signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
+    const { kinds, closed } = this.fieldMovesOn(grid, actors);
+    return { player, grid: { ...game.withObstacles({ ...grid, kinds }, closed), signs: grid.signs.filter((s) => s.kind === "sign") }, actors };
   }
 
   // A script runs during a whole text, choice or Raw input, so only a battle stops them.
@@ -863,7 +864,7 @@ export class Harness {
 
   private obstacleRemedyNow(move: FieldMove): string {
     const badge = this.#run.game.missingBadge(move);
-    return badge === null ? obstacleRemedy(move) : badgeNeeded(move, badge);
+    return badge === null ? fieldMoveRemedy(move) : badgeNeeded(move, badge);
   }
 
   private routeMaps(): MapSource {
@@ -875,8 +876,8 @@ export class Harness {
           maps.set(name, null);
           return null;
         }
-        const { usable, closed } = this.obstaclesByUse(view.actors);
-        const map = { ...view.grid, people: view.actors.people, obstacles: closed, removable: usable };
+        const { kinds, usable, closed } = this.fieldMovesOn(view.grid, view.actors);
+        const map = { ...view.grid, kinds, people: view.actors.people, obstacles: closed, removable: usable };
         const sight = this.#atlas.darkSight(view.grid);
         maps.set(name, sight ? onlySeen(map, sight) : map);
       }
@@ -884,16 +885,20 @@ export class Harness {
     };
   }
 
-  private facesUsableObstacle(): boolean {
-    if (this.#run.game.waitingFor().kind !== "walk") return false;
-    const { player, actors } = this.overworld();
+  private facesFieldMoveTarget(): boolean {
+    const game = this.#run.game;
+    if (game.waitingFor().kind !== "walk") return false;
+    const player = game.player();
+    const map = this.routeMaps()(game.map().name);
+    if (!player || !map) return false;
     const [dx, dy] = DIRECTION_STEP[player.facing];
-    return this.obstaclesByUse(actors).usable.some((o) => o.x === player.x + dx && o.y === player.y + dy);
+    const front = { x: player.x + dx, y: player.y + dy };
+    return startsSurf(map, player, front) || map.removable.some((o) => o.x === front.x && o.y === front.y);
   }
 
-  private obstaclesByUse({ obstacles }: Pick<MapActors, "obstacles">): { usable: Obstacle[]; closed: Obstacle[] } {
+  private fieldMovesOn(grid: MapGrid, { obstacles }: Pick<MapActors, "obstacles">): { kinds: string; usable: Obstacle[]; closed: Obstacle[] } {
     const moves = this.#run.game.usableFieldMoves();
-    return { usable: obstacles.filter((o) => moves.has(o.move)), closed: obstacles.filter((o) => !moves.has(o.move)) };
+    return { kinds: withSurf(grid.kinds, moves.has("SURF")), usable: obstacles.filter((o) => moves.has(o.move)), closed: obstacles.filter((o) => !moves.has(o.move)) };
   }
 
   private interactions(): AvailableAction[] {

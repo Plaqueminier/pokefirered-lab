@@ -2,6 +2,7 @@ import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE, SPIN } from 
 import { destinationNow, type MapGrid } from "../game";
 import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, atlasCells, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
+import { fieldMoveRemedy } from "../protocol";
 import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
 import { type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
 
@@ -150,7 +151,7 @@ function floorsKnown(floors: AtlasWarp[]): string[] {
 }
 
 export function edgeLabel(e: AtlasEdge, map: string): string {
-  return e.blocked ? `${edgeName(e.side)}: ${blockedText(map, e.side, e.blocked)}` : `${edgeName(e.side)}, ${destination(e.to)}`;
+  return e.blocked ? `${edgeName(e.side)}: ${blockedText(map, e.side, fieldMoveRemedy("SURF"))}` : `${edgeName(e.side)}, ${destination(e.to)}`;
 }
 
 export function targetLetter(index: number): string {

@@ -128,6 +128,8 @@ export class WalkDriver {
         return this.push(direction);
       case "remove":
         return this.removeObstacle(direction);
+      case "surf":
+        return this.startSurf(direction);
       case "jump":
         return this.step(direction, 2);
       case "walk":
@@ -136,12 +138,23 @@ export class WalkDriver {
   }
 
   private removeObstacle(direction: Direction): LegResult {
+    const used = this.useFieldMove(direction);
+    return used === "done" ? this.step(direction, 1) : used;
+  }
+
+  private startSurf(direction: Direction): LegResult {
+    const before = this.game.playerPlace();
+    const used = this.useFieldMove(direction);
+    return used !== "done" || at(this.game.playerPlace()) !== at(before) ? used : "no move";
+  }
+
+  private useFieldMove(direction: Direction): LegResult {
     const interruption = this.stopWalking();
     if (interruption) return interruption;
     const turned = this.face(direction);
     if (turned.status !== "done") return turned.status === "interrupted" ? turned.reason : "no move";
     const used = this.menus.useFieldMove();
-    return used.status === "interrupted" ? used.reason : this.step(direction, 1);
+    return used.status === "interrupted" ? used.reason : "done";
   }
 
   // Hold the direction: a short press only turns a player who faces another way. A jump moves the

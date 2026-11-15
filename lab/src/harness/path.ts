@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, LEDGE, OPPOSITE, STOP, WALL } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, ELEVATION_SHIFT, KIND, LEDGE, OPPOSITE, STOP, WALL } from "../cells";
 import type { MapGrid, Obstacle, WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
@@ -6,7 +6,7 @@ export type Place = Cell & { map: string };
 
 export type RoutePerson = Cell & { graphics: string; stays: boolean };
 
-export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | "height" | "mapWidth" | "mapHeight"> & {
+export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | "height" | "mapWidth" | "mapHeight" | "blocks"> & {
   warps: WarpExit[];
   connections: Pick<MapGrid["connections"][number], "direction" | "offset" | "map">[];
   people: RoutePerson[];
@@ -14,7 +14,7 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   removable: Cell[];
 };
 
-type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" };
+type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" | "surf" };
 
 export type Leg = { map: string; moves: Move[] };
 
@@ -22,10 +22,14 @@ export type MapSource = (name: string) => RouteMap | null;
 
 export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight">;
 
-const WALKABLE = new Set<string>([KIND.open, KIND.grass, STOP, ...Object.values(WALL)]);
+const WALKABLE = new Set<string>([KIND.open, KIND.grass, KIND.surf, STOP, ...Object.values(WALL)]);
 const WARP_COST = 4;
-// Measured: one use of CUT takes 545 frames, and one step 16 frames.
-const REMOVE_COST = 34;
+// Measured frames.
+const STEP_FRAMES = 16;
+const CUT_FRAMES = 545;
+const SURF_FRAMES = 452;
+const SHORE_ELEVATION = 3;
+const MOVE_COST: Record<Move["kind"], number> = { walk: 1, jump: 2, push: 1, remove: Math.round(CUT_FRAMES / STEP_FRAMES), surf: Math.round(SURF_FRAMES / STEP_FRAMES) };
 export const MAX_ROUTE_MAPS = 32;
 
 type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
@@ -108,38 +112,45 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
 
 function* edges(place: Place, load: MapSource): Generator<Edge> {
   const map = load(place.map)!;
+  const onWater = isSurf(map, place);
   for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
     const walk: Move = { direction, kind: "walk" };
     const press = map.warps.find((w) => w.how === "press" && w.from.x === place.x && w.from.y === place.y && w.direction === direction);
     if (press) {
       const arrival = arrivalOf(press, load);
-      if (arrival) yield { to: arrival, move: { direction, kind: "push" }, cost: 1 + WARP_COST, leaves: true };
+      if (arrival) yield { to: arrival, move: { direction, kind: "push" }, cost: MOVE_COST.push + WARP_COST, leaves: true };
       continue;
     }
     const next = { map: place.map, x: place.x + dx, y: place.y + dy };
     if (!inside(map, next)) {
       const across = acrossConnection(map, next, direction, load);
-      if (across) yield { to: across, move: walk, cost: 1, leaves: true };
+      const kind = across && stepKind(map, place, load(across.map)!, across);
+      if (across && kind) yield { to: across, move: { direction, kind }, cost: MOVE_COST[kind], leaves: true };
       continue;
     }
     if (wallBetween(map, place, direction)) continue;
     if (kindAt(map, next) === LEDGE[direction]) {
       const landing = { map: place.map, x: next.x + dx, y: next.y + dy };
-      if (inside(map, landing) && free(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: 2, leaves: false };
+      if (!onWater && inside(map, landing) && free(map, landing) && !isSurf(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: MOVE_COST.jump, leaves: false };
       continue;
     }
     if (removableAt(map, next)) {
-      yield { to: next, move: { direction, kind: "remove" }, cost: REMOVE_COST, leaves: false };
+      if (!onWater) yield { to: next, move: { direction, kind: "remove" }, cost: MOVE_COST.remove, leaves: false };
       continue;
     }
     if (!free(map, next)) continue;
+    const kind = stepKind(map, place, map, next);
+    if (kind !== "walk") {
+      if (kind) yield { to: next, move: { direction, kind }, cost: MOVE_COST[kind], leaves: false };
+      continue;
+    }
     const step = map.warps.find((w) => w.how === "step" && w.x === next.x && w.y === next.y);
     if (step) {
       const arrival = arrivalOf(step, load);
-      if (arrival) yield { to: arrival, move: walk, cost: 1 + WARP_COST, leaves: true };
+      if (arrival) yield { to: arrival, move: walk, cost: MOVE_COST.walk + WARP_COST, leaves: true };
       continue;
     }
-    yield { to: next, move: walk, cost: 1, leaves: false };
+    yield { to: next, move: walk, cost: MOVE_COST.walk, leaves: false };
   }
 }
 
@@ -155,6 +166,25 @@ export function destinationOf(cell: Place, canExit: boolean, load: MapSource): D
 export function reached(destination: Destination, here: Place): boolean {
   const steps = Math.abs(here.x - destination.x) + Math.abs(here.y - destination.y);
   return here.map === destination.map && steps <= (destination.exit ? 1 : 0);
+}
+
+function isSurf(map: MapCells, cell: Cell): boolean {
+  return kindAt(map, cell) === KIND.surf;
+}
+
+function isShore(map: RouteMap, cell: Cell): boolean {
+  return map.blocks[cellIndex(map, cell)] >> ELEVATION_SHIFT === SHORE_ELEVATION;
+}
+
+export function startsSurf(map: RouteMap, from: Cell, to: Cell): boolean {
+  return inside(map, to) && free(map, to) && stepKind(map, from, map, to) === "surf";
+}
+
+function stepKind(map: RouteMap, from: Cell, next: RouteMap, to: Cell): "walk" | "surf" | null {
+  const onWater = isSurf(map, from);
+  if (onWater === isSurf(next, to)) return "walk";
+  if (!(onWater ? isShore(next, to) : isShore(map, from))) return null;
+  return onWater ? "walk" : "surf";
 }
 
 function removableAt(map: RouteMap, { x, y }: Cell): boolean {
@@ -271,8 +301,12 @@ export function nextStepAlong(map: MapCells & Pick<RouteMap, "warps"> & { people
   return unseenAt(next) || unseenAt({ x: next.x + dx, y: next.y + dy }) ? next : null;
 }
 
+function cellIndex(map: Pick<MapCells, "x0" | "y0" | "width">, c: Cell): number {
+  return (c.y - map.y0) * map.width + (c.x - map.x0);
+}
+
 export function kindAt(map: MapCells, c: Cell): string {
-  return map.kinds[(c.y - map.y0) * map.width + (c.x - map.x0)];
+  return map.kinds[cellIndex(map, c)];
 }
 
 export function walkable(map: MapCells, c: Cell): boolean {

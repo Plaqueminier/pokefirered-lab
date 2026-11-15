@@ -201,9 +201,9 @@ export class MenuDriver {
       if (kind === "walk") return DONE;
       const outcome = kind === "choice" ? this.choose("YES") : this.readText();
       if (outcome.status === "interrupted") return { status: "interrupted", reason: outcome.reason };
-      if (outcome.status !== "done") throw new Error(`the script of the obstacle stops: ${outcome.reason}`);
+      if (outcome.status !== "done") throw new Error(`the script of the field move stops: ${outcome.reason}`);
     }
-    throw new Error(`the script of the obstacle still runs after ${MAX_TEXT_PRESSES} screens`);
+    throw new Error(`the script of the field move still runs after ${MAX_TEXT_PRESSES} screens`);
   }
 
   /** `foe`: 1 or 2 in a double battle. With no foe, a move that hits one foe hits the first one, as the cursor of the game starts there. */

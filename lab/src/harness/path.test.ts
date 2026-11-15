@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { Direction } from "../cells";
+import { type Direction, ELEVATION_SHIFT } from "../cells";
 import { type Cell, destinationOf, findRoute, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
+
+const LAND_BLOCK = 3 << ELEVATION_SHIFT;
 
 function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteMap {
   const width = rows[0].length;
   const height = rows.length;
-  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, warps: [], connections: [], people: [], obstacles: [], removable: [], ...more };
+  const blocks = Array.from({ length: width * height }, () => LAND_BLOCK);
+  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, blocks, warps: [], connections: [], people: [], obstacles: [], removable: [], ...more };
 }
 
 describe("a route on a map that is dark for the model", () => {
@@ -212,6 +215,18 @@ describe("findRoute on one map", () => {
       ".###.",
     ];
     expect(path(map("A", rows), { x: 0, y: 0 }, { x: 2, y: 2 })).toBeNull();
+  });
+
+  test("starts SURF from a shore at elevation 3 only, and crosses the water when the way on land is too long", () => {
+    const shore = (detour: number, elevation = 3) => {
+      const rows = ["..≈..", ...Array.from({ length: detour }, () => ".###."), "....."];
+      const blocks = Array.from(rows.join(""), (kind) => (kind === "≈" ? 1 : elevation) << ELEVATION_SHIFT);
+      return map("A", rows, { blocks });
+    };
+    const kinds = (m: RouteMap) => findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0].moves.map((move) => move.kind);
+    expect(kinds(shore(1))).not.toContain("surf");
+    expect(kinds(shore(40))).toEqual(["walk", "surf", "walk", "walk"]);
+    expect(kinds(shore(40, 4))).not.toContain("surf");
   });
 
   test("does not walk on water, but walks in tall grass", () => {

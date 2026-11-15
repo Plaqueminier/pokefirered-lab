@@ -499,6 +499,13 @@ describe("a REPEL", () => {
   });
 });
 
+describe("SURF", () => {
+  test("a walk on the water tells it, because the sign of the player hides the cell", () => {
+    const surfing = { ...route1(22, []), surfing: true } as Observation;
+    expect(userPrompt(surfing, askedOf(surfing, false)!, [], NO_TURN)).toContain("You are on the water with SURF.");
+  });
+});
+
 describe("the BICYCLE", () => {
   const BICYCLE = { name: "BICYCLE", quantity: 1, description: "A folding bicycle.", price: 0, battle: null, walk: "alone" };
   const FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: your choice stays after a door.";

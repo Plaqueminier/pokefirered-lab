@@ -28,9 +28,9 @@ export function actionText({ name, ...args }: MacroAction | RawInput): string {
   return `${name}(${Object.values(args).join(", ")})`;
 }
 
-/** What removes a fixed obstacle of the map, for the model, the reasons of the Harness and the Viewer. */
-export function obstacleRemedy(move: string): string {
-  return `Only a Pokémon that knows ${move} can remove it`;
+/** What a Field move opens, for the model, the reasons of the Harness and the Viewer. */
+export function fieldMoveRemedy(move: string): string {
+  return move === "SURF" ? "Only a Pokémon that knows SURF can cross water" : `Only a Pokémon that knows ${move} can remove it`;
 }
 
 export function badgeNeeded(move: string, badge: number): string {

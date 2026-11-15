@@ -64,6 +64,7 @@ const PRESS = "- press <button>: one press of A, B, Select, Up, Down, Left, Righ
 const REPEL_ITEMS = ["REPEL", "SUPER REPEL", "MAX REPEL"];
 const REPEL_FACTS = "A REPEL stops wild battles with Pokémon of a lower level than the first Pokémon of your party that has not fainted, for 100 steps (SUPER REPEL 200, MAX REPEL 250). Use it to explore without fights. Do not use it when your Pokémon need experience.";
 const REPEL_WORE_OFF = /REPEL's effect wore off/;
+const SURFING_LINE = "You are on the water with SURF.";
 const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: your choice stays after a door.";
 const MAX_BOX_LINES = 12;
 
@@ -214,7 +215,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText),
-    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag)] : []),
+    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag), ...surfLines(asked.overworld)] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
     ...context(asked),
@@ -456,6 +457,10 @@ function bicycleLines({ riding, rideChosen }: Overworld, bag: BagPocket[]): stri
   if (!bag.some(({ items }) => items.some((item) => item.name === BICYCLE))) return [];
   const state = rideChosen ? "You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again." : riding ? "You did not choose to ride: the next walk leaves the BICYCLE where the game allows it. Use BICYCLE to keep it." : "You walk. Use BICYCLE to ride.";
   return [`${BICYCLE_FACTS} ${state}`];
+}
+
+function surfLines({ surfing }: Overworld): string[] {
+  return surfing ? [SURFING_LINE] : [];
 }
 
 function repelLines({ mapKind, repelActive }: Overworld, bag: BagPocket[], events: readonly RunEvent[]): string[] {

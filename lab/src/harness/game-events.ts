@@ -17,9 +17,10 @@ export type StateEvent =
   | { type: "trainer"; trainer: string; id: number }
   | { type: "obstacle"; move: FieldMove; map: string; x: number; y: number; species: string }
   | { type: "flash"; map: string; species: string }
+  | { type: "surf"; map: string; x: number; y: number; species: string }
   | { type: "whiteout" };
 
-const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "whiteout"] satisfies StateEvent["type"][]);
+const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "surf", "whiteout"] satisfies StateEvent["type"][]);
 
 export function isStateEvent<E extends { type: string }>(event: E): event is Extract<E, { type: StateEvent["type"] }> {
   return STATE_EVENT_TYPES.has(event.type);
@@ -46,6 +47,7 @@ export class StateWatch {
   #inBattle = false;
   #whitingOut = false;
   #blocks = "";
+  #avatar: { onLand: boolean; map: string } | null = null;
   // After an item heal, Task_PartyMenuModifyHP (party_menu.c) sets the HP back to the old HP and raises it by 1 at each frame up to the new HP: these frames are no heal. The start and the end of a battle forget them.
   readonly #itemHealTops = new Map<number, number>();
 
@@ -61,6 +63,7 @@ export class StateWatch {
     if (whitingOut && !this.#whitingOut) events.push({ type: "whiteout" });
     this.#whitingOut = whitingOut;
     events.push(...this.#battle.onFrame(this.#reads, inBattle));
+    events.push(...this.#surfStart(mode));
     const keys = this.#reads.keys();
     const moving = keys.blocks !== this.#blocks;
     this.#blocks = keys.blocks;
@@ -126,6 +129,21 @@ export class StateWatch {
       const user = obstacle && party.find((mon) => mon.moves.includes(obstacle.move));
       return user ? [{ type: "obstacle", move: obstacle.move, map: this.#game.map().name, x: obstacle.x, y: obstacle.y, species: user.species }] : [];
     });
+  }
+
+  // A battle sets the avatar flags to 0, then sets SURFING again on the return to the field: a start of SURF is a change from the land.
+  #surfStart(mode: Mode): StateEvent[] {
+    const before = this.#avatar;
+    const player = mode === "overworld" ? this.#game.player() : null;
+    if (!player) {
+      this.#avatar = null;
+      return [];
+    }
+    const now = { onLand: this.#game.onLand(), map: this.#game.map().name };
+    this.#avatar = now;
+    if (!before?.onLand || before.map !== now.map || !this.#game.surfing()) return [];
+    const user = this.#seen?.party.find((mon) => mon.moves.includes("SURF"));
+    return user ? [{ type: "surf", map: now.map, x: player.x, y: player.y, species: user.species }] : [];
   }
 
   #flashEvent(party: WatchedMon[]): StateEvent[] {

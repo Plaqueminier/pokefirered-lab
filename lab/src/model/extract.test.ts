@@ -4,7 +4,7 @@ import { type AtlasMap, atlasCells, atlasWarps } from "../harness/atlas";
 import { walkable } from "../harness/path";
 import { hasSpinTiles, numberParts } from "../harness/slides";
 import type { Person } from "../harness/harness";
-import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, knownWorld, MAX_FAR_MAPS, OTHER_MAPS_BUDGET } from "./extract";
+import { atlasExtract, FULL_ATLAS_BUDGET, fullAtlas, knownWorld, MAX_FAR_MAPS, moveObstacleHere, OTHER_MAPS_BUDGET } from "./extract";
 import type { Overworld } from "./targets";
 
 const LAB: AtlasMap = {
@@ -41,7 +41,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     stones: [],
     boxes: [],
     pcItems: [],
-    repelActive: false, riding: false, rideChosen: false,
+    repelActive: false, riding: false, rideChosen: false, surfing: false,
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },
@@ -342,8 +342,13 @@ describe("the clearest map", () => {
   });
 
   const pond = room("...~~~");
-  test("water is # with no way to surf, and w with HM03 in the Bag or a Pokémon that knows SURF", () => {
+  test("water is # with no way to surf, and w with HM03 in the Bag or a Pokémon that knows SURF; the hint of SURF needs water that leads to unseen cells", () => {
     const at = { x: 0, y: 0 };
+    const open = atlasExtract({ ...overworld(room("...≈≈≈"), [], at), party: knowing("SURF") }).lines;
+    expect(rows(open)).toEqual(["y= 0  @..www"]);
+    expect(legend(open)).toContain("w water: a walk crosses it with SURF");
+    expect(moveObstacleHere("SURF", overworld(room("...~~?"), [], at))).toBe(true);
+    expect(moveObstacleHere("SURF", overworld(pond, [], at))).toBe(false);
     expect(rows(atlasExtract(overworld(pond, [], at)).lines)).toEqual(["y= 0  @..###"]);
     expect(rows(atlasExtract({ ...overworld(pond, [], at), bag: withItem("HM03") }).lines)).toEqual(["y= 0  @..www"]);
     const known = atlasExtract({ ...overworld(pond, [], at), party: knowing("SURF") }).lines;
