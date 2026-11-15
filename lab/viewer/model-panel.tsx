@@ -207,9 +207,10 @@ function Goals({ row }: { row: UnusualCall }) {
     { term: "Mission", text: decision.mission, changed: row.missionChanged },
     { term: "Objective", text: decision.objective, changed: row.objectiveChanged },
     { term: "Note", text: decision.note, changed: false },
+    { term: "Says", text: decision.say ?? "", changed: false },
     ...row.advice.map(({ label, text, from }) => ({ term: adviceTerm(label), text: from === row.index ? text : `${text} (call ${from + 1})`, changed: false })),
     ...(removed ? [{ term: "Removed", text: removed.map(({ sentence }) => sentence).join(" "), changed: false }] : []),
-  ].filter((goal) => goal.term !== "Note" || goal.text);
+  ].filter((goal) => (goal.term !== "Note" && goal.term !== "Says") || goal.text);
   return (
     <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
       {goals.map(({ term, text, changed }) => (

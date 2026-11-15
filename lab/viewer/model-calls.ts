@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
 import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownRun } from "../src/protocol";
+import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownRun, wantEntries } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -83,8 +83,8 @@ export function adviceTerm(label: string): string {
 }
 
 function answerFields(decision: Decision): Record<string, string> {
-  const advice = Object.fromEntries(adviceEntries(decision.advice).map(({ label, text }) => [adviceTerm(label), text]));
-  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...advice };
+  const advice = Object.fromEntries([...adviceEntries(decision.advice), ...wantEntries(decision.advice)].map(({ label, text }) => [adviceTerm(label), text]));
+  return { Mission: decision.mission || "–", Objective: decision.objective || "–", Note: decision.note || "–", ...(decision.say ? { Says: decision.say } : {}), ...advice };
 }
 
 function messageBlocks(message: string): { title: BlockTitle; text: string }[] {
@@ -123,7 +123,7 @@ export type UnusualCall = {
   played: ActionEvent[];
   missionChanged: boolean;
   objectiveChanged: boolean;
-  /** The Coach advice in force after this call: the last text of each part, and the index of the call that wrote it. */
+  /** The Coach advice in force after this call: the last text of each part, then `catchNew` and `train` of the last turn that wrote them, each with the index of the call that wrote it. */
   advice: { label: string; text: string; from: number }[];
 };
 
@@ -172,9 +172,12 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
   const medians = { cost: median(calls.map((c) => c.usage.cost)), latency: median(calls.map((c) => c.latencyMs)), tokens: median(calls.map((c) => c.usage.promptTokens)) };
   let last: Decision | null = null;
   const advice = new Map<string, { text: string; from: number }>();
+  let wants: { label: string; text: string; from: number }[] = [];
   return rows.map(({ call, played }, index) => {
     const { decision } = call;
     addAdvice(advice, decision?.advice, index);
+    const written = wantEntries(decision?.advice);
+    if (written.length > 0) wants = written.map((entry) => ({ ...entry, from: index }));
     const before = calls.slice(Math.max(0, index - REPEATS + 1), index);
     const missionChanged = !!decision && !!last && decision.mission !== last.mission;
     const objectiveChanged = !!decision && !!last && decision.objective !== last.objective;
@@ -198,6 +201,6 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
       const part = advice.get(label);
       return part ? [{ label, ...part }] : [];
     });
-    return { index, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged, advice: inForce };
+    return { index, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged, advice: [...inForce, ...wants] };
   });
 }
