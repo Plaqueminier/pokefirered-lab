@@ -1,6 +1,6 @@
 import type { Areas } from "../src/game";
 import type { ActionResult } from "../src/harness/harness";
-import type { Continuation, RunEvent } from "../src/harness/record";
+import type { Continuation, LightEvent } from "../src/harness/record";
 import { MODEL_ACTION_NAMES } from "../src/model/decision";
 import { isNewNote } from "../src/model/memory-tree";
 import { actionText, GBA_FPS, type SpendUnit, spentIn } from "../src/protocol";
@@ -42,7 +42,7 @@ export type StatsView = {
   parentEnd: { frame: number; spent: number } | null;
 };
 
-export function statsView(events: readonly RunEvent[], { now, areas, continued, unit = "dollars" }: StatsOptions): StatsView {
+export function statsView(events: readonly LightEvent[], { now, areas, continued, unit = "dollars" }: StatsOptions): StatsView {
   const view: StatsView = { now, calls: [], played: [], summaries: [], unit, spentSteps: [], spent: 0, chapters: [], areas: [], parentEnd: null };
   const visited: string[] = [];
   let chapter = 0;

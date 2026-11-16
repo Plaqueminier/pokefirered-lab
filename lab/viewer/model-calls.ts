@@ -1,6 +1,6 @@
 import type { ActionEntry } from "../src/harness/harness";
-import type { ActionEvent, Decision, ModelEvent, RunEvent } from "../src/harness/record";
-import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownRun, wantEntries } from "../src/protocol";
+import type { ActionEvent, Decision, ModelEvent, Prompt, RunEvent } from "../src/harness/record";
+import { ADVICE_ORDER, addAdvice, adviceEntries, callKind, modelEvents, type ShownEvent, type ShownModelEvent, type ShownRun, wantEntries } from "../src/protocol";
 
 const BLOCK_TITLES = [
   [/^Milestones/, "Progress"],
@@ -59,18 +59,13 @@ function callView(call: ModelEvent, index: number): CallView {
     answer: call.decision ?? { error: call.error, raw: call.answer },
     fields: call.decision ? answerFields(call.decision) : {},
     usage: `${promptTokens} tokens in${cached} · ${completionTokens} out (${reasoningTokens} reasoning) · ${Number(cost.toFixed(6))} $ · ${(call.latencyMs / 1000).toFixed(1)} s`,
-    blocks: promptBlocks(call),
+    blocks: promptBlocks(call.prompt, call.reasoning),
   };
 }
 
 function turnText(call: ModelEvent): string | undefined {
   const kind = callKind(call);
   return kind && `${kind} turn`;
-}
-
-// The request of a Review turn is in the prompt of the Model call: the question, then the checks as a list.
-export function reviewText({ prompt }: ModelEvent): string | null {
-  return /^Review turn:.*(\n- .*)*/m.exec(prompt.user)?.[0] ?? null;
 }
 
 function stuckText(stuck: number | undefined, turn: string | undefined): string[] {
@@ -91,8 +86,7 @@ function messageBlocks(message: string): { title: BlockTitle; text: string }[] {
   return message.split("\n\n").map((text): { title: BlockTitle; text: string } => ({ title: BLOCK_TITLES.find(([start]) => start.test(text))?.[1] ?? "Other", text }));
 }
 
-export function promptBlocks({ prompt, reasoning }: ModelEvent): PromptBlock[] {
-  const { system, user, turns = [] } = prompt;
+export function promptBlocks({ system, user, turns = [] }: Prompt, reasoning: string | undefined): PromptBlock[] {
   const blocks: { title: BlockTitle; text: string }[] = [
     ...(reasoning ? [{ title: "Reasoning" as const, text: reasoning }] : []),
     ...messageBlocks(user),
@@ -117,7 +111,8 @@ export type Flag = (typeof FLAGS)[number];
 
 export type UnusualCall = {
   index: number;
-  call: ModelEvent;
+  at: number;
+  call: ShownModelEvent;
   /** In the order of FLAGS, each with the text that tells why it is on. */
   flags: { flag: Flag; why: string }[];
   played: ActionEvent[];
@@ -138,14 +133,14 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
-function expensiveText(call: ModelEvent, medians: { cost: number; latency: number; tokens: number }): string {
+function expensiveText(call: ShownModelEvent, medians: { cost: number; latency: number; tokens: number }): string {
   const above = (name: string, value: number, median: number) => (median > 0 && value > EXPENSIVE * median ? [`${name} ${(value / median).toFixed(1)}× the median`] : []);
   return [...above("cost", call.usage.cost, medians.cost), ...above("latency", call.latencyMs, medians.latency), ...above("prompt tokens", call.usage.promptTokens, medians.tokens)].join(", ");
 }
 
-function turnsText({ prompt }: ModelEvent): string {
-  const actions = (prompt.turns ?? []).map((turn) => {
-    const title = messageBlocks(turn.user)[0]?.title ?? "Other";
+function turnsText({ turnLines }: ShownModelEvent): string {
+  const actions = turnLines.map((line) => {
+    const title = messageBlocks(line)[0]?.title ?? "Other";
     return TURN_ACTIONS[title] ?? title;
   });
   return actions.length ? `${actions.length} more turn${actions.length > 1 ? "s" : ""}: ${actions.join(", ")}` : "";
@@ -156,24 +151,24 @@ function refusal({ result }: ActionEntry): string {
 }
 
 // The browser bundle cannot import the functions of record.ts (bun:ffi).
-function callsWithActions(events: readonly RunEvent[]): { call: ModelEvent; played: ActionEvent[] }[] {
-  const rows: { call: ModelEvent; played: ActionEvent[] }[] = [];
-  for (const event of events) {
-    if (event.type === "model") rows.push({ call: event, played: [] });
+function callsWithActions(events: readonly ShownEvent[]): { at: number; call: ShownModelEvent; played: ActionEvent[] }[] {
+  const rows: { at: number; call: ShownModelEvent; played: ActionEvent[] }[] = [];
+  for (const [at, event] of events.entries()) {
+    if (event.type === "model") rows.push({ at, call: event, played: [] });
     else if (event.type === "action") rows.at(-1)?.played.push(event);
   }
   return rows;
 }
 
 /** The flags of each Model call of a Run, from its events: the Viewer calculates them, they are not in the Run record. */
-export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
+export function unusualCalls(events: readonly ShownEvent[]): UnusualCall[] {
   const rows = callsWithActions(events);
   const calls = rows.map((row) => row.call);
   const medians = { cost: median(calls.map((c) => c.usage.cost)), latency: median(calls.map((c) => c.latencyMs)), tokens: median(calls.map((c) => c.usage.promptTokens)) };
   let last: Decision | null = null;
   const advice = new Map<string, { text: string; from: number }>();
   let wants: { label: string; text: string; from: number }[] = [];
-  return rows.map(({ call, played }, index) => {
+  return rows.map(({ at, call, played }, index) => {
     const { decision } = call;
     addAdvice(advice, decision?.advice, index);
     const written = wantEntries(decision?.advice);
@@ -201,6 +196,6 @@ export function unusualCalls(events: readonly RunEvent[]): UnusualCall[] {
       const part = advice.get(label);
       return part ? [{ label, ...part }] : [];
     });
-    return { index, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged, advice: [...inForce, ...wants] };
+    return { index, at, call, flags: FLAGS.flatMap((flag) => (why[flag] === undefined ? [] : [{ flag, why: why[flag] }])), played, missionChanged, objectiveChanged, advice: [...inForce, ...wants] };
   });
 }

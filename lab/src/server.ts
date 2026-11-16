@@ -12,6 +12,7 @@ import { AtlasWatch, type Sight } from "./harness/atlas";
 import { type Bot, botInfos, botNames, errorText, type KnowledgeLevel, loadBot } from "./harness/harness";
 import { GridPlay } from "./grid";
 import { ScreenFanout } from "./screens";
+import { EventFeed } from "./event-feed";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
@@ -26,7 +27,10 @@ import {
   type Jump,
   modelLabel,
   type ModelProvider,
+  type Opening,
   parseEvolutionPath,
+  PROMPT_BATCH,
+  type PromptSource,
   type ReplayModel,
   type ReplayStatus,
   type RunFrom,
@@ -241,6 +245,7 @@ type RunSource = {
   state(): RunState;
   camera(): Camera | null;
   events(): readonly RunEvent[];
+  prompts(): PromptSource;
   sight(): Sight;
   summary(): ShownRun;
   inventory(): readonly InventoryAt[];
@@ -252,6 +257,7 @@ const viewerRun: RunSource = {
   state: () => run.readState(),
   camera: () => safely(() => run.game.camera()),
   events: () => live.replay?.player.played() ?? [],
+  prompts: () => (live.replay ? { record: live.replay.name } : null),
   sight: () => live.sight(),
   summary: () => ({ kind: "viewer", replay: live.replay && replayStatus(live.replay) }),
   inventory: () => live.inventory.entries,
@@ -264,6 +270,7 @@ function botRun(poolRun: PoolRun): RunSource {
     state: () => poolRun.view,
     camera: () => poolRun.view.camera,
     events: () => poolRun.events,
+    prompts: () => ({ bot: poolRun.id }),
     sight: () => poolRun.view.sight,
     summary: () => ({ kind: "bot", run: runSummary(poolRun) }),
     inventory: () => poolRun.inventory,
@@ -366,11 +373,28 @@ async function openRecord(name: string): Promise<RunRecord | string> {
   return (await readRunRecord(name)) ?? `${name} is not a Run record.`;
 }
 
+let opening: Opening | null = null;
+
+function setOpening(next: Opening | null): void {
+  opening = next;
+  send({ type: "opening", opening });
+}
+
 async function replayFile(name: string): Promise<string> {
+  try {
+    setOpening({ name, step: "Reading the Run record" });
+    return await openReplay(name);
+  } finally {
+    setOpening(null);
+  }
+}
+
+async function openReplay(name: string): Promise<string> {
   const record = await openRecord(name);
   if (typeof record === "string") return record;
   const { parent } = record.header;
-  const continued = await replayStart(record.header);
+  const continued = await replayStart(record.header, () => setOpening({ name, step: "Reading its parent Run record" }));
+  setOpening({ name, step: "Starting the replay" });
   const differences = await live.startReplay(name, record, continued);
   show(viewerRun);
   sendReplayEvents();
@@ -408,7 +432,7 @@ function show(next: RunSource): void {
   shown = next;
   live.keys = 0;
   live.rateTrim = 1;
-  sendEvents();
+  restartEvents();
   sendMap(shown.state());
   sendSight();
   sendInventory();
@@ -483,27 +507,36 @@ function sendReplayEvents(to?: ServerWebSocket<unknown>): void {
   if (replay) send({ type: "replay-events", name: replay.name, events: replay.player.gameEvents }, to);
 }
 
-let eventsSent = 0;
-let lastEventSent: RunEvent | undefined;
+const feeds = new Map<ServerWebSocket<unknown>, EventFeed>();
 
-function noteEventsSent(events: readonly RunEvent[]): void {
-  eventsSent = events.length;
-  lastEventSent = events.at(-1);
-}
-
-function sendEvents({ to, quiet }: { to?: ServerWebSocket<unknown>; quiet?: boolean } = {}): void {
-  const events = [...shown.events()];
-  if (!to) noteEventsSent(events);
-  send({ type: "events", events, quiet }, to);
+function restartEvents(): void {
+  const events = shown.events();
+  for (const [ws, feed] of feeds) send(feed.restart(events, shown.prompts()), ws);
 }
 
 function sendNewEvents(): void {
   const events = shown.events();
-  if (events.length === eventsSent) return;
-  // A replay that starts again gives another list, which does not continue the one that the clients have.
-  if (events.length < eventsSent || events[eventsSent - 1] !== lastEventSent) return sendEvents();
-  send({ type: "events-added", from: eventsSent, events: events.slice(eventsSent) });
-  noteEventsSent(events);
+  for (const [ws, feed] of feeds) {
+    const message = feed.next(events, shown.prompts());
+    if (message) send(message, ws);
+  }
+}
+
+function eventsWithPrompts(params: URLSearchParams): readonly RunEvent[] | undefined {
+  const bot = params.get("bot");
+  if (bot !== null) return pool.runs.find((r) => r.id === Number(bot))?.events;
+  const replay = live.replay;
+  if (replay && replay.name === params.get("record")) return replay.player.events;
+  return undefined;
+}
+
+function promptsResponse(params: URLSearchParams): Response {
+  const events = eventsWithPrompts(params);
+  if (!events) return new Response("This Run is not open now", { status: 404 });
+  const from = Number(params.get("from"));
+  const to = Number(params.get("to"));
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from || to - from > PROMPT_BATCH) return new Response(`from, to: whole numbers, with at most ${PROMPT_BATCH} events from one to the other`, { status: 400 });
+  return Response.json(events.slice(from, to).map((event) => ("prompt" in event ? event.prompt : null)));
 }
 
 async function addToGrid(cell: number, name: string): Promise<string | null> {
@@ -715,7 +748,7 @@ function loop(): void {
   if (shown === viewerRun && jumped) {
     screens.forget(VIEWER_RUN_ID);
     lastState = 0;
-    sendEvents({ quiet: true });
+    for (const feed of feeds.values()) feed.quietUntil(shown.events());
   }
   if (ran > 0 && live.audioActive) sendAudio();
   sendNewEvents();
@@ -790,13 +823,14 @@ Bun.serve({
     "/race/file/:name": (req) => raceFile(req.params.name),
     "/evolution/list.json": async () => Response.json(await evolutionList(geneticBot())),
     "/evolution/file/:name": (req) => evolutionFile(req.params.name),
+    "/prompts": (req) => promptsResponse(new URL(req.url).searchParams),
   },
   fetch(req, server) {
     if (new URL(req.url).pathname === "/ws" && server.upgrade(req)) return;
     return new Response("Not found", { status: 404 });
   },
   websocket: {
-    // The events of a long Run are one message of more than 100 MB. Over the default limit of 16 MB, Bun drops the next messages with no error, and a page then has no list of Run records.
+    // Over its default limit of 16 MB, Bun drops the next messages with no error.
     backpressureLimit: 2 ** 30,
     open(ws) {
       clients.add(ws);
@@ -807,7 +841,10 @@ Bun.serve({
       void sendRecords(ws);
       void Promise.all([botInfos(), providerStatuses()]).then(([bots, providers]) => send({ type: "bots", bots, providers }, ws));
       sendReplayEvents(ws);
-      sendEvents({ to: ws });
+      const feed = new EventFeed();
+      feeds.set(ws, feed);
+      send(feed.restart(shown.events(), shown.prompts(), true), ws);
+      send({ type: "opening", opening }, ws);
       sendMap(shown.state(), ws);
       sendSight(ws);
       sendInventory(ws);
@@ -815,6 +852,7 @@ Bun.serve({
     },
     close(ws) {
       clients.delete(ws);
+      feeds.delete(ws);
       screens.delete(ws);
       setAudioClient(ws, false);
       // The Grid is not kept after a reload (#72).

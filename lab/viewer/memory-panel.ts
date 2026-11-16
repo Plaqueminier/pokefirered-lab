@@ -1,4 +1,4 @@
-import type { Prompt, RunEvent, SummaryEvent } from "../src/harness/record";
+import type { LightEvent, LightSummaryEvent } from "../src/harness/record";
 import { spentIn } from "../src/protocol";
 import { type MemoryNode, memoryTree, type NewNote, newNotes, nodeLine, nodeName, nodeText, topNodes, zoomNodes } from "../src/model/memory-tree";
 import type { Cursor, Span } from "./cursor";
@@ -14,7 +14,7 @@ export type SummaryCallRow = {
   latencyMs: number;
   promptTokens: number;
   completionTokens: number;
-  prompt: Prompt;
+  at: number;
   answer: string;
 };
 
@@ -45,7 +45,7 @@ export type MemoryPanelView = {
 
 export type Focus = { kind: "tops" } | { kind: "node"; path: TreeNode[] } | { kind: "unmade"; name: string; failed: SummaryCallRow[] };
 
-export function memoryPanelView(all: readonly RunEvent[], cursor: Cursor | null = null, range: Span | null = null): MemoryPanelView {
+export function memoryPanelView(all: readonly LightEvent[], cursor: Cursor | null = null, range: Span | null = null): MemoryPanelView {
   const events = eventsAt(all, cursor);
   const tree = memoryTree(events);
   const notes = newNotes(events);
@@ -102,7 +102,7 @@ function nodePath(tops: readonly TreeNode[], name: string): TreeNode[] {
 }
 
 // At a picked call, keep the Summary calls that its note started: they come after it, before the next Model call.
-function eventsAt(events: readonly RunEvent[], cursor: Cursor | null): readonly RunEvent[] {
+function eventsAt(events: readonly LightEvent[], cursor: Cursor | null): readonly LightEvent[] {
   if (!cursor) return events;
   const { frame, call } = cursor;
   if (call === null) return events.filter((event) => event.frame <= frame);
@@ -116,14 +116,14 @@ function eventsAt(events: readonly RunEvent[], cursor: Cursor | null): readonly 
 }
 
 // An id is the same at the cursor and in the whole Run: the events at the cursor are a prefix of the events.
-function summaryCalls(events: readonly RunEvent[]): SummaryCallRow[] {
+function summaryCalls(events: readonly LightEvent[]): SummaryCallRow[] {
   return events
-    .filter((e): e is SummaryEvent => e.type === "summary")
-    .map(callRow)
+    .flatMap((event, at) => (event.type === "summary" ? [{ call: event, at }] : []))
+    .map(({ call, at }, id) => callRow(call, id, at))
     .reverse();
 }
 
-function callRow(call: SummaryEvent, id: number): SummaryCallRow {
+function callRow(call: LightSummaryEvent, id: number, at: number): SummaryCallRow {
   return {
     id,
     frame: call.frame,
@@ -135,7 +135,7 @@ function callRow(call: SummaryEvent, id: number): SummaryCallRow {
     latencyMs: call.latencyMs,
     promptTokens: call.usage.promptTokens,
     completionTokens: call.usage.completionTokens,
-    prompt: call.prompt,
+    at,
     answer: call.answer ?? `(no answer: ${call.error})`,
   };
 }

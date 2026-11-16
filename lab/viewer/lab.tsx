@@ -1,13 +1,13 @@
-import { ArrowLeft, Backpack, Bot, ChartColumn, Clock, Coins, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
+import { ArrowLeft, Backpack, Bot, ChartColumn, Clock, Coins, Download, FolderOpen, Info, ListTree, MapPin, Map as MapIcon, MessageSquare, Rewind, Trophy } from "lucide-preact";
 import { type ComponentChildren, type ComponentType, createContext, render } from "preact";
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas, GameState } from "../src/game";
-import type { Continuation, GameEvent, RunEvent } from "../src/harness/record";
+import type { Continuation, GameEvent, LightEvent } from "../src/harness/record";
 import type { InventoryAt } from "../src/inventory";
-import { type BotInfo, type ClientMessage, type ProviderStatus, type RecordFacts, replayOf, type ServerMessage, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spentIn } from "../src/protocol";
+import { type BotInfo, type ClientMessage, type Opening, OPENING_STEPS, type PromptSource, type ProviderStatus, type RecordFacts, replayOf, type ServerMessage, type ShownEvent, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spentIn } from "../src/protocol";
 import { Badges, Button, Card, Cover, Metric, Pill, Tabs, type Tone, Tooltip, usePending } from "./components";
 import { HoverCard, Popover, Toast, Toaster } from "./components-layers";
-import { callAt, type Readable, type SharedCursor, Store, useStore } from "./cursor";
+import { callAt, type EventList, type EventsLoading, type Readable, type SharedCursor, Store, useStore } from "./cursor";
 import { InventoryPanel } from "./inventory-panel";
 import { ScreenState } from "./grid";
 import { STATE_LOOKS, stoppedState } from "./grid-cells";
@@ -17,6 +17,7 @@ import { MemoryTreePanel } from "./memory-tree-panel";
 import { type UnusualCall, unusualCalls, waitsForModel } from "./model-calls";
 import { CallSummary, FLAG_LOOKS, ModelPanel, SpendUnitContext } from "./model-panel";
 import { PokemonCard } from "./pokemon";
+import { PromptCache, PromptContext } from "./prompt-cache";
 import { BotsPanel, RunSelect, runKey, spendShort } from "./runs";
 import { RecordCard } from "./record-card";
 import { ScreenControls, type ScreenSettings, type ScreenSettingsActions } from "./screen-controls";
@@ -34,8 +35,10 @@ type LabData = {
   settings: ScreenSettings;
   status: Status | null;
   state: GameState | null;
-  events: readonly RunEvent[];
+  events: readonly ShownEvent[];
   rows: readonly UnusualCall[];
+  loading: EventsLoading | null;
+  opening: Opening | null;
   statusLine: string;
   bots: readonly BotInfo[];
   providers: readonly ProviderStatus[];
@@ -261,7 +264,7 @@ function modelOf(shown: ShownRun): { limit: Spend; continued: Continuation | nul
   return shown.replay?.model ? { limit: shown.replay.model.limit, continued: shown.replay.continued } : null;
 }
 
-function spentTo(unit: SpendUnit, events: readonly RunEvent[], frame: number, from = 0): number {
+function spentTo(unit: SpendUnit, events: readonly LightEvent[], frame: number, from = 0): number {
   let spent = 0;
   for (let i = from; i < events.length && events[i].frame <= frame; i++) {
     const event = events[i];
@@ -474,20 +477,27 @@ function StoppedScreen({ shown }: { shown: ShownRun | null }) {
   return <ScreenState tone={tone} label={`${label}, ${seconds} s`} />;
 }
 
-function Screen() {
-  const { status } = useStore(useLab().data);
+type Wait = { icon: ComponentChildren; title: string; value: number; max: number; detail: string };
+
+function screenWait({ status, opening, loading }: LabData): Wait | null {
+  if (opening) return { icon: <FolderOpen size={16} />, title: "Opening the Run record", value: OPENING_STEPS.indexOf(opening.step), max: OPENING_STEPS.length, detail: `${opening.step}: ${opening.name}` };
   const jump = replayOf(status?.shown ?? null)?.seeking;
-  const done = jump && status ? Math.max(0, status.frame - jump.from) : 0;
-  const total = jump ? Math.max(1, jump.to - jump.from) : 1;
+  if (jump && status) {
+    const done = Math.max(0, status.frame - jump.from);
+    const total = Math.max(1, jump.to - jump.from);
+    return { icon: <Rewind size={16} />, title: `Jump to ${clock(jump.to)}`, value: done, max: total, detail: `${Math.max(0, total - done).toLocaleString("en-US")} frames to play from ${clock(jump.from)}` };
+  }
+  if (!loading) return null;
+  const { received, total } = loading;
+  return { icon: <Download size={16} />, title: "Loading the events", value: received, max: total, detail: `${received.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} events` };
+}
+
+function Screen() {
+  const data = useStore(useLab().data);
+  const wait = screenWait(data);
+  const { status } = data;
   return (
-    <Cover
-      busy={!!jump}
-      icon={<Rewind size={16} />}
-      title={jump ? `Jump to ${clock(jump.to)}` : ""}
-      value={done}
-      max={total}
-      detail={jump ? `${Math.max(0, total - done).toLocaleString("en-US")} frames to play from ${clock(jump.from)}` : undefined}
-    >
+    <Cover busy={wait !== null} icon={wait?.icon} title={wait?.title ?? ""} value={wait?.value ?? 0} max={wait?.max ?? 1} detail={wait?.detail}>
       <Legacy id="screen" />
       <StoppedScreen shown={status?.shown ?? null} />
     </Cover>
@@ -535,15 +545,18 @@ function Toasts({ toasts, close }: { toasts: Store<ToastItem[]>; close: (id: num
 export class LabTab {
   readonly #data: Store<LabData>;
   readonly #toasts = new Store<ToastItem[]>([]);
+  readonly #prompts = new PromptCache();
   #toastId = 0;
 
   constructor(root: HTMLElement, toastRoot: HTMLElement, { settings, ...lab }: LabOptions) {
-    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], statusLine: "connecting…", bots: [], providers: [], records: [], recordFacts: {}, areas: {}, record: null, inventory: [] });
+    this.#data = new Store<LabData>({ settings, status: null, state: null, events: [], rows: [], loading: null, opening: null, statusLine: "connecting…", bots: [], providers: [], records: [], recordFacts: {}, areas: {}, record: null, inventory: [] });
     render(
       <LabContext.Provider value={{ ...lab, data: this.#data }}>
-        <SpendUnitScope>
-          <LabLayout />
-        </SpendUnitScope>
+        <PromptContext.Provider value={this.#prompts}>
+          <SpendUnitScope>
+            <LabLayout />
+          </SpendUnitScope>
+        </PromptContext.Provider>
       </LabContext.Provider>,
       root,
     );
@@ -587,11 +600,21 @@ export class LabTab {
   }
 
   // The added events are null when the events restarted, or after a jump: no toast for the old events.
-  onEvents(events: readonly RunEvent[], added: readonly RunEvent[] | null): void {
+  onEvents({ prompts, events }: EventList, added: readonly LightEvent[] | null): void {
     for (const event of added ?? []) {
       if (event.type === "milestone") this.#toast({ tone: "accent", icon: <Trophy size={16} />, title: "Milestone", text: `${event.milestone} at ${clock(event.frame)}` });
     }
-    this.#patch({ events, rows: unusualCalls(events) });
+    this.#prompts.show(prompts);
+    this.#patch({ events, rows: unusualCalls(events), loading: null });
+  }
+
+  // The panels do not show the calls of the old Run with the header of the new one while its events load.
+  onEventsLoading(loading: EventsLoading, prompts: PromptSource): void {
+    this.#patch(this.#prompts.show(prompts) ? { loading, events: [], rows: [] } : { loading });
+  }
+
+  onOpening(opening: Opening | null): void {
+    this.#patch({ opening });
   }
 
   onStatusLine(statusLine: string): void {

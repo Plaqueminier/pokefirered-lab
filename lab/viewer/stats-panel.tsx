@@ -3,7 +3,7 @@ import { CircleDot, Clock, Coins, Frown, Heart, ShoppingBag, Skull, Swords, Tria
 import type { ComponentChildren, ComponentType } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Areas } from "../src/game";
-import type { Continuation, RunEvent } from "../src/harness/record";
+import type { Continuation, LightEvent } from "../src/harness/record";
 import { GBA_FPS, SPEND_WORDS, type Spend, spendText, tokens } from "../src/protocol";
 import { Bar, Button, Card, Collapsible, LABEL, ListRow, Pill, StatTile, type Tone, Tooltip, toneText } from "./components";
 import type { Moment, Span } from "./cursor";
@@ -35,8 +35,8 @@ import { NO_GAME_EVENTS, type TimelineKind } from "./timeline-events";
 
 // `gameEvents`: in a replay, the Game events of the whole record; null for a record from before the Game events.
 export type StatsPanelProps = {
-  events: readonly RunEvent[];
-  gameEvents: readonly RunEvent[] | null;
+  events: readonly LightEvent[];
+  gameEvents: readonly LightEvent[] | null;
   areas: Areas;
   rows: readonly UnusualCall[];
   playing: number;

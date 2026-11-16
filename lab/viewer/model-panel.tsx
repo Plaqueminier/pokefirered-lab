@@ -32,13 +32,14 @@ import {
 } from "lucide-preact";
 import { type ComponentType, createContext } from "preact";
 import { useContext, useMemo, useRef, useState } from "preact/hooks";
-import { type SpendUnit, tokens } from "../src/protocol";
-import type { ActionEvent, ModelEvent } from "../src/harness/record";
+import { type ShownModelEvent, type SpendUnit, tokens } from "../src/protocol";
+import type { ActionEvent } from "../src/harness/record";
 import { shownCharacter } from "../src/model/character";
 import { actionText } from "../src/protocol";
 import { Button, Card, Collapsible, FilterChip, LABEL, ListRow, Pill, type Tone, Tooltip, toggled, toneText, useKeepInView } from "./components";
-import { adviceTerm, type BlockTitle, FLAGS, type Flag, promptBlocks, reviewText, type UnusualCall } from "./model-calls";
+import { adviceTerm, type BlockTitle, FLAGS, type Flag, promptBlocks, type UnusualCall } from "./model-calls";
 import { PromptText } from "./prompt-text";
+import { PromptWait, usePrompt } from "./prompt-cache";
 import { milliDollars, seconds } from "./runs";
 import { clock, stuckTone } from "./stats-format";
 
@@ -150,7 +151,7 @@ function Played({ row }: { row: UnusualCall }) {
   );
 }
 
-function UsagePills({ call }: { call: ModelEvent }) {
+function UsagePills({ call }: { call: ShownModelEvent }) {
   const { promptTokens, completionTokens, cost } = call.usage;
   return (
     <div class="flex flex-wrap items-center gap-1.5">
@@ -232,7 +233,7 @@ function Goals({ row }: { row: UnusualCall }) {
 
 export function CallSummary({ row, count, calling }: { row: UnusualCall; count: number; calling?: boolean }) {
   const { call } = row;
-  const review = call.review ? reviewText(call) : null;
+  const review = call.reviewRequest;
   return (
     <div class="flex flex-col gap-2">
       <div class="flex items-center gap-2">
@@ -267,9 +268,10 @@ export function CallSummary({ row, count, calling }: { row: UnusualCall; count: 
   );
 }
 
-function PromptBlocks({ call, character }: { call: ModelEvent; character: string | null }) {
+function PromptBlocks({ row, character }: { row: UnusualCall; character: string | null }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const blocks = [...(character ? [{ id: "Character", title: "Character" as const, text: character }] : []), ...promptBlocks(call)];
+  const load = usePrompt(row.at);
+  const blocks = [...(character ? [{ id: "Character", title: "Character" as const, text: character }] : []), ...(load.kind === "ready" ? promptBlocks(load.prompt, row.call.reasoning) : [])];
   return (
     <div class="flex flex-col gap-1">
       {blocks.map((block) => {
@@ -289,6 +291,7 @@ function PromptBlocks({ call, character }: { call: ModelEvent; character: string
           </Collapsible>
         );
       })}
+      {load.kind !== "ready" && <PromptWait load={load} />}
     </div>
   );
 }
@@ -345,7 +348,7 @@ export function ModelPanel({ rows, index, following, calling, pick, now }: Model
             <Card size="sm">
               <CallSummary row={row} count={rows.length} calling={calling} />
             </Card>
-            <PromptBlocks call={row.call} character={character} />
+            <PromptBlocks row={row} character={character} />
           </>
         ) : (
           <p class="text-sm text-muted">no Model call yet</p>

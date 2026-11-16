@@ -89,6 +89,6 @@ test("a click on a node opens its two halves down to the notes, and a failed Sum
     [4, "#3-4", "the request failed: 502", true],
     [2, "#1-2", "ab", false],
   ]);
-  expect(view.calls[0]).toMatchObject({ cost: 0.25, latencyMs: 1500, prompt: { system: "rules", user: "two parts" }, answer: "(no answer: the request failed: 502)" });
+  expect(view.calls[0]).toMatchObject({ cost: 0.25, latencyMs: 1500, at: 10, answer: "(no answer: the request failed: 502)" });
   expect(view.cost).toBe(1.25);
 });

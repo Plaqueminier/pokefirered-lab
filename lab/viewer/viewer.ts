@@ -1,10 +1,9 @@
 import type { Camera, MapActors, MapGrid } from "../src/game";
-import type { RunEvent } from "../src/harness/record";
 import { AudioOut } from "./audio";
 import { mountComponentsTab } from "./components-tab";
 import { mountDocTab } from "./doc";
 import { EvolutionsTab } from "./evolutions";
-import { ScreenFeed, SharedCursor, Store } from "./cursor";
+import { EventChunks, ScreenFeed, SharedCursor, Store } from "./cursor";
 import { GridTab } from "./grid";
 import { runKey } from "./runs";
 import { LabTab } from "./lab";
@@ -52,7 +51,7 @@ audio.setVolume(settings.volume);
 
 const shared = new SharedCursor();
 const screens = new ScreenFeed();
-let runEvents: readonly RunEvent[] = [];
+const chunks = new EventChunks();
 let shownRunId = VIEWER_RUN_ID;
 let stopDrawing = screens.subscribe(shownRunId, drawGame);
 let gridShown = false;
@@ -201,21 +200,23 @@ function onMessage(message: ServerMessage): void {
       bots.set(message.bots);
       break;
     case "events":
-      onEvents(message.events, message.quiet);
+    case "events-added": {
+      const got = chunks.receive(message);
+      if (got.kind === "loading") {
+        lab.onEventsLoading(got.loading, got.prompts);
+        break;
+      }
+      const added = shared.onEvents(got.list.events);
+      lab.onEvents(got.list, got.quiet ? null : added);
       break;
-    case "events-added":
-      onEvents([...runEvents.slice(0, message.from), ...message.events]);
+    }
+    case "opening":
+      lab.onOpening(message.opening);
       break;
     case "evolution":
       evolutionsTab.onRun(message.run);
       break;
   }
-}
-
-function onEvents(events: readonly RunEvent[], quiet?: boolean): void {
-  runEvents = events;
-  const added = shared.onEvents(events);
-  lab.onEvents(events, quiet ? null : added);
 }
 
 // No reason here: the tooltip of the sound button tells why no sound plays.

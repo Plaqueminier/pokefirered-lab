@@ -165,6 +165,10 @@ const REVIEW = [
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
 
+export function reviewRequestIn(user: string): string | null {
+  return /^Review turn:.*(\n- .*)*/m.exec(user)?.[0] ?? null;
+}
+
 export type TurnKind = "normal" | "character" | "reflection" | "review";
 
 export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[]; advice: string[] };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
-import type { RunEvent } from "../src/harness/record";
-import type { ShownRun } from "../src/protocol";
+import type { LightEvent } from "../src/harness/record";
+import type { PromptSource, ServerMessage, ShownEvent, ShownRun } from "../src/protocol";
 import { runKey } from "./runs";
 
 export type Span = { from: number; to: number };
@@ -88,7 +88,7 @@ export function useRefresh(ms: number): void {
   }, [ms]);
 }
 
-function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boolean {
+function continues(before: readonly LightEvent[], after: readonly LightEvent[]): boolean {
   if (after.length < before.length) return false;
   const last = before.at(-1);
   if (!last) return true;
@@ -100,7 +100,7 @@ function continues(before: readonly RunEvent[], after: readonly RunEvent[]): boo
 export class SharedCursor implements Readable<Moment> {
   readonly #moment = new Store<Moment>({ cursor: null, range: null });
   #run = "";
-  #events: readonly RunEvent[] | null = null;
+  #events: readonly LightEvent[] | null = null;
 
   get value(): Moment {
     return this.#moment.value;
@@ -138,12 +138,38 @@ export class SharedCursor implements Readable<Moment> {
   }
 
   // The events that came after the last call, or null when the events restarted: another Run, or a replay that starts again.
-  onEvents(events: readonly RunEvent[]): readonly RunEvent[] | null {
+  onEvents(events: readonly LightEvent[]): readonly LightEvent[] | null {
     const before = this.#events;
     this.#events = events;
     if (before && continues(before, events)) return events.slice(before.length);
     this.clear();
     return null;
+  }
+}
+
+export type EventsLoading = { received: number; total: number };
+
+export type EventList = { prompts: PromptSource; events: readonly ShownEvent[] };
+
+type Chunks = { kind: "loading"; loading: EventsLoading; prompts: PromptSource } | { kind: "done"; list: EventList; quiet: boolean };
+
+/** Puts together the chunks of a list of events: the panels get a list only when all its chunks are here, so they never show a Run cut in two. */
+export class EventChunks {
+  #list: EventList = { prompts: null, events: [] };
+  #quiet = false;
+
+  receive(message: Extract<ServerMessage, { type: "events" | "events-added" }>): Chunks {
+    if (message.type === "events") {
+      this.#list = { prompts: message.prompts, events: message.events };
+    } else {
+      this.#list = { ...this.#list, events: [...this.#list.events.slice(0, message.from), ...message.events] };
+    }
+    this.#quiet ||= message.quiet ?? false;
+    const received = this.#list.events.length;
+    if (received < message.total) return { kind: "loading", loading: { received, total: message.total }, prompts: this.#list.prompts };
+    const quiet = this.#quiet;
+    this.#quiet = false;
+    return { kind: "done", list: this.#list, quiet };
   }
 }
 

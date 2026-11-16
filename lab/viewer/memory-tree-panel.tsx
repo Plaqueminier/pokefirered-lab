@@ -5,6 +5,7 @@ import { Breadcrumb, Button, Card, Collapsible, LABEL, ListRow, Pill, Tabs, Tool
 import { type Focus, focusOn, type MemoryPanelView, type SummaryCallRow, type TreeNode } from "./memory-panel";
 import { CostPills, NowButton, SpendUnitContext } from "./model-panel";
 import { PromptText } from "./prompt-text";
+import { PromptWait, usePrompt } from "./prompt-cache";
 import { seconds } from "./runs";
 import { clock } from "./stats-format";
 
@@ -56,11 +57,9 @@ function CallPills({ call }: { call: SummaryCallRow }) {
 }
 
 function SummaryCall({ title, call, blocks, pills }: { title: string; call: SummaryCallRow; blocks: Blocks; pills?: boolean }) {
-  const texts = [
-    { title: "Prompt", text: call.prompt.user },
-    { title: "Answer", text: call.answer },
-    { title: "Rules", text: call.prompt.system },
-  ];
+  const load = usePrompt(call.at);
+  const answer = { title: "Answer", text: call.answer };
+  const texts = load.kind === "ready" ? [{ title: "Prompt", text: load.prompt.user }, answer, { title: "Rules", text: load.prompt.system }] : [answer];
   return (
     <>
       <div class="flex flex-wrap items-center gap-1.5">
@@ -73,6 +72,7 @@ function SummaryCall({ title, call, blocks, pills }: { title: string; call: Summ
             <PromptText text={text} highlight />
           </Collapsible>
         ))}
+        {load.kind !== "ready" && <PromptWait load={load} />}
       </div>
     </>
   );

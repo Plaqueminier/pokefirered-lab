@@ -1,4 +1,4 @@
-import type { Decision, ModelEvent, ModelSettings, RunEvent } from "../harness/record";
+import type { Decision, LightEvent, LightModelEvent, ModelSettings, RunEvent } from "../harness/record";
 import { modelEvents, STARTER_SPECIES, type StarterSpecies } from "../protocol";
 import { MAX_NAME, NAME_KEYS, nameProblem, type TrainerNames } from "../save-file";
 import { alternatives, type Asked, DECISION_SCHEMA, readDecision, readFields } from "./decision";
@@ -102,11 +102,11 @@ export function readCharacterDecision(content: string, starter: ModelSettings["s
   return { ...decision, character: fields.character.trim().slice(0, MAX_CHARACTER), ...(voice ? { voice } : {}), starter: chosen, names };
 }
 
-export function runCharacter(events: readonly RunEvent[]): Decision | undefined {
+export function runCharacter(events: readonly LightEvent[]): Decision | undefined {
   return modelEvents(events).findLast((e) => e.decision?.character)?.decision ?? undefined;
 }
 
-export function shownCharacter(calls: readonly ModelEvent[]): string | null {
+export function shownCharacter(calls: readonly LightModelEvent[]): string | null {
   const decision = runCharacter(calls);
   if (decision?.character) {
     const text = `${decision.character}${decision.voice ? ` Voice: ${decision.voice}` : ""}`;

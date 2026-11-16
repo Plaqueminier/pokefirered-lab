@@ -1,5 +1,5 @@
 import type { Areas } from "../src/game";
-import type { RunEvent } from "../src/harness/record";
+import type { LightEvent } from "../src/harness/record";
 import { GBA_FPS } from "../src/protocol";
 import type { Tone } from "./components";
 import type { Span } from "./cursor";
@@ -9,7 +9,7 @@ import { areaOf, type TimelineEvent, timelineEvents } from "./timeline-events";
 
 export type GameCounts = { heals: number; purchases: number; spent: number; catches: number; faints: number; trainers: number; whiteouts: number };
 
-export function gameCounts(events: readonly RunEvent[], spans: readonly Span[]): GameCounts {
+export function gameCounts(events: readonly LightEvent[], spans: readonly Span[]): GameCounts {
   const counts: GameCounts = { heals: 0, purchases: 0, spent: 0, catches: 0, faints: 0, trainers: 0, whiteouts: 0 };
   for (const event of events) {
     if (!isInside(spans, event.frame)) continue;
@@ -40,7 +40,7 @@ export function gameCounts(events: readonly RunEvent[], spans: readonly Span[]):
 
 export type EventLine = TimelineEvent & { detail: string | null; tone?: Tone };
 
-type Money = Extract<RunEvent, { type: "money" }>;
+type Money = Extract<LightEvent, { type: "money" }>;
 
 // The money of a trainer battle comes just before its end, often minutes after its start.
 const MONEY_FRAMES = 60 * GBA_FPS;
@@ -48,7 +48,7 @@ const MONEY_FRAMES = 60 * GBA_FPS;
 // A party that is not full never shows 100 %.
 const percent = (part: number, whole: number) => Math.min(part < whole ? 99 : 100, Math.round((100 * part) / Math.max(1, whole)));
 
-function healDetail(party: Extract<RunEvent, { type: "heal" }>["party"]): string {
+function healDetail(party: Extract<LightEvent, { type: "heal" }>["party"]): string {
   const maxHp = party.reduce((sum, mon) => sum + mon.maxHp, 0);
   const before = party.reduce((sum, mon) => sum + mon.before, 0);
   const after = party.reduce((sum, mon) => sum + mon.after, 0);
@@ -56,7 +56,7 @@ function healDetail(party: Extract<RunEvent, { type: "heal" }>["party"]): string
   return `party ${up}/${party.length} up, ${percent(before, maxHp)} % HP → ${after >= maxHp ? "full" : `${percent(after, maxHp)} %`}`;
 }
 
-export function eventLines(events: readonly RunEvent[], areas: Areas): EventLine[] {
+export function eventLines(events: readonly LightEvent[], areas: Areas): EventLine[] {
   const maps = events.filter((e) => e.type === "map");
   const byFrame = Map.groupBy(events, (e) => e.frame);
   const moneys = events.filter((e): e is Money => e.type === "money");
@@ -100,7 +100,7 @@ export function eventLines(events: readonly RunEvent[], areas: Areas): EventLine
   return lines.sort((a, b) => a.frame - b.frame);
 }
 
-function moneyAt(events: readonly RunEvent[], frame: number): number | null {
+function moneyAt(events: readonly LightEvent[], frame: number): number | null {
   let money: number | null = null;
   for (const event of events) {
     if (event.type !== "money") continue;
@@ -112,7 +112,7 @@ function moneyAt(events: readonly RunEvent[], frame: number): number | null {
 
 export type SinceHeal = { frame: number; how: string; faints: number; trainers: number; money: number | null; change: number | null };
 
-export function sinceHeal(events: readonly RunEvent[], at: number): SinceHeal | null {
+export function sinceHeal(events: readonly LightEvent[], at: number): SinceHeal | null {
   const heal = events.findLast((e) => e.type === "heal" && e.frame <= at);
   if (heal?.type !== "heal") return null;
   const between = events.filter((e) => e.frame > heal.frame && e.frame <= at);

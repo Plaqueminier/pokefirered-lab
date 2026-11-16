@@ -88,6 +88,15 @@ export type ActionEvent = { type: "action"; frame: number } & ActionEntry;
 
 export type RunEvent = GameEvent | ActionEvent | ModelEvent | SummaryEvent;
 
+/** A Run event with no prompt: the Viewer gets the events in this form, and asks for a prompt only when it shows it. */
+export type LightEvent = WithoutPrompt<RunEvent>;
+
+type WithoutPrompt<E> = E extends unknown ? Omit<E, "prompt"> : never;
+
+export type LightModelEvent = WithoutPrompt<ModelEvent>;
+
+export type LightSummaryEvent = WithoutPrompt<SummaryEvent>;
+
 function withTrainer(event: RunEvent, trainers: ReadonlyMap<number, boolean>): RunEvent {
   if (event.type !== "battle" || event.state !== "start") return event;
   const trainer = trainers.get(event.frame);
@@ -266,6 +275,7 @@ export class RecordPlayer {
   #hold = 0;
   #inHold = 0;
   #event = 0;
+  #played: readonly RunEvent[] = [];
   readonly #record: RunRecord;
 
   constructor(record: RunRecord) {
@@ -317,10 +327,15 @@ export class RecordPlayer {
     return modelTotals(this.#record.events.slice(first));
   }
 
-  played(): RunEvent[] {
+  get events(): readonly RunEvent[] {
+    return this.#record.events;
+  }
+
+  played(): readonly RunEvent[] {
     const { events } = this.#record;
     while (this.#event < events.length && events[this.#event].frame <= this.#frame) this.#event++;
-    return events.slice(0, this.#event);
+    if (this.#played.length !== this.#event) this.#played = events.slice(0, this.#event);
+    return this.#played;
   }
 }
 
@@ -440,10 +455,12 @@ export function extendedOptions(settings: ModelSettings | undefined, limit: Spen
   return settings ? { ...currentSettings(settings), ...limit } : {};
 }
 
-export async function replayStart(header: RunHeader): Promise<Continuation | null> {
+export async function replayStart(header: RunHeader, onReadParent?: () => void): Promise<Continuation | null> {
   const last = header.parts?.at(-1);
   if (last) return { frame: last.frame, events: last.events };
-  const parent = header.parent === undefined ? null : await readRunRecord(header.parent);
+  if (header.parent === undefined) return null;
+  onReadParent?.();
+  const parent = await readRunRecord(header.parent);
   return parent && continuationOf(parent);
 }
 

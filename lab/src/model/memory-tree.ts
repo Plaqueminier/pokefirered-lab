@@ -1,5 +1,6 @@
 // Follows OptMem: https://github.com/rafmyr/OptMem
-import type { NodeRange, Prompt, NodeSentence, RunEvent } from "../harness/record";
+import type { NodeRange, Prompt, NodeSentence } from "../harness/record";
+import type { LightEvent } from "../harness/record";
 import { MAX_SENTENCE, readJson } from "./decision";
 import type { JsonSchema } from "./openrouter";
 
@@ -36,7 +37,7 @@ const RECENT_NOTES = 32;
 
 const SUMMARY_SYSTEM = `You keep the memory of a player of Pokémon FireRed. The memory is the list of the notes that the player wrote, oldest first. Two neighbour parts of the memory get one summary, and the player then sees the summary in place of the two parts.`;
 
-export function memoryTree(events: readonly RunEvent[]): MemoryTree {
+export function memoryTree(events: readonly LightEvent[]): MemoryTree {
   const tree: MemoryTree = { notes: newNotes(events).map(({ note }) => note), summaries: new Map(), removed: [] };
   for (const event of events) {
     if (event.type === "summary" && event.summary !== null) tree.summaries.set(key(event), event.summary);
@@ -52,7 +53,7 @@ export function memoryTree(events: readonly RunEvent[]): MemoryTree {
 
 export type NewNote = { note: string; call: number; frame: number };
 
-export function newNotes(events: readonly RunEvent[]): NewNote[] {
+export function newNotes(events: readonly LightEvent[]): NewNote[] {
   const notes: NewNote[] = [];
   let call = -1;
   for (const event of events) {

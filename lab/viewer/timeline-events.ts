@@ -1,5 +1,5 @@
 import type { Areas, Milestone } from "../src/game";
-import type { RunEvent } from "../src/harness/record";
+import type { LightEvent } from "../src/harness/record";
 import { clock } from "./stats-format";
 
 export type TimelineKind = "milestone" | "faint" | "catch" | "evolution" | "trainer" | "heal" | "place" | "level" | "wild" | "purchase" | "item" | "obstacle" | "flash" | "surf" | "strength" | "fly";
@@ -36,7 +36,7 @@ export function areaOf(areas: Areas, map: string): { area: string; place: string
 type Battle = { from: number; to: number | null; stay: number; area: string; trainer: boolean | undefined; name: string | null };
 
 /** The Game events of a Run as the events of the Timeline: the levels and the wild battles of a stay in an Area make one event. */
-export function timelineEvents(events: readonly RunEvent[], areas: Areas): TimelineEvent[] {
+export function timelineEvents(events: readonly LightEvent[], areas: Areas): TimelineEvent[] {
   const shown: TimelineEvent[] = [];
   const battles: Battle[] = [];
   const visited = new Set<string>();

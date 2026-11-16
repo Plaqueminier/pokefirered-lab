@@ -6,7 +6,7 @@ import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
 import type { EndReason, MacroAction, RawInput } from "./harness/harness";
 import type { RunCall } from "./harness/pool";
-import type { Coach, Continuation, GameEvent, ModelEvent, ModelOptions, ModelSettings, RunEvent, SpendLimit } from "./harness/record";
+import type { Coach, Continuation, GameEvent, LightEvent, LightModelEvent, ModelEvent, ModelOptions, ModelSettings, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
 
 /** GBA key bits, as setKeys expects them. */
@@ -258,10 +258,10 @@ export type ServerMessage =
   | { type: "bots"; bots: BotInfo[]; providers: ProviderStatus[] }
   | { type: "areas"; areas: Areas }
   | { type: "replay-events"; name: string; events: GameEvent[] }
-  /** All the events of the shown Run up to now. Sent before the screen of the same frames. */
-  /** `quiet`: the events after a jump; the Viewer gives no toast for them. */
-  | { type: "events"; events: RunEvent[]; quiet?: boolean }
-  | { type: "events-added"; from: number; events: RunEvent[] }
+  | { type: "events"; prompts: PromptSource; events: ShownEvent[]; total: number; quiet?: boolean }
+  // With no events, the list of the Viewer ends at `from`: a jump back.
+  | { type: "events-added"; from: number; events: ShownEvent[]; total: number; quiet?: boolean }
+  | { type: "opening"; opening: Opening | null }
   | { type: "evolution"; run: EvolutionRun | null };
 
 export type ClientMessage =
@@ -385,10 +385,36 @@ export function addAdvice(inForce: Map<string, { text: string; from: number }>, 
   for (const { label, text } of adviceEntries(advice)) inForce.set(label, { text, from });
 }
 
-export function callKind({ character, reflection, review }: ModelEvent): "character" | "reflection" | "review" | undefined {
+export function callKind({ character, reflection, review }: Pick<ModelEvent, "character" | "reflection" | "review">): "character" | "reflection" | "review" | undefined {
   return character ? "character" : reflection ? "reflection" : review ? "review" : undefined;
 }
 
-export function modelEvents(events: readonly RunEvent[]): ModelEvent[] {
-  return events.filter((e): e is ModelEvent => e.type === "model");
+export function modelEvents<E extends LightEvent>(events: readonly E[]): Extract<E, { type: "model" }>[] {
+  return events.filter((e): e is Extract<E, { type: "model" }> => e.type === "model");
 }
+
+export type ShownModelEvent = LightModelEvent & { turnLines: string[]; reviewRequest: string | null };
+
+export type ShownEvent = Exclude<LightEvent, { type: "model" }> | ShownModelEvent;
+
+export const PROMPT_BATCH = 32;
+
+export function promptBatch(event: number): number {
+  return Math.floor(event / PROMPT_BATCH);
+}
+
+export type PromptSource = { bot: number } | { record: string } | null;
+
+export function samePromptSource(a: PromptSource, b: PromptSource): boolean {
+  if (a === null || b === null) return a === b;
+  return "bot" in a ? "bot" in b && a.bot === b.bot : "record" in b && a.record === b.record;
+}
+
+export function promptsUrl(source: NonNullable<PromptSource>, from: number, to: number): string {
+  const run = "bot" in source ? `bot=${source.bot}` : `record=${encodeURIComponent(source.record)}`;
+  return `/prompts?${run}&from=${from}&to=${to}`;
+}
+
+export const OPENING_STEPS = ["Reading the Run record", "Reading its parent Run record", "Starting the replay"] as const;
+
+export type Opening = { name: string; step: (typeof OPENING_STEPS)[number] };
