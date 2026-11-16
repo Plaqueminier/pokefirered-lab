@@ -83,7 +83,8 @@ export function withOpenTile(maps: MapSource, tile: Place): MapSource {
 }
 
 export function routeOntoSpin(here: Place, tile: Place, opened: MapSource): { from: Place; direction: Direction } | null {
-  const last = findRoute(here, tile, opened)?.at(-1)?.moves.at(-1);
+  const leg = findRoute(here, tile, opened)?.at(-1);
+  const last = leg && "moves" in leg ? leg.moves.at(-1) : undefined;
   if (!last) return null;
   const [dx, dy] = DIRECTION_STEP[last.direction];
   return { from: { map: tile.map, x: tile.x - dx, y: tile.y - dy }, direction: last.direction };

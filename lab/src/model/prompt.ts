@@ -748,9 +748,17 @@ function lastProgressKinds(asked: Asked): string {
 
 const DARK_GO_RULE = " At unseen cells of this dark map, the walk continues in the same direction, then along a wall while the side of that direction stays unseen: a wall in front, an exit, a new person or a battle stops it.";
 
+function flyHint(teachable: Teachable, { milestones, fly }: WalkAsked["overworld"]): string {
+  const towns = fly.destinations.length === 0 ? "a town after you visit it" : alternatives(fly.destinations.map(({ area }) => area));
+  const learn = teachable.able.length > 0 ? ": teach it." : ". No Pokémon of your party can learn it: catch a Pokémon that can learn FLY.";
+  return `Your Bag has ${teachableName(teachable)}. FLY can take you to the Pokémon Center of ${towns}${learn}${milestones.includes("badge-3") ? "" : " FLY needs badge 3."}`;
+}
+
 function fieldMoveHints({ overworld }: WalkAsked): string[] {
   return overworld.teachables.flatMap((teachable) => {
-    if (teachable.knowing.length > 0 || !moveObstacleHere(teachable.move.name, overworld)) return [];
+    if (teachable.knowing.length > 0) return [];
+    if (teachable.move.name === "FLY") return [flyHint(teachable, overworld)];
+    if (!moveObstacleHere(teachable.move.name, overworld)) return [];
     return [`Your Bag has ${teachableName(teachable)}. It can help on this map${teachable.able.length > 0 ? ": teach it." : ", but no Pokémon of your party can learn it."}`];
   });
 }

@@ -521,6 +521,111 @@ async function framesOfWalk(prepare: (run: Run, harness: Harness) => Promise<voi
   return walk.frames;
 }
 
+const FLAG_BADGE03_GET = 0x822;
+const MOVE_FLY = 19;
+const SPECIES_PIDGEOTTO = 17;
+const FLAG_WORLD_MAP_PALLET_TOWN = 0x890;
+const FLAG_WORLD_MAP_CERULEAN_CITY = 0x893;
+const FLAG_WORLD_MAP_FUCHSIA_CITY = 0x897;
+const FLAG_WORLD_MAP_ROUTE4_POKEMON_CENTER_1F = 0x8a2;
+
+const flyEvents = (harness: Harness) => harness.events.filter((e) => e.type === "fly");
+
+function learnFly(run: Run, slot = 0): void {
+  setFlag(run, FLAG_BADGE03_GET);
+  setThirdMove(run, slot, MOVE_FLY);
+}
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("FLY, on real maps", () => {
+  test("a goTo to a far town flies there: the player arrives on the cell in front of the Pokémon Center, and the record has the event", async () => {
+    const { harness, run } = await openAt("CeruleanCity", 22, 20, false);
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_PALLET_TOWN);
+    must(await harness.goTo(6, 8, "PalletTown"));
+    expect(overworld(harness)).toMatchObject({ map: { name: "PalletTown" }, player: { x: 6, y: 8 } });
+    expect(flyEvents(harness)).toEqual([{ type: "fly", frame: expect.any(Number), from: "CeruleanCity", to: "PalletTown", destination: "Pallet Town", species: "SQUIRTLE" }]);
+    harness.close();
+  });
+
+  test("a goTo from a building goes to the exit first, then flies", async () => {
+    const { harness, run } = await openAt("CeruleanCity", 22, 20, false);
+    must(await harness.goTo(22, 19));
+    expect(overworld(harness)).toMatchObject({ map: { name: "CeruleanCity_PokemonCenter_1F" } });
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_PALLET_TOWN);
+    must(await harness.goTo(6, 8, "PalletTown"));
+    expect(flyEvents(harness)).toMatchObject([{ from: "CeruleanCity", to: "PalletTown" }]);
+    harness.close();
+  });
+
+  test("with no badge 3 a goTo never flies and FLY is not usable, but the walk keeps the Fly destinations; a goTo to a near cell of a Fly destination walks", async () => {
+    const { harness, run } = await openAt("Route5", 16, 2, false);
+    setThirdMove(run, 0, MOVE_FLY);
+    setFlag(run, FLAG_WORLD_MAP_PALLET_TOWN);
+    setFlag(run, FLAG_WORLD_MAP_CERULEAN_CITY);
+    expect(overworld(harness)).toMatchObject({ fly: { usable: false, destinations: expect.arrayContaining([expect.objectContaining({ area: "Pallet Town" }), expect.objectContaining({ area: "Cerulean City" })]) } });
+    expect(await harness.goTo(6, 8, "PalletTown")).toMatchObject({ status: "impossible", reason: expect.stringContaining("no route") });
+    setFlag(run, FLAG_BADGE03_GET);
+    must(await harness.goTo(16, 34, "CeruleanCity"));
+    expect(overworld(harness)).toMatchObject({ map: { name: "CeruleanCity" }, player: { x: 16, y: 34 } });
+    expect(flyEvents(harness)).toEqual([]);
+    harness.close();
+  });
+
+  test("a goTo flies also to the Fly destination of its own map when no walk is shorter, and the next walk records its exits again", async () => {
+    const { harness, run } = await openAt("Route4", 95, 10, false);
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_ROUTE4_POKEMON_CENTER_1F);
+    must(await harness.goTo(12, 6));
+    expect(flyEvents(harness)).toMatchObject([{ from: "Route4", to: "Route4", destination: "Route 4 Pokémon Center" }]);
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route4" }, player: { x: 12, y: 6 } });
+    must(await harness.goTo(12, 5));
+    expect(overworld(harness)).toMatchObject({ map: { name: "Route4_PokemonCenter_1F" } });
+    expect(mapNamed(harness.observe().atlas, "Route4").warps.find((warp) => warp.x === 12 && warp.y === 5)).toMatchObject({ to: "Route4_PokemonCenter_1F" });
+    harness.close();
+  });
+
+  test("a Pokémon that fainted flies too, as in the party menu of the game", async () => {
+    const { harness, run } = await openAt("CeruleanCity", 22, 20, false);
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_PALLET_TOWN);
+    run.core.patch16(run.game.mem.global("gPlayerParty").at(0).field("hp").addr, 0);
+    must(await harness.goTo(6, 8, "PalletTown"));
+    expect(flyEvents(harness)).toMatchObject([{ to: "PalletTown", species: "SQUIRTLE" }]);
+    harness.close();
+  });
+
+  test("the first Pokémon of the party that knows FLY flies, also when it is not the first Pokémon", async () => {
+    const { harness, run } = await openAt("CeruleanCity", 22, 20, false);
+    setFlag(run, FLAG_BADGE03_GET);
+    patchSecure(run, 1, "growth", 0, SPECIES_PIDGEOTTO);
+    setThirdMove(run, 1, MOVE_FLY);
+    setFlag(run, FLAG_WORLD_MAP_PALLET_TOWN);
+    must(await harness.goTo(6, 8, "PalletTown"));
+    expect(flyEvents(harness)).toMatchObject([{ to: "PalletTown", species: "PIDGEOTTO" }]);
+    harness.close();
+  });
+
+  test("a route never flies from the Safari Zone", async () => {
+    const { harness, run } = await openAt("SafariZone_Center", 26, 20, false);
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_FUCHSIA_CITY);
+    await harness.goTo(25, 32, "FuchsiaCity");
+    expect(flyEvents(harness)).toEqual([]);
+    harness.close();
+  });
+
+  test("a flight from an edge cell records no exit of that edge in the Atlas", async () => {
+    const { harness, run } = await openAt("CeruleanCity", 0, 20, false);
+    learnFly(run);
+    setFlag(run, FLAG_WORLD_MAP_ROUTE4_POKEMON_CENTER_1F);
+    must(await harness.goTo(12, 6, "Route4"));
+    expect(flyEvents(harness)).toMatchObject([{ from: "CeruleanCity", to: "Route4" }]);
+    expect(mapNamed(harness.observe().atlas, "CeruleanCity").edges.find((edge) => edge.side === "west")).toMatchObject({ to: null });
+    harness.close();
+  });
+});
+
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the speed of a walk", () => {
   test("a walk of 17 cells takes 16 frames for each cell, 8 with the Running Shoes and 6 on the BICYCLE", async () => {
     const walk = await framesOfWalk(() => {});

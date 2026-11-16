@@ -24,6 +24,8 @@ import {
   readBattle,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
+import { type FlyData, type FlyDestination, flyData } from "./fly-destinations";
+import { REPO_DIR, readMapJsons, readSectionNames } from "./map-data";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, FLAG_SYS_USE_STRENGTH, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
@@ -34,8 +36,6 @@ import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, 
 import { namedSave, type TrainerNames } from "./save-file";
 import { type BuyList, buyList, type ShopItem, type ShopMenu, shopMenu, tradeDone, tradeQuantity, tradeYesNo } from "./shop";
 import { functionName } from "./symbols";
-
-const REPO_DIR = join(import.meta.dir, "..", "..");
 
 /** Cells around the visible map: the map grid adds this border on each side. */
 const MAP_OFFSET = 7;
@@ -211,6 +211,9 @@ export type FieldMove = "CUT" | "ROCK SMASH" | "STRENGTH" | "SURF";
 const WALK_MOVE_BADGE = new Map<FieldMove, number>([["CUT", 2], ["STRENGTH", 4], ["ROCK SMASH", 6], ["SURF", 5]]);
 
 const FLASH_BADGE = 1;
+const FLY_BADGE = 3;
+// Task_FlyMap reads the keys in this state.
+const FLY_MAP_INPUT_STATE = 4;
 
 export type Obstacle = { localId: number; x: number; y: number; name: string; move: FieldMove };
 
@@ -250,14 +253,11 @@ export function safely<T>(read: () => T): T | null {
   }
 }
 
-type MapObjects = { object_events?: { graphics_id: string; flag: string }[] };
-
 // People have hide flags too, so the item ball flags come from the map data, not from a flag range.
 async function readItemBallFlags(): Promise<number[]> {
   const flagsText = await Bun.file(join(REPO_DIR, "include/constants/flags.h")).text();
   const ids = new Map([...flagsText.matchAll(/^#define (FLAG_\w+)\s+(0x[0-9A-Fa-f]+)\b/gm)].map((m) => [m[1], Number(m[2])]));
-  const paths = await Array.fromAsync(new Bun.Glob("data/maps/*/map.json").scan(REPO_DIR));
-  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<MapObjects>));
+  const maps = await readMapJsons();
   const flags = maps.flatMap((map) => (map.object_events ?? []).filter((o) => o.graphics_id === "OBJ_EVENT_GFX_ITEM_BALL").map((o) => ids.get(o.flag)));
   return [...new Set(flags.filter((id) => id !== undefined))];
 }
@@ -284,10 +284,7 @@ function mapKindOf(type: string): MapKind {
 }
 
 export async function readAreas(): Promise<Areas> {
-  const { map_sections } = (await Bun.file(join(REPO_DIR, "src/data/region_map/region_map_sections.json")).json()) as { map_sections: { id: string; name?: string }[] };
-  const names = new Map(map_sections.flatMap(({ id, name }) => (name ? [[id, normalCase(name)]] : [])));
-  const paths = await Array.fromAsync(new Bun.Glob("data/maps/*/map.json").scan(REPO_DIR));
-  const maps = await Promise.all(paths.map((path) => Bun.file(join(REPO_DIR, path)).json() as Promise<{ name: string; region_map_section: string; map_type: string }>));
+  const [names, maps] = await Promise.all([readSectionNames(), readMapJsons()]);
   return Object.fromEntries(
     maps.flatMap((map) => {
       const area = names.get(map.region_map_section);
@@ -317,10 +314,6 @@ export function mapTitle(map: string): string {
   return map.split("_").map(placeWords).join(" · ");
 }
 
-function normalCase(name: string): string {
-  return name.toLowerCase().replace(/(^|[\s.])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase());
-}
-
 function namingWaitingFor(naming: NamingScreen): WaitingFor {
   switch (naming.phase) {
     case "input":
@@ -340,13 +333,14 @@ export class Game {
   private readonly mapKinds: Map<number, MapKind>;
   private readonly mapNames: string[][];
   private readonly itemBallFlags: number[];
+  private readonly flyData: FlyData;
   private readonly attributeCache = new Map<number, Uint32Array>();
   private chart: TypeChart | null = null;
   private reads: EventReads | null = null;
 
   private constructor(
     readonly mem: Memory,
-    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; mapKinds: Map<number, MapKind>; mapNames: string[][]; itemBallFlags: number[] },
+    tables: { decode: Decode; behaviorNames: Map<number, string>; graphicsNames: Map<number, string>; mapKinds: Map<number, MapKind>; mapNames: string[][]; itemBallFlags: number[]; flyData: FlyData },
   ) {
     this.decode = tables.decode;
     this.prompts = new Prompts(mem, tables.decode);
@@ -355,16 +349,18 @@ export class Game {
     this.mapKinds = tables.mapKinds;
     this.mapNames = tables.mapNames;
     this.itemBallFlags = tables.itemBallFlags;
+    this.flyData = tables.flyData;
   }
 
   static async create(mem: Memory): Promise<Game> {
-    const [charmapText, behaviorsText, graphicsText, mapTypesText, groups, itemBallFlags] = await Promise.all([
+    const [charmapText, behaviorsText, graphicsText, mapTypesText, groups, itemBallFlags, fly] = await Promise.all([
       Bun.file(join(REPO_DIR, "charmap.txt")).text(),
       Bun.file(join(REPO_DIR, "include/constants/metatile_behaviors.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/event_objects.h")).text(),
       Bun.file(join(REPO_DIR, "include/constants/map_types.h")).text(),
       Bun.file(join(REPO_DIR, "data/maps/map_groups.json")).json(),
       (itemBallFlagsOnce ??= readItemBallFlags()),
+      flyData(),
     ]);
     const behaviorNames = new Map<number, string>();
     for (const m of behaviorsText.matchAll(/^#define (MB_\w+)\s+(0x[0-9A-Fa-f]+)/gm)) behaviorNames.set(Number(m[2]), m[1]);
@@ -372,7 +368,7 @@ export class Game {
     for (const m of graphicsText.matchAll(/^#define OBJ_EVENT_GFX_(\w+)\s+(\d+)\s*$/gm)) graphicsNames.set(Number(m[2]), m[1]);
     const mapKinds = new Map([...mapTypesText.matchAll(/^#define (MAP_TYPE_\w+)\s+(\d+)/gm)].map((m): [number, MapKind] => [Number(m[2]), mapKindOf(m[1])]));
     const mapNames = (groups.group_order as string[]).map((g) => groups[g] as string[]);
-    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, mapKinds, mapNames, itemBallFlags });
+    return new Game(mem, { decode: decoder(charmapText), behaviorNames, graphicsNames, mapKinds, mapNames, itemBallFlags, flyData: fly });
   }
 
   private get saveBlock1(): Ref {
@@ -956,11 +952,37 @@ export class Game {
     return this.flag(FLAG_SYS_FLASH_ACTIVE);
   }
 
-  // A Pokémon that fainted can use it: the party menu of the game does not test the HP.
   flashUser(): number | null {
-    if (!this.flag(badgeFlag(FLASH_BADGE))) return null;
-    const slot = this.party().findIndex((mon) => !mon.isEgg && mon.moves.some((move) => move.name === "FLASH"));
+    return this.fieldMoveUser("FLASH", FLASH_BADGE);
+  }
+
+  flyUser(): number | null {
+    return this.fieldMoveUser("FLY", FLY_BADGE);
+  }
+
+  // A Pokémon that fainted can use it: the party menu of the game does not test the HP.
+  private fieldMoveUser(move: string, badge: number): number | null {
+    if (!this.flag(badgeFlag(badge))) return null;
+    const slot = this.party().findIndex((mon) => !mon.isEgg && mon.moves.some((known) => known.name === move));
     return slot < 0 ? null : slot;
+  }
+
+  flyDestinations(): FlyDestination[] {
+    const region = this.flyData.regions.get(this.map().name);
+    return this.flyData.destinations.filter((destination) => destination.region === region && this.flag(destination.flag));
+  }
+
+  flyMap(): { x: number; y: number; ready: boolean } | null {
+    const fly = this.mem.global("sFlyMap");
+    const cursor = this.mem.global("sMapCursor");
+    if (fly.pointer() === 0 || cursor.pointer() === 0) return null;
+    const at = cursor.deref();
+    const ready = fly.deref().field("state").int() === FLY_MAP_INPUT_STATE && functionName(this.mem.symbols, at.field("inputHandler").pointer()) === "HandleRegionMapInput";
+    return { x: at.field("x").int(), y: at.field("y").int(), ready };
+  }
+
+  flyLanding(): boolean {
+    return functionName(this.mem.symbols, this.mem.global("gFieldCallback").pointer()) === "FieldCallback_FlyIntoMap";
   }
 
   flashBadgeMissing(): number | null {

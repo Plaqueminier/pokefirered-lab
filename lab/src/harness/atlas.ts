@@ -127,6 +127,7 @@ export class AtlasWatch {
   #battle: "none" | "during" | "after" = "none";
   #inDarkness = false;
   #darkCells = 0;
+  #flew = false;
 
   constructor(
     private readonly game: Game,
@@ -157,6 +158,7 @@ export class AtlasWatch {
     copy.#lastTalk = this.#lastTalk;
     copy.#battle = this.#battle;
     copy.#inDarkness = this.#inDarkness;
+    copy.#flew = this.#flew;
     copy.#darkCells = this.#darkCells;
     return copy;
   }
@@ -164,6 +166,7 @@ export class AtlasWatch {
   onFrame(): void {
     const { game } = this;
     if (game.battleUnderway()) this.#battle = "during";
+    if (game.flyLanding()) this.#flew = true;
     if (game.mode() !== "overworld") return;
     const player = game.player();
     if (!player) return;
@@ -178,7 +181,8 @@ export class AtlasWatch {
     this.#inDarkness = inDarkness;
     this.see(visit, here);
     this.seeActors(visit, here);
-    if (last && last.map !== here.map) this.crossed(last, here);
+    if (last && last.map !== here.map && !this.#flew) this.crossed(last, here);
+    this.#flew = false;
   }
 
   onAction(entry: ActionEntry): void {

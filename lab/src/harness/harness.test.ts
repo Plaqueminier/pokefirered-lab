@@ -87,7 +87,7 @@ describe.skipIf(!ready)("goTo", () => {
   test("the floors of Mt Moon have thin walls: a walk cannot cross the wall of B2F, and the route from its ladder of B1F to the far ladder stays open", async () => {
     const run = await Run.open();
     const grid = run.game.mapView("MtMoon_B2F")?.grid;
-    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [], removable: [] } : null);
+    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [], removable: [], flyDestinations: [] } : null);
     expect(findRoute({ map: "MtMoon_B2F", x: 31, y: 11 }, { map: "MtMoon_B2F", x: 31, y: 17 }, floor)).toBeNull();
     expect(findRoute({ map: "MtMoon_B2F", x: 25, y: 22 }, { map: "MtMoon_B2F", x: 5, y: 11 }, floor)).not.toBeNull();
   });
@@ -138,7 +138,7 @@ async function toRivalBattle(harness: Harness) {
 const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "3", goal: null, costLimit: null };
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
-  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "46", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "47", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {

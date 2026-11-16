@@ -18,12 +18,12 @@ export type Target = { label: string } & (
   | { kind: "person"; cell: Cell; localId: number }
   | { kind: "sign"; cell: Cell; facing: Direction | "any" }
   | { kind: "edge"; name: string; side: Direction; to: string | null }
-  | { kind: "map" | "lead"; map: string; cell: Cell }
+  | { kind: "map" | "lead" | "fly"; map: string; cell: Cell }
 );
 
 export type Exit = Target & { kind: "exit" | "edge" };
 
-export type LocalTarget = Exclude<Target, { kind: "map" | "lead" }>;
+export type LocalTarget = Exclude<Target, { kind: "map" | "lead" | "fly" }>;
 
 type Located = { target: LocalTarget; inPart: boolean; inWay: boolean };
 
@@ -58,6 +58,7 @@ export const TARGET_GROUPS: TargetGroup[] = [
   { title: "Unseen cells:", kinds: ["frontier"] },
   { title: "People, objects and things to check:", kinds: ["person", "sign"] },
   { title: "Far maps:", kinds: ["map"] },
+  { title: "By FLY:", kinds: ["fly"] },
 ];
 
 function targetGroup({ kind }: Target): number {

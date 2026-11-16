@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type Direction, ELEVATION_SHIFT } from "../cells";
-import { type Cell, destinationOf, findRoute, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap } from "./path";
+import { type Cell, destinationOf, findRoute, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap, type WalkLeg } from "./path";
 
 const LAND_BLOCK = 3 << ELEVATION_SHIFT;
 
@@ -8,7 +8,7 @@ function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteM
   const width = rows[0].length;
   const height = rows.length;
   const blocks = Array.from({ length: width * height }, () => LAND_BLOCK);
-  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, blocks, warps: [], connections: [], people: [], obstacles: [], removable: [], ...more };
+  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, blocks, warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], ...more };
 }
 
 describe("a route on a map that is dark for the model", () => {
@@ -103,6 +103,36 @@ describe("the side of a walk to a target of a dark map", () => {
   });
 });
 
+describe("a route with FLY", () => {
+  const destination = { name: "Far", area: "Far", map: "Far", x: 1, y: 0, flag: 0, region: "kanto" as const, tile: { x: 3, y: 4 } };
+  const flyDestinations = [destination];
+  const town = map("Town", ["....."], { flyDestinations });
+  const room = map("Room", [".."]);
+  const far = map("Far", ["....", "####", "...."], { flyDestinations });
+
+  test("a route to a map with no other way flies from the cell of the player, and walks after the arrival", () => {
+    expect(findRoute({ map: "Town", x: 4, y: 0 }, { map: "Far", x: 3, y: 0 }, world(town, far))).toEqual([
+      { map: "Town", fly: destination },
+      { map: "Far", moves: [{ direction: "east", kind: "walk" }, { direction: "east", kind: "walk" }] },
+    ]);
+  });
+
+  test("a route never flies from a map with no Fly destinations, and a flight goes also to a place of the same map that no walk reaches", () => {
+    expect(findRoute({ map: "Room", x: 0, y: 0 }, { map: "Far", x: 1, y: 0 }, world(room, far))).toBeNull();
+    expect(findRoute({ map: "Far", x: 1, y: 2 }, { map: "Far", x: 3, y: 0 }, world(far))?.[0]).toEqual({ map: "Far", fly: destination });
+  });
+
+  test("a flight to a map that does not load is no edge: the search ends with no route", () => {
+    const walled = map("Town", [".#."], { flyDestinations });
+    expect(findRoute({ map: "Town", x: 0, y: 0 }, { map: "Town", x: 2, y: 0 }, world(walled))).toBeNull();
+  });
+
+  test("a near walk costs less than a flight", () => {
+    const linked = map("Town", ["....."], { flyDestinations, connections: [{ direction: "east", offset: 0, map: "Far" }] });
+    expect(findRoute({ map: "Town", x: 4, y: 0 }, { map: "Far", x: 1, y: 0 }, world(linked, far))?.some((leg) => "fly" in leg)).toBe(false);
+  });
+});
+
 function person(x: number, y: number): RouteMap["people"][number] {
   return { x, y, graphics: "MAN", stays: false };
 }
@@ -111,11 +141,15 @@ function world(...maps: RouteMap[]): MapSource {
   return (name) => maps.find((m) => m.name === name) ?? null;
 }
 
+function movesOf(leg: Leg | undefined): WalkLeg["moves"] {
+  return leg && "moves" in leg ? leg.moves : [];
+}
+
 function path(m: RouteMap, from: Cell, to: Cell): Direction[] | null {
   const legs = findRoute({ map: m.name, ...from }, { map: m.name, ...to }, world(m));
   if (!legs) return null;
   expect(legs).toHaveLength(1);
-  return legs[0].moves.map((move) => move.direction);
+  return movesOf(legs[0]).map((move) => move.direction);
 }
 
 const STEP = { south: [0, 1], north: [0, -1], west: [-1, 0], east: [1, 0] } as const;
@@ -134,7 +168,7 @@ function walk(from: Cell, path: Direction[]): Cell {
 }
 
 function summary(legs: Leg[] | null): string[] | null {
-  return legs?.map((leg) => `${leg.map}: ${leg.moves.map((m) => `${m.kind} ${m.direction}`).join(", ")}`) ?? null;
+  return legs?.map((leg) => `${leg.map}: ${movesOf(leg).map((m) => `${m.kind} ${m.direction}`).join(", ")}`) ?? null;
 }
 
 describe("destinationOf", () => {
@@ -173,7 +207,7 @@ describe("findRoute on one map", () => {
 
   test("takes the open way when the detour is short, and crosses a Fixed obstacle when the detour is too long", () => {
     const around = (rows: number) => map("A", ["..#..", ...Array.from({ length: rows }, () => ".###."), "....."], { removable: [{ x: 2, y: 0 }] });
-    const kinds = (m: RouteMap) => findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0].moves.map((move) => move.kind);
+    const kinds = (m: RouteMap) => movesOf(findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0]).map((move) => move.kind);
     expect(kinds(around(1))).not.toContain("remove");
     expect(kinds(around(40))).toEqual(["walk", "remove", "walk", "walk"]);
   });
@@ -223,7 +257,7 @@ describe("findRoute on one map", () => {
       const blocks = Array.from(rows.join(""), (kind) => (kind === "≈" ? 1 : elevation) << ELEVATION_SHIFT);
       return map("A", rows, { blocks });
     };
-    const kinds = (m: RouteMap) => findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0].moves.map((move) => move.kind);
+    const kinds = (m: RouteMap) => movesOf(findRoute({ map: "A", x: 0, y: 0 }, { map: "A", x: 4, y: 0 }, world(m))?.[0]).map((move) => move.kind);
     expect(kinds(shore(1))).not.toContain("surf");
     expect(kinds(shore(40))).toEqual(["walk", "surf", "walk", "walk"]);
     expect(kinds(shore(40, 4))).not.toContain("surf");
@@ -463,12 +497,12 @@ describe("findRoute from the bedroom to Pallet Town", () => {
   test("goes down the stairs, out by the door mat, and north in the town", () => {
     const legs = findRoute({ map: HOUSE_2F.name, x: 6, y: 6 }, { map: "PalletTown", x: 12, y: 2 }, world(HOUSE_2F, HOUSE_1F, PALLET_TOWN));
     expect(legs?.map((l) => l.map)).toEqual(["PalletTown_PlayersHouse_2F", "PalletTown_PlayersHouse_1F", "PalletTown"]);
-    expect(legs![0].moves.at(-1)).toEqual({ direction: "west", kind: "push" });
-    expect(legs![1].moves.at(-1)).toEqual({ direction: "south", kind: "push" });
-    const walked = legs![1].moves.slice(0, -1).map((m) => m.direction);
+    expect(movesOf(legs![0]).at(-1)).toEqual({ direction: "west", kind: "push" });
+    expect(movesOf(legs![1]).at(-1)).toEqual({ direction: "south", kind: "push" });
+    const walked = movesOf(legs![1]).slice(0, -1).map((m) => m.direction);
     expect(walk({ x: 10, y: 2 }, walked)).toEqual({ x: 4, y: 8 });
     expect(visits({ x: 10, y: 2 }, walked).some((c) => c.x === 8 && c.y === 4)).toBe(false);
-    expect(walk({ x: 6, y: 7 }, legs![2].moves.map((m) => m.direction))).toEqual({ x: 12, y: 2 });
+    expect(walk({ x: 6, y: 7 }, movesOf(legs![2]).map((m) => m.direction))).toEqual({ x: 12, y: 2 });
   });
 
   test("has no route to a map it cannot reach", () => {

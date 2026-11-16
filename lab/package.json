@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings",
     "knip": "knip",
-    "test": "bun test",
+    "test": "bun test --parallel",
     "prepare": "cd .. && husky lab/.husky"
   },
   "devDependencies": {

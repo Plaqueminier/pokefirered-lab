@@ -34,7 +34,7 @@ export function LoopPage() {
           <Terms
             numbered
             rows={[
-              ["Harness", "runs the emulator to the next Decision point; it decides nothing, except the use of FLASH and the speed of a walk"],
+              ["Harness", "runs the emulator to the next Decision point; it decides nothing, except the use of FLASH, the field moves of a walk (CUT, ROCK SMASH, SURF and FLY) and the speed of a walk"],
               ["Decision point", "the game waits for an input: walk, text, choice, battle…"],
               ["Model call", "the model bot asks its AI model for one action"],
               ["Macro-action", "the Harness plays the action in the game, or one Raw input"],
@@ -62,19 +62,19 @@ export function PrinciplePage() {
       details={[
         ["Run", "an emulator that plays from the Starting save, or from a copy with the names of its character."],
         ["Bot", "decides what to do, and acts only through the Harness."],
-        ["Harness", "plays the actions of the Bot in the game; decides nothing, except the use of FLASH on a Dark map, the speed of a walk and an evolution that B cannot stop."],
+        ["Harness", "plays the actions of the Bot in the game; decides nothing, except the use of FLASH on a Dark map, the field moves of a walk (CUT, ROCK SMASH, SURF and FLY), the speed of a walk and an evolution that B cannot stop."],
         ["Decision point", "the game waits for an input: walk, text, choice, battle action…"],
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level; on the map of the player, the cells of the game now, and on another map, the cells of the ROM), the exits taken with their destination and arrival cell (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water while the party cannot use SURF, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level; on the map of the player, the cells of the game now, and on another map, the cells of the ROM), the exits taken with their destination and arrival cell (a flight with FLY is not an exit) (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water while the party cannot use SURF, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
       <div class={GRID3}>
         <DocCard icon={Play} title="Run" lines={["an emulator that plays from the Starting save, or a copy with names", "10 at most at the same time: the Viewer Run and 9 places"]} />
         <DocCard icon={Bot} title="Bot" lines={["decides what to do", "acts only through the Harness"]} />
-        <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH, the speed of a walk and an evolution that B cannot stop"]} />
+        <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH, the field moves of a walk, the speed of a walk and an evolution that B cannot stop"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
         <DocCard icon={Eye} title="Knowledge level" lines={["`player` what a careful player knows", "`full` also the exact HP and stats of the enemy, and all the maps"]} />
         <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water with no SURF, fixed obstacles"]} />
@@ -117,7 +117,7 @@ export function ViewerPage() {
         ["Bag and PC", "the five pockets of the Bag with their items (quantity and description), the items of the PC and the Pokémon of the boxes at the cursor, and the changes of the Bag and the PC with their times; a click on a change goes to it."],
         [
           "Timeline",
-          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, FLASH used, SURF used, STRENGTH used, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
+          "the Game events of the Run as icons on one track (Milestones, fainted Pokémon, new Pokémon, evolutions, trainer battles, heals, new places, obstacles removed, FLASH used, SURF used, STRENGTH used, FLY used, and as options the levels, wild battles, purchases and items got), with a chip for each kind. A hover shows the events, a click goes to a frame (in a replay, the screen jumps to it), a drag selects a range.",
         ],
         ["Cursor", "one cursor (a frame) and one selection (a range of frames) for all the panels: a click on a Model call or on the Timeline moves them, Esc returns them to now."],
         ["Toast", "at each notice and each new Milestone."],

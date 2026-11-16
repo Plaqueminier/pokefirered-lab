@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has two **Bots**: the model bot (`bots/model.ts`, version 46, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself when a Pokémon of the party knows the move and the player has its badge. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it.
+The lab has two **Bots**: the model bot (`bots/model.ts`, version 47, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself when a Pokémon of the party knows the move and the player has its badge. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the way is shorter, with badge 3 and a Pokémon of the party that knows FLY.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -107,7 +107,9 @@ An **Evolution** makes its own **Races**, with no command: after each **Generati
 
 ## Checks
 
-In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
+In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun run test`.
+
+`bun run test` runs the test files in parallel (`bun test --parallel`, one worker for each CPU core). Most of the time goes to the tests that play the game in the emulator. A plain `bun test` runs the files one after the other: it takes about three times longer.
 
 The Arena tests need the ROM from `make lab ARENA=1` at the repo root (`pokefirered_modern_lab_arena.gba`). Without it, `bun test` skips them.
 

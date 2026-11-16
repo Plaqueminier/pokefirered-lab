@@ -100,6 +100,7 @@ export function atlasExtract(overworld: Overworld): AtlasView {
     ({ neighbours, targets } = before);
     break;
   }
+  targets = [...targets, ...(overworld.fly.usable ? overworld.fly.destinations : []).map(({ name, map, x, y }): Target => ({ kind: "fly", label: `${name}: ${map} (${x}, ${y})`, map, cell: { x, y } }))];
   return { lines: lines(), targets, left: leftLines(overworld, here, parts, near), spinTiles: parts.hasSlides };
 }
 

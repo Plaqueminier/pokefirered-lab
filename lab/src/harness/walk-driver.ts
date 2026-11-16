@@ -5,7 +5,7 @@ import { Keys } from "../protocol";
 import type { ActionEntry, Interruption } from "./harness";
 import type { ItemDriver } from "./item-driver";
 import { type Input, type MenuDriver, type Outcome, tap } from "./menu-driver";
-import type { Cell, Leg } from "./path";
+import type { Cell, WalkLeg } from "./path";
 import { at } from "./route-reasons";
 
 const STEP_FRAME_LIMIT = 60;
@@ -67,7 +67,7 @@ export class WalkDriver {
     return tap(this.frames, keys);
   }
 
-  walkLeg(leg: Leg, next: string): LegResult {
+  walkLeg(leg: WalkLeg, next: string): LegResult {
     for (const move of leg.moves) {
       const result = this.playMove(move);
       if (result !== "done") return result;
@@ -175,7 +175,7 @@ export class WalkDriver {
     return turned.status === "done" ? "done" : "no move";
   }
 
-  private playMove({ direction, kind }: Leg["moves"][number]): LegResult {
+  private playMove({ direction, kind }: WalkLeg["moves"][number]): LegResult {
     switch (kind) {
       case "push":
         return this.pushIntoWarp(direction);

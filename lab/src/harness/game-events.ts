@@ -20,9 +20,10 @@ export type StateEvent =
   | { type: "flash"; map: string; species: string }
   | { type: "surf"; map: string; x: number; y: number; species: string }
   | { type: "strength"; map: string; x: number; y: number; species: string }
+  | { type: "fly"; from: string; to: string; destination: string; species: string }
   | { type: "whiteout" };
 
-const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "surf", "strength", "whiteout"] satisfies StateEvent["type"][]);
+const STATE_EVENT_TYPES: ReadonlySet<string> = new Set(["heal", "purchase", "item", "catch", "faint", "level", "money", "trainer", "obstacle", "flash", "surf", "strength", "fly", "whiteout"] satisfies StateEvent["type"][]);
 
 export function isStateEvent<E extends { type: string }>(event: E): event is Extract<E, { type: StateEvent["type"] }> {
   return STATE_EVENT_TYPES.has(event.type);
@@ -50,6 +51,8 @@ export class StateWatch {
   #whitingOut = false;
   #blocks = "";
   #avatar: { onLand: boolean; map: string } | null = null;
+  #lastOverworldMap: string | null = null;
+  #landing = false;
   // After an item heal, Task_PartyMenuModifyHP (party_menu.c) sets the HP back to the old HP and raises it by 1 at each frame up to the new HP: these frames are no heal. The start and the end of a battle forget them.
   readonly #itemHealTops = new Map<number, number>();
 
@@ -66,6 +69,7 @@ export class StateWatch {
     this.#whitingOut = whitingOut;
     events.push(...this.#battle.onFrame(this.#reads, inBattle));
     events.push(...this.#surfStart(mode));
+    events.push(...this.#flight(mode));
     const keys = this.#reads.keys();
     const moving = keys.blocks !== this.#blocks;
     this.#blocks = keys.blocks;
@@ -147,6 +151,20 @@ export class StateWatch {
     if (!before?.onLand || before.map !== now.map || !this.#game.surfing()) return [];
     const user = this.#seen?.party.find((mon) => mon.moves.includes("SURF"));
     return user ? [{ type: "surf", map: now.map, x: player.x, y: player.y, species: user.species }] : [];
+  }
+
+  #flight(mode: Mode): StateEvent[] {
+    const landing = this.#game.flyLanding();
+    const landed = landing && !this.#landing;
+    this.#landing = landing;
+    if (!landing && mode === "overworld") this.#lastOverworldMap = this.#game.map().name;
+    if (!landed) return [];
+    const slot = this.#game.flyUser();
+    const user = slot === null ? undefined : this.#seen?.party[slot];
+    if (!user || !this.#lastOverworldMap) return [];
+    const to = this.#game.map().name;
+    const destination = this.#game.flyDestinations().find((place) => place.map === to)?.name ?? to;
+    return [{ type: "fly", from: this.#lastOverworldMap, to, destination, species: user.species }];
   }
 
   #strengthEvent(party: WatchedMon[]): StateEvent[] {

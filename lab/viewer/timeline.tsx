@@ -1,4 +1,4 @@
-import { ChevronsUp, CircleDot, Dumbbell, Flashlight, Gift, Heart, MapPin, PawPrint, Scissors, ShoppingBag, Skull, Sparkles, Swords, Trophy, Waves } from "lucide-preact";
+import { Bird, ChevronsUp, CircleDot, Dumbbell, Flashlight, Gift, Heart, MapPin, PawPrint, Scissors, ShoppingBag, Skull, Sparkles, Swords, Trophy, Waves } from "lucide-preact";
 import type { ComponentType } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { Button, FilterChip, LABEL, Pill, Tip, type Tone, Tooltip, toggled, toneText, useWidth } from "./components";
@@ -21,6 +21,7 @@ const KINDS: KindLook[] = [
   { id: "flash", label: "FLASH used", icon: Flashlight, on: true },
   { id: "surf", label: "SURF used", icon: Waves, on: true },
   { id: "strength", label: "STRENGTH used", icon: Dumbbell, on: true },
+  { id: "fly", label: "FLY used", icon: Bird, on: true },
   { id: "level", label: "Levels", icon: ChevronsUp, on: false },
   { id: "wild", label: "Wild battles", icon: PawPrint, on: false },
   { id: "purchase", label: "Purchases", icon: ShoppingBag, on: false },

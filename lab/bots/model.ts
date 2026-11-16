@@ -41,7 +41,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "46",
+    version: "47",
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -107,7 +107,7 @@ export function canWalkAgain(action: PlayedAction, { view, overworld }: Pick<Wal
   if (action.name === "goTo") return (action.map !== undefined || onPromptMap) && !isSpinGoTo(action, overworld);
   if (action.name !== "go") return false;
   const target = view.targets[action.target];
-  if (target.kind === "lead" || target.kind === "map") return true;
+  if (target.kind === "lead" || target.kind === "map" || target.kind === "fly") return true;
   // walkOn starts with a walk back to its first cell, so each battle in the dark would lose the cells past it.
   return onPromptMap && !walksInTheDark(target, overworld);
 }
@@ -301,6 +301,7 @@ class ModelPlay {
     switch (target.kind) {
       case "map":
       case "lead":
+      case "fly":
         return this.harness.goTo(target.cell.x, target.cell.y, target.map);
       case "person":
         return this.talkTo(target, overworld, (now) => now.people.find((p) => p.localId === target.localId && p.loaded) ?? null);

@@ -26,6 +26,8 @@ export const START_MENU_POKEMON = "POKéMON";
 const SEND_OUT_ACTIONS = ["SEND OUT", "SHIFT"];
 const SWAP_ACTION = "SWITCH";
 const FLASH_ACTION = "FLASH";
+const FLY_ACTION = "FLY";
+const FLY_MAP_WIDTH = 22;
 const CURSOR_COLUMN = 1;
 const CURSOR_ROW = 2;
 // Decomp MoveCursorToOKButton: the OK button is in the third row of the button column, the column after the keys.
@@ -410,11 +412,7 @@ export class MenuDriver {
       if (missing) return missing;
     }
     if (first === second) return impossible("a Pokémon cannot swap with itself");
-    const opened = this.openStartMenu(START_MENU_POKEMON, () => this.pickMenu() !== null);
-    if (opened.status !== "done") return opened;
-    const actions = this.openPartyActions(first);
-    if (actions.status !== "done") return actions;
-    const chosen = this.selectPartyAction((options) => options.indexOf(SWAP_ACTION), () => this.pickMenu()?.swapping === true);
+    const chosen = this.partyAction(first, SWAP_ACTION, () => this.pickMenu()?.swapping === true);
     if (chosen.status !== "done") return chosen;
     const moved = this.moveMenuCursor(second, () => this.pickMenu()?.cursor ?? null);
     if (moved.status !== "done") return moved;
@@ -424,12 +422,54 @@ export class MenuDriver {
 
   useFlash(slot: number): Outcome {
     const { game } = this;
+    const chosen = this.partyAction(slot, FLASH_ACTION, () => game.flashActive());
+    return chosen.status === "done" ? this.untilReady(() => game.waitingFor().kind === "walk") : chosen;
+  }
+
+  fly(tile: { x: number; y: number }): Outcome {
+    const { game } = this;
+    const user = game.flyUser();
+    if (user === null) return impossible("no Pokémon of the party can use FLY");
+    const fail = (outcome: Outcome) => (outcome.status === "done" || outcome.status === "interrupted" ? outcome : this.failedFlight(outcome.reason));
+    const shown = this.partyAction(user, FLY_ACTION, () => game.flyMap()?.ready === true);
+    if (shown.status !== "done") return fail(shown);
+    const target = tile.y * FLY_MAP_WIDTH + tile.x;
+    const cursor = () => {
+      const map = game.flyMap();
+      return map?.ready ? map.y * FLY_MAP_WIDTH + map.x : null;
+    };
+    const moved = this.moveCursor(target, cursor, choiceKey(target, FLY_MAP_WIDTH), (key) => this.menuInput(key, () => game.flyMap()?.ready === true));
+    if (moved.status !== "done") return fail(moved);
+    const chosen = this.menuInput(Keys.A, () => game.flyMap() === null);
+    if (chosen.status !== "done") return fail(chosen);
+    const left = this.untilReady(() => game.flyLanding() || this.pickMenu() !== null);
+    if (left.status !== "done") return fail(left);
+    if (!game.flyLanding()) return this.failedFlight(`the fly map closed at (${tile.x}, ${tile.y}) with no flight`);
+    return fail(this.untilReady(() => !game.flyLanding() && game.waitingFor().kind === "walk"));
+  }
+
+  private partyAction(slot: number, action: string, done: () => boolean): Outcome {
     const opened = this.openStartMenu(START_MENU_POKEMON, () => this.pickMenu() !== null);
     if (opened.status !== "done") return opened;
     const actions = this.openPartyActions(slot);
-    if (actions.status !== "done") return actions;
-    const chosen = this.selectPartyAction((options) => options.indexOf(FLASH_ACTION), () => game.flashActive());
-    return chosen.status === "done" ? this.untilReady(() => game.waitingFor().kind === "walk") : chosen;
+    return actions.status === "done" ? this.selectPartyAction((options) => options.indexOf(action), done) : actions;
+  }
+
+  private failedFlight(reason: string): Outcome {
+    const { game } = this;
+    const screens: [open: () => boolean, next: () => boolean][] = [
+      [() => game.flyMap() !== null, () => this.pickMenu() !== null],
+      [() => game.partyMenu()?.kind === "actions", () => this.pickMenu() !== null],
+      [() => this.pickMenu() !== null, () => game.startMenu() !== null],
+      [() => game.startMenu() !== null, () => game.waitingFor().kind === "walk"],
+    ];
+    for (const [open, next] of screens) {
+      if (!open()) continue;
+      const closed = this.menuInput(Keys.B, next);
+      if (closed.status === "interrupted") return closed;
+      if (closed.status !== "done") return impossible(`the flight does not start (${reason}), and the menus stay open: ${closed.reason}`);
+    }
+    return impossible(`the flight does not start: ${reason}`);
   }
 
   private namingScreen() {

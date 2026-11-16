@@ -43,6 +43,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     pcItems: [],
     repelActive: false, riding: false, rideChosen: false, surfing: false,
     strength: { usable: false, missingBadge: null, moved: false },
+    fly: { usable: false, destinations: [] },
     money: 0,
     milestones: [],
     map: { group: 0, num: 0, name: current.name },
@@ -77,6 +78,19 @@ function chain(routes: number): AtlasMap[] {
     parts: [],
   }));
 }
+
+describe("the places of FLY", () => {
+  const destination = { name: "Pallet Town", area: "Pallet Town", map: "PalletTown", x: 6, y: 8 };
+
+  test("each place that a walk can fly to is a target of the group By FLY, at its cell in front of the Pokémon Center; with no place, or when no Pokémon can use FLY, there is no group", () => {
+    const view = atlasExtract({ ...overworld(LAB, []), fly: { usable: true, destinations: [destination] } });
+    const letter = view.targets.findIndex((t) => t.kind === "fly");
+    expect(view.targets[letter]).toEqual({ kind: "fly", label: "Pallet Town: PalletTown (6, 8)", map: "PalletTown", cell: { x: 6, y: 8 } });
+    expect(view.lines.slice(-2)).toEqual(["By FLY:", `${"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[letter]}. Pallet Town: PalletTown (6, 8)`]);
+    expect(atlasExtract(overworld(LAB, [])).lines).not.toContain("By FLY:");
+    expect(atlasExtract({ ...overworld(LAB, []), fly: { usable: false, destinations: [destination] } }).lines).not.toContain("By FLY:");
+  });
+});
 
 describe("the exits of the Atlas", () => {
   const cell = (x: number, to = "Gate") => ({ x, y: 9, to, warpId: 0, group: 0, num: 0, behavior: "MB_CAVE_DOOR", toKind: "indoor" as const, how: "step" as const });

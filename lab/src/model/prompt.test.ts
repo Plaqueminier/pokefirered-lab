@@ -56,6 +56,7 @@ function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observ
     pcItems: [],
     repelActive: false,
     strength: { usable: false, missingBadge: null, moved: false },
+    fly: { usable: false, destinations: [] },
     money: 3080,
     bag: [{ pocket: "ITEMS", items }],
     teachables: [],
@@ -1230,6 +1231,22 @@ describe("the TMs and the HMs of the Bag", () => {
       expect(promptOf(with_([TM], { ...tree, edges: [{ side: "south", to: null, blocked: "water" }], dark: { missingBadge: null } }))).not.toContain(HINT);
       expect(promptOf(with_([], tree))).not.toContain(HINT);
       expect(promptOf(with_([teachable("HM01", "CUT", [], [0])], tree))).not.toContain(HINT);
+    });
+
+    test("HM02 has its hint on each map while no Pokémon knows FLY: teach it when a Pokémon can learn it, else catch one, and the badge 3 when it is missing", () => {
+      const FLY = "Your Bag has HM02 (FLY). FLY can take you to the Pokémon Center of a town after you visit it";
+      const badge3 = (observation: Observation): Observation => ({ ...observation, milestones: ["badge-3"] });
+      expect(promptOf(badge3(with_([teachable("HM02", "FLY")])))).toContain(`${FLY}: teach it.\n`);
+      expect(promptOf(badge3(with_([teachable("HM02", "FLY", [])])))).toContain(`${FLY}. No Pokémon of your party can learn it: catch a Pokémon that can learn FLY.\n`);
+      expect(promptOf(with_([teachable("HM02", "FLY")]))).toContain(`${FLY}: teach it. FLY needs badge 3.`);
+      expect(promptOf(with_([teachable("HM02", "FLY", [0], [0])]))).not.toContain(FLY);
+    });
+
+    test("the HM02 hint names the place of each Fly destination that the player visited", () => {
+      const place = (area: string) => ({ name: area.startsWith("Route") ? `${area} Pokémon Center` : area, area, map: area.replace(" ", ""), x: 0, y: 0 });
+      const hint = (areas: string[]) => promptOf({ ...with_([teachable("HM02", "FLY")]), fly: { usable: false, destinations: areas.map(place) } } as Observation);
+      expect(hint(["Pallet Town"])).toContain("Your Bag has HM02 (FLY). FLY can take you to the Pokémon Center of Pallet Town: teach it.");
+      expect(hint(["Pallet Town", "Route 4", "Celadon City"])).toContain("FLY can take you to the Pokémon Center of Pallet Town, Route 4 or Celadon City: teach it.");
     });
   });
 });

@@ -1,4 +1,5 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, ELEVATION_SHIFT, KIND, LEDGE, OPPOSITE, STOP, SWITCH, WALL } from "../cells";
+import type { FlyDestination } from "../fly-destinations";
 import type { MapGrid, Obstacle, WarpExit } from "../game";
 
 export type Cell = { x: number; y: number };
@@ -12,11 +13,14 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   people: RoutePerson[];
   obstacles: Obstacle[];
   removable: Cell[];
+  flyDestinations: readonly FlyDestination[];
 };
 
 type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" | "surf" };
 
-export type Leg = { map: string; moves: Move[] };
+export type WalkLeg = { map: string; moves: Move[] };
+
+export type Leg = WalkLeg | { map: string; fly: FlyDestination };
 
 export type MapSource = (name: string) => RouteMap | null;
 
@@ -28,12 +32,15 @@ const WARP_COST = 4;
 const STEP_FRAMES = 16;
 const CUT_FRAMES = 545;
 const SURF_FRAMES = 452;
+const FLY_FRAMES = 700;
 const SHORE_ELEVATION = 3;
 const MOVE_COST: Record<Move["kind"], number> = { walk: 1, jump: 2, push: 1, remove: Math.round(CUT_FRAMES / STEP_FRAMES), surf: Math.round(SURF_FRAMES / STEP_FRAMES) };
+const FLY_COST = Math.round(FLY_FRAMES / STEP_FRAMES);
 export const MAX_ROUTE_MAPS = 32;
 
-type Edge = { to: Place; move: Move; cost: number; leaves: boolean };
-type Link = { from: string; move: Move; leaves: boolean; to: Place };
+type Step = { move: Move } | { fly: FlyDestination };
+type Edge = Step & { to: Place; cost: number; leaves: boolean };
+type Link = Step & { from: string; leaves: boolean; to: Place };
 
 /** With `exit`, the destination is the arrival of an exit: it can be a cell where the player cannot stand (the arrival of a door is a blocked cell), and the player reaches it when it arrives on its map. */
 export type Destination = Place & { exit?: boolean };
@@ -80,10 +87,15 @@ export function whyNoRoute(from: Place, to: Destination, mapOf: MapSource): NoRo
 
 function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
   const maps = new Map<string, RouteMap | null>();
-  const load = (name: string) => {
-    if (!maps.has(name)) maps.set(name, maps.size < MAX_ROUTE_MAPS ? mapOf(name) : null);
-    return maps.get(name)!;
+  let walkMaps = 0;
+  const load: MapLoad = (name, byFlight = false) => {
+    if (!maps.has(name) && (byFlight || walkMaps < MAX_ROUTE_MAPS)) {
+      maps.set(name, mapOf(name));
+      if (!byFlight) walkMaps++;
+    }
+    return maps.get(name) ?? null;
   };
+  const flownFrom = new Set<string>();
   const target = load(to.map);
   if (!load(from.map) || !target || !(to.exit || free(target, to) || removableAt(target, to))) return null;
 
@@ -98,20 +110,28 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
     const here = id(place);
     if (here === id(to)) return linksTo(here, cameFrom);
     const spent = cost.get(here)!;
-    for (const edge of edges(place, load)) {
+    // A flight costs the same from each cell of a map, so only the first cell of the map that the search reaches can fly.
+    const flies = !flownFrom.has(place.map);
+    flownFrom.add(place.map);
+    for (const { cost: edgeCost, ...edge } of edges(place, load, flies)) {
       const next = id(edge.to);
-      const total = spent + edge.cost;
+      const total = spent + edgeCost;
       if (cost.has(next) && cost.get(next)! <= total) continue;
       cost.set(next, total);
-      cameFrom.set(next, { from: here, move: edge.move, leaves: edge.leaves, to: edge.to });
+      cameFrom.set(next, { from: here, ...edge });
       open.push(edge.to, total + estimate(edge.to));
     }
   }
   return null;
 }
 
-function* edges(place: Place, load: MapSource): Generator<Edge> {
+type MapLoad = (name: string, byFlight?: boolean) => RouteMap | null;
+
+function* edges(place: Place, load: MapLoad, flies: boolean): Generator<Edge> {
   const map = load(place.map)!;
+  for (const destination of flies ? map.flyDestinations : []) {
+    if (load(destination.map, true)) yield { to: { map: destination.map, x: destination.x, y: destination.y }, fly: destination, cost: FLY_COST, leaves: true };
+  }
   const onWater = isSurf(map, place);
   for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
     const walk: Move = { direction, kind: "walk" };
@@ -368,12 +388,20 @@ function linksTo(end: string, cameFrom: Map<string, Link>): Link[] {
 }
 
 function legsOf(links: Link[], start: string): Leg[] {
-  const legs: Leg[] = [{ map: start, moves: [] }];
+  const legs: Leg[] = [];
+  let walk: WalkLeg = { map: start, moves: [] };
   for (const link of links) {
-    legs.at(-1)!.moves.push(link.move);
-    if (link.leaves) legs.push({ map: link.to.map, moves: [] });
+    if ("fly" in link) {
+      if (walk.moves.length > 0) legs.push(walk);
+      legs.push({ map: walk.map, fly: link.fly });
+    } else {
+      walk.moves.push(link.move);
+      if (!link.leaves) continue;
+      legs.push(walk);
+    }
+    walk = { map: link.to.map, moves: [] };
   }
-  return legs;
+  return [...legs, walk];
 }
 
 // The queue gives the items with equal scores in push order, so a Run gets the same route on each start (ADR 0002).

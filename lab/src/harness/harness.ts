@@ -5,6 +5,7 @@ import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, 
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, OPPOSITE, SWITCH, withSurf } from "../cells";
+import type { FlyDestination } from "../fly-destinations";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor, walkRemoves } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
@@ -43,6 +44,8 @@ import { type Slid, WalkDriver } from "./walk-driver";
 const BLOCKED_TRIES = 3;
 const BLOCKED_WAIT_FRAMES = 30;
 const MAX_LEGS = 64;
+// A flight ends the Safari game: the player loses the balls and the steps.
+const isSafariZone = (map: string) => map.startsWith("SafariZone_");
 // readText also runs a busy game to its next text.
 const ACCEPTS: Record<WaitingFor["kind"], AvailableAction["name"][]> = {
   walk: ["goTo", "walkOn", "interact", "push", "swap", "use", "teach", "give", "take"],
@@ -73,8 +76,11 @@ export type Person = Pick<MapActors["people"][number], "localId" | "x" | "y" | "
 
 export type StrengthUse = FieldMoveUse & { moved: boolean };
 
+type FlyTarget = Pick<FlyDestination, "name" | "area" | "map" | "x" | "y">;
+export type FlyUse = { usable: boolean; destinations: FlyTarget[] };
+
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; fly: FlyUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -436,7 +442,7 @@ export class Harness {
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), strength: this.strengthUse(grid, actors), teachables: game.teachables(), stones: game.stones() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), strength: this.strengthUse(grid, actors), fly: this.flyUse(grid.name), teachables: game.teachables(), stones: game.stones() };
   }
 
   availableActions(): AvailableAction[] {
@@ -565,7 +571,14 @@ export class Harness {
       const route = findRoute(here, destination, maps);
       const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
       if (failed) return failed;
-      const result = route ? this.#walk.walkLeg(route[0], route[1]?.map ?? route[0].map) : "stuck";
+      const leg = route?.[0];
+      if (leg && "fly" in leg) {
+        const flown = this.#menus.fly(leg.fly.tile);
+        if (flown.status !== "done") return flown;
+        tries = 0;
+        continue;
+      }
+      const result = leg ? this.#walk.walkLeg(leg, route[1]?.map ?? leg.map) : "stuck";
       switch (result) {
         case "done":
           tries = 0;
@@ -850,6 +863,17 @@ export class Harness {
     return this.#watch.gameProgress + this.#atlas.heard + this.#atlas.exits + this.#atlas.darkCells;
   }
 
+  private flyUse(map: string): FlyUse {
+    const game = this.#run.game;
+    const destinations = isSafariZone(map) ? [] : game.flyDestinations().flatMap(({ name, area, map: to, x, y }) => (to === map ? [] : [{ name, area, map: to, x, y }]));
+    return { usable: game.flyUser() !== null, destinations };
+  }
+
+  private flyDestinations(): FlyDestination[] {
+    const game = this.#run.game;
+    return game.flyUser() === null ? [] : game.flyDestinations();
+  }
+
   private lightDarkMap(): void {
     const game = this.#run.game;
     if (!this.#atlas.darkHere || game.waitingFor().kind !== "walk") return;
@@ -923,6 +947,7 @@ export class Harness {
 
   private routeMaps(): MapSource {
     const maps = new Map<string, RouteMap | null>();
+    const destinations = this.flyDestinations();
     return (name) => {
       if (!maps.has(name)) {
         const view = this.#run.game.mapView(name);
@@ -931,7 +956,7 @@ export class Harness {
           return null;
         }
         const { kinds, usable, closed } = this.fieldMovesOn(view.grid, view.actors);
-        const map = { ...view.grid, kinds, people: view.actors.people, obstacles: closed, removable: usable };
+        const map = { ...view.grid, kinds, people: view.actors.people, obstacles: closed, removable: usable, flyDestinations: view.grid.outside && !isSafariZone(name) ? destinations : [] };
         const sight = this.#atlas.darkSight(view.grid);
         maps.set(name, sight ? onlySeen(map, sight) : map);
       }
