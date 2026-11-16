@@ -36,6 +36,7 @@
 #include "constants/abilities.h"
 #include "constants/pokemon.h"
 #include "constants/maps.h"
+#include "arena.h"
 
 extern const u8 *const gBattleScriptsForMoveEffects[];
 
@@ -5151,6 +5152,9 @@ static void Cmd_yesnoboxlearnmove(void)
         gBattleScripting.learnMoveState++;
         gBattleCommunication[CURSOR_POSITION] = 0;
         BattleCreateYesNoCursorAt();
+#if ARENA
+        Arena_OnLearnMoveQuestion();
+#endif
         break;
     case 1:
         if (JOY_NEW(DPAD_UP) && gBattleCommunication[CURSOR_POSITION] != 0)
@@ -5181,7 +5185,7 @@ static void Cmd_yesnoboxlearnmove(void)
                 gBattleScripting.learnMoveState = 4;
             }
         }
-        else if (JOY_NEW(B_BUTTON))
+        else if (JOY_NEW(B_BUTTON) || ARENA_AUTO_PRESSES(ARENA_QUESTION_LEARN_MOVE, B_BUTTON))
         {
             PlaySE(SE_SELECT);
             gBattleScripting.learnMoveState = 4;
@@ -5276,7 +5280,8 @@ static void Cmd_yesnoboxstoplearningmove(void)
             gBattleCommunication[CURSOR_POSITION] = 1;
             BattleCreateYesNoCursorAt();
         }
-        if (JOY_NEW(A_BUTTON))
+        // YES to "Stop learning?" keeps the four moves.
+        if (JOY_NEW(A_BUTTON) || ARENA_AUTO_PRESSES(ARENA_QUESTION_STOP_LEARNING, A_BUTTON))
         {
             PlaySE(SE_SELECT);
 
@@ -5571,14 +5576,14 @@ static void Cmd_yesnobox(void)
             gBattleCommunication[CURSOR_POSITION] = 1;
             BattleCreateYesNoCursorAt();
         }
-        if (JOY_NEW(B_BUTTON))
+        if (JOY_NEW(B_BUTTON) || ARENA_AUTO_PRESSES(ARENA_QUESTION_YES_NO, B_BUTTON))
         {
             gBattleCommunication[CURSOR_POSITION] = 1;
             PlaySE(SE_SELECT);
             HandleBattleWindow(23, 8, 29, 13, WINDOW_CLEAR);
             gBattlescriptCurrInstr++;
         }
-        else if (JOY_NEW(A_BUTTON))
+        else if (JOY_NEW(A_BUTTON) || ARENA_AUTO_PRESSES(ARENA_QUESTION_YES_NO, A_BUTTON))
         {
             PlaySE(SE_SELECT);
             HandleBattleWindow(23, 8, 29, 13, WINDOW_CLEAR);
@@ -5664,6 +5669,14 @@ static void Cmd_atknameinbuff1(void)
 
 static void Cmd_drawlvlupbox(void)
 {
+#if ARENA
+    // The end screen of the Arena shows the stat gains.
+    if (Arena_SkipsLevelUpBox())
+    {
+        gBattlescriptCurrInstr++;
+        return;
+    }
+#endif
     if (gBattleScripting.drawlvlupboxState == 0)
     {
         // If the Pokémon getting exp is not in-battle then
@@ -9672,6 +9685,9 @@ static void Cmd_displaydexinfo(void)
     case 1:
         if (!gPaletteFade.active)
         {
+#if ARENA
+            Arena_LeaveScreen();
+#endif
             FreeAllWindowBuffers();
             gBattleCommunication[TASK_ID] = DexScreen_RegisterMonToPokedex(species);
             gBattleCommunication[0]++;
@@ -9764,6 +9780,12 @@ void HandleBattleWindow(u8 xStart, u8 yStart, u8 xEnd, u8 yEnd, u8 flags)
                 CopyToBgTilemapBufferRect_ChangePalette(0, &var, destX, destY, 1, 1, 0x11);
         }
     }
+#if ARENA
+    // BG1 holds the Arena map. The engine copies BG0 when it prints text, but the Arena prints none, so copy BG0 here.
+    if (Arena_ShowsScreen())
+        CopyBgTilemapBufferToVram(0);
+    else
+#endif
     CopyBgTilemapBufferToVram(1);
 }
 

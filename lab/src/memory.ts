@@ -6,6 +6,11 @@ export interface MemoryBus {
   read(address: number, length: number): Uint8Array;
 }
 
+/** The bus of a running core: it also writes. */
+export interface WritableBus extends MemoryBus {
+  patch8(address: number, value: number): void;
+}
+
 /** The bit `id` of a flag array. */
 export function bitAt(bytes: Uint8Array, id: number): number {
   return (bytes[id >> 3] >> (id & 7)) & 1;
@@ -168,6 +173,16 @@ export class Ref {
     if (!signed) return raw;
     const bits = size * 8;
     return raw >= 2 ** (bits - 1) ? raw - 2 ** bits : raw;
+  }
+
+  /** Writes an integer through `bus`, also into a bit field: the other bits of its bytes stay the same. */
+  write(bus: WritableBus, value: number): void {
+    const { size, shift } = this.bits ?? { size: this.size * 8, shift: 0 };
+    const length = Math.ceil((shift + size) / 8);
+    const old = bus.read(this.addr, length).reduce((word, byte, i) => word | (BigInt(byte) << BigInt(8 * i)), 0n);
+    const mask = ((1n << BigInt(size)) - 1n) << BigInt(shift);
+    const word = (old & ~mask) | ((BigInt(value) << BigInt(shift)) & mask);
+    for (let i = 0; i < length; i++) bus.patch8(this.addr + i, Number((word >> BigInt(8 * i)) & 0xffn));
   }
 
   bytes(length = this.size): Uint8Array {

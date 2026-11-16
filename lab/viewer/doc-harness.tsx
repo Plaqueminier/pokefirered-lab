@@ -36,7 +36,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     form: "readText()",
     when: "text, busy game",
     effect:
-      "Reads the texts to the end of the box or to a choice. After a whiteout, it reads to the walk in the Pokémon Center or the house. The word screen of a profile (Easy Chat) has no action: while an action waits, the Harness leaves it (B, then YES), and the result has `leftWordScreen`.",
+      "Reads the texts to the end of the box or to a choice. After a whiteout, it reads to the walk in the Pokémon Center or the house. The word screen of a profile (Easy Chat) has no action: while an action waits, the Harness leaves it (B, then YES), and the result has `leftWordScreen`. In an Arena build, a text of the Arena message panel and the End screen also wait for it, when Auto mode is off.",
     cards: { text: "read to the end of the box or to a choice" },
   },
   {

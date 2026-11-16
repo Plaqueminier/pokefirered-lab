@@ -9,7 +9,18 @@ const REPO_DIR = join(import.meta.dir, "..", "..");
 export const SAVES_DIR = join(import.meta.dir, "..", "saves");
 export const START_SAVE = join(SAVES_DIR, "start.sav");
 export const ROM_NAME = process.env.LAB_ROM ?? "pokefirered_modern_lab";
-export const ROM_FILE = join(REPO_DIR, `${ROM_NAME}.gba`);
+export const ROM_FILE = romFile(ROM_NAME);
+export const ARENA_ROM_NAME = `${ROM_NAME}_arena`;
+
+export function romFile(romName: string): string {
+  return join(REPO_DIR, `${romName}.gba`);
+}
+
+/** The make command for a ROM, from the parts of its name (config.mk adds "_lab" and "_arena" to the name). */
+function makeCommand(romName: string): string {
+  const parts = romName.split("_");
+  return ["make", parts.includes("lab") ? "lab" : "modern", parts.includes("arena") ? "ARENA=1" : ""].filter(Boolean).join(" ");
+}
 const ROM_ADDRESS = 0x08000000;
 
 /** The seed of the game is a u16 in the ROM. */
@@ -36,11 +47,12 @@ export class Run {
     this.#romSeed = origin.seed;
   }
 
-  static async open({ startSave = START_SAVE, names = null, seed }: { startSave?: string; names?: TrainerNames | null; seed?: number } = {}): Promise<Run> {
-    if (!(await Bun.file(ROM_FILE).exists())) throw new Error(`${ROM_FILE} not found: run "make lab" at the repo root`);
-    const core = await Core.open(ROM_FILE);
-    const mem = new Memory(core, await loadSymbols(join(REPO_DIR, `${ROM_NAME}.elf`), CACHE_DIR));
-    const run = new Run(core, await Game.create(mem), { rom: await romHash(mem), seed: mem.global("gLabRngSeed").int(), startSave: null, names: null }, startSave);
+  static async open({ startSave = START_SAVE, names = null, seed, romName = ROM_NAME }: { startSave?: string; names?: TrainerNames | null; seed?: number; romName?: string } = {}): Promise<Run> {
+    const rom = romFile(romName);
+    if (!(await Bun.file(rom).exists())) throw new Error(`${rom} not found: run "${makeCommand(romName)}" at the repo root`);
+    const core = await Core.open(rom);
+    const mem = new Memory(core, await loadSymbols(join(REPO_DIR, `${romName}.elf`), CACHE_DIR));
+    const run = new Run(core, await Game.create(mem), { rom: await romHash(rom, mem), seed: mem.global("gLabRngSeed").int(), startSave: null, names: null }, startSave);
     try {
       await run.reset(names, seed);
     } catch (error) {
@@ -101,8 +113,8 @@ export class Run {
 }
 
 // BuildDateTime changes on each build: at zero, a rebuild of the same code keeps the hash.
-async function romHash(mem: Memory): Promise<string> {
-  const rom = new Uint8Array(await Bun.file(ROM_FILE).arrayBuffer());
+async function romHash(romPath: string, mem: Memory): Promise<string> {
+  const rom = new Uint8Array(await Bun.file(romPath).arrayBuffer());
   const date = mem.global("BuildDateTime");
   const offset = date.addr - ROM_ADDRESS;
   rom.fill(0, offset, offset + mem.sizeOf(date.typeId));

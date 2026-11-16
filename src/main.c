@@ -12,6 +12,7 @@
 #include "play_time.h"
 #include "intro.h"
 #include "lab.h"
+#include "arena.h"
 #include "battle_controllers.h"
 #include "scanline_effect.h"
 #include "save_failed_screen.h"
@@ -252,6 +253,9 @@ static void CallCallbacks(void)
 
         if (gMain.callback2)
             gMain.callback2();
+#if ARENA
+        Arena_RunExtraCallbacks();
+#endif
     }
 }
 
@@ -414,6 +418,9 @@ static void VBlankIntr(void)
 #endif
 
     TryReceiveLinkBattleData();
+#if ARENA
+    if (!Arena_FreezesFrameRng())
+#endif
     Random();
     UpdateWirelessStatusIndicatorSprite();
 

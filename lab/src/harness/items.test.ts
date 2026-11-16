@@ -68,12 +68,7 @@ function patchMon(run: Run, slot: number, { species, held, level, hp, pp, moves,
     run.core.patch16(secure + at + 2, word >>> 16);
   }
   run.core.patch16(box.field("checksum").addr, sum & 0xffff);
-  if (level !== undefined) {
-    const at = mon.field("level").addr;
-    const even = at & ~1;
-    const [low, high] = run.core.read(even, 2);
-    run.core.patch16(even, at === even ? (high << 8) | level : (level << 8) | low);
-  }
+  if (level !== undefined) run.core.patch8(mon.field("level").addr, level);
   if (hp !== undefined) run.core.patch16(mon.field("hp").addr, hp);
 }
 

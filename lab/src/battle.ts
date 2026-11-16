@@ -46,6 +46,10 @@ const MVSTATE_HANDLE_YES_NO = 4;
 const MVSTATE_SHOW_MOVE_SELECT = 5;
 const SUMMARY_TASK = "Task_InputHandler_SelectOrForgetMove";
 const SUMMARY_READS_INPUT = 2;
+const ARENA_BATTLE = "gArenaBattle";
+export const ARENA_END_SCREEN = "sEndScreen";
+// END_SHOWN of src/arena/arena_end.c: the End screen reads A and B.
+export const ARENA_END_SCREEN_SHOWN = 2;
 // The volatile states that a battle text tells the player, from include/constants/battle.h.
 const STATUS2_STATES: [bits: number, state: string][] = [
   [0x7, "confused"],
@@ -145,7 +149,7 @@ function isDouble(mem: Memory): boolean {
   return (mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_DOUBLE) !== 0;
 }
 
-function controllerOf(mem: Memory, battler: number): string {
+export function controllerOf(mem: Memory, battler: number): string {
   return functionName(mem.symbols, mem.global("gBattlerControllerFuncs").at(battler).pointer()) ?? "";
 }
 
@@ -198,6 +202,17 @@ export function battleYesNoCursor(mem: Memory): number | null {
 
 export function dexPageWaits(mem: Memory): boolean {
   return activeTask(mem, "Task_DexScreen_RegisterMonToPokedex") !== null && mem.global("sPokedexScreenData").deref().field("state").int() === DEX_PAGE_KEY_STATE;
+}
+
+// Issue #99: the Arena prints the battle texts in its own panel and shows its end screen before the battle ends.
+// In Auto mode, neither waits for a key.
+export function arenaWaitsForA(mem: Memory): boolean {
+  if (!(ARENA_BATTLE in mem.symbols.globals)) return false;
+  const arena = mem.global(ARENA_BATTLE);
+  if (!arena.field("active").int() || arena.field("autoOn").int()) return false;
+  const end = mem.global(ARENA_END_SCREEN);
+  if (end.pointer() !== 0) return end.deref().field("state").int() === ARENA_END_SCREEN_SHOWN && !mem.global("gPaletteFade").field("active").int();
+  return mem.global("gArenaScreen").field("panel").field("waitsForA").int() === 1;
 }
 
 export function evolutionSceneRuns(mem: Memory): boolean {

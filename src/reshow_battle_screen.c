@@ -8,6 +8,7 @@
 #include "battle_interface.h"
 #include "battle_anim.h"
 #include "battle_controllers.h"
+#include "arena.h"
 
 static void CB2_ReshowBattleScreenAfterMenu(void);
 static void ReshowBattleScreen_TurnOnDisplay(void);
@@ -21,6 +22,10 @@ void ReshowBattleScreenDummy(void)
 
 void ReshowBattleScreenAfterMenu(void)
 {
+#if ARENA
+    if (Arena_ReshowScreen())
+        return;
+#endif
     gPaletteFade.bufferTransferDisabled = 1;
     SetHBlankCallback(NULL);
     SetGpuReg(REG_OFFSET_MOSAIC, 0);

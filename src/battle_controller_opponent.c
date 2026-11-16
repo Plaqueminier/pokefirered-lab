@@ -20,6 +20,7 @@
 #include "constants/moves.h"
 #include "constants/songs.h"
 #include "constants/sound.h"
+#include "arena.h"
 
 static void OpponentHandleGetMonData(void);
 static void OpponentHandleGetRawMonData(void);
@@ -167,6 +168,10 @@ static void OpponentBufferRunCommand(void)
 {
     if (gBattleControllerExecFlags & gBitTable[gActiveBattler])
     {
+#if ARENA
+        if (Arena_RunCommand(gActiveBattler))
+            return;
+#endif
         if (gBattleBufferA[gActiveBattler][0] < NELEMS(sOpponentBufferCommands))
             sOpponentBufferCommands[gBattleBufferA[gActiveBattler][0]]();
         else

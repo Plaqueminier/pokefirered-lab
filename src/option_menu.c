@@ -23,9 +23,20 @@ enum
     MENUITEM_SOUND,
     MENUITEM_BUTTONMODE,
     MENUITEM_FRAMETYPE,
+#if ARENA
+    MENUITEM_BATTLESCREEN,
+#endif
     MENUITEM_CANCEL,
     MENUITEM_COUNT
 };
+
+// The rows are 2 pixels closer, so 8 lines fit in the window. The #else branches keep the original expressions,
+// so the ROM without ARENA stays byte for byte the same.
+#if ARENA
+#define OPTION_ROW_HEIGHT (GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT) - 3)
+#else
+#define OPTION_ROW_HEIGHT (GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT) - 1)
+#endif
 
 // Window Ids
 enum
@@ -131,7 +142,24 @@ static const struct BgTemplate sOptionMenuBgTemplates[] =
 };
 
 static const u16 sOptionMenuPalette[] = INCBIN_U16("graphics/misc/option_menu.gbapal");
-static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
+static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {
+    [MENUITEM_TEXTSPEED] = 3,
+    [MENUITEM_BATTLESCENE] = 2,
+    [MENUITEM_BATTLESTYLE] = 2,
+    [MENUITEM_SOUND] = 2,
+    [MENUITEM_BUTTONMODE] = 3,
+    [MENUITEM_FRAMETYPE] = 10,
+#if ARENA
+    [MENUITEM_BATTLESCREEN] = 2,
+#endif
+    [MENUITEM_CANCEL] = 0,
+};
+
+#if ARENA
+static const u8 sText_BattleScreen[] = _("BATTLE SCREEN");
+static const u8 sText_BattleScreenClassic[] = _("CLASSIC");
+static const u8 sText_BattleScreenArena[] = _("ARENA");
+#endif
 
 static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
 {
@@ -141,6 +169,9 @@ static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
     [MENUITEM_SOUND]       = gText_Sound,
     [MENUITEM_BUTTONMODE]  = gText_ButtonMode,
     [MENUITEM_FRAMETYPE]   = gText_Frame,
+#if ARENA
+    [MENUITEM_BATTLESCREEN] = sText_BattleScreen,
+#endif
     [MENUITEM_CANCEL]      = gText_OptionMenuCancel,
 };
 
@@ -168,6 +199,14 @@ static const u8 *const sSoundOptions[] =
     gText_SoundMono, 
     gText_SoundStereo
 };
+
+#if ARENA
+static const u8 *const sBattleScreenOptions[] =
+{
+    sText_BattleScreenClassic,
+    sText_BattleScreenArena
+};
+#endif
 
 static const u8 *const sButtonTypeOptions[] =
 {
@@ -212,6 +251,9 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->option[MENUITEM_SOUND] = gSaveBlock2Ptr->optionsSound;
     sOptionMenuPtr->option[MENUITEM_BUTTONMODE] = gSaveBlock2Ptr->optionsButtonMode;
     sOptionMenuPtr->option[MENUITEM_FRAMETYPE] = gSaveBlock2Ptr->optionsWindowFrameType;
+#if ARENA
+    sOptionMenuPtr->option[MENUITEM_BATTLESCREEN] = gSaveBlock2Ptr->optionsBattleScreenArena;
+#endif
     
     for (i = 0; i < MENUITEM_COUNT - 1; i++)
     {
@@ -472,7 +514,7 @@ static void BufferOptionMenuString(u8 selection)
     
     memcpy(dst, sOptionMenuTextColor, 3);
     x = 0x82;
-    y = ((GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT) - 1) * selection) + 2;
+    y = (OPTION_ROW_HEIGHT * selection) + 2;
     FillWindowPixelRect(1, 1, x, y, 0x46, GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT));
 
     switch (selection)
@@ -492,6 +534,11 @@ static void BufferOptionMenuString(u8 selection)
     case MENUITEM_BUTTONMODE:
         AddTextPrinterParameterized3(1, FONT_NORMAL, x, y, dst, -1, sButtonTypeOptions[sOptionMenuPtr->option[selection]]);
         break;
+#if ARENA
+    case MENUITEM_BATTLESCREEN:
+        AddTextPrinterParameterized3(1, FONT_NORMAL, x, y, dst, -1, sBattleScreenOptions[sOptionMenuPtr->option[selection]]);
+        break;
+#endif
     case MENUITEM_FRAMETYPE:
         StringCopy(str, gText_FrameType);
         ConvertIntToDecimalStringN(buf, sOptionMenuPtr->option[selection] + 1, 1, 2);
@@ -516,6 +563,9 @@ static void CloseAndSaveOptionMenu(u8 taskId)
     gSaveBlock2Ptr->optionsSound = sOptionMenuPtr->option[MENUITEM_SOUND];
     gSaveBlock2Ptr->optionsButtonMode = sOptionMenuPtr->option[MENUITEM_BUTTONMODE];
     gSaveBlock2Ptr->optionsWindowFrameType = sOptionMenuPtr->option[MENUITEM_FRAMETYPE];
+#if ARENA
+    gSaveBlock2Ptr->optionsBattleScreenArena = sOptionMenuPtr->option[MENUITEM_BATTLESCREEN];
+#endif
     SetPokemonCryStereo(gSaveBlock2Ptr->optionsSound);
     FREE_AND_SET_NULL(sOptionMenuPtr);
     DestroyTask(taskId);
@@ -560,7 +610,11 @@ static void LoadOptionMenuItemNames(void)
     FillWindowPixelBuffer(1, PIXEL_FILL(1));
     for (i = 0; i < MENUITEM_COUNT; i++)
     {
-        AddTextPrinterParameterized(WIN_OPTIONS, FONT_NORMAL, sOptionMenuItemsNames[i], 8, (u8)((i * (GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT))) + 2) - i, TEXT_SKIP_DRAW, NULL);    
+#if ARENA
+        AddTextPrinterParameterized(WIN_OPTIONS, FONT_NORMAL, sOptionMenuItemsNames[i], 8, (u8)(i * OPTION_ROW_HEIGHT + 2), TEXT_SKIP_DRAW, NULL);
+#else
+        AddTextPrinterParameterized(WIN_OPTIONS, FONT_NORMAL, sOptionMenuItemsNames[i], 8, (u8)((i * (GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT))) + 2) - i, TEXT_SKIP_DRAW, NULL);
+#endif
     }
 }
 
@@ -569,7 +623,11 @@ static void UpdateSettingSelectionDisplay(u16 selection)
     u16 maxLetterHeight, y;
     
     maxLetterHeight = GetFontAttribute(FONT_NORMAL, FONTATTR_MAX_LETTER_HEIGHT);
+#if ARENA
+    y = selection * OPTION_ROW_HEIGHT + 0x3A;
+#else
     y = selection * (maxLetterHeight - 1) + 0x3A;
+#endif
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(y, y + maxLetterHeight));
     SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0x10, 0xE0));
 }

@@ -2,7 +2,7 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryBus } from "./memory";
+import type { WritableBus } from "./memory";
 
 const LAB_DIR = join(import.meta.dir, "..");
 const SHIM_SOURCE = join(LAB_DIR, "shim", "shim.c");
@@ -55,7 +55,7 @@ const symbols = {
 
 let lib: Awaited<ReturnType<typeof dlopen<typeof symbols>>> | null = null;
 
-export class Core implements MemoryBus {
+export class Core implements WritableBus {
   readonly width: number;
   readonly height: number;
   private readonly frame: Uint8Array;
@@ -124,6 +124,13 @@ export class Core implements MemoryBus {
 
   patch16(address: number, value: number): void {
     this.f.lab_patch16(this.handle, address, value);
+  }
+
+  /** The core patches 2 bytes at an even address only, so this writes the other byte back unchanged. */
+  patch8(address: number, value: number): void {
+    const even = address & ~1;
+    const [low, high] = this.read(even, 2);
+    this.patch16(even, address === even ? (high << 8) | value : (value << 8) | low);
   }
 
   /** The battery save (flash) as it is now. */

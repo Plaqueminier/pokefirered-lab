@@ -109,6 +109,8 @@ An **Evolution** makes its own **Races**, with no command: after each **Generati
 
 In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun test`.
 
+The Arena tests need the ROM from `make lab ARENA=1` at the repo root (`pokefirered_modern_lab_arena.gba`). Without it, `bun test` skips them.
+
 ## Files
 
 - `shim/`, `src/core.ts`, `src/symbols.ts`, `src/memory.ts`: the emulator and the typed reads of its memory.

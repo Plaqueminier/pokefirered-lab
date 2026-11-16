@@ -5,12 +5,32 @@ This fork of the FireRed decompilation is a lab. In it, programs play the game, 
 ## Language
 
 **Vanilla build**:
-The ROM built without the lab flag. Its gameplay and behaviour are the same as the original game.
-_Avoid_: normal ROM, release build
+The ROM built with neither the lab flag nor the Arena flag. Its gameplay and behaviour are the same as the original game.
+_Avoid_: normal ROM, release build, Arena build
 
 **Lab build**:
-The ROM built with the lab flag. It has the same gameplay as the vanilla build. It adds aids for tests and observation, for example: skip the intro, load the save automatically, set the RNG seed.
+The ROM built with the lab flag. It has the same gameplay as the vanilla build. It adds aids for tests and observation, for example: skip the intro, load the save automatically, set the RNG seed. With the Arena flag too, it is an **Arena build**, not a **Lab build**.
 _Avoid_: debug build, mod, hack
+
+**Arena build**:
+The ROM built with the Arena flag (`make arena`, or `make lab ARENA=1` for the tests of the **Harness**). It adds the line BATTLE SCREEN to the Options menu. With the value ARENA, a single battle shows the **Arena**, with **Auto mode** and a speed. In these battles, the RNG of the game does not move at each frame, so the speed does not change the battle. The battle engine does not change.
+_Avoid_: mod, hack, Lab build
+
+**Arena**:
+The battle screen of an **Arena build**: the two Pokémon face each other in a stadium with a crowd, with the info boxes, both teams, the move cards (each with a damage estimate), the buttons BAG, AUTO and RUN, and the juice (hit-stop, shake, sparks, damage numbers, sounds). Double, link, Safari, ghost, tower and e-Reader battles, the first rival battle and the tutorial battles (old man, Pokédude) keep the classic screen. After the Pokédex page of a caught Pokémon, the battle ends on the classic screen.
+_Avoid_: battle view, mod
+
+**End screen**:
+The screen after a battle in the **Arena**: one card for each Pokémon of the party, with its EXP bar, its level-up and stat gains, its numbers in the battle (knock-outs, damage dealt and taken, moves, misses), and the prize money. While the cards move, A or B shows all of them at once; the next press closes the screen. In **Auto mode**, it closes by itself.
+_Avoid_: results screen, summary screen (the Summary screen is the screen of one Pokémon)
+
+**Auto mode**:
+In a battle of an **Arena build**, the game chooses the moves, the switches and the send-outs of the player with an **Auto strategy**. With the run rule, it runs from a wild battle against a species already caught. It stops and gives the control to the player for low HP, a wild species never seen or a Gym Leader, as the player sets in the Auto menu. Such a stop is for this battle only: Auto mode starts again at the next battle, until the player stops it. For a move to learn, it can let the player answer the question, then it plays on.
+_Avoid_: autopilot, bot (a **Bot** plays through the **Harness**)
+
+**Auto strategy**:
+The rule that **Auto mode** uses to choose: MAX POWER, SAVE PP, TACTICS, TYPE EDGE or RANDOM. All of them use an estimate of the damage with the formula of the engine, except RANDOM, which uses only the type multiplier to skip the moves with no effect.
+_Avoid_: AI, Bot
 
 **Harness**:
 The program that runs the emulator and gives a **Bot** one interface to the game: the game state and the **Macro-actions**. It does not decide what to do. The exceptions are FLASH on a **Dark map** (see **Field move**), the speed of a walk (see **Running** and **Ride choice**) and B during the animation of an evolution, which the **Harness** removes so that B stops no evolution.
@@ -334,7 +354,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 
 ## Relationships
 
-- The **Harness** runs a **Lab build** or a **Vanilla build**, and starts it from a **Starting save**.
+- The **Harness** runs a **Lab build**, a **Vanilla build** or an **Arena build**, and starts it from a **Starting save**. Only the Arena tests run an **Arena build**.
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.

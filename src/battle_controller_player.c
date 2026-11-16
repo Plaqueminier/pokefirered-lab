@@ -22,6 +22,7 @@
 #include "constants/items.h"
 #include "constants/moves.h"
 #include "constants/songs.h"
+#include "arena.h"
 #include "constants/sound.h"
 
 static void PlayerHandleGetMonData(void);
@@ -203,6 +204,10 @@ static void PlayerBufferRunCommand(void)
 {
     if (gBattleControllerExecFlags & gBitTable[gActiveBattler])
     {
+#if ARENA
+        if (Arena_RunCommand(gActiveBattler))
+            return;
+#endif
         if (gBattleBufferA[gActiveBattler][0] < NELEMS(sPlayerBufferCommands))
             sPlayerBufferCommands[gBattleBufferA[gActiveBattler][0]]();
         else

@@ -25,6 +25,12 @@ ifeq (lab,$(MAKECMDGOALS))
   LAB    := 1
 endif
 
+ARENA         ?= 0
+ifeq (arena,$(MAKECMDGOALS))
+  MODERN := 1
+  ARENA  := 1
+endif
+
 # The lab build keeps debug info in the .elf: the harness reads types and addresses from it.
 # Not on by default elsewhere: -g changes the order of linker veneers, so the .gba bytes change.
 ifeq ($(LAB),1)
@@ -67,6 +73,10 @@ endif
 
 ifeq ($(LAB),1)
   BUILD_NAME := $(BUILD_NAME)_lab
+endif
+
+ifeq ($(ARENA),1)
+  BUILD_NAME := $(BUILD_NAME)_arena
 endif
 
 # Language

@@ -42,6 +42,7 @@
 #include "constants/pokemon.h"
 #include "constants/songs.h"
 #include "constants/trainers.h"
+#include "arena.h"
 
 static void SpriteCB_UnusedDebugSprite(struct Sprite *sprite);
 static void HandleAction_UseMove(void);
@@ -687,6 +688,9 @@ static void CB2_InitBattleInternal(void)
     gBattle_BG3_Y = 0;
 
     gBattleTerrain = BattleSetup_GetTerrainId();
+#if ARENA
+    Arena_OnBattleInit();
+#endif
 
     InitBattleBgsVideo();
     LoadBattleTextboxAndBackground();
@@ -1059,7 +1063,11 @@ static void CB2_HandleStartBattle(void)
         gBattleCommunication[SPRITES_INIT_STATE2] = 0;
         break;
     case 16:
+#if ARENA
+        if (Arena_InitSprites() || BattleInitAllSprites(&gBattleCommunication[SPRITES_INIT_STATE1], &gBattleCommunication[SPRITES_INIT_STATE2]))
+#else
         if (BattleInitAllSprites(&gBattleCommunication[SPRITES_INIT_STATE1], &gBattleCommunication[SPRITES_INIT_STATE2]))
+#endif
         {
             gPreBattleCallback1 = gMain.callback1;
             gMain.callback1 = BattleMainCB1;
@@ -1446,11 +1454,17 @@ static void CB2_HandleStartMultiBattle(void)
 
 void BattleMainCB2(void)
 {
+#if ARENA
+    Arena_SwapPresentationRng();
+#endif
     AnimateSprites();
     BuildOamBuffer();
     RunTextPrinters();
     UpdatePaletteFade();
     RunTasks();
+#if ARENA
+    Arena_SwapPresentationRng();
+#endif
 
     if (JOY_HELD(B_BUTTON) && gBattleTypeFlags & BATTLE_TYPE_POKEDUDE)
     {
@@ -1466,6 +1480,9 @@ void FreeRestoreBattleData(void)
     gMain.callback1 = gPreBattleCallback1;
     gScanlineEffect.state = 3;
     gMain.inBattle = FALSE;
+#if ARENA
+    Arena_OnBattleEnd();
+#endif
     ZeroEnemyPartyMons();
     m4aSongNumStop(SE_LOW_HEALTH);
     FreeMonSpritesGfx();
@@ -1647,6 +1664,9 @@ static void HBlankCB_Battle(void)
 void VBlankCB_Battle(void)
 {
     // Change gRngSeed every vblank.
+#if ARENA
+    if (!Arena_FreezesFrameRng())
+#endif
     Random();
 
     SetGpuReg(REG_OFFSET_BG0HOFS, gBattle_BG0_X);
@@ -2196,6 +2216,9 @@ void BeginBattleIntroDummy(void)
 void BeginBattleIntro(void)
 {
     BattleStartClearSetData();
+#if ARENA
+    Arena_OnBattleStart();
+#endif
     gBattleCommunication[1] = 0;
     gBattleMainFunc = BattleIntroGetMonsData;
 }
@@ -3825,6 +3848,10 @@ static void HandleEndTurn_FinishBattle(void)
 {
     if (gCurrentActionFuncId == B_ACTION_TRY_FINISH || gCurrentActionFuncId == B_ACTION_FINISHED)
     {
+#if ARENA
+        if (Arena_StartEndScreen())
+            return;
+#endif
         if (!(gBattleTypeFlags & (BATTLE_TYPE_TRAINER_TOWER | BATTLE_TYPE_EREADER_TRAINER | BATTLE_TYPE_OLD_MAN_TUTORIAL | BATTLE_TYPE_BATTLE_TOWER | BATTLE_TYPE_SAFARI | BATTLE_TYPE_FIRST_BATTLE | BATTLE_TYPE_LINK)))
         {
             for (gActiveBattler = 0; gActiveBattler < gBattlersCount; gActiveBattler++)
@@ -3923,6 +3950,9 @@ static void ReturnFromBattleToOverworld(void)
     {
         gSpecialVar_Result = gBattleOutcome;
         gMain.inBattle = FALSE;
+#if ARENA
+        Arena_OnBattleEnd();
+#endif
         gMain.callback1 = gPreBattleCallback1;
         if (gBattleTypeFlags & BATTLE_TYPE_ROAMER)
         {

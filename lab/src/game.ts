@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, SWITCH, WALL } from "./cells";
 import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, type BerryPouchMenu, berryPouchMenu, findInBag, itemSceneRuns, readBag, readStones, readTeachables, type Stone, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
+  arenaWaitsForA,
   type Battle,
   type BattleMenu,
   battleCursor,
@@ -475,7 +476,7 @@ export class Game {
 
   private battleWaitingFor(): WaitingFor {
     if (this.partyMenu()?.kind === "pick") return { kind: "partyPick" };
-    if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem)) return { kind: "text" };
+    if (this.prompts.anyPrinterWaits() || levelUpBoxWaits(this.mem) || dexPageWaits(this.mem) || arenaWaitsForA(this.mem)) return { kind: "text" };
     const learnMove = this.learnMoveWait();
     if (learnMove) return learnMove;
     const yesNo = battleYesNoCursor(this.mem);

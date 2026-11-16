@@ -449,3 +449,9 @@ $(WALLPAPERGFXDIR)/tiles/tiles.4bpp: %.4bpp: %.png
 
 $(WALLPAPERGFXDIR)/volcano/tiles.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -num_tiles 57 -Wnum_tiles
+
+graphics/arena/font_small.1bpp: %.1bpp: %.png
+	$(GFX) $< $@ -mwidth 1 -mheight 2
+
+graphics/arena/font_big.1bpp: %.1bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2

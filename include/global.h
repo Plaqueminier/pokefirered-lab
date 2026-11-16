@@ -324,6 +324,22 @@ struct BattleTowerData // Leftover from R/S
     /*0x04D1, 0x0581*/ u8 filler_4D1[0x317];
 }; /* size = 0x7E8 */
 
+#if ARENA
+// A new game zeroes the save, so a stop that is on by default is stored as a "no stop" bit.
+struct ArenaSettings
+{
+    u16 strategy:3;
+    u16 speed:3;
+    u16 autoStaysOn:1;
+    u16 noStopLowHp:1;
+    u16 noStopNeverSeen:1;
+    u16 stopGymLeader:1;
+    u16 noStopMoveToLearn:1;
+    u16 runIfCaught:1;
+    u16 unused:4;
+};
+#endif
+
 struct SaveBlock2
 {
     /*0x000*/ u8 playerName[PLAYER_NAME_LENGTH + 1];
@@ -341,8 +357,16 @@ struct SaveBlock2
               u16 optionsBattleStyle:1; // OPTIONS_BATTLE_STYLE_[SHIFT/SET]
               u16 optionsBattleSceneOff:1; // whether battle animations are disabled
               u16 regionMapZoom:1; // whether the map is zoomed in
+#if ARENA
+              u16 optionsBattleScreenArena:1;
+#endif
     /*0x018*/ struct Pokedex pokedex;
+#if ARENA
+    /*0x090*/ struct ArenaSettings arenaSettings;
+              u8 filler_arena[0x8 - sizeof(struct ArenaSettings)];
+#else
     /*0x090*/ u8 filler_90[0x8];
+#endif
     /*0x098*/ struct Time localTimeOffset;
     /*0x0A0*/ struct Time lastBerryTreeUpdate;
     /*0x0A8*/ u32 gcnLinkFlags; // Read by Pokemon Colosseum/XD
