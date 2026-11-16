@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { withoutFormat } from "../src/harness/game-events";
 import type { RunEvent } from "../src/harness/record";
 import type { PartyMon, PartyMove } from "../src/party";
-import type { BotInfo, ClientMessage, ProviderStatus, RecordFacts, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
+import type { BotInfo, ClientMessage, GridMon, GridSize, ProviderStatus, RecordFacts, ReplayStatus, RunSummary, ShownRun } from "../src/protocol";
 import { Badges, Button, Legend, Tabs } from "./components";
 import { type BarSegment, GenerationChart, type GenerationPoint, SignedBar, StackedBar } from "./components-chart";
 import { PopoverBody } from "./components-layers";
@@ -191,13 +191,14 @@ const DEMO_RUNS: RunSummary[] = [
     error: null,
     from: null,
     continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 } },
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", stopAtWhiteout: true, spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 } },
     frame: 52_000,
     milestone: "has-pokemon",
     battle: false,
     calling: { kind: "model", since: 0 },
     record: null,
     names: { player: "Mira", rival: "Crumb" },
+    party: null,
   },
   {
     id: 4,
@@ -215,6 +216,7 @@ const DEMO_RUNS: RunSummary[] = [
     calling: null,
     record: RECORD,
     names: null,
+    party: null,
   },
 ];
 
@@ -470,7 +472,7 @@ const DEMO_REPLAY: ReplayStatus = {
   frames: 457065,
   ended: false,
   endReason: "cost limit",
-  model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 10 }, reasoning: "off", thinking: "medium", starter: "free", calls: 312, spent: { unit: "dollars", amount: 4.21 }, totalCalls: 717, totalSpent: { unit: "dollars", amount: 10.02 } },
+  model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 10 }, reasoning: "off", thinking: "medium", starter: "free", stopAtWhiteout: true, calls: 312, spent: { unit: "dollars", amount: 4.21 }, totalCalls: 717, totalSpent: { unit: "dollars", amount: 10.02 } },
   continued: null,
   gameEvents: 393,
   reached: 200000,
@@ -491,7 +493,29 @@ const RECORD_STATES = {
   old: { label: "A record with no Game events", replay: { ...DEMO_REPLAY, gameEvents: null } },
 };
 
-const DEMO_CELL: GridCell = { kind: "live", names: null, runId: 3, name: "Run 3", bot: "model", model: "deepseek/deepseek-v4-flash", frame: 52_000, milestone: "has-pokemon", spent: { unit: "dollars", amount: 0.37 }, state: { kind: "plays" }, record: null };
+const DEMO_PARTY: GridMon[] = [
+  { species: "IVYSAUR", nickname: "LEAF", level: 18, hp: 47, maxHp: 52, status: "none" },
+  { species: "PIDGEOTTO", nickname: "GUST", level: 16, hp: 6, maxHp: 44, status: "poison" },
+  { species: "RATTATA", nickname: "RATTATA", level: 9, hp: 0, maxHp: 26, status: "none" },
+  { species: "PIKACHU", nickname: "VOLT", level: 12, hp: 30, maxHp: 31, status: "none" },
+];
+
+const DEMO_CELL: GridCell = {
+  kind: "live",
+  names: null,
+  runId: 3,
+  name: "Run 3",
+  bot: "model",
+  model: { id: "deepseek/deepseek-v4-flash" },
+  whiteoutEnds: true,
+  frame: 52_000,
+  milestone: "has-pokemon",
+  spent: { unit: "dollars", amount: 0.37 },
+  state: { kind: "plays" },
+  record: null,
+  recordRun: null,
+  party: DEMO_PARTY,
+};
 
 const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   plays: { label: "Live, plays", cell: DEMO_CELL },
@@ -499,9 +523,17 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   waits: { label: "Waits for the model", cell: { ...DEMO_CELL, state: { kind: "waits" } } },
   memory: { label: "Writes its memory", cell: { ...DEMO_CELL, state: { kind: "memory" } } },
   battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
-  ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD } },
-  replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD } },
-  tokens: { label: "On a Plan provider", cell: { ...DEMO_CELL, model: "haiku", spent: { unit: "tokens", amount: 412_000 } } },
+  ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD } } },
+  replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD } } },
+  evolution: { label: "Replay of an Evolution", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: "evolutions/v5/00003-genetic-2.json", record: "evolutions/v5/00003-genetic-2.json", bot: "genetic 2", model: null, whiteoutEnds: false, spent: null, recordRun: { id: 3, evolution: "v5", file: "evolutions/v5/00003-genetic-2.json" } } },
+  tokens: { label: "On a Plan provider", cell: { ...DEMO_CELL, model: { id: "claude-haiku-5-5" }, spent: { unit: "tokens", amount: 412_000 } } },
+  coach: { label: "With a Coach", cell: { ...DEMO_CELL, model: { id: "claude-haiku-5-5", coach: { id: "claude-opus-5-5" } } } },
+  playsOn: { label: "Plays on after a whiteout", cell: { ...DEMO_CELL, whiteoutEnds: false } },
+  noModel: { label: "A Bot with no model", cell: { ...DEMO_CELL, bot: "starter", model: null, whiteoutEnds: false, spent: null } },
+  noNickname: { label: "A starter with no nickname", cell: { ...DEMO_CELL, party: [{ ...DEMO_PARTY[0], nickname: "IVYSAUR" }, ...DEMO_PARTY.slice(1)] } },
+  noStarter: { label: "The starter in the PC", cell: { ...DEMO_CELL, party: DEMO_PARTY.slice(1) } },
+  noParty: { label: "A Run record with no State track", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD }, party: null } },
+  liveNoParty: { label: "Live, before the worker reads the game", cell: { ...DEMO_CELL, party: null } },
   replayEnded: { label: "Replay, ended", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, state: { kind: "ended", result: "goal" } } },
   empty: { label: "Empty", cell: null },
 };
@@ -512,14 +544,23 @@ const demoBotsForm: BotsForm = (continued) => (
   <BotsPanel shown={{ kind: "viewer", replay: null }} runs={[]} bots={DEMO_BOTS} providers={DEMO_PROVIDERS} records={DEMO_RECORDS} recordFacts={DEMO_RECORD_FACTS} places={{ free: 6, limit: 9 }} initial={continued === undefined ? undefined : { from: continued, sameRun: true }} send={() => {}} />
 );
 
+const CELL_LAYOUTS: Record<string, { label: string; size: GridSize; box: string }> = {
+  nine: { label: "Grid of 9", size: 9, box: "h-[360px] w-[340px]" },
+  wide: { label: "Grid of 2 or 4, wide cell", size: 4, box: "h-[420px] w-[720px]" },
+  narrow: { label: "Grid of 2 or 4, narrow cell", size: 4, box: "h-[640px] w-[380px]" },
+};
+
 export function GridCellDemo() {
   const [state, setState] = useState("plays");
+  const [layout, setLayout] = useState("wide");
   const [screens] = useState(() => new ScreenFeed());
+  const { size, box } = CELL_LAYOUTS[layout];
   return (
     <div class="flex flex-col items-start gap-3">
+      <Tabs kind="segmented" items={Object.entries(CELL_LAYOUTS).map(([id, { label }]) => ({ id, label }))} value={layout} onChange={setLayout} />
       <Tabs kind="segmented" items={Object.entries(CELL_STATES).map(([id, { label }]) => ({ id, label }))} value={state} onChange={setState} />
-      <div class="flex h-[360px] w-[340px] max-w-full">
-        <GridCellView cell={CELL_STATES[state].cell} index={0} records={[RECORD]} screens={screens} botsForm={demoBotsForm} actions={DEMO_GRID_ACTIONS} />
+      <div class={`flex max-w-full ${box}`}>
+        <GridCellView cell={CELL_STATES[state].cell} size={size} index={0} records={[RECORD]} screens={screens} botsForm={demoBotsForm} actions={DEMO_GRID_ACTIONS} />
       </div>
     </div>
   );
@@ -546,6 +587,7 @@ export function MonIconDemo() {
       <MonIcon src={DEMO_ICON} species="SQUIRTLE" level={5} /> with a level
       <MonIcon src={DEMO_ICON} species="MEWTWO" level={100} /> 3 digits
       <MonIcon src={null} species="?" level={7} /> no icon
+      <MonIcon src={DEMO_ICON} species="SQUIRTLE" size="lg" /> large
     </div>
   );
 }

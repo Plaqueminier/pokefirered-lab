@@ -24,6 +24,7 @@ import {
   type ClientMessage,
   extendProblem,
   GBA_FPS,
+  gridMon,
   type Jump,
   modelLabel,
   type ModelProvider,
@@ -425,6 +426,7 @@ function runSummary({ id, spec, continued, end, events, calling, stopAsked, view
     battle,
     calling,
     record: writtenRecords.get(id) ?? null,
+    party: view.state?.party.map(gridMon) ?? null,
   };
 }
 

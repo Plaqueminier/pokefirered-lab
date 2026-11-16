@@ -1,5 +1,5 @@
 import type { Milestone } from "../src/game";
-import { type GridReplay, type GridSize, modelLabel, type RunSummary, type Spend } from "../src/protocol";
+import { type GridMon, type GridReplay, type GridSize, type ModelFacts, parseEvolutionPath, parseRunId, type RunSummary, type Spend } from "../src/protocol";
 import type { TrainerNames } from "../src/save-file";
 import type { Tone } from "./components";
 
@@ -19,18 +19,25 @@ export function stoppedState({ calling }: Pick<RunSummary, "calling">): "waits" 
   return calling && STOPPED[calling.kind];
 }
 
+/** `evolution`: an Evolution numbers its Run records in its own folder. */
+type RecordRun = { id: number; evolution: string | null; file: string };
+
 export type GridCell = {
   kind: "live" | "replay";
   runId: number;
   name: string;
   bot: string;
-  model: string | null;
+  model: Pick<ModelFacts, "id" | "coach"> | null;
+  whiteoutEnds: boolean;
   frame: number;
   milestone: Milestone | null;
   spent: Spend | null;
   state: CellState;
   record: string | null;
   names: TrainerNames | null;
+  // A Run record gets its Run id when it is written: a new or continued Run has none until its end; an extended Run keeps its own.
+  recordRun: RecordRun | null;
+  party: GridMon[] | null;
 };
 
 // A Run record has a long name, and the date at its end does not tell the Runs apart in a small cell.
@@ -43,6 +50,18 @@ export function cellTitle({ kind, name, record }: GridCell): string {
   return record ? `${name} · ${shortRecord(record)}` : name;
 }
 
+function recordRunOf(name: string | null): RecordRun | null {
+  if (name === null) return null;
+  const evolution = parseEvolutionPath(name);
+  const id = parseRunId(evolution?.file ?? name);
+  return id === null ? null : { id, evolution: evolution?.evolution ?? null, file: name };
+}
+
+// The Harness stops at a whiteout only for a model bot that asks for it.
+function whiteoutEnds(model: Pick<ModelFacts, "stopAtWhiteout"> | null): boolean {
+  return model?.stopAtWhiteout ?? false;
+}
+
 function liveState(run: RunSummary): CellState {
   if (!run.playing) return { kind: "ended", result: run.error ? `error: ${run.error}` : (run.endReason ?? "unknown") };
   const stopped = stoppedState(run);
@@ -51,14 +70,15 @@ function liveState(run: RunSummary): CellState {
 }
 
 function liveCell(run: RunSummary): GridCell {
-  const { id, bot, model, frame, milestone, record, names } = run;
-  return { kind: "live", runId: id, name: `Run ${id}`, bot, model: model ? modelLabel(model) : null, frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names };
+  const { id, bot, model, frame, milestone, record, names, from, party } = run;
+  const recordRun = recordRunOf(from?.kind === "extended" ? from.record : record);
+  return { kind: "live", runId: id, name: `Run ${id}`, bot, model, whiteoutEnds: whiteoutEnds(model), frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names, recordRun, party };
 }
 
 function replayCell(replay: GridReplay, cursor: number): GridCell {
-  const { id, name, bot, model, frame, milestone, spent, battle, endReason, error, frames, names } = replay;
+  const { id, name, bot, model, frame, milestone, spent, battle, endReason, error, frames, names, party } = replay;
   const state: CellState = error ? { kind: "ended", result: `error: ${error}` } : cursor >= frames ? { kind: "ended", result: endReason } : battle ? { kind: "battle" } : { kind: "plays" };
-  return { kind: "replay", runId: id, name, bot, model, frame, milestone, spent, state, record: name, names };
+  return { kind: "replay", runId: id, name, bot, model, whiteoutEnds: whiteoutEnds(model), frame, milestone, spent, state, record: name, names, recordRun: recordRunOf(name), party };
 }
 
 // The Runs that play come before the ended ones, so a small Grid shows what plays now.

@@ -4,10 +4,12 @@ import { botVersion, dotOf, type RaceKiller, shortModelId } from "../src/race/fi
 import { Pill, rowButton } from "./components";
 import { Name } from "./pokemon";
 
-export function MonIcon({ src, species, level }: { src: string | null; species: string; level?: number }) {
+const ICON_SIZES = { sm: "size-6", lg: "size-10" } as const;
+
+export function MonIcon({ src, species, level, size = "sm" }: { src: string | null; species: string; level?: number; size?: keyof typeof ICON_SIZES }) {
   return (
-    <span class="relative inline-block size-6 shrink-0" title={species}>
-      {src && <img src={src} alt={species} class="size-6 [image-rendering:pixelated]" />}
+    <span class={`relative inline-block shrink-0 ${ICON_SIZES[size]}`} title={species}>
+      {src && <img src={src} alt={species} class={`${ICON_SIZES[size]} [image-rendering:pixelated]`} />}
       {level !== undefined && <span class="absolute right-0 bottom-0 rounded-sm bg-bg/85 px-0.5 font-mono text-[10px] leading-none text-fg tabular-nums">{level}</span>}
     </span>
   );

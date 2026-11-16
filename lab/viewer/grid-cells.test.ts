@@ -18,19 +18,20 @@ function live(id: number, facts: Partial<RunSummary>): RunSummary {
     error: null,
     from: null,
     continued: null,
-    model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 } },
+    model: { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 0.5 }, reasoning: "off", thinking: "medium", starter: "free", stopAtWhiteout: true, spent: { unit: "dollars", amount: 0.12 }, ownSpent: { unit: "dollars", amount: 0.12 } },
     frame: 1000 * id,
     milestone: null,
     battle: false,
     calling: null,
     record: null,
     names: null,
+    party: null,
     ...facts,
   };
 }
 
 function replay(cell: number, name: string, frames: number, facts: Partial<GridReplay> = {}): GridReplay {
-  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", spent: null, battle: false, endReason: "goal", error: null, names: null, ...facts };
+  return { id: 20 + cell, cell, name, bot: "starter", model: null, frames, frame: 300, milestone: "has-pokemon", spent: null, battle: false, endReason: "goal", error: null, names: null, party: null, ...facts };
 }
 
 test("a cell shows the names of its Run, for a live Run and for a replay", () => {
@@ -64,7 +65,7 @@ test("the Grid puts each chosen Run record in its cell, then the live Runs that 
     "replay 27 plays",
     null,
   ]);
-  expect(nine[3]).toMatchObject({ name: "Run 3", bot: "model-bot", model: "a/b", frame: 3000, milestone: "first-rival-battle", spent: { unit: "dollars", amount: 0.12 }, record: null });
+  expect(nine[3]).toMatchObject({ name: "Run 3", bot: "model-bot", model: { id: "a/b" }, whiteoutEnds: true, frame: 3000, milestone: "first-rival-battle", spent: { unit: "dollars", amount: 0.12 }, record: null });
   expect(nine[4]).toMatchObject({ record: "model-bot-1.json" });
   expect(nine[0]).toMatchObject({ name: "a.json", bot: "starter", model: null, frame: 300, milestone: "has-pokemon", spent: null, record: "a.json" });
 
@@ -82,4 +83,23 @@ test("a cell gives the short name of its Run record, with no date", () => {
   expect(cellTitle(replayed)).toBe("00060-model-28");
   expect(cellTitle(ended)).toBe("Run 1 · 00061-model-28");
   expect(cellTitle(playing)).toBe("Run 2");
+});
+
+test("a cell gives the party, the Run id of its Run record (a new or continued live Run has none until its end) and its whiteout option; a Bot with no model plays on", () => {
+  const party = [{ species: "IVYSAUR", nickname: "LEAF", level: 17, hp: 31, maxHp: 50, status: "none" as const }];
+  const coached = { id: "a/b", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "off", starter: "free", coach: { id: "a/c" }, stopAtWhiteout: false } as const;
+  const runs = [
+    live(1, { party, playing: false, endReason: "goal", record: "00047-model-45-2026-11-16T09-25-19.706Z.json" }),
+    live(2, { from: { record: "00012-model-45-2026-11-01T10-00-00.000Z.json", kind: "extended" } }),
+    live(4, { playing: false, endReason: "goal", record: "00003-genetic-2-2026-11-12T16-25-02.047Z.json", from: { record: "evolutions/v5/00003-genetic-2-2026-11-12T16-25-02.047Z.json", kind: "extended" } }),
+    live(3, { from: { record: "00012-model-45-2026-11-01T10-00-00.000Z.json", kind: "continued" } }),
+  ];
+  const replays = [replay(0, "00044-model-41-2026-11-12T10-00-00.000Z.json", 500, { model: coached, party: [] }), replay(5, "evolutions/v5/00003-genetic-2-2026-11-12T16-25-02.047Z.json", 500, { bot: "genetic 2" })];
+  const [replayed, extended, continued, ended, endedExtended] = gridCells(9, runs, replays, 0);
+  expect(replayed).toMatchObject({ recordRun: { id: 44, evolution: null }, party: [], model: { id: "a/b", coach: { id: "a/c" } }, whiteoutEnds: false });
+  expect(ended).toMatchObject({ recordRun: { id: 47, evolution: null }, party, whiteoutEnds: true });
+  expect(extended?.recordRun).toEqual({ id: 12, evolution: null, file: "00012-model-45-2026-11-01T10-00-00.000Z.json" });
+  expect(endedExtended?.recordRun).toMatchObject({ id: 3, evolution: "v5" });
+  expect(continued?.recordRun).toBeNull();
+  expect(gridCells(9, [], replays, 0)[5]).toMatchObject({ recordRun: { id: 3, evolution: "v5" }, model: null, whiteoutEnds: false });
 });

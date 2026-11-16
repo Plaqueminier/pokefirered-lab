@@ -118,6 +118,16 @@ export const STARTER_SPECIES = ["BULBASAUR", "CHARMANDER", "SQUIRTLE"] as const;
 
 export type StarterSpecies = (typeof STARTER_SPECIES)[number];
 
+const STARTER_LINES: Record<StarterSpecies, readonly string[]> = {
+  BULBASAUR: ["BULBASAUR", "IVYSAUR", "VENUSAUR"],
+  SQUIRTLE: ["SQUIRTLE", "WARTORTLE", "BLASTOISE"],
+  CHARMANDER: ["CHARMANDER", "CHARMELEON", "CHARIZARD"],
+};
+
+export function lineOf(species: string): StarterSpecies | null {
+  return STARTER_SPECIES.find((starter) => STARTER_LINES[starter].includes(species)) ?? null;
+}
+
 /** The first Pokémon that the model bot must choose, or "free": its character chooses. */
 export const STARTERS = ["free", ...STARTER_SPECIES] as const;
 
@@ -156,7 +166,7 @@ type BotKind = "scripted" | "model" | "genetic";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
+export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter" | "stopAtWhiteout"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
 
 export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string {
   return coach ? `${id} + coach ${coach.id}` : id;
@@ -165,7 +175,7 @@ export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string
 /** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
 export type RunFrom = { record: string; kind: "continued" | "extended" };
 
-export type RecordFacts = { bot: string; version: string; model: (ModelFacts & { stopAtWhiteout: boolean }) | null; continued: boolean };
+export type RecordFacts = { bot: string; version: string; model: ModelFacts | null; continued: boolean };
 
 // A Continued Run finds its start from the end of its parent, so a parent must not grow.
 export function extendProblem(facts: RecordFacts | undefined, playing: boolean): string | null {
@@ -213,6 +223,7 @@ export type RunSummary = {
   /** The call that the game waits for now. */
   calling: RunCall | null;
   record: string | null;
+  party: GridMon[] | null;
 };
 
 export type GridReplay = {
@@ -220,7 +231,7 @@ export type GridReplay = {
   cell: number;
   name: string;
   bot: string;
-  model: string | null;
+  model: ModelFacts | null;
   frames: number;
   frame: number;
   milestone: Milestone | null;
@@ -229,6 +240,7 @@ export type GridReplay = {
   endReason: EndReason;
   error: string | null;
   names: TrainerNames | null;
+  party: GridMon[] | null;
 };
 
 export type GridCursor = { frame: number; paused: boolean; speed: GridSpeed; end: number };
@@ -347,6 +359,12 @@ export type TeamMon = { species: string; nickname: string; level: number; maxHp:
 export type MonHealth = { hp: number; status: Status };
 
 export type BattleSide = Omit<TeamMon, "moves"> & MonHealth;
+
+export type GridMon = Pick<TeamMon, "species" | "nickname" | "level" | "maxHp"> & MonHealth;
+
+export function gridMon({ species, nickname, level, hp, maxHp, status }: GridMon): GridMon {
+  return { species, nickname, level, hp, maxHp, status };
+}
 
 /** `health` follows the order of the last `team`. `trainer`: null in a wild battle. `player` and `foe`: null until the game has loaded them. */
 export type StateEntry = { frame: number } & ({ kind: "team"; team: TeamMon[] } | { kind: "health"; health: MonHealth[] } | { kind: "battle"; trainer: string | null; player: BattleSide | null; foe: BattleSide | null });

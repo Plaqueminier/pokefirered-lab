@@ -1,6 +1,7 @@
 import { runIdText } from "../src/protocol";
 import { CELL, NUM_PRIMARY, TILE, TILE_BYTES } from "../src/race/file";
 import type { World, WorldIcon, WorldMap, WorldSprite } from "../src/race/world";
+import { fetched } from "./cursor";
 import { FRAME_WIDTH, type GhostPart, ghostSheet, SHEET_HEIGHT, SHEET_WIDTH } from "./race-sprite";
 
 const NUM_PRIMARY_PALETTES = 7;
@@ -163,4 +164,24 @@ export class RaceArt {
         image.data[pixel + 3] = 255;
       }
   }
+}
+
+let world: Promise<World> | null = null;
+let art: Promise<RaceArt> | null = null;
+
+/** The world of the Race, loaded once for the page; a failed load tries again at the next call. */
+export function loadWorld(): Promise<World> {
+  world ??= fetched("/race/world.json")
+    .then((response) => response.json() as Promise<World>)
+    .catch((failure) => {
+      world = null;
+      art = null;
+      throw failure;
+    });
+  return world;
+}
+
+export function loadArt(): Promise<RaceArt> {
+  art ??= loadWorld().then((loaded) => new RaceArt(loaded));
+  return art;
 }

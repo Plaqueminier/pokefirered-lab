@@ -1,6 +1,7 @@
 import type { EndReason } from "../src/harness/harness";
-import { CLAUDE_MODELS, type MonHealth, type SpendUnit, type StateEntry, type TeamMon, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
+import { CLAUDE_MODELS, type SpendUnit, type StateEntry, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
 import { decodeTrack, type RaceBattle, type RaceFile, type RaceRun } from "../src/race/file";
+import { byFrame, countUntil, FrameList, type StateMon, type TeamAt, teamTimeline } from "../src/state-track";
 import type { Door, WorldMap, WorldPlace } from "../src/race/world";
 import type { CellBox } from "./race-camera";
 
@@ -13,8 +14,6 @@ const NO_BADGES: boolean[] = new Array(8).fill(false);
 export type GhostWorld = { places: readonly WorldPlace[]; maps: readonly Pick<WorldMap, "key" | "warps" | "door">[] };
 
 type GhostBattle = Extract<StateEntry, { kind: "battle" }>;
-
-type GhostMon = TeamMon & MonHealth;
 
 type GhostStats = { milestones: number; lastMilestone: number; badges: readonly boolean[]; cost: number; calls: number; battles: number; trainers: number; faints: number; money: number | null };
 
@@ -35,7 +34,7 @@ export type GhostNow = {
   battle: GhostBattle | null;
   result: EndReason | null;
   place: GhostPlace;
-  team: GhostMon[];
+  team: StateMon[];
   unit: SpendUnit;
   stats: GhostStats;
 };
@@ -43,8 +42,6 @@ export type GhostNow = {
 export type RaceDoor = { key: string; door: Door; ghosts: GhostNow[]; interiors: { map: string; ghosts: GhostNow[] }[] };
 
 export type RaceMoment = { ghosts: GhostNow[]; doors: RaceDoor[]; inside: Map<string, GhostNow[]>; leader: number | null; ranking: GhostNow[] };
-
-type TeamAt = { frame: number; mons: GhostMon[] };
 
 type BadgesAt = { frame: number; got: boolean[] };
 
@@ -63,39 +60,8 @@ type Ghost = {
   faints: FrameList<number>;
 };
 
-/** How many of `length` sorted frames are at or before `frame`. */
-function countUntil(length: number, frameAt: (index: number) => number, frame: number): number {
-  let low = 0;
-  let high = length;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    if (frameAt(middle) <= frame) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-class FrameList<T> {
-  constructor(
-    private readonly items: readonly T[],
-    private readonly frameOf: (item: T) => number,
-  ) {}
-
-  count(frame: number): number {
-    return countUntil(this.items.length, (i) => this.frameOf(this.items[i]), frame);
-  }
-
-  last(frame: number): T | undefined {
-    return this.items[this.count(frame) - 1];
-  }
-}
-
 function byFirst<T extends readonly [number, ...unknown[]]>(items: readonly T[]): FrameList<T> {
   return new FrameList(items, (item) => item[0]);
-}
-
-function byFrame<T extends { frame: number }>(items: readonly T[]): FrameList<T> {
-  return new FrameList(items, ({ frame }) => frame);
 }
 
 function badgeTimeline(milestones: RaceRun["milestones"]): BadgesAt[] {
@@ -105,19 +71,6 @@ function badgeTimeline(milestones: RaceRun["milestones"]): BadgesAt[] {
     got = got.map((old, i) => old || i === Number(milestone.slice(BADGE_PREFIX.length)) - 1);
     return [{ frame, got }];
   });
-}
-
-function teamTimeline(state: readonly StateEntry[]): TeamAt[] {
-  const timeline: TeamAt[] = [];
-  let team: readonly TeamMon[] = [];
-  let health: readonly MonHealth[] = [];
-  for (const entry of state) {
-    if (entry.kind === "team") team = entry.team;
-    else if (entry.kind === "health") health = entry.health;
-    else continue;
-    timeline.push({ frame: entry.frame, mons: team.map((mon, i) => ({ ...mon, ...(health[i] ?? { hp: mon.maxHp, status: "none" }) })) });
-  }
-  return timeline;
 }
 
 export function worldCell(place: WorldPlace, x: number, y: number): { x: number; y: number; scale: number } {

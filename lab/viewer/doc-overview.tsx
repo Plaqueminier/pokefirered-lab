@@ -173,8 +173,12 @@ export function GridPage() {
       details={[
         ["Game time", "the frames of the game as h:mm:ss, with the battles in it and the waits for the model out of it."],
         ["End of a replay", "a replay at its last frame stays on it and shows its Run result, and the others go on. The cursor stops at the end of the longest replay."],
-        ["Names", "a cell shows the names of the trainer and the rival of its Run, when its Run has a Character turn with names. Each Run has its own emulator, so it keeps its names when another Run becomes the shown Run."],
-        ["Click on a cell", "a live Run becomes the shown Run. A replay plays in the Lab tab, at the frame of the Grid cursor."],
+        ["Names", "a cell shows the names of the trainer and the rival of its Run, when its Run has a Character turn with names: both in a Grid of 9; the trainer in a Grid of 2 or 4, and the rival in its tooltip. Each Run has its own emulator, so it keeps its names when another Run becomes the shown Run."],
+        ["Party", "in a Grid of 2 or 4, a cell shows the party of its Run: the nickname, the species, the level and the HP of each Pokémon, and a star on the starter. A live Run reads its game; a replay reads the State track of its Run record at the frame of the cursor, so a record from before format 3 shows no party. A Grid of 9 has no place for the party."],
+        ["Run id", "in a Grid of 2 or 4, a cell shows the Run id of its Run record: the number at the start of its file name. A new or continued Run gets it when it writes its Run record, and shows “#…” until then. An extended Run keeps the Run id of its Run record. An Evolution numbers its Run records in its own folder, so its name comes before the number."],
+        ["Whiteout", "in a Grid of 2 or 4, “whiteout = death” in red tells that a whiteout ends the Run; “whiteout = plays on” tells that the Run continues. A Bot with no model plays on."],
+        ["Player and Coach", "in a Grid of 2 or 4, the model of the player and the model of the Coach are on two lines, with no provider prefix. A long Coach id goes on the next line; a long player id is cut, and its tooltip gives the full id."],
+        ["Click on a cell", "a live Run becomes the shown Run. A replay plays in the Lab tab, at the frame of the Grid cursor. In a Grid of 2 or 4, the band, the screen, the player and the facts take the click; the party does not."],
         ["Places", "the 9 places are for the Runs of the Bots and the replays of the Grid together, and the bar gives the free places. A start past the free places gets a notice."],
         ["Cost", "the form “Bots” shows the maximum total cost of its N Runs, or the maximum total tokens on a Plan provider. Each Run keeps its own limit."],
         ["Smaller Grid", "a replay in a cell that goes away leaves the Grid."],
@@ -194,7 +198,7 @@ export function GridPage() {
               ["Screen", "the game of the Run; dim when it waits for the model, when it writes its memory or when the Run ended"],
               ["Kind", "live or replay"],
               ["State", "plays, waits for the model, writes its memory, in battle, or ended with its Run result"],
-              ["Facts", "the name, the names of the character, the Bot, the model (and its Coach: `claude-haiku-5-5 + coach claude-opus-5-5`), the game time, the last Milestone, the cost or the tokens"],
+              ["Facts", "in a Grid of 9: the name, the names of the character, the Bot, the model (and its Coach: `claude-haiku-5-5 + coach claude-opus-5-5`), the game time, the last Milestone, the cost or the tokens. In a Grid of 2 or 4: a band with the Run id, the trainer, the starter and the whiteout option, then the player and the Coach on two lines, the facts and the party"],
               ["Click", "shows the Run in the Lab tab, with a bar “← Grid” to go back"],
             ]}
           />

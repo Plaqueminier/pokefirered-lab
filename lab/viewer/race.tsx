@@ -3,11 +3,10 @@ import { type ComponentChildren, render } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { BESTS_RACE, parseEvolutionPath, parseGenerationRace } from "../src/protocol";
 import { RACE_VERSION, type RaceFile } from "../src/race/file";
-import type { World } from "../src/race/world";
 import { Button, Card, Code, Cover, Pill, Slider, Tabs, Tooltip } from "./components";
 import { PointerCard, Select } from "./components-layers";
 import { fetched, Store, useRefresh, useStore } from "./cursor";
-import { fitCanvas } from "./race-art";
+import { fitCanvas, loadArt, loadWorld } from "./race-art";
 import { Leaderboard } from "./race-board";
 import { GhostsCard } from "./race-cards";
 import type { GhostNow, RaceDoor } from "./race-ghosts";
@@ -326,7 +325,6 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
   const tour = mode === "tour";
   const leaveTour = useCallback(() => setGraveyard("on"), []);
   useLayoutEffect(() => view?.graveyard.show(mode), [view, mode]);
-  const world = useRef<Promise<World> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -350,18 +348,16 @@ function RaceRoot({ shown, asked }: { shown: Store<boolean>; asked: Store<{ name
     setGraveyard((choice) => (choice === "tour" ? "on" : choice));
     setRaceError(null);
     setLoaded(1);
-    world.current ??= fetched("/race/world.json").then((response) => response.json());
     let cancelled = false;
     const step = <T,>(value: T) => {
       if (!cancelled) setLoaded((steps) => steps + 1);
       return value;
     };
-    Promise.all([readRace(name).then(step), world.current.then(step)])
-      .then(([race, kanto]) => {
-        if (!cancelled) setView(new RaceView(race, kanto));
+    Promise.all([readRace(name).then(step), loadWorld().then(step), loadArt()])
+      .then(([race, kanto, art]) => {
+        if (!cancelled) setView(new RaceView(race, kanto, art));
       })
       .catch((failure) => {
-        world.current = null;
         if (!cancelled) setRaceError(String(failure));
       });
     return () => {

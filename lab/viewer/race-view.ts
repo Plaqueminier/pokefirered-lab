@@ -2,7 +2,7 @@ import { GBA_FPS } from "../src/protocol";
 import { CELL, dotOf, isGeneticRun, type RaceFile } from "../src/race/file";
 import type { Door, IslandLink, World, WorldGym, WorldMap, WorldPlace } from "../src/race/world";
 import { Store } from "./cursor";
-import { fitCanvas, RaceArt } from "./race-art";
+import { fitCanvas, type RaceArt } from "./race-art";
 import { RaceCamera } from "./race-camera";
 import { framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
 import { GraveMarks } from "./race-grave-marks";
@@ -88,8 +88,8 @@ export class RaceView {
   readonly #links: IslandLink[];
   readonly #gyms: WorldGym[];
 
-  constructor(race: RaceFile, world: World) {
-    this.art = new RaceArt(world);
+  constructor(race: RaceFile, world: World, art: RaceArt) {
+    this.art = art;
     this.#places = world.regions.flatMap((region) => region.places);
     this.#placeOf = new Map(this.#places.map((place) => [place.map, place]));
     this.#links = world.regions.flatMap((region) => region.links);

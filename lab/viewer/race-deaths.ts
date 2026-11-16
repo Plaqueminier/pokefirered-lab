@@ -1,20 +1,10 @@
-import { STARTER_SPECIES, type StarterSpecies, type TeamMon } from "../src/protocol";
+import { lineOf, STARTER_SPECIES, type StarterSpecies, type TeamMon } from "../src/protocol";
 import type { RaceFile, RaceRun, RaceWhiteout, RaceWords } from "../src/race/file";
-
-const STARTER_LINES: Record<StarterSpecies, readonly string[]> = {
-  BULBASAUR: ["BULBASAUR", "IVYSAUR", "VENUSAUR"],
-  SQUIRTLE: ["SQUIRTLE", "WARTORTLE", "BLASTOISE"],
-  CHARMANDER: ["CHARMANDER", "CHARMELEON", "CHARIZARD"],
-};
 
 export const STARTER_TYPE: Record<StarterSpecies, string> = { BULBASAUR: "GRASS", SQUIRTLE: "WATER", CHARMANDER: "FIRE" };
 
 /** `run`: the index of the Run in the Race, not its Run id. `order`: the index of the death in the order of the Runs, as the Tour shows them. */
 export type RaceDeath = RaceWhiteout & { id: string; run: number; number: number; order: number; starter: StarterSpecies | null; endedRun: boolean; epitaph: string };
-
-function lineOf(species: string): StarterSpecies | null {
-  return STARTER_SPECIES.find((starter) => STARTER_LINES[starter].includes(species)) ?? null;
-}
 
 export function starterOf(run: Pick<RaceRun, "state">): StarterSpecies | null {
   const first = run.state.find((entry) => entry.kind === "team" && entry.team.length > 0);

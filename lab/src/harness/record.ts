@@ -466,8 +466,8 @@ export async function replayStart(header: RunHeader, onReadParent?: () => void):
 
 export function modelFacts(given: ModelSettings): ModelFacts {
   const settings = currentSettings(given);
-  const { id, reasoning, thinking, starter, coach } = settings;
-  return { id, provider: providerOf(settings), reasoning, thinking, starter, ...(coach ? { coach } : {}), limit: limitOf(settings) };
+  const { id, reasoning, thinking, starter, stopAtWhiteout, coach } = settings;
+  return { id, provider: providerOf(settings), reasoning, thinking, starter, stopAtWhiteout, ...(coach ? { coach } : {}), limit: limitOf(settings) };
 }
 
 const HEADER_BYTES = 64 * 1024;
@@ -501,7 +501,7 @@ export async function recordFacts(names: readonly string[], dir = RUNS_DIR): Pro
   const facts = headers.flatMap(({ name, header }): [string, RecordFacts][] => {
     if (!header) return [];
     const { model } = header.bot;
-    return [[name, { bot: header.bot.name, version: header.bot.version, model: model ? { ...modelFacts(model), stopAtWhiteout: currentSettings(model).stopAtWhiteout } : null, continued: continued.has(name) }]];
+    return [[name, { bot: header.bot.name, version: header.bot.version, model: model ? modelFacts(model) : null, continued: continued.has(name) }]];
   });
   return Object.fromEntries(facts);
 }

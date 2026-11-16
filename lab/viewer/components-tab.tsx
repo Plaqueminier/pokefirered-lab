@@ -829,7 +829,7 @@ const ENTRIES: Entry[] = [
     rule: "The model of a Run in small muted text, with a round dot of 8 px and a black border: blue for DeepSeek, orange for Claude, light grey for GPT, black for Grok. A model of another family has no dot, because grey means GPT. A Run of the Genetic bot has no model: the text is “Genetic bot” and its version, with a purple dot. Short: the id with no prefix. A text that is too long is cut, and the dot stays. No id and no Genetic bot: nothing.",
     demo: () => <ModelNameDemo />,
   },
-  { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
+  { category: "data", title: "MonIcon", rule: "The icon of a Pokémon in 24 px, or 40 px when large, sharp, with its level in a corner when it has one. A Pokémon with no icon keeps its place.", demo: () => <MonIconDemo /> },
   {
     category: "data",
     title: "DeathCard",
@@ -959,7 +959,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens. The screen takes all the place that the cell gives, and the facts go at its side when the cell is wide. A dim layer shows a wait for the model, a Summary call of the memory or the end. The buttons of a Run that plays show on a hover. A Run record can go in any cell; an ended Run can replay its record or continue it, and an ended live Run can leave the Grid; an empty cell offers the Run records.",
+    rule: "A cell of the Grid tab. In a Grid of 9: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens; the screen takes all the place that the cell gives, and the facts go at its side when the cell is wide. A dim layer shows a wait for the model, a Summary call of the memory or the end. The buttons of a Run that plays show on a hover. A Run record can go in any cell; an ended Run can replay its record or continue it, and an ended live Run can leave the Grid; an empty cell offers the Run records. In a Grid of 2 or 4, a band on top gives the Run id of its Run record (“#…” until a new Run writes it; the name of the Evolution before it for a record of an Evolution), the name of the trainer (the rival in its tooltip), the place of a live Run, the nickname of the starter with a star, and “whiteout = death” in red when a whiteout ends the Run, else “whiteout = plays on”. Under it: the screen, the player and the Coach on two lines, the facts, and the 6 places of the party, each with its large MonIcon, its Name, level, HpBar and StatusPill. The starter has an accent ring, and a Pokémon with no HP is grey. A party that is not known gives a text: a live Run before the worker reads the game, or a Run record with no State track. A click on the band, the screen, the player or the facts shows the Run in the Lab tab; the party takes no click. A wide cell puts the party at the right of the screen, and a narrow cell puts it under the screen.",
     demo: () => <GridCellDemo />,
   },
   {
