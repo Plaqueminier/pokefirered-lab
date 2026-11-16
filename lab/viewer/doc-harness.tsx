@@ -31,7 +31,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
       "Pushes the boulder at (x, y) that the player saw, `steps` cells to `direction` (1 when it is not given). It needs a Pokémon of the party that knows STRENGTH and badge 4. It goes to the cell behind the boulder with a route, faces the boulder, and starts STRENGTH with no question when the STRENGTH flag of the game is clear: a map load clears it. Then each push is one step of the player to the cell behind. It stops before `steps` at a blocked cell, on a switch, at a hole and at a battle. The result has `push`: the pushes, the cell of the boulder, the direction and the cause of the stop, with the map below a hole. It is `impossible` on the water, when the cell behind the boulder is water, with no route to the cell behind, and when `steps` is not a whole number of 1 or more. A route never pushes a boulder.",
     cards: { walk: "go behind the boulder, then push it" },
   },
-  { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, an item. A rider on a slope does not turn (page “Running and the BICYCLE”).", cards: { walk: "turn to the next cell and press A" } },
+  { form: "interact(x, y)", when: "walk", effect: "Turns to the next cell and presses A: a person, a sign, a PC, an item. A rider on a slope does not turn (page “Running and the BICYCLE”).", cards: { walk: "turn to the next cell and press A" } },
   {
     form: "readText()",
     when: "text, busy game",

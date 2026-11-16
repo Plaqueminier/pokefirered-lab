@@ -138,7 +138,7 @@ async function toRivalBattle(harness: Harness) {
 const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "3", goal: null, costLimit: null };
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
-  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "45", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "46", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -836,6 +836,16 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
     must(await harness.choose("YES"));
     expect(await harness.readText()).toMatchObject({ status: "done", text: ["Thank you for waiting. We've restored your POKéMON to full health.", "We hope to see you again!"] });
     expect(harness.waitingFor().kind).toBe("walk");
+  });
+
+  test("the PC of a Pokémon Center is a sign of the grid, and interact opens it from the cell south of it", async () => {
+    const harness = await Harness.open({ startSave: MART_SAVE });
+    must(await harness.goTo(11, 2, "ViridianCity_PokemonCenter_1F"));
+    const observation = harness.observe();
+    if (observation.mode !== "overworld") throw new Error("the Pokémon Center is in the overworld mode");
+    expect(observation.grid.signs.filter((s) => s.kind === "sign" && s.pc)).toEqual([{ x: 11, y: 1, kind: "sign", playerFacing: "any", pc: true }]);
+    expect(harness.availableActions()).toContainEqual({ name: "interact", x: 11, y: 1 });
+    expect(observation.atlas.maps.find((m) => m.name === "ViridianCity_PokemonCenter_1F")?.signs).toContainEqual({ x: 11, y: 1, facing: "any", text: null, pc: true });
   });
 
   function boxesOf(harness: Harness): BoxMon[] {

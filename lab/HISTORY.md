@@ -616,3 +616,13 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The record gets a `strength` event (the map, the cell of the boulder and the Pokémon) when STRENGTH starts, and the timeline of the Viewer shows "STRENGTH used". A push gives no event: the result of `push` has it.
     - An eval asked `claude-haiku-5-5` 10 times at 3 real walk prompts on Victory Road 1F. The prompts were in front of the first boulder, with the boulder one cell from the switch, and with a boulder against the east wall. Of the 30 answers, none used `push`. 27 went to the nearest unseen cells, 2 went to the exit, and 1 used `viewAtlas`. No answer was unreadable, and no reason was wrong about the boulders.
     - On these prompts, unseen cells were near the player, so a walk to them was a good choice. So the eval does not tell yet if a model pushes when only a push opens the way. The 8 badges of the test state also left no next Milestone. The texts did not change.
+
+## 47. The PC at a walk (2026-11-16)
+
+96. The model bot goes to version 46: the walk lists the PC as a thing to check, "a PC at (x, y)". In Run 00079 (version 45), the Coach advice told the model to box 4 Pokémon at the PC of the Pokémon Center of Cerulean City. The model took the escalator 6 times between the first and the second floor, and it spoke to a person on the first floor, but it did not find the PC. Its reasons said "the PC is upstairs" and then "the PC is downstairs". Then it left the Center with the same party.
+
+    - Since version 21, the Harness opens the Pokémon PC, but the walk prompt never showed the PC. The PC is not a bg event: it is a metatile with the behavior `MB_PC`, and the game runs `EventScript_PC` when the player faces it from any side. The list of the targets had only the people and the bg events, so the model saw the PC only in a rule. No Run of a model bot opened the boxes of a PC.
+    - The grid now adds each `MB_PC` cell of the map as a sign with `pc`, after the bg events, so the index of each bg event does not change. The Atlas keeps `pc`, and the target says "a PC at (x, y)" in place of "something you can check at (x, y)". On the first floor of a Pokémon Center, the PC is at (11, 1), and `go` interacts with it from (11, 2).
+    - The rule of the PC now says "Each Pokémon Center has a PC on its first floor, in the list of the things to check."
+    - The Genetic bot only leaves a PC, so its walk does not list the PC: the Genetic bot plays as before.
+    - The pages Model bot and Harness of the Doc tab tell the PC target and the PC of `interact`.

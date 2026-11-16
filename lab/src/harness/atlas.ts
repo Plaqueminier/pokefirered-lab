@@ -23,7 +23,8 @@ export type AtlasEdge = { side: Direction; to: string | null; blocked?: EdgeBloc
 
 export type AtlasSlide = { from: Cell; to: Cell };
 
-export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null };
+/** `pc`: a PC metatile, not a bg event. */
+export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null; pc?: true };
 
 /** x and y: where the player last saw the person on the screen, not where the person is now. */
 export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
@@ -515,7 +516,7 @@ function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMa
     }),
     hasEdges: edgesOf(grid).length > 0,
     outside: grid.outside,
-    signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null }] : [])),
+    signs: grid.signs.flatMap((s) => (s.kind === "sign" && isSeen(s) ? [{ x: s.x, y: s.y, facing: s.playerFacing, text: signTexts.get(cellKey(s)) ?? null, ...(s.pc ? { pc: s.pc } : {}) }] : [])),
     people: [...people.values()].map((p) => ({ ...p, texts: [...p.texts] })),
     obstacles: closing.filter((o) => obstacles.has(o.localId)),
     entry,

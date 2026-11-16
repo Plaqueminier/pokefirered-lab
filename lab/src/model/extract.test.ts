@@ -559,6 +559,13 @@ describe("the extract of the Atlas", () => {
     ]);
   });
 
+  test("a PC is a thing to check with its name, and its text after the player reads it", () => {
+    const center: AtlasMap = { ...LAB, name: "Town_PokemonCenter_1F", width: 3, height: 2, cells: "###...", warps: [], stepExits: [], signs: [{ x: 1, y: 0, facing: "any", text: null, pc: true }], people: [] };
+    expect(atlasExtract(overworld(center, [], { x: 1, y: 1 })).lines).toContain("A. a PC at (1, 0), adjacent north, you face it");
+    const read = { ...center, signs: [{ x: 1, y: 0, facing: "any" as const, text: "Tala booted up the PC.", pc: true as const }] };
+    expect(atlasExtract(overworld(read, [], { x: 1, y: 1 })).lines.join("\n")).toContain('a PC at (1, 0), adjacent north, you face it: read, "Tala booted up the PC."');
+  });
+
   test("a water edge says that the player cannot go there now and why, and it is not a target", () => {
     const [town] = chain(0);
     const view = atlasExtract(overworld({ ...town, edges: [{ side: "south", to: null, blocked: "water" }, ...town.edges.slice(1)] }, []));

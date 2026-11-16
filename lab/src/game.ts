@@ -66,6 +66,8 @@ const MB_JUMP: Record<number, string> = { 0x38: LEDGE.east, 0x39: LEDGE.west, 0x
 const MB_SPIN: Record<number, string> = { 0x54: SPIN.east, 0x55: SPIN.west, 0x56: SPIN.north, 0x57: SPIN.south };
 const MB_STOP_SPINNING = 0x58;
 const MB_STRENGTH_BUTTON = 0x20;
+// GetInteractedMetatileScript runs EventScript_PC when the player faces this metatile, from any side.
+const MB_PC = 0x83;
 const MB_STRONG_WATER = new Set([0x11, 0x50, 0x51, 0x52, 0x53]);
 const TERRAIN_SHIFT = 9;
 const TERRAIN_MASK = 0x1f;
@@ -186,8 +188,8 @@ export type MapGrid = {
   behaviorNames: Record<number, string>;
   warps: Warp[];
   connections: { direction: ConnectionSide; offset: number; map: string; group: number; num: number }[];
-  /** `playerFacing`: the direction that the player must face to read the sign. */
-  signs: ({ x: number; y: number } & ({ kind: "sign"; playerFacing: Direction | "any" } | { kind: "hidden-item" }))[];
+  /** `playerFacing`: the direction that the player must face to read the sign. The bg events come first, in their order, then the PC metatiles (`pc`). */
+  signs: ({ x: number; y: number } & ({ kind: "sign"; playerFacing: Direction | "any"; pc?: true } | { kind: "hidden-item" }))[];
   /** Cells that start a script when the player steps on them, if `variable` has `value`. */
   triggers: { x: number; y: number; variable: number; value: number; weather: boolean }[];
 };
@@ -1046,6 +1048,16 @@ export class Game {
     return this.buildGrid(group, num, header, bytes, width, height, 0);
   }
 
+  /** The PC metatiles inside the map, not in its border. */
+  private pcCells(behaviors: number[], width: number, border: number, map: { width: number; height: number }): MapGrid["signs"] {
+    return behaviors.flatMap((behavior, i) => {
+      const x = (i % width) - border;
+      const y = Math.floor(i / width) - border;
+      const inMap = x >= 0 && y >= 0 && x < map.width && y < map.height;
+      return behavior === MB_PC && inMap ? [{ x, y, kind: "sign" as const, playerFacing: "any" as const, pc: true as const }] : [];
+    });
+  }
+
   private buildGrid(group: number, num: number, header: Ref, bytes: Uint8Array, width: number, height: number, border: number): MapGrid {
     const layout = header.field("mapLayout").deref();
     const primary = this.attributes(layout.field("primaryTileset"), NUM_METATILES_IN_PRIMARY);
@@ -1128,11 +1140,14 @@ export class Game {
         return { ...warp, ...warpHow(x, y, behavior) };
       }),
       connections,
-      signs: this.eventList(header, "bgEvents", "bgEventCount").map((e) => {
-        const kind = e.field("kind").int();
-        const at = { x: e.field("x").int(), y: e.field("y").int() };
-        return kind === BG_EVENT_HIDDEN_ITEM ? { ...at, kind: "hidden-item" as const } : { ...at, kind: "sign" as const, playerFacing: SIGN_PLAYER_FACING[kind] ?? "any" };
-      }),
+      signs: [
+        ...this.eventList(header, "bgEvents", "bgEventCount").map((e) => {
+          const kind = e.field("kind").int();
+          const at = { x: e.field("x").int(), y: e.field("y").int() };
+          return kind === BG_EVENT_HIDDEN_ITEM ? { ...at, kind: "hidden-item" as const } : { ...at, kind: "sign" as const, playerFacing: SIGN_PLAYER_FACING[kind] ?? "any" };
+        }),
+        ...this.pcCells(behaviors, width, border, { width: layout.field("width").int(), height: layout.field("height").int() }),
+      ],
       triggers: this.eventList(header, "coordEvents", "coordEventCount").map((e) => ({
         x: e.field("x").int(),
         y: e.field("y").int(),

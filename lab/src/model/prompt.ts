@@ -140,7 +140,7 @@ Advice of a good player:
 - ${REPEL_FACTS}
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
 - ${TEACH_RULE}
-- Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
+- Each Pokémon Center has a PC on its first floor, in the list of the things to check. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.
 - ${NICKNAME_RULE} Write a name in the style of your character when you have one, different from the name of the species. A nickname costs nothing, because the game is frozen while you choose. It also tells two Pokémon of the same species apart in \`swap\` and \`switch\`.
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.

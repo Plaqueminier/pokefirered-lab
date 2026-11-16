@@ -297,7 +297,7 @@ The Bag (its five pockets with their items and quantities) and the PC (its items
 _Avoid_: items (an item is one entry of a pocket), storage
 
 **Pokémon PC**:
-The **Decision point** where a model bot puts a Pokémon of its party in a box of the PC, or takes a Pokémon from a box. It opens with the first option of the menu of a PC, which has the name SOMEONE'S PC or BILL'S PC. One action moves one Pokémon. The **Bot** does not choose the box of a deposit: by a fixed rule, the **Harness** puts the Pokémon in the current box, or in the next box with a free place.
+The **Decision point** where a model bot puts a Pokémon of its party in a box of the PC, or takes a Pokémon from a box. It opens with the first option of the menu of a PC, which has the name SOMEONE'S PC or BILL'S PC. One action moves one Pokémon. The **Bot** does not choose the box of a deposit: by a fixed rule, the **Harness** puts the Pokémon in the current box, or in the next box with a free place. At a walk, the PC is in the list of the things to check, as "a PC at (x, y)". Before bot version 46, the walk did not list the PC, so the model did not find it.
 _Avoid_: storage, boxes screen
 
 **Viewer**:

@@ -57,7 +57,8 @@ export function walkActions(overworld: Overworld, { walked, arrivals }: WalkMemo
     const cell = people.find((p) => p.localId === localId && p.loaded) ?? { x, y };
     return { target: { kind: "person", cell: { x: cell.x, y: cell.y }, localId }, criteria: { notUsed: Number(texts.length === 0), distance: near(distance(player, cell)), isPerson: 1 } };
   });
-  const signs = here.signs.map(({ x, y, facing, text }): WalkAction => ({ target: { kind: "sign", cell: { x, y }, facing }, criteria: { notUsed: Number(text === null), distance: near(distance(player, { x, y })), isSign: 1 } }));
+  // The Genetic bot only leaves a PC, so it does not walk to one.
+  const signs = here.signs.filter((s) => !s.pc).map(({ x, y, facing, text }): WalkAction => ({ target: { kind: "sign", cell: { x, y }, facing }, criteria: { notUsed: Number(text === null), distance: near(distance(player, { x, y })), isSign: 1 } }));
   const exitCells = new Set(here.warps.map(cellKey));
   const walkedHere = walked.get(here.name);
   const reachable = new Parts(atlas, here, grid, player, people.filter((p) => p.stays)).own.cells.slice(1).filter((cell) => !exitCells.has(cellKey(cell)));

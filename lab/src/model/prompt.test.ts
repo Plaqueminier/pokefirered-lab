@@ -1071,7 +1071,7 @@ describe("the Pokémon in the boxes of the PC", () => {
 
   test("the rules tell to use the PC: put a weak Pokémon in a box, and take a Pokémon from a box", () => {
     const rules = systemPrompt(SYSTEM, true);
-    expect(rules).toContain("Each Pokémon Center has a PC. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.");
+    expect(rules).toContain("Each Pokémon Center has a PC on its first floor, in the list of the things to check. It keeps your items and your Pokémon. A Pokémon that you catch with 6 Pokémon in your party goes to a box. At the PC, put a weak Pokémon in a box to make a place before you catch a new one, and take a Pokémon from a box when it suits the next battle.");
     expect(rules).not.toContain("lost for your team");
   });
 

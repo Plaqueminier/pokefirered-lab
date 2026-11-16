@@ -280,8 +280,8 @@ function personTarget(p: AtlasPerson, where: string, { behindCounter, unbeatenTr
   return { kind: "person", label: `${personName(p)} at (${p.x}, ${p.y}), ${where}${counter}${trainer}${object}${way}${talked}`, cell: { x: p.x, y: p.y }, localId: p.localId };
 }
 
-export function checkName({ x, y }: Cell): string {
-  return `something you can check at (${x}, ${y})`;
+export function checkName({ x, y, pc }: Cell & Pick<AtlasSign, "pc">): string {
+  return pc ? `a PC at (${x}, ${y})` : `something you can check at (${x}, ${y})`;
 }
 
 function signTarget(s: AtlasSign, where: string): LocalTarget {
