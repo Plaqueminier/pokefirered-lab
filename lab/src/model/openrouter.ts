@@ -12,7 +12,7 @@ export type ModelReply = { content: string; usage: Usage; reasoning?: string };
 
 export type JsonSchema = { type: "object"; properties: object; required: readonly string[]; additionalProperties?: boolean };
 
-export type AnswerFormat = { name: "decision" | "character" | "review" | "summary"; schema: JsonSchema };
+export type AnswerFormat = { name: "decision" | "battle" | "character" | "review" | "summary"; schema: JsonSchema };
 
 export const DECISION_FORMAT: AnswerFormat = { name: "decision", schema: DECISION_SCHEMA };
 

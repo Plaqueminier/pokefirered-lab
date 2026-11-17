@@ -6,11 +6,12 @@ import type { ActionEntry, Observation } from "../harness/harness";
 import type { BoxMon, PartyMove } from "../party";
 import type { ModelEvent, RunEvent } from "../harness/record";
 import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, shownCharacter } from "./character";
-import { type Asked, askedOf, DECISION_SCHEMA, readAction, readDecision, sendable } from "./decision";
+import { type Asked, askedOf, BATTLE_SCHEMA, DECISION_SCHEMA, readAction, readDecision, sendable } from "./decision";
 import { importantEvents } from "./important-events";
 import { adviceLine, coachRole, coachWants, MAX_ADVICE_PART, MAX_TRAINED, readAdvice, wantLines, withAdvice } from "./coach";
 import type { CoachAdvice } from "../protocol";
-import { MAX_TRIES, missionLine, nextMilestone, systemPrompt, tries, turnKind, turnRequest, userPrompt } from "./prompt";
+import { MAX_TRIES, tries } from "./history";
+import { battleSystemPrompt, missionLine, nextMilestone, systemPrompt, turnKind, turnRequest, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -206,7 +207,7 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
     atlas: { maps: [], lastTalk: null },
     battle: {
       kind: "wild",
-      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 20, maxHp: 22, status: "none", states: [], encoredSlot: null, stats, moves: [], statStages: stages, partyIndex: 0 },
+      player: { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], abilities: ["TORRENT"], level: 6, hp: 20, maxHp: 22, status: "none", states: [], encoredSlot: null, toxicCounter: 0, stats, moves: [], statStages: stages, partyIndex: 0 },
       enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", states: [], statStages: stages, movesSeen: [] },
       inPc: pc,
       fights: [],
@@ -283,12 +284,30 @@ describe("the Bag", () => {
       [
         "Bag:",
         "- ITEMS: POTION ×5 (It restores the HP of one POKéMON by 20 points.)",
-        "- KEY ITEMS: TOWN MAP ×1 (A very convenient map.)",
         "- POKé BALLS: POKé BALL ×20 (A BALL thrown to catch a wild POKéMON.)",
         "Money: 3080",
       ].join("\n"),
     );
     expect(prompt).toContain("- use <item> [on <Pokémon>]: use an item of your Bag. The items that work now: POTION (on a Pokémon), POKé BALL.");
+  });
+
+  test("in a battle, the use line gives the effect of each item that works now: the HP from → to, the status that it cures, the poison that stays, a REVIVE on each fainted Pokémon and the stage of an X item", () => {
+    const observation = wildPidgey({ party: 2 });
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    observation.party[1] = { ...observation.party[1], hp: 0 };
+    observation.battle.player = { ...observation.battle.player, hp: 80, maxHp: 160, status: "bad poison", toxicCounter: 2 };
+    const item = (name: string, effect: object) => ({ name, quantity: 1, description: "", price: 100, battle: "pokemon", walk: "pokemon", effect });
+    const items = [item("ANTIDOTE", { cures: ["poison"] }), item("SODA POP", { hp: 60 }), item("MAX POTION", { hp: "full" }), item("REVIVE", { hp: "half", revive: true }), { ...item("X ATTACK", { raise: { stat: "attack", stages: 1 } }), battle: "alone" }];
+    observation.bag = [{ pocket: "ITEMS", items }] as Observation["bag"];
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain(
+      [
+        "  ANTIDOTE on SQUIRTLE: cures bad poison.",
+        "  SODA POP on SQUIRTLE: HP 80 → 140, the bad poison stays (poison damage 30, 40, 50 HP in the next 3 turns).",
+        "  MAX POTION on SQUIRTLE: HP 80 → 160, the bad poison stays (poison damage 30, 40, 50 HP in the next 3 turns).",
+        "  REVIVE: 2 PIDGEY HP 0 → 5.",
+        "  X ATTACK on SQUIRTLE: attack +1 stage.",
+      ].join("\n"),
+    );
   });
 
   test("on a walk, the use line lists only the items that work outside a battle; the model uses POTION on a Pokémon of the party, and REPEL alone; the press line has no Start", () => {
@@ -340,7 +359,7 @@ describe("the Bag", () => {
   });
 
   test("the rules say that the damage estimate has no critical hit and no held item", () => {
-    expect(systemPrompt(SYSTEM, true)).toContain("an estimate of its damage with no critical hit and no held item");
+    expect(battleSystemPrompt(SYSTEM)).toContain("an estimate of its damage with no critical hit and no held item");
   });
 });
 
@@ -353,12 +372,12 @@ describe("the battle facts", () => {
       { name: "SEISMIC TOSS", type: "FIGHTING", effect: 87, power: null, fixedDamage: true as const, accuracy: 100, pp: 20, maxPp: 20, description: "" },
       { name: "WATER GUN", type: "WATER", effect: 0, power: 40, accuracy: 100, pp: 0, maxPp: 25, description: "" },
     ];
-    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], encoredSlot: null, stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
+    const squirtle: Battle["player"] = { species: "SQUIRTLE", nickname: "SQUIRTLE", types: ["WATER"], abilities: ["TORRENT"], level: 6, hp: 15, maxHp: 22, status: "none", states: [], encoredSlot: null, toxicCounter: 0, stats: { attack: 11, defense: 13, speed: 10, spAttack: 11, spDefense: 12 }, statStages: stages, moves, partyIndex: 0 };
     const bulbasaur = { ...squirtle, species: "BULBASAUR", nickname: "BULBASAUR", types: ["GRASS", "POISON"], hp: 20, stats: { attack: 11, defense: 11, speed: 10, spAttack: 13, spDefense: 13 }, moves: [] };
     const now: Battle = { kind: "trainer", player: squirtle, enemy: bulbasaur };
     const before: Battle = { kind: "trainer", player: { ...squirtle, hp: 22 }, enemy: { ...bulbasaur, hp: 22 } };
     const turn = battleTurn(before, now, ["SQUIRTLE used BUBBLE!", "It's not very effective…", "Foe BULBASAUR used TACKLE!", "A critical hit!"]);
-    const chart = { effects: [{ attack: "WATER", defense: "GRASS", multiplier: 5 }], special: ["WATER"] };
+    const chart = { effects: [{ attack: "WATER", defense: "GRASS", multiplier: 5 }], special: ["WATER"], soundMoves: [] };
     const observation = {
       mode: "battle",
       waitingFor: { kind: "battleMove" },
@@ -367,7 +386,7 @@ describe("the battle facts", () => {
       bag: [],
       milestones: [],
       atlas: { maps: [], lastTalk: null },
-      battle: { kind: "trainer", player: squirtle, enemy: enemyView(bulbasaur, [], false), fights: fightFacts(now, chart, []), lastTurn: turn, foeTurns: [turn] },
+      battle: { kind: "trainer", player: squirtle, enemy: enemyView(bulbasaur, [], false), fights: fightFacts(now, chart, [], []), lastTurn: turn, foeTurns: [turn] },
     } as unknown as Observation;
     const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain(
@@ -406,18 +425,28 @@ describe("the battle facts", () => {
     );
   });
 
+  test("in a battle, bad poison shows with the poison damage of the next 3 turns; on a walk, the same Pokémon shows poison", () => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    observation.battle.player = { ...observation.battle.player, hp: 100, maxHp: 160, status: "bad poison", toxicCounter: 2 };
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain("Your SQUIRTLE: level 6, HP 100/160, status bad poison (poison damage 30, 40, 50 HP in the next 3 turns). States: none.");
+    const walk = route1(22, []);
+    walk.party[0].status = "bad poison";
+    expect(userPrompt(walk, askedOf(walk, false)!, [], NO_TURN)).toContain("1. SQUIRTLE: level 6, HP 22/22, status poison. Type WATER");
+  });
+
   test("a move with no damage tells why it has no effect when the facts make it sure, and few PP in the damage moves add a line", () => {
     const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
     const stats = { attack: 10, defense: 10, speed: 10, spAttack: 10, spDefense: 10 };
     const move = (name: string, type: string, effect: number, pp = 10) => ({ name, type, effect, power: null, accuracy: 100, pp, maxPp: 10, description: "" });
-    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], encoredSlot: null, stats, statStages: { ...stages, defense: 6 }, moves: [], partyIndex: 0 };
+    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], abilities: ["OVERGROW"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], encoredSlot: null, toxicCounter: 0, stats, statStages: { ...stages, defense: 6 }, moves: [], partyIndex: 0 };
     const nidoran = { ...ivysaur, species: "NIDORAN♀", nickname: "NIDORAN♀", types: ["POISON"], status: "sleep" as const, states: ["seeded"], statStages: { ...stages, attack: -6 } };
     const geodude = { ...nidoran, species: "GEODUDE", nickname: "GEODUDE", types: ["ROCK", "GROUND"], status: "none" as const, states: ["behind a SUBSTITUTE"], statStages: stages };
-    const chart = { effects: [{ attack: "ELECTRIC", defense: "GROUND", multiplier: 0 }], special: ["ELECTRIC", "GRASS"] };
+    const chart = { effects: [{ attack: "ELECTRIC", defense: "GROUND", multiplier: 0 }], special: ["ELECTRIC", "GRASS"], soundMoves: [] };
     const prompt = (player: Battle["player"], enemy: Battle["player"]) => {
       const observation = wildPidgey();
       if (observation.mode !== "battle") throw new Error("not a battle");
-      observation.battle = { ...observation.battle, player, enemy: enemyView(enemy, [], false), fights: fightFacts({ kind: "wild", player, enemy }, chart, []) };
+      observation.battle = { ...observation.battle, player, enemy: enemyView(enemy, [], false), fights: fightFacts({ kind: "wild", player, enemy }, chart, [], []) };
       return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     };
     const statusMoves = [move("POISONPOWDER", "POISON", 66), move("SLEEP POWDER", "GRASS", 1), move("LEECH SEED", "GRASS", 84), move("GROWL", "NORMAL", 18)];
@@ -448,11 +477,126 @@ describe("the battle facts", () => {
     expect(thunderWave).not.toContain("few PP");
   });
 
+  describe("the chance to hit and the moves of two turns", () => {
+    const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
+    const stats = { attack: 30, defense: 30, speed: 30, spAttack: 30, spDefense: 30 };
+    const ivysaur: Battle["player"] = { species: "IVYSAUR", nickname: "IVY", types: ["GRASS", "POISON"], abilities: ["OVERGROW"], level: 18, hp: 40, maxHp: 53, status: "none", states: [], encoredSlot: null, toxicCounter: 0, stats, statStages: stages, moves: [], partyIndex: 0 };
+    const rattata = { ...ivysaur, species: "RATTATA", nickname: "RATTATA", types: ["NORMAL"] };
+    const move = (name: string, type: string, effect: number, power: number | null, accuracy: number | null) => ({ name, type, effect, power, accuracy, pp: 10, maxPp: 10, description: "" });
+    const prompt = (player: Battle["player"], enemy: Battle["player"]) => {
+      const observation = wildPidgey();
+      if (observation.mode !== "battle") throw new Error("not a battle");
+      const chart = { effects: [], special: ["GRASS"], soundMoves: [] };
+      observation.battle = { ...observation.battle, player, enemy: enemyView(enemy, [], false), fights: fightFacts({ kind: "wild", player, enemy }, chart, [], []) };
+      return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    };
+
+    test("with an accuracy or evasion stage, a move that can miss shows its chance to hit now; with no stage, or for a move that never misses, it shows none", () => {
+      const moves = [move("TACKLE", "NORMAL", 0, 35, 100), move("SWIFT", "NORMAL", 17, 60, null), move("SLEEP POWDER", "GRASS", 1, null, 75)];
+      const staged = prompt({ ...ivysaur, moves, statStages: { ...stages, accuracy: -1 } }, { ...rattata, statStages: { ...stages, evasion: 3 } });
+      expect(staged).toMatch(/^- fight 0: TACKLE .*KO\. Chance to hit now: 43%\.$/m);
+      expect(staged).toMatch(/^- fight 1: SWIFT .*KO\.$/m);
+      expect(staged).toContain("- fight 2: SLEEP POWDER (GRASS, power ---, accuracy 75, PP 10/10). Chance to hit now: 32%.\n");
+      expect(prompt({ ...ivysaur, moves }, rattata)).not.toContain("Chance to hit");
+      expect(battleSystemPrompt(SYSTEM)).toContain("The chance to hit counts only the stages of accuracy and evasion");
+    });
+
+    test("a move with a charge turn or a semi-invulnerable turn tells its 2 turns, and a move with a recharge turn tells the recharge", () => {
+      const moves = [move("DIG", "GROUND", 155, 60, 100), move("SKULL BASH", "NORMAL", 145, 100, 100), move("HYPER BEAM", "NORMAL", 80, 150, 90), move("TACKLE", "NORMAL", 0, 35, 100)];
+      const lines = prompt({ ...ivysaur, moves }, rattata);
+      expect(lines).toMatch(/^- fight 0: DIG .*KO\. It takes 2 turns: the foe acts at the 1st turn\.$/m);
+      expect(lines).toMatch(/^- fight 1: SKULL BASH .*KO\. It takes 2 turns: the foe acts at the 1st turn\.$/m);
+      expect(lines).toMatch(/^- fight 2: HYPER BEAM .*KO\. After it, IVY must recharge for 1 turn: the foe acts at this turn\.$/m);
+      expect(lines).toMatch(/^- fight 3: TACKLE .*KO\.$/m);
+    });
+  });
+
+  test("an ability of the foe species that blocks a move gives No effect when each possible ability blocks it or a text showed it, and can have when one of two blocks it", () => {
+    const stages = { attack: 0, defense: 0, speed: 0, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 };
+    const stats = { attack: 60, defense: 60, speed: 60, spAttack: 60, spDefense: 60 };
+    const moves = [
+      { name: "DIG", type: "GROUND", effect: 155, power: 60, accuracy: 100, pp: 10, maxPp: 10, description: "" },
+      { name: "WATER GUN", type: "WATER", effect: 0, power: 40, accuracy: 100, pp: 25, maxPp: 25, description: "" },
+    ];
+    const blastoise: Battle["player"] = { species: "BLASTOISE", nickname: "Paipa", types: ["WATER"], abilities: ["TORRENT"], level: 40, hp: 120, maxHp: 120, status: "none", states: [], encoredSlot: null, toxicCounter: 0, stats, statStages: stages, moves, partyIndex: 0 };
+    const koffing = { ...blastoise, species: "KOFFING", nickname: "KOFFING", types: ["POISON"], abilities: ["LEVITATE"], moves: [] };
+    const lapras = { ...koffing, species: "LAPRAS", nickname: "LAPRAS", types: ["WATER", "ICE"], abilities: ["WATER ABSORB", "SHELL ARMOR"] };
+    const chart = { effects: [{ attack: "WATER", defense: "WATER", multiplier: 5 }], special: ["WATER"], soundMoves: [] };
+    const prompt = (enemy: Battle["player"], texts: string[]) => {
+      const observation = wildPidgey();
+      if (observation.mode !== "battle") throw new Error("not a battle");
+      observation.battle = { ...observation.battle, player: blastoise, enemy: enemyView(enemy, [], false), fights: fightFacts({ kind: "trainer", player: blastoise, enemy }, chart, [], texts) };
+      return userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    };
+    expect(prompt(koffing, [])).toContain("- fight 0: DIG (GROUND, power 60, accuracy 100, PP 10/10). No effect: KOFFING has the ability LEVITATE, so GROUND moves miss it. It takes 2 turns: the foe acts at the 1st turn.\n");
+    expect(prompt(lapras, [])).toMatch(/^- fight 1: WATER GUN .*, STAB, .* to KO\. LAPRAS can have the ability WATER ABSORB: then WATER moves /m);
+    expect(prompt(lapras, ["Foe LAPRAS's WATER ABSORB made WATER GUN useless!"])).toMatch(/^- fight 1: WATER GUN \(WATER, power 40, accuracy 100, PP 25\/25\)\. No effect: LAPRAS has the ability WATER ABSORB, so WATER moves /m);
+  });
+
   test("at a battle action, the actions have no press", () => {
     const observation = wildPidgey();
     const asked = askedOf(observation, false)!;
     expect(userPrompt(observation, asked, [], NO_TURN)).not.toContain("- press");
-    expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use fight, run, use or zoom');
+    expect(() => readAction("press B", asked)).toThrow('"press" is not an action now: use fight, run or use');
+  });
+});
+
+describe("the battle prompt", () => {
+  test("in a battle, the prompt is about the battle: no Memory tree, no tries, no zoom, the battle pockets of the Bag with the key item that works, and the decisions since the one that started the battle; the answer writes no Mission and no Objective, and the next walk keeps those from before", () => {
+    const walk = call("go A", "Earn the Boulder Badge");
+    const planned = { ...walk, decision: { ...walk.decision!, objective: "Find the Gym" } } as ModelEvent;
+    const fightAnswer = readDecision('{"reason": "It is weak.", "action": "fight 0", "note": "", "say": ""}', BATTLE_SCHEMA.required);
+    expect(fightAnswer).toMatchObject({ mission: "", objective: "" });
+    const events: RunEvent[] = [
+      planned,
+      played({ name: "goTo", x: 2, y: 2 }, { status: "done", frames: 10 }),
+      call("goTo 3 3"),
+      played({ name: "goTo", x: 3, y: 3 }, { status: "interrupted", reason: "battle", frames: 10 }),
+      { type: "battle", frame: 0, state: "start" },
+      { ...call("fight 0"), situation: "a battle action", decision: fightAnswer } as ModelEvent,
+      played({ name: "fight", move: 0 }, { status: "done", frames: 300 }),
+    ];
+    const observation = wildPidgey({ party: 1 });
+    observation.bag[1].items.push({ name: "POKé FLUTE", quantity: 1, description: "A sweet-sounding flute.", price: 0, battle: "alone", walk: null });
+    const prompt = userPrompt(observation, askedOf(observation, false)!, events, { ...NO_TURN, memory: ["[1] PIDGEY lives on Route 1."], noProgress: { stuck: 4, since: 0 } });
+    expect(prompt).toContain("- KEY ITEMS: POKé FLUTE ×1 (A sweet-sounding flute.)");
+    expect(prompt).toContain("Mission: Earn the Boulder Badge");
+    expect(prompt).toContain("Objective: Find the Gym");
+    expect(prompt).toContain("You chose: goTo 3 3");
+    expect(prompt).toContain("You chose: fight 0");
+    for (const absent of ["Memory tree", "PIDGEY lives", "TOWN MAP", "You chose: go A", "Your tries", "Decision points since", "zoom"]) expect(prompt).not.toContain(absent);
+    const system = battleSystemPrompt(SYSTEM);
+    expect(system).not.toContain("Atlas");
+    expect(system).not.toContain('"mission"');
+    const after = userPrompt(route1(22, []), askedOf(route1(22, []), false)!, [...events, { type: "battle", frame: 0, state: "end" }], NO_TURN);
+    expect(after).toContain("Mission: Earn the Boulder Badge");
+    expect(after).toContain("Objective: Find the Gym");
+  });
+
+  test("the first walk after a battle tells the result, the fainted Pokémon, the Objective and the target from before the battle; the history keeps the walk decisions before a battle of 10 decisions, and the battle is one line", () => {
+    const planned = { ...call("goTo 1 0"), decision: { ...call("goTo 1 0").decision!, objective: "Beat BROCK" } } as ModelEvent;
+    const walks = [1, 2, 3, 4, 5].flatMap((y) => [y === 1 ? planned : call(`goTo 1 ${y - 1}`), played({ name: "goTo", x: 1, y: y - 1 }, { status: "done", frames: 10 })]);
+    const turns = Array.from({ length: 10 }, () => [{ ...call("fight 0"), situation: "a battle action" } as ModelEvent, played({ name: "fight", move: 0 }, { status: "done", frames: 300 })]).flat();
+    const events: RunEvent[] = [
+      { type: "map", frame: 0, map: "PewterCity_Gym" },
+      ...walks,
+      call("go B"),
+      played({ name: "goTo", x: 3, y: 3 }, { status: "interrupted", reason: "trainer", frames: 10 }),
+      { type: "battle", frame: 0, state: "start", trainer: true, foe: "LEADER BROCK" },
+      ...turns,
+      { type: "faint", frame: 0, species: "SQUIRTLE", side: "player" },
+      { type: "battle", frame: 0, state: "end" },
+      { type: "trainer", frame: 0, trainer: "LEADER BROCK", id: 414 },
+    ];
+    const prompt = userPrompt(route1(22, []), askedOf(route1(22, []), false)!, events, NO_TURN);
+    const back = prompt.split("\n").find((line) => line.startsWith("Back to the walk"));
+    for (const fact of ["LEADER BROCK", "you won", "SQUIRTLE fainted", "Beat BROCK", "go B", "(3, 3) on PewterCity_Gym"]) expect(back).toContain(fact);
+    expect(prompt.indexOf(back!)).toBeLessThan(prompt.indexOf("Actions:"));
+    expect(prompt).toContain("You chose: goTo 1 0");
+    expect(prompt).not.toContain("You chose: fight 0");
+    expect(prompt.split("\n").filter((line) => line.includes("LEADER BROCK"))).toHaveLength(2);
+    const later = userPrompt(route1(22, []), askedOf(route1(22, []), false)!, [...events, call("goTo 2 2"), played({ name: "goTo", x: 2, y: 2 }, { status: "done", frames: 10 })], NO_TURN);
+    expect(later).not.toContain("Back to the walk");
   });
 });
 
@@ -1179,6 +1323,13 @@ describe("the TMs and the HMs of the Bag", () => {
   };
   const promptOf = (observation: Observation, turn: "normal" | "review" | "reflection" = "normal") => userPrompt(observation, askedOf(observation, turn !== "normal")!, [], { ...NO_TURN, turn });
   const action = "- teach <TM or HM> on <Pokémon>: teach its move to a Pokémon of your party, for example teach TM13 on 1. Your Bag has: TM13 (ICE BEAM).";
+
+  test("the TM CASE of the Bag shows the move of each TM and HM", () => {
+    const observation = route1(22, []);
+    const tm = (name: string, move: string) => ({ name, quantity: 1, description: "", price: 0, battle: null, walk: null, move });
+    observation.bag.push({ pocket: "TM CASE", items: [tm("TM05", "ROAR"), tm("HM01", "CUT")] });
+    expect(promptOf(observation)).toContain("- TM CASE: TM05 ROAR ×1 (), HM01 CUT ×1 ()");
+  });
 
   test("a normal walk shows one line for the action, and no line with no TM and no HM", () => {
     const prompt = promptOf(with_([TM]));

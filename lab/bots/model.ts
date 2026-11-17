@@ -3,16 +3,17 @@ import { type ActionResult, type Bot, errorText, type Harness, type Interruption
 import type { Cell } from "../src/harness/path";
 import { spinDirection } from "../src/harness/slides";
 import { type ModelAnswer, type ModelOptions, type ModelSettings, type NodeRange, type Prompt, type NodeSentence, isSilentRead, type RunEvent, sinceLastCall, type SummaryAnswer, type Turn, type Usage } from "../src/harness/record";
-import { CHARACTER_SCHEMA, forcedAnswer, readCharacterDecision } from "../src/model/character";
-import { ADVICE_REQUEST, adviceLine, coachRole, coachSettings, readAdvice, wantLines, withAdvice } from "../src/model/coach";
-import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved, REVIEW_SCHEMA } from "../src/model/decision";
-import { dueMerges, keptNote, memoryLines, type MemoryTree, memoryTree, nodeName, readSummary, reviewMemory, summaryPrompt, summarySchema } from "../src/model/memory-tree";
-import { type AnswerFormat, type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply } from "../src/model/openrouter";
+import { forcedAnswer, readCharacterDecision } from "../src/model/character";
+import { coachSettings, readAdvice } from "../src/model/coach";
+import { type Asked, askedOf, isPlayed, type ModelAction, type PlayedAction, readAction, readDecision, readRemoved } from "../src/model/decision";
+import { dueMerges, keptNote, type MemoryTree, memoryTree, nodeName, readSummary, summaryPrompt, summarySchema } from "../src/model/memory-tree";
+import type { AnswerFormat, AskOptions, ModelClient, ModelReply } from "../src/model/openrouter";
+import { BOT_VERSION, openingPrompt } from "../src/model/opening";
 import { modelClient, modelSettings, PlanLimitError } from "../src/model/providers";
 import { isDamageMove, type PartyMon } from "../src/party";
 import { darkOfMap } from "../src/model/extract";
-import { importantEvents } from "../src/model/important-events";
-import { atlasMessage, B_PRESSES, errorMessage, impossibleMessage, showsAtlas, situation, systemPrompt, type TurnKind, turnKind, turnRequest, userPrompt, zoomMessage } from "../src/model/prompt";
+import { B_PRESSES, situation } from "../src/model/history";
+import { atlasMessage, errorMessage, impossibleMessage, showsAtlas, type TurnKind, turnKind, zoomMessage } from "../src/model/prompt";
 import { approaches, interactCell, type LocalTarget, type Overworld, type Target } from "../src/model/targets";
 import { type CoachAdvice, modelEvents } from "../src/protocol";
 
@@ -22,17 +23,6 @@ const MAX_IMPOSSIBLE = 3;
 const MAX_WALKS = 3;
 const MAX_UNCOVERED = 3;
 const NO_USAGE: Usage = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, reasoningTokens: 0, cost: 0 };
-const TURN_FORMATS: Record<TurnKind, AnswerFormat> = {
-  normal: DECISION_FORMAT,
-  character: { name: "character", schema: CHARACTER_SCHEMA },
-  reflection: DECISION_FORMAT,
-  review: { name: "review", schema: REVIEW_SCHEMA },
-};
-
-function turnFormat(turn: TurnKind, advises: boolean): AnswerFormat {
-  const format = TURN_FORMATS[turn];
-  return advises ? { ...format, schema: withAdvice(format.schema) } : format;
-}
 
 type Mind = { settings: ModelSettings; ask: ModelClient };
 
@@ -41,7 +31,7 @@ export function modelBot(options: ModelOptions = {}, connect: (settings: ModelSe
   const mind = (played: ModelSettings): Mind => ({ settings: played, ask: connect(played) });
   return {
     name: "model",
-    version: "47",
+    version: BOT_VERSION,
     model: settings,
     play: (harness) => {
       const player = mind(settings);
@@ -119,7 +109,7 @@ function isSpinGoTo({ x, y, map }: Cell & { map?: string }, { grid, map: here }:
 
 type BrokenWalk = WalkChain & { action: PlayedAction; asked: WalkAsked; map: string | undefined; reason: ContinuedInterruption; since: number };
 
-type Conversation = { mind: Mind; advises: boolean; advice: CoachAdvice; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
+type Conversation = { mind: Mind; format: AnswerFormat; advises: boolean; advice: CoachAdvice; system: string; user: string; turns: Turn[]; atlasShown: boolean; impossible: number; stuck: number; turnKind: TurnKind; thinks: boolean; sentences: NodeSentence[] };
 
 class ModelPlay {
   #conversation: Conversation | null = null;
@@ -207,7 +197,7 @@ class ModelPlay {
     const { mind } = conversation;
     const request = { model: mind.settings.id, situation: situation(asked), prompt, stuck: conversation.stuck, character: conversation.turnKind === "character", reflection: conversation.turnKind === "reflection", review: conversation.turnKind === "review" };
     const reply = await this.tryAsk(mind, prompt, {
-      format: turnFormat(conversation.turnKind, conversation.advises),
+      format: conversation.format,
       reasoning: conversation.thinks ? mind.settings.thinking : undefined,
       signal,
     });
@@ -217,7 +207,7 @@ class ModelPlay {
     const replied = { ...request, answer: reply.content, usage: reply.usage, reasoning: reply.reasoning };
     try {
       const tree = memoryTree(this.harness.events);
-      const written = request.character ? readCharacterDecision(reply.content, this.settings.starter, this.harness.fixedNames()) : readDecision(reply.content);
+      const written = request.character ? readCharacterDecision(reply.content, this.settings.starter, this.harness.fixedNames()) : readDecision(reply.content, conversation.format.schema.required);
       const action = readAction(written.action, asked);
       if (action.name === "viewAtlas" && asked.kind === "walk") {
         conversation.atlasShown = true;
@@ -239,15 +229,8 @@ class ModelPlay {
 
   private newConversation(observation: Observation, asked: Asked, turn: TurnKind): Conversation {
     const { events, noProgress } = this.harness;
-    const happened = importantEvents(this.#promptObservation, observation, events);
-    const tree = memoryTree(events);
-    const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
-    const coached = this.settings.coach !== undefined;
-    const { plays, advises } = coachRole(coached, turn, asked);
-    const request = [...turnRequest(turn, this.settings.starter, this.harness.fixedNames()), ...(advises ? ADVICE_REQUEST : [])];
-    const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice: coached ? [...adviceLine(events), ...wantLines(events, asked, observation.bag)] : [] });
-    const system = systemPrompt(this.settings, observation.party.length > 0, plays ? "coach" : "player");
-    return { mind: plays ? this.coach : this.player, advises, advice: {}, system, user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks: turn !== "normal" || plays, sentences: memory.sentences };
+    const { prompt, format, plays, advises, thinks, sentences } = openingPrompt(this.settings, { observation, before: this.#promptObservation, events, noProgress, names: this.harness.fixedNames() }, asked, turn);
+    return { mind: plays ? this.coach : this.player, format, advises, advice: {}, system: prompt.system, user: prompt.user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks, sentences };
   }
 
   private async summarize(): Promise<void> {

@@ -17,6 +17,7 @@ const ATTACKS_PP = 8;
 const MISC_IV_WORD = 4;
 const IS_EGG_BIT = 30;
 const ABILITY_NUM_BIT = 31;
+const ABILITY_NONE = 0;
 const NUM_NATURES = 25;
 const MAX_LEVEL = 100;
 const EXP_SIZE = 4;
@@ -36,13 +37,19 @@ const STAT_LABELS: Record<string, string> = { spAttack: "special attack", spDefe
 // STATUS1_* (constants/battle.h); the game shows PSN for STATUS1_POISON and STATUS1_TOXIC_POISON.
 const STATUS_BITS: [number, Status][] = [
   [0x07, "sleep"],
-  [0x08 | 0x80, "poison"],
+  [0x08, "poison"],
+  [0x80, "bad poison"],
   [0x10, "burn"],
   [0x20, "freeze"],
   [0x40, "paralysis"],
 ];
 
-export type Status = "none" | "sleep" | "poison" | "burn" | "freeze" | "paralysis";
+export type Status = "none" | "sleep" | "poison" | "bad poison" | "burn" | "freeze" | "paralysis";
+
+// Out of a battle, the game hurts a Pokémon with bad poison as one with poison.
+export function walkStatus(status: Status): Status {
+  return status === "bad poison" ? "poison" : status;
+}
 
 export type Stats = Record<(typeof STAT_NAMES)[number], number>;
 
@@ -262,7 +269,8 @@ function partyMove(mem: Memory, decode: Decode, move: number, pp: number, maxPp:
   return {
     name: nameAt(mem, "gMoveNames", move, decode),
     type: typeName(mem, data.field("type").int(), decode),
-    effect: data.field("effect").int(),
+    // `.int()` reads this unsigned char as signed, so an effect above 127 (DIG, SKULL BASH) needs the raw byte.
+    effect: data.field("effect").bytes(1)[0],
     power: power >= MIN_SHOWN_POWER ? power : null,
     ...(power === FIXED_DAMAGE_POWER ? { fixedDamage: true as const } : {}),
     accuracy: accuracy === 0 ? null : accuracy,
@@ -322,6 +330,11 @@ export function typeName(mem: Memory, type: number, decode: Decode): string {
 export function speciesTypes(mem: Memory, species: number, decode: Decode): string[] {
   const types = mem.global("gSpeciesInfo").at(species).field("types");
   return [...new Set([0, 1].map((i) => types.at(i).int()))].map((type) => typeName(mem, type, decode));
+}
+
+export function speciesAbilities(mem: Memory, species: number, decode: Decode): string[] {
+  const abilities = mem.global("gSpeciesInfo").at(species).field("abilities");
+  return [...new Set([0, 1].map((i) => abilities.at(i).int()))].filter((ability) => ability !== ABILITY_NONE).map((ability) => nameAt(mem, "gAbilityNames", ability, decode));
 }
 
 /** The stats of a party Pokémon or of a battle Pokémon: the two structs have the same field names. */

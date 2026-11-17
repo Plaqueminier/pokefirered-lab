@@ -138,7 +138,7 @@ async function toRivalBattle(harness: Harness) {
 const GENETIC_INFO: BotInfo = { name: "genetic", kind: "genetic", version: "3", goal: null, costLimit: null };
 
 test("the list of the Bots gives the Genetic bot and the model bot, with their kind, version, goal and cost limit", async () => {
-  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "47", goal: null, costLimit: expect.any(Number) }]);
+  expect(await botInfos()).toEqual([GENETIC_INFO, { name: "model", kind: "model", version: "48", goal: null, costLimit: expect.any(Number) }]);
 });
 
 test("a Bot that does not load gives its error in the list of the Bots", async () => {
@@ -631,7 +631,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(TEST_BAG))("Harness on the 
     const observation = harness.observe();
     expect(observation.money).toBe(3080);
     expect(observation.bag).toEqual([
-      { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" }] },
+      { pocket: "ITEMS", items: [{ name: "POTION", quantity: 5, description: "A spray-type wound medicine. It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon", effect: { hp: 20 } }] },
       { pocket: "POKé BALLS", items: [{ name: "POKé BALL", quantity: 20, description: "A BALL thrown to catch a wild POKéMON. It is designed in a capsule style.", price: 200, battle: "alone", walk: null }] },
     ]);
     expect(harness.availableActions()).toEqual(expect.arrayContaining([{ name: "use", item: "POTION" }, { name: "use", item: "POKé BALL" }]));

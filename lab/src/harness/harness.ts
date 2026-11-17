@@ -19,9 +19,10 @@ import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type Cell, type Destination, destinationOf, findRoute, headingAlong, kindAt, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
 import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
-import { RunEnd, RunLimits } from "./run-limits";
+import { afterAction, RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
+  type ActionEvent,
   ButtonTrack,
   GameWatch,
   isGameEvent,
@@ -206,6 +207,28 @@ export type HarnessOptions = {
 };
 
 export type ParentRecord = { name: string; record: RunRecord };
+
+export type ReplayStop = { frame: number; events: number };
+
+export type ReplayedState = { observation: Observation; events: RunEvent[]; noProgress: NoProgress; names: TrainerNames | null };
+
+// A mark of a replay, at the index of an event of the record: the start of a part of the Run, or the end of an action.
+type ReplayMark = { index: number } & ({ kind: "partStart" } | { kind: "action"; progressed: boolean; decisionPoint: boolean });
+
+type ReplayAction = { event: ActionEvent; index: number; turnStart: Battle | null };
+
+type ReplaySpy = { stops: readonly ReplayStop[]; onStop: (stop: ReplayStop, state: ReplayedState) => void };
+
+function buttonsUpTo(buttons: RunRecord["buttons"], frame: number): RunRecord["buttons"] {
+  const kept: RunRecord["buttons"] = [];
+  let left = frame;
+  for (const [keys, frames] of buttons) {
+    if (left <= 0) break;
+    kept.push([keys, Math.min(frames, left)]);
+    left -= frames;
+  }
+  return kept;
+}
 
 export type Bot = {
   name: string;
@@ -816,14 +839,14 @@ export class Harness {
     const game = this.#run.game;
     const kind = game.waitingFor().kind;
     const refused = action.name !== "press" && !ACCEPTS[kind].includes(action.name);
-    const turnStart = action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? game.battle() : null;
+    const turnStart = this.turnStartOf(action, kind);
     const outcome: Outcome & Partial<Texts> = refused ? { status: "impossible", reason: `${action.name} is not available: the game waits for a ${kind}` } : body();
     // #74: a teach in the dark and a trainer at the entry must also give a lit map at the next walk prompt.
     if (!refused) this.lightDarkMap();
     const left = this.#menus.takeLeftWordScreen() ? { leftWordScreen: true as const } : {};
     const result = { ...defaults, ...outcome, ...left, frames: this.frame - start };
     const entry = { action, result };
-    this.#battles.onAction(outcome.status === "impossible" ? null : turnStart, outcome.text ?? [], game.battle(), isDecisionPoint(game.waitingFor()));
+    this.battleActionEnded(outcome.status, turnStart, outcome.text ?? []);
     // The action event goes before the game events of its frames.
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.actionEnded(entry);
@@ -838,25 +861,102 @@ export class Harness {
     this.#atlas.onAction(entry);
   }
 
+  /** The battle before an action that plays a turn: the battle watch reads the turn from it. */
+  private turnStartOf(action: MacroAction | RawInput, kind: WaitingFor["kind"]): Battle | null {
+    return action.name !== "press" && (kind === "battleAction" || kind === "battleMove") ? this.#run.game.battle() : null;
+  }
+
+  /** Tells the battle watch that an action ended, and returns if the game then waits for a decision. */
+  private battleActionEnded(status: ActionResult["status"], turnStart: Battle | null, texts: string[]): boolean {
+    const game = this.#run.game;
+    const decisionPoint = isDecisionPoint(game.waitingFor());
+    this.#battles.onAction(status === "impossible" ? null : turnStart, texts, game.battle(), decisionPoint);
+    return decisionPoint;
+  }
+
+  static async replayStops(parent: ParentRecord, stops: readonly ReplayStop[], onStop: ReplaySpy["onStop"]): Promise<void> {
+    const last = stops.at(-1);
+    if (!last) return;
+    const { record } = parent;
+    const run = await Run.open({ names: record.header.names, seed: record.header.seed });
+    try {
+      const cut = { ...record, buttons: buttonsUpTo(record.buttons, last.frame), events: record.events.slice(0, last.events) };
+      new Harness(run, { knowledge: record.header.knowledge }).replayParent(cut, { stops, onStop });
+    } finally {
+      run.core.close();
+    }
+  }
+
   // The watches see the same frames and the same actions as in the parent Run, so the Atlas and the Memory tree go on from where the parent stopped.
-  private replayParent(record: RunRecord): void {
+  private replayParent(record: RunRecord, spy?: ReplaySpy): void {
     const differences = originDifferences(this.#run, record);
     if (differences.length > 0) throw new Error(`the Run record does not replay here: different ${differences.join(", ")}`);
     const player = new RecordPlayer(record);
-    const actions = record.events.filter((e) => e.type === "action");
-    let next = 0;
-    const actionsEnded = () => {
-      for (; next < actions.length && actions[next].frame + actions[next].result.frames <= this.frame; next++) this.actionEnded(actions[next]);
+    const game = this.#run.game;
+    const actions = record.events.flatMap((event, index): ReplayAction[] => (event.type === "action" ? [{ event, index, turnStart: null }] : []));
+    const stops = spy?.stops ?? [];
+    const partStarts = [0, ...(record.header.parts ?? []).map((part) => part.events)];
+    const marks: ReplayMark[] = [];
+    let best = 0;
+    let started = 0;
+    let ended = 0;
+    let nextStop = 0;
+    let nextPart = 0;
+    const feed = (below: number) => {
+      for (; started < actions.length && actions[started].event.frame <= this.frame && actions[started].index < below; started++) {
+        const { event, index } = actions[started];
+        if (partStarts[nextPart] <= index) best = this.progress();
+        while (partStarts[nextPart] <= index) nextPart++;
+        actions[started].turnStart = this.turnStartOf(event.action, game.waitingFor().kind);
+      }
+      for (; ended < started && actions[ended].event.frame + actions[ended].event.result.frames <= this.frame; ended++) {
+        const { event, index, turnStart } = actions[ended];
+        const decisionPoint = this.battleActionEnded(event.result.status, turnStart, "text" in event.result ? event.result.text : []);
+        this.actionEnded(event);
+        const now = this.progress();
+        marks.push({ kind: "action", index, progressed: now > best, decisionPoint });
+        best = Math.max(best, now);
+      }
+    };
+    const settle = () => {
+      for (; stops[nextStop]?.frame === this.frame; nextStop++) {
+        const stop = stops[nextStop];
+        feed(stop.events);
+        spy?.onStop(stop, this.replayedState(record.events.slice(0, stop.events), marks, partStarts));
+      }
+      feed(Number.POSITIVE_INFINITY);
     };
     while (!player.ended) {
-      actionsEnded();
+      settle();
       this.advance(player.next());
     }
-    actionsEnded();
+    settle();
     // The maps, the battles and the Milestones tell that it is the same game. The state events come from the replay: a better read of the game can change them (run 68: a party read that skipped frames lost 7 heals).
     if (!Bun.deepEquals(withoutFormat(this.#events), withoutFormat(record.events.filter(isGameEvent)))) throw new Error("the Run record does not replay the same game: its maps, battles or Milestones are different");
     this.#events.splice(0, this.#events.length, ...withStateEvents(record.events.filter((event) => !isStateEvent(event)), this.#events));
     this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
+  }
+
+  private replayedState(before: readonly RunEvent[], actionMarks: readonly ReplayMark[], partStarts: readonly number[]): ReplayedState {
+    const events = withStateEvents(before.filter((event) => !isStateEvent(event)), this.#events);
+    const places = new Map(events.map((event, place) => [event, place]));
+    const placeOf = (index: number) => {
+      for (let i = index; i < before.length; i++) {
+        const place = places.get(before[i]);
+        if (place !== undefined) return place;
+      }
+      return events.length;
+    };
+    const endOf = (place: number) => {
+      let end = place + 1;
+      while (end < events.length && isGameEvent(events[end])) end++;
+      return end;
+    };
+    // At the same index, the start of a part comes before an action.
+    const marks: ReplayMark[] = [...partStarts.map((index): ReplayMark => ({ kind: "partStart", index })), ...actionMarks].toSorted((a, b) => a.index - b.index || Number(a.kind === "action") - Number(b.kind === "action"));
+    let noProgress: NoProgress = { stuck: 0, since: 0 };
+    for (const mark of marks.filter((m) => m.index < before.length)) noProgress = mark.kind === "partStart" ? { stuck: 0, since: placeOf(mark.index) } : afterAction(noProgress, mark.progressed, mark.decisionPoint, endOf(placeOf(mark.index)));
+    return { observation: this.observe(), events, noProgress, names: events.some((event) => event.type === "action") ? this.trainerNames() : null };
   }
 
   private progress(): number {
@@ -899,7 +999,7 @@ export class Harness {
     const { kind, player, enemy, double } = battle;
     const game = this.#run.game;
     const view = (foe: Battle["enemy"]) => enemyView(foe, this.#battles.movesSeen(foe.partyIndex).map((move) => game.moveName(move)), this.#knowledge === "full");
-    const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), game.milestones());
+    const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), game.milestones(), this.#battles.battleTexts());
     return {
       ...(kind === "wild" ? { kind, inPc: game.pcCount(enemy.species) } : { kind }),
       player,

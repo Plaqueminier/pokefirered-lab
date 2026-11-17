@@ -1,18 +1,13 @@
-import { appendFile, mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { errorText } from "../harness/harness";
 import { type ModelEvent, type Prompt, RUNS_DIR, readRecord } from "../harness/record";
-import { readDecision } from "./decision";
-import { modelClient, modelSettings, PlanLimitError } from "./providers";
+import { type Answer, askAll, hashOf, type LabCall, LABS_DIR, type LabOptions, option, readResults, runOptions } from "./lab";
 
-const LAB_DIR = join(import.meta.dir, "..", "..", "evals", "learn-move");
+const LAB_DIR = join(LABS_DIR, "learn-move");
 const MOMENTS_FILE = join(LAB_DIR, "moments.json");
 const REPORT_FILE = join(LAB_DIR, "moments.md");
 const RESULTS_FILE = join(LAB_DIR, "results.jsonl");
 const SITUATION = "a move to forget";
-const DEFAULT_COST_LIMIT = 1;
-const DEFAULT_REPEATS = 3;
-const DEFAULT_CONCURRENCY = 4;
 // battle_moves.h: these moves have power 1. They do damage, but no fixed power says how much.
 const VARYING_POWER = new Set(["GUILLOTINE", "HORN DRILL", "SONICBOOM", "LOW KICK", "COUNTER", "SEISMIC TOSS", "DRAGON RAGE", "FISSURE", "NIGHT SHADE", "BIDE", "PSYWAVE", "SUPER FANG", "FLAIL", "REVERSAL", "RETURN", "PRESENT", "FRUSTRATION", "MAGNITUDE", "HIDDEN POWER", "MIRROR COAT", "ENDEAVOR", "SHEER COLD"]);
 const HINT_START = "This is an important choice.";
@@ -217,65 +212,22 @@ function momentsReport(moments: Moment[]): string {
   return ["# Learn-move moments of the Runs", "", "Each move shows its type, its power and its maximum PP.", "", "| Moment | Bot | Model | Pokémon | New move | Moves | Answer | Flags | Reason | Mission |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |", ...rows, ""].join("\n");
 }
 
-type Result = { key: string; id: string; variant: string; model: string; repeat: number; action: string | null; reason: string | null; error: string | null; cost: number };
-
-async function readResults(): Promise<Result[]> {
-  const file = Bun.file(RESULTS_FILE);
-  if (!(await file.exists())) return [];
-  return (await file.text()).split("\n").filter(Boolean).map((line) => JSON.parse(line) as Result);
-}
-
-function keyOf(id: string, variant: string, model: string, repeat: number, prompt: Prompt): string {
-  return `${id}|${variant}|${model}|${repeat}|${Bun.hash(JSON.stringify(prompt)).toString(36)}`;
-}
-
-function clientOf(model: string) {
-  const [, provider, id, reasoning] = model.match(/^([^:]+):([^@]+)(?:@(.+))?$/) ?? [];
-  if (!provider) throw new Error(`write a model as <provider>:<id>[@<reasoning>], not "${model}"`);
-  return modelClient(modelSettings({ provider, id, reasoning }));
-}
-
-type RunOptions = { models: string[]; variants: string[]; repeats: number; only: RegExp | null; costLimit: number; concurrency: number };
-
-async function play(moments: Moment[], { models, variants, repeats, only, costLimit, concurrency }: RunOptions): Promise<void> {
-  const chosen = moments.filter((m) => !only || only.test(`${m.id} ${m.species} ${m.newMove.name}`));
-  const results = await readResults();
-  const done = new Set(results.filter((r) => r.error === null).map((r) => r.key));
-  const jobs = chosen.flatMap((moment) => variants.flatMap((variant) => models.flatMap((model) => Array.from({ length: repeats }, (_, repeat) => {
-    const prompt = variantPrompt(moment, variant);
-    return { moment, variant, model, repeat, prompt, key: keyOf(moment.id, variant, model, repeat, prompt) };
-  })))).filter((job) => !done.has(job.key));
-  const clients = new Map(models.map((model) => [model, clientOf(model)]));
-  console.log(`${chosen.length} moments, ${jobs.length} calls to make`);
-  let spent = 0;
-  let stopped: string | null = null;
-  let next = 0;
-  const worker = async () => {
-    while (next < jobs.length && stopped === null) {
-      const job = jobs[next++];
-      const result: Result = { key: job.key, id: job.moment.id, variant: job.variant, model: job.model, repeat: job.repeat, action: null, reason: null, error: null, cost: 0 };
-      try {
-        const reply = await (clients.get(job.model) ?? clientOf(job.model))(job.prompt);
-        result.cost = reply.usage.cost;
-        const decision = readDecision(reply.content);
-        result.action = decision.action;
-        result.reason = decision.reason;
-      } catch (error) {
-        result.error = errorText(error);
-        if (error instanceof PlanLimitError) stopped = result.error;
-      }
-      spent += result.cost;
-      if (spent >= costLimit) stopped = `the cost limit of $${costLimit}`;
-      await appendFile(RESULTS_FILE, `${JSON.stringify(result)}\n`);
-      console.log(`${next}/${jobs.length} ${job.moment.id} ${job.variant} ${job.model}: ${result.action ?? `ERROR ${result.error}`}`);
-    }
-  };
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  console.log(`spent $${spent.toFixed(4)}${stopped ? `, stopped: ${stopped}` : ""}`);
-}
+type Result = Answer & { id: string; variant: string; repeat: number };
 
 function percent(part: number, whole: number): string {
   return whole === 0 ? "-" : `${Math.round((part * 100) / whole)}%`;
+}
+
+type RunOptions = LabOptions & { variants: string[] };
+
+async function play(moments: Moment[], { models, variants, repeats, only, ...limits }: RunOptions): Promise<void> {
+  const chosen = moments.filter((m) => !only || only.test(`${m.id} ${m.species} ${m.newMove.name}`));
+  console.log(`${chosen.length} moments`);
+  const calls = chosen.flatMap((moment) => variants.flatMap((variant) => models.flatMap((model) => Array.from({ length: repeats }, (_, repeat): LabCall<Omit<Result, keyof Answer>> => {
+    const prompt = variantPrompt(moment, variant);
+    return { key: `${moment.id}|${variant}|${model}|${repeat}|${hashOf(prompt)}`, model, prompt, label: `${moment.id} ${variant} ${model}`, fields: { id: moment.id, variant, repeat } };
+  }))));
+  await askAll(RESULTS_FILE, calls, limits);
 }
 
 export function report(moments: Moment[], results: Result[], variants: string[]): string {
@@ -300,11 +252,6 @@ export function report(moments: Moment[], results: Result[], variants: string[])
   return [...summary, "", ...detail].join("\n");
 }
 
-function option(args: string[], name: string): string | undefined {
-  const at = args.indexOf(`--${name}`);
-  return at < 0 ? undefined : args[at + 1];
-}
-
 async function main(args: string[]): Promise<void> {
   await mkdir(LAB_DIR, { recursive: true });
   const [command] = args;
@@ -325,14 +272,11 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (command === "run") {
-    const models = option(args, "models")?.split(",");
-    if (!models) throw new Error("--models <provider>:<id>[@<reasoning>],... is necessary");
-    const only = option(args, "only");
-    await play(moments, { models, variants, repeats: Number(option(args, "repeats") ?? DEFAULT_REPEATS), only: only ? new RegExp(only) : null, costLimit: Number(option(args, "cost-limit") ?? DEFAULT_COST_LIMIT), concurrency: Number(option(args, "concurrency") ?? DEFAULT_CONCURRENCY) });
+    await play(moments, { ...runOptions(args), variants });
   } else if (command !== "report") {
     throw new Error("the commands are extract, show <moment>, run and report");
   }
-  console.log(report(moments, await readResults(), variants));
+  console.log(report(moments, await readResults<Result>(RESULTS_FILE), variants));
 }
 
 if (import.meta.main) await main(process.argv.slice(2));

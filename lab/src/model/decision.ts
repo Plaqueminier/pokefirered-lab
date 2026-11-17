@@ -37,6 +37,15 @@ export const DECISION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+// A battle answer has no Mission and no Objective: the lines of the prompt read the last ones that are not empty.
+const BATTLE_FIELDS = ["reason", "action", "note", "say"] as const;
+
+export const BATTLE_SCHEMA = {
+  ...DECISION_SCHEMA,
+  properties: Object.fromEntries(BATTLE_FIELDS.map((field) => [field, DECISION_SCHEMA.properties[field]])),
+  required: BATTLE_FIELDS,
+};
+
 export const REVIEW_SCHEMA = {
   ...DECISION_SCHEMA,
   properties: {
@@ -101,6 +110,8 @@ export function actionsOf(asked: Asked): ActionVerb[] {
     switch (name) {
       case "viewAtlas":
         return !(asked.kind === "walk" && asked.atlasShown);
+      case "zoom":
+        return !inBattle(asked);
       case "push":
         return asked.kind === "walk" && asked.overworld.strength.usable && mapNamed(asked.overworld.atlas, asked.overworld.map.name).obstacles.some((o) => o.move === "STRENGTH");
       case "swap":
@@ -128,8 +139,14 @@ export function actionsOf(asked: Asked): ActionVerb[] {
   });
 }
 
+export type BattleAsked = Asked & { battle: BattleState };
+
+export function inBattle(asked: Asked): asked is BattleAsked {
+  return "battle" in asked;
+}
+
 export function sendable(asked: Asked): number[] {
-  if (!("battle" in asked)) return [];
+  if (!inBattle(asked)) return [];
   return sendableSlots(asked.party, [asked.battle.player.partyIndex, asked.battle.double?.ally?.partyIndex]);
 }
 
@@ -176,10 +193,11 @@ export function readFields(content: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function readDecision(content: string): Decision {
+/** An answer has the fields that its format asks for: a battle answer has no Mission and no Objective, and they stay empty. */
+export function readDecision(content: string, required: readonly string[] = DECISION_SCHEMA.required): Decision {
   const fields = readFields(content);
-  const decision = {} as Decision;
-  for (const field of FIELDS) {
+  const decision: Decision = { reason: "", action: "", mission: "", objective: "", note: "" };
+  for (const field of FIELDS.filter((name) => required.includes(name))) {
     const text = fields[field];
     if (typeof text !== "string") throw new Error(`the answer has no string "${field}"`);
     decision[field] = text.trim();

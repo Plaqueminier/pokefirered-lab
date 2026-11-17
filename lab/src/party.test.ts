@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { CACHE_DIR } from "./core";
 import { Memory } from "./memory";
-import { nameAt, readWatchedParty } from "./party";
+import { nameAt, newMove, readWatchedParty } from "./party";
 import { ROM_FILE } from "./run";
 import { loadSymbols } from "./symbols";
 
@@ -14,6 +14,8 @@ const SPECIES_BULBASAUR = 1;
 const SPECIES_IVYSAUR = 2;
 const PERSONALITY = 24;
 const OT_ID = 0x1234abcd;
+const MOVE_DIG = 91;
+const EFFECT_SEMI_INVULNERABLE = 155;
 
 const decode = (bytes: Uint8Array) => bytes.join(",");
 
@@ -41,5 +43,14 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(ELF_FILE))("the party of th
     expect(readWatchedParty(mem, decode, "gPlayerParty", 1)?.map((mon) => mon.species)).toEqual([nameAt(mem, "gSpeciesNames", SPECIES_BULBASAUR, decode)]);
     view.setUint16(secure, SPECIES_IVYSAUR, true);
     expect(readWatchedParty(mem, decode, "gPlayerParty", 1)).toBeNull();
+  });
+});
+
+describe.skipIf(!existsSync(ROM_FILE) || !existsSync(ELF_FILE))("the moves", () => {
+  test("a move effect above 127 reads as the game has it: DIG has the effect of a semi-invulnerable turn", async () => {
+    const rom = new Uint8Array(await Bun.file(ROM_FILE).arrayBuffer());
+    const bus = { read: (address: number, length: number) => rom.subarray(address - ROM_START, address - ROM_START + length) };
+    const mem = new Memory(bus, await loadSymbols(ELF_FILE, CACHE_DIR));
+    expect(newMove(mem, decode, MOVE_DIG).effect).toBe(EFFECT_SEMI_INVULNERABLE);
   });
 });

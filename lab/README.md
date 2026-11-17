@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has two **Bots**: the model bot (`bots/model.ts`, version 47, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself when a Pokémon of the party knows the move and the player has its badge. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the way is shorter, with badge 3 and a Pokémon of the party that knows FLY.
+The lab has two **Bots**: the model bot (`bots/model.ts`, version 48, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself when a Pokémon of the party knows the move and the player has its badge. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the way is shorter, with badge 3 and a Pokémon of the party that knows FLY. At each **Decision point** in a battle, the model bot sends the **Battle prompt**. It has a system prompt and a prompt about the battle only, with no **Memory tree** and no **Atlas**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -95,6 +95,24 @@ bun run learn-lab report [--variants <variant>,...]
 - A variant is `base`, the recorded prompt, or edits with `+` between them: `two` asks to keep at least 2 damage moves, `types` tells when a move is the only damage move of its type, `refuse` tells in the question that `keep` can refuse the move, `zero` writes power 0 for a move with no damage and power varies for a move with no fixed power, `maxpp` shows the maximum PP in the list, `after` tells the damage moves that each answer leaves, `nohint` removes the last line of the question, and `guide` replaces it with advice.
 - `--only` selects the moments by their id, species and new move. `run` adds each answer to `results.jsonl`. A next `run` does not make a call again when the prompt is the same, so you can add a variant or a model and pay only for the new calls.
 - `report` gives, for each model and variant, the share of answers that keep the moves, leave one damage move, lose the last damage move with the type of the Pokémon, or forget a damage move for a move with no damage while a move with no damage stays. Then it gives the answers at each moment.
+
+## Test the battle prompt
+
+`bun run battle-lab` asks models again at the **Battle moments** of the **Run records**. It uses the prompt that the current code of the model bot builds. No game runs after the extraction. The files go to `evals/battle/`, which Git ignores.
+
+```
+bun run battle-lab extract
+bun run battle-lab show <moment>
+bun run battle-lab run --models <provider>:<id>[@<reasoning>],... [--only <regex>] [--repeats <n>] [--cost-limit <dollars>] [--concurrency <n>]
+bun run battle-lab report
+```
+
+- `extract` replays each **Run record** of the moments up to the frame of each moment. It writes to `moments.json` what `observe()` returns, the count of **Decision points** with no progress, and the events before each moment. The replay takes about 1 minute for each 100 000 frames. Do it again when `observe()` gets a new field. The moments are in `src/model/battle-lab.ts`. They are the 34 moments of the A/B of spec #100. Each has a kind (`toxic`, `levitate`, `two-turn` or `clear`), its good answers and its bad answers.
+- `show` prints the system prompt and the user prompt of a moment, for example `00073@1634993`.
+- `--only` selects the moments by their id and their kind. `run` adds each answer to `results.jsonl`, with the version of the model bot, the model and the repeat. A next `run` makes only the calls that it does not have: a new version or a new prompt makes new calls.
+- `report` writes `report.md` and prints it. It gives, for each kind, version and model, the count of good, bad and other answers and the mean prompt tokens. Then it gives the answers at each moment. An answer is good or bad when its action starts with a good or a bad answer of the moment.
+
+`report.md` has bot versions 46 and 48 on `claude-code:haiku@low` and `claude-code:sonnet@low`, 3 repeats for each moment. Version 46 is the code before the Battle prompt, and version 48 the code of the Battle prompt. The lab history gives the numbers (step 49). `moments-v46.json` keeps the snapshots of version 46, from before the extraction of version 48. To measure version 46 again, use them with the code of the battle lab before version 48 (commit `330e4a5eb`). `results-before-v48.jsonl` keeps the results from before the merge with FLY, when the code of the Battle prompt had the label 47.
 
 ## Make a Race
 

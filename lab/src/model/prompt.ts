@@ -1,42 +1,23 @@
-import { BICYCLE, type BagItem, type BagPocket, type ItemUse, type Stone, type Teachable } from "../bag";
-import { struggles } from "../battle";
-import type { BattleTurn, FightFacts } from "../battle-facts";
+import { BICYCLE, type BagItem, type BagPocket, battleBag, type ItemUse, type Stone, type Teachable } from "../bag";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
-import { isStateEvent } from "../harness/game-events";
-import { DIRECTION_STEP } from "../cells";
-import type { ActionEntry, BattleState, NoProgress, Observation, PushReport } from "../harness/harness";
-import { type CallTurn, callTurns, isDecision, isSilentRead, type ModelEvent, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
+import type { NoProgress, Observation } from "../harness/harness";
+import { callTurns, isDecision, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
-import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, statLabel } from "../party";
-import { actionText, badgeNeeded, modelEvents } from "../protocol";
+import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, type Status, walkStatus } from "../party";
+import { badgeNeeded, modelEvents } from "../protocol";
 import type { TrainerNames } from "../save-file";
+import { battleLines, fights, itemEstimates } from "./battle-text";
 import { characterTurn, runCharacter } from "./character";
 import { COACH_DUTY, COACH_INTRO, COACH_RULE } from "./coach";
-import { actionsOf, alternatives, type Asked, type AskedKind, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
+import { actionsOf, alternatives, type Asked, type BattleAsked, inBattle, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
 import { darkOfMap, fullAtlas, knownWorld, localView, moveObstacleHere } from "./extract";
+import { answeredTurns, B_PRESSES, finishedBattles, loopWarning, pastCalls, returnLine, sinceBattleStart, tries, WAITS, walkHistory } from "./history";
 import { type MemoryTree, nodeName, zoomLines } from "./memory-tree";
+import { bagText, boxMonText, itemText, monName, monPlace, moveAtMaxPp, moveText, partyText, pokemonHelp } from "./party-text";
 import { isExit, type Overworld, targetLines } from "./targets";
 
-export const B_PRESSES = 3;
 const LONG_TERM_GOAL = "Become the Champion: earn the 8 gym badges, then beat the Elite Four.";
-const MAX_PAST_CALLS = 15;
-const MAX_CALL_LINES = 30;
-export const MAX_TRIES = 20;
-const LOOP_AFTER = 3;
-const MAX_OUTCOME = 200;
 const MIN_CROSSINGS = 6;
-const WAITS: Record<AskedKind, string> = {
-  walk: "a walk",
-  choice: "a choice",
-  battleAction: "a battle action",
-  battleMove: "a move",
-  partyPick: "a Pokémon in the party menu of the battle",
-  shopMenu: "the shop menu of a Poké Mart",
-  itemPc: "the item storage of a PC",
-  pokemonPc: "the boxes of a PC",
-  naming: "a name on the naming screen",
-  learnMove: "a move to forget",
-};
 const MILESTONE_TEXTS: Record<Milestone, string> = {
   "has-pokemon": "Get your first Pokémon from Professor Oak in Pallet Town.",
   "first-rival-battle": "Battle your rival for the first time, in Professor Oak's lab in Pallet Town.",
@@ -50,11 +31,9 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
   "badge-7": "Earn the Volcano Badge from Blaine, the Gym Leader of Cinnabar Island.",
   "badge-8": "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
 };
-const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
-const UNKNOWN_SCREEN = `The game showed a screen that no action covers: the program pressed B ${B_PRESSES} times.`;
+const AS_IS = (status: Status): Status => status;
 const TEACH_RULE = "A TM works one time, then it leaves your Bag. An HM stays in your Bag. A Pokémon with 4 moves must forget a move to learn a new one: you choose the move, or you keep the 4 moves.";
 const NICKNAME_RULE = "Give a nickname to each Pokémon that you get.";
-const WORD_SCREEN_LEFT = "The game opened a screen to write the words of a profile, and you cannot write words: the program left it. A profile gives nothing in the game: choose NO when a person asks for your profile.";
 const TRANSFERS = [
   ["withdraw", "take items from the PC and put them in your Bag", "withdraw POTION 2"],
   ["deposit", "put items of your Bag into the PC", "deposit POTION 1"],
@@ -88,41 +67,62 @@ function characterLine(events: readonly RunEvent[]): string[] {
   return [`Your character: ${decision.character} Your first Pokémon: ${decision.starter}.${names} Play as this trainer.${voice}`];
 }
 
+const PLAYER_INTRO = "You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.";
+const BATTLE_RULES =
+  'In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit and no held item. When an ability of the foe stops a move (for example LEVITATE stops the GROUND moves), the fight action tells it: "No effect" when the foe surely has this ability, "can have" when it is one of the two abilities of its species. When the stages of accuracy and evasion change it, a fight action also shows its chance to hit now. The chance to hit counts only the stages of accuracy and evasion, not the held items, the abilities or the weather. A move that takes 2 turns (for example DIG, FLY or SKULL BASH) hits at the 2nd turn, and the foe acts at the 1st turn: the number of hits to KO counts the hits, not the turns. SOLARBEAM takes only 1 turn in strong sunlight. After a move with a recharge turn (for example HYPER BEAM), your Pokémon cannot act at the next turn. Your Pokémon and the foe each show their status and their states, for example seeded or confused. Bad poison is the poison of TOXIC: its damage grows at each turn, and the line of your Pokémon gives the poison damage of the next 3 turns. An ANTIDOTE cures bad poison as it cures poison. At a walk, a Pokémon with bad poison shows poison. Under the use line, each item that works now on your Pokémon in the battle shows its effect: the HP before and after, the status that it cures, and, when your Pokémon has poison and the item does not cure it, that the poison stays, with its damage in the next turns. A REVIVE shows the HP of each fainted Pokémon after it, and an X item the stat and the stage that it raises. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.';
+const REASON_FIELD = '- "reason": why you choose this action, in one or two short sentences.';
+const SAY_FIELD =
+  '- "say": what your trainer says now, out loud, in one short sentence in English, or an empty string. Only the people who watch the Run read it, and it changes nothing in the game: keep "reason" plain. Talk as your character: the words, the tone and the things that your character notices. No catchphrase, and do not say a line again.';
+const PROGRAM_RULES = [
+  "- The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.",
+  `- When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.`,
+  '- "press" is one button press. Use it only when no other action fits.',
+  '- An action that is "impossible" changes nothing in the game: read its reason, then choose another action.',
+].join("\n");
+const WILD_BATTLE_RULE =
+  "- When a wild battle stops a walk, the program continues the walk to the same target after the battle, with no new decision. You choose again if a Pokémon fainted, if a Pokémon has a status, if your first Pokémon that can fight has less than half of its HP or no damage move with PP, if a walk to a cell of this map left it, or after a walk into unseen cells on a dark map. A lead, a far map and a goTo with a map continue on another map too.";
+const NICKNAME_ANSWER = "- At the question of a nickname, the program answers YES for you.";
+const KEEP_POTIONS = "- Keep your POTIONS for when they are necessary, for example before a difficult battle.";
+const RUN_AWAY = "- When a wild battle goes badly, run.";
+const COMPARE_LEVELS = "- Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.";
+const SHARED_EXPERIENCE =
+  "- Each Pokémon that was in the battle against a foe, and did not faint, gets an equal part of the experience of this foe, also with no move. So to train a weak Pokémon, put it first with `swap`, then `switch` to a strong Pokémon at the first turn. Against a trainer, this counts for each of its Pokémon: the weak Pokémon gets a part only of the foes that it was in the battle against.";
+const BATTLE_COACH_RULE = "In a battle, you get only the Battles part of the last advice, and the lines of what your Coach wants in this battle.";
+
+function whiteoutRule(stopAtWhiteout: boolean): string {
+  return stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES;
+}
+
 export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
   const coachLine = role === "coach" ? [COACH_DUTY] : coach ? [COACH_RULE] : [];
-  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES, ...coachLine].join("\n");
-  const intro = role === "coach" ? COACH_INTRO : "You play Pokémon FireRed. A program plays your actions in the game, and the game is frozen while you think.";
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), whiteoutRule(stopAtWhiteout), ...coachLine].join("\n");
+  const intro = role === "coach" ? COACH_INTRO : PLAYER_INTRO;
   const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
   return `${intro}
 
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas; in a battle, your Pokémon and the foe), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. In a battle, you get another prompt, about the battle only. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
 At a walk, you get an extract of your Atlas: the map where you are, with all its rows and a legend of its signs, the edges that lead to another map, what the people of this map said to you, the fixed obstacles of this map (a cut tree or a rock that you cannot remove yet, with the move that removes it, and a boulder, with the move that pushes it), when your Bag has the HM or a Pokémon knows the move (until then, an obstacle or water is # on the map), the maps one exit away, and the targets. Each target has a letter, and its distance and direction from you. An exit shows the kind of place that a player sees, for example a house, a Pokémon Center or a cave entrance. It shows the name of the map where it leads only when you went through it, and it then also shows the cell where you arrive, when this cell is known. A ? cell is next to a cell where you can walk. It can be a wall: to see what it is, go to the target of its unseen cells, not to the ? cell. A blank cell is a cell that you did not see, and no cell that you saw leads to it on foot; a slide can go through it. A line under the map tells when you saw all the cells that you can reach from where you are: other parts of the map can still have unseen cells, so take an exit or a lead. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A map can have parts that no cell that you saw connects, and the way between them can go through other maps: a target in another part shows the number of exits to it, in place of its direction. With no known exits to it, it keeps its direction and says that no seen way goes there yet. On a map with spin tiles, the extract also gives the parts of the map, the slides that leave each part and where each slide ends, and a target in another part shows its part and the number of exits or slides to it. The leads are what you did not explore in other parts and maps: unseen cells, exits not taken, and slides whose end you did not see. On a floor of a cave, a forest or a large building, the list What is left counts, from the game, the unseen places and the exits not taken in your part, in the other parts and on the floors that the exits reach. Trust it more than your notes. Before the extract, the Known world gives one line for each town, city or route that you visited: its edges, the passages through a gate, a forest or a cave to another outdoor map, the buildings that you entered, the exits that you did not take with their cells, the groups of open cells next to unseen cells and the fixed obstacles.
 
-In a battle, each fight action shows its effect on the foe, STAB (the move has a type of your Pokémon: ×1.5) and an estimate of its damage with no critical hit and no held item. Your Pokémon and the foe each show their status and their states, for example seeded or confused. You also get the last turn and the moves that you used on this foe, with their results. A move that has no effect also uses its PP. When no move of your Pokémon has PP, fight uses STRUGGLE (NORMAL, power 50): your Pokémon loses 1/4 of the damage that it does. A move that does no damage can help: it lowers a stat of the foe, puts it to sleep, poisons it or seeds it. Use it when it has an effect on this foe, mostly when the PP of your damage moves are low.
-
 Answer with JSON:
-- "reason": why you choose this action, in one or two short sentences.
+${REASON_FIELD}
 - "action": exactly one of the actions of the message, for example "go B" or "choose NO".
 - "mission": the story step that you work on, in one short sentence, for example "Find the Gym of the next town". Write it again unchanged at each decision. Change it only when the game shows that you reached it, or when the game gives you a new task. A try that fails or a person that is not where you expected does not change it: change the objective.
 - "objective": what you do now for your Mission, in one short sentence, for example "Look for an exit on the north side of the town". Change it as often as you need.
 - "note": a new note to keep in your Memory tree, in one line of at most ${MAX_SENTENCE} characters. A note is a fact that the game proved, for example "A person blocks the north exit of the town", or a lesson: what works, what fails and why, for example "Walks in the town gave nothing new: talk to the people first". A note can also be a guess that starts with "Guess:", for example "Guess: the Gym is in the north of the town", or the advice of a person that helps later, for example "A person said: you can never have too many Poké Balls". When one of your notes becomes false or ends, write a new note that says so, for example when the game disproves a guess, when a person moves, or when you beat a trainer that blocked a path. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. A note never says that a place is explored, crossed or a dead end: the program removes this sentence, except after "Guess:" or "A person said:", because the list What is left tells it from the game. It also removes a sentence that repeats one that a review turn removed. It writes "Guess:" before a sentence with a word like "might" or "likely". Nobody changes a note later, and only a review turn or these rules can remove a sentence from your top nodes. Usually give an empty string: write a note after an important event or when you learn a lesson, and never write the same note again.
-- "say": what your trainer says now, out loud, in one short sentence in English, or an empty string. Only the people who watch the Run read it, and it changes nothing in the game: keep "reason" plain. Talk as your character: the words, the tone and the things that your character notices. No catchphrase, and do not say a line again.
+${SAY_FIELD}
 - "remove": only at a review turn: ${REMOVE_RULE}.
 
 Rules of the program:
-- The program reads all the texts for you, and waits while the game is busy. You see the texts in your last decisions.
-- When the game shows a screen that no action covers, the program presses B ${B_PRESSES} times.
-- "press" is one button press. Use it only when no other action fits.
-- An action that is "impossible" changes nothing in the game: read its reason, then choose another action.
+${PROGRAM_RULES}
 - People, objects and things to check are there for you to interact with. "go" walks next to them and interacts, and you read the text. An object can be a thing that you can take. A person or an object "in your way" stays there and no walk on the cells that you saw can pass it: interact with it, or look for another way. When nothing changes, the story needs another step first, so come back later.
-- When a wild battle stops a walk, the program continues the walk to the same target after the battle, with no new decision. You choose again if a Pokémon fainted, if a Pokémon has a status, if your first Pokémon that can fight has less than half of its HP or no damage move with PP, if a walk to a cell of this map left it, or after a walk into unseen cells on a dark map. A lead, a far map and a goTo with a map continue on another map too.
-${offers}- At the question of a nickname, the program answers YES for you.
+${WILD_BATTLE_RULE}
+${offers}${NICKNAME_ANSWER}
 
 When your last decisions give nothing new, do not do them again: try something that you did not try. Talk to the people, interact with the objects, check the signs and other things, take the exits that you did not take, go to the cells that you did not see. The story often continues in a place that you do not expect.
 
@@ -130,12 +130,12 @@ Advice of a good player:
 - Check the signs and other things, and talk to the people: they often tell you the way and what to do.
 - Write your guesses in your notes, then check them.
 - When your Pokémon are weak, heal your Pokémon at a Pokémon Center.
-- Keep your POTIONS for when they are necessary, for example before a difficult battle.
+${KEEP_POTIONS}
 - You can use more than one Pokémon: catch more Pokémon, step by step, up to a balanced team of 6 with different types.
-- When a wild battle goes badly, run.
-- Before you fight a trainer, compare the levels of your Pokémon and of the Pokémon of the trainer.
+${RUN_AWAY}
+${COMPARE_LEVELS}
 - When the trainers ahead are stronger than your Pokémon, train your Pokémon in the tall grass first.
-- Each Pokémon that was in the battle against a foe, and did not faint, gets an equal part of the experience of this foe, also with no move. So to train a weak Pokémon, put it first with \`swap\`, then \`switch\` to a strong Pokémon at the first turn. Against a trainer, this counts for each of its Pokémon: the weak Pokémon gets a part only of the foes that it was in the battle against.
+${SHARED_EXPERIENCE}
 - Buy Poké Balls and Potions at a Poké Mart.
 - ${REPEL_FACTS}
 - Take each ITEM BALL that you can reach: it is a free item, and it costs only the walk.
@@ -145,6 +145,36 @@ Advice of a good player:
 - When the way is closed, explore and talk to the people: the game opens it when you do what it asks.
 - When an action gives no progress, do not do it again: try a new place, a new person or a new exit.
 - Your Memory tree keeps what you learned and tried: read it, and use zoom for a detail, before you choose.`;
+}
+
+// Only the settings of the Run feed this prompt, so that it stays the same from call to call and the cache holds.
+export function battleSystemPrompt({ stopAtWhiteout, coach }: Pick<ModelSettings, "stopAtWhiteout" | "coach">): string {
+  const rules = [whiteoutRule(stopAtWhiteout), ...(coach ? [`${COACH_RULE} ${BATTLE_COACH_RULE}`] : [])].join("\n");
+  return `${PLAYER_INTRO}
+
+Long-term goal: ${LONG_TERM_GOAL}
+${rules}
+
+You are in a battle. At each decision of the battle, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Bag (only the pockets that work in a battle), your money, your party, your Pokémon and the foe, what the game waits for, your Mission and your Objective, the Battles part of the Coach advice when the Run has a Coach, your decisions since the decision that started the battle, with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. Your Mission and your Objective come from your walk before the battle: read them, but do not write them. They stay the same after the battle. After an answer that the program cannot read, or after an impossible action, you get a new message at the same decision: answer again.
+
+${BATTLE_RULES}
+
+Answer with JSON:
+${REASON_FIELD}
+- "action": exactly one of the actions of the message, for example "fight 0" or "run".
+- "note": a new note to keep in your notes, which you read at each walk, in one line of at most ${MAX_SENTENCE} characters: a fact that the battle proved, for example "KOFFING has LEVITATE: GROUND moves miss", or a lesson: what works, what fails and why. A note is never HP or PP values: the program removes a sentence that has them, and a note that repeats a recent note. Usually give an empty string: write a note only when you learn a lesson.
+${SAY_FIELD}
+
+Rules of the program:
+${PROGRAM_RULES}
+${WILD_BATTLE_RULE}
+${NICKNAME_ANSWER}
+
+Advice of a good player:
+${RUN_AWAY}
+${KEEP_POTIONS}
+${SHARED_EXPERIENCE}
+${COMPARE_LEVELS}`;
 }
 
 const REFLECTION = [
@@ -203,10 +233,14 @@ function reviewDue(events: readonly RunEvent[]): boolean {
   return turns.slice(last + 1).filter(isDecision).length >= REVIEW_EVERY;
 }
 
-export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory, advice }: PromptState): string {
-  const read = modelEvents(events).flatMap((e) => (e.decision ? [e.decision] : []));
+export function userPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], state: PromptState): string {
+  return inBattle(asked) ? battlePrompt(observation, asked, events, state) : walkPrompt(observation, asked, events, state);
+}
+
+function walkPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory, advice }: PromptState): string {
   const answers = answeredTurns(events);
-  const calls = pastCalls(answers);
+  const battles = finishedBattles(answers);
+  const calls = walkHistory(answers, battles, events);
   const tried = tries(events, noProgress.since, answers);
   const known = asked.kind === "walk" ? knownWorld(asked.overworld) : [];
   const world = known.length === 0 ? [] : [...known, ""];
@@ -221,7 +255,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     ...world,
     bagText(observation.bag),
     `Money: ${observation.money}`,
-    partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText),
+    partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText, observation.mode === "battle" ? AS_IS : walkStatus),
     ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag), ...surfLines(asked.overworld), ...(asked.overworld.strength.moved ? [BOULDERS_MOVED] : [])] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
@@ -231,7 +265,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     waitLine(asked, events),
     missionLine(events),
-    `Objective: ${read.findLast((d) => d.objective)?.objective || "none yet"}`,
+    objectiveLine(events),
     ...advice,
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, ${lastProgressKinds(asked)}): ${noProgress.stuck}.`,
     ...request,
@@ -240,12 +274,44 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
     "",
     calls.length === 0 ? "Your last decisions: none yet." : ["Your last decisions, oldest first:", ...calls].join("\n"),
     "",
-    ...(happened.length === 0 ? [] : [...happened.map((fact) => `Something important happened: ${fact}.`), "Write a note if it can help you later.", ""]),
+    ...happenedLines(happened),
+    ...returnLine(asked, answers, battles, events),
     "Actions:",
     ...actionLines(asked),
     ZOOM,
     ...(actionsOf(asked).includes("press") ? [PRESS] : []),
   ].join("\n");
+}
+
+function battlePrompt(observation: Observation, asked: BattleAsked, events: readonly RunEvent[], { happened, advice }: PromptState): string {
+  const calls = pastCalls(sinceBattleStart(answeredTurns(events)));
+  return [
+    `Milestones: ${observation.milestones.join(", ") || "none"}`,
+    `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
+    ...characterLine(events),
+    "",
+    bagText(battleBag(observation.bag)),
+    `Money: ${observation.money}`,
+    partyText(observation.party, moveText, AS_IS),
+    "",
+    ...context(asked),
+    "",
+    waitLine(asked, events),
+    missionLine(events),
+    objectiveLine(events),
+    ...advice,
+    "",
+    calls.length === 0 ? "Your last decisions in this battle: none yet." : ["Your last decisions, from the one that started this battle, oldest first:", ...calls].join("\n"),
+    "",
+    ...happenedLines(happened),
+    "Actions:",
+    ...actionLines(asked),
+    ...(actionsOf(asked).includes("press") ? [PRESS] : []),
+  ].join("\n");
+}
+
+function happenedLines(happened: string[]): string[] {
+  return happened.length === 0 ? [] : [...happened.map((fact) => `Something important happened: ${fact}.`), "Write a note if it can help you later.", ""];
 }
 
 /** The question of a choice is the last text that the game showed: the texts of the last played action that had some. A zoom or a viewAtlas plays nothing, so it does not hide the question. */
@@ -316,160 +382,14 @@ export function missionLine(events: readonly RunEvent[]): string {
   return `Mission: ${mission} (the same for ${times} decision${times === 1 ? "" : "s"}).`;
 }
 
+function objectiveLine(events: readonly RunEvent[]): string {
+  const objective = modelEvents(events).findLast((e) => e.decision?.objective)?.decision?.objective;
+  return `Objective: ${objective || "none yet"}`;
+}
+
 export function nextMilestone(reached: readonly Milestone[]): string | null {
   const next = MILESTONES.find((milestone) => !reached.includes(milestone));
   return next ? MILESTONE_TEXTS[next] : null;
-}
-
-export function situation(asked: Asked): string {
-  if (asked.kind !== "walk") return WAITS[asked.kind];
-  const { map, player } = asked.overworld;
-  return `a walk on ${map.name} (${player.x}, ${player.y})`;
-}
-
-type AnsweredTurn = CallTurn & { call: ModelEvent };
-
-function answeredTurns(events: readonly RunEvent[]): AnsweredTurn[] {
-  return callTurns(events).flatMap((turn) => (turn.call ? [{ call: turn.call, events: withoutSilentInterruptions(turn.events) }] : []));
-}
-
-function withoutSilentInterruptions<E extends RunEvent>(events: E[]): E[] {
-  const hidden = new Set<E>();
-  events.forEach((interruption, i) => {
-    if (interruption.type !== "action" || interruption.result.status !== "interrupted" || interruption.result.reason !== "trigger") return;
-    let first = i + 1;
-    while (first < events.length && events[first].type !== "action") first++;
-    let end = first;
-    while (end < events.length && isSilentRead(events[end])) end++;
-    const replay = events[end];
-    if (replay?.type !== "action" || actionText(replay.action) !== actionText(interruption.action)) return;
-    hidden.add(interruption);
-    for (const read of events.slice(first, end)) hidden.add(read);
-  });
-  return hidden.size === 0 ? events : events.filter((event) => !hidden.has(event));
-}
-
-// The last Model calls, each with what the program played and the game did until the next one.
-function pastCalls(answers: AnsweredTurn[]): string[] {
-  return answers.slice(-MAX_PAST_CALLS).map(({ call, events: after }) => {
-    const lines = after.flatMap(eventLines);
-    const said = call.decision?.say ? `. You said: "${call.decision.say}"` : "";
-    const answer = call.decision ? `You chose: ${call.decision.action}${said}` : `Your answer could not be read: ${call.error}`;
-    const shown = lines.length > MAX_CALL_LINES ? [`… ${lines.length - MAX_CALL_LINES + 1} lines before`, ...lines.slice(-(MAX_CALL_LINES - 1))] : lines;
-    return [`- At ${call.situation}. ${answer}`, ...shown.map((line) => `  ${line}`)].join("\n");
-  });
-}
-
-type Try = { action: string; result: ActionEntry["result"]; texts: string[] };
-
-// After a Model call the program plays the answer, then reads the texts and can press B: only the actions before the first readText are tries.
-// The turn of the last progress counts from its Model call, so that its end (the code's B presses) is not a try.
-export function tries(events: readonly RunEvent[], since: number, answers = answeredTurns(events)): string[] {
-  const recent = new Set(events.slice(since));
-  const first = Math.max(0, modelEvents(events.slice(0, since + 1)).length - 1);
-  const played = answers.slice(first).flatMap((turn) => answerTries(turn.events, (a) => recent.has(a)));
-  const grouped = new Map<string, { action: string; outcome: string; times: number }>();
-  for (const t of played) {
-    const key = described(t);
-    const group = grouped.get(key) ?? { action: t.action, outcome: outcome(t), times: 0 };
-    group.times++;
-    grouped.set(key, group);
-  }
-  const lines = [...grouped.values()].map((g) => `- ${g.action} ×${g.times}: ${g.outcome}`);
-  return lines.length <= MAX_TRIES ? lines : [`- … and ${lines.length - MAX_TRIES} other tries before`, ...lines.slice(-MAX_TRIES)];
-}
-
-function answerTries(events: readonly RunEvent[], keep: (event: RunEvent) => boolean = () => true): Try[] {
-  const actions = events.flatMap((e) => (e.type === "action" ? [e] : []));
-  const read = actions.findIndex((a) => a.action.name === "readText");
-  const answer = (read === -1 ? actions : actions.slice(0, read)).filter(keep);
-  const textsAfter = actions.slice(read === -1 ? actions.length : read).flatMap((a) => (a.action.name === "readText" && "text" in a.result ? a.result.text : []));
-  return answer.map((a, i) => ({
-    action: actionText(a.action),
-    result: a.result,
-    texts: [...("text" in a.result ? a.result.text : []), ...(i === answer.length - 1 ? textsAfter : [])],
-  }));
-}
-
-function described(t: Try): string {
-  return `${t.action}: ${outcome(t)}`;
-}
-
-function loopWarning(answers: AnsweredTurn[]): string[] {
-  const last = answers
-    .map((turn) => answerTries(turn.events).map(described).join("; "))
-    .filter(Boolean)
-    .slice(-LOOP_AFTER);
-  return last.length === LOOP_AFTER && last.every((played) => played === last[0])
-    ? [`Warning: your last ${LOOP_AFTER} decisions played the same action with the same result: ${last[0]}. If it does not bring you closer to your objective, choose another action.`]
-    : [];
-}
-
-function statusText(result: Try["result"]): string {
-  const status = result.status === "done" ? "done" : `${result.status} (${result.reason})`;
-  const effect = effectText(result);
-  return effect ? `${status}, ${effect}` : status;
-}
-
-function effectText({ push, slidTo }: Try["result"]): string | null {
-  if (push) return pushText(push);
-  return slidTo ? `you stepped on the spin tile and slid to (${slidTo.x}, ${slidTo.y})` : null;
-}
-
-function pushText(push: PushReport): string {
-  const { pushes, x, y, direction } = push;
-  const count = `${pushes} push${pushes === 1 ? "" : "es"}`;
-  const [dx, dy] = DIRECTION_STEP[direction];
-  switch (push.stop) {
-    case "blocked":
-      return `${count}: the boulder cannot move to the ${direction}: (${x + dx}, ${y + dy}) is blocked`;
-    case "hole":
-      return `${count}: the boulder fell through the hole at (${x}, ${y})${push.into ? ` to ${push.into}` : ""}`;
-    case "switch":
-      return `${count}: the boulder is at (${x}, ${y}), on a switch`;
-    default:
-      return `${count}: the boulder is at (${x}, ${y})`;
-  }
-}
-
-function outcome({ result, texts }: Try): string {
-  const status = result.status === "done" && effectText(result) === null && texts.length > 0 ? "" : statusText(result);
-  const text = [status, texts.map((t) => `"${t}"`).join(" ")].filter(Boolean).join(", ");
-  return text.length > MAX_OUTCOME ? `${text.slice(0, MAX_OUTCOME - 1)}…` : text;
-}
-
-function eventLines(event: Exclude<RunEvent, ModelEvent>): string[] {
-  // The last decisions do not show the state events: the Coach advice tells them.
-  if (isStateEvent(event)) return [];
-  switch (event.type) {
-    case "action": {
-      const { action, result } = event;
-      const texts = "text" in result ? result.text.map((text) => `  "${text}"`) : [];
-      const lines = [`${actionText(action)}: ${statusText(result)}, ${result.frames} frames`, ...texts];
-      if (result.leftWordScreen) lines.push(WORD_SCREEN_LEFT);
-      // The Bot reads only at a text or when the game is busy: there, readText is impossible only on an unknown screen.
-      return action.name === "readText" && result.status === "impossible" ? [...lines, UNKNOWN_SCREEN] : lines;
-    }
-    case "map":
-      return [`now on map ${event.map}`];
-    case "battle":
-      return [event.state === "start" ? "a battle starts" : "the battle ends"];
-    case "milestone":
-    case "summary":
-      return [];
-  }
-}
-
-function monName({ nickname, species }: Pick<PartyMon, "nickname" | "species">): string {
-  return nickname === species ? species : `${nickname} (${species})`;
-}
-
-function boxMonText(mon: BoxMon): string {
-  return `${monName(mon)} level ${mon.level}, ${mon.boxName}`;
-}
-
-function itemText({ name, quantity }: { name: string; quantity: number }): string {
-  return `${name} ×${quantity}`;
 }
 
 function boxFacts({ overworld: { boxes, pcItems }, party }: WalkAsked, detailed: boolean): string[] {
@@ -531,53 +451,12 @@ function boxDescriptions(shown: BoxMon[], party: PartyMon[]): string[] {
   return descriptions.size === 0 ? [] : ["What these moves and abilities do:", ...[...descriptions].map(([name, description]) => `- ${name}: ${description}`)];
 }
 
-function partyText(party: PartyMon[], moveAbout: (move: PartyMove) => string): string {
-  if (party.length === 0) return "Party: none.";
-  const mon = (m: PartyMon, slot: number) => {
-    const about = [
-      `${slot + 1}. ${monName(m)}: level ${m.level}, HP ${m.hp}/${m.maxHp}, status ${m.status}`,
-      `Type ${m.types.join(", ")}`,
-      `Ability ${m.ability.name}: ${m.ability.description.replace(/\.$/, "")}`,
-      `Held item ${m.heldItem ? `${m.heldItem.name}: ${m.heldItem.description.replace(/\.$/, "")}` : "none"}`,
-      `Nature ${m.nature}`,
-      `Stats: ${statsText(m.stats)}`,
-      `EXP ${m.exp}, ${m.expToNextLevel} to the next level.`,
-    ];
-    return [about.join(". "), ...m.moves.map((move) => `  - ${move.name}: ${moveAbout(move)}. ${move.description}`)].join("\n");
-  };
-  return ["Party:", ...party.map(mon)].join("\n");
-}
-
-function bagText(bag: BagPocket[]): string {
-  if (bag.length === 0) return "Bag: empty.";
-  const pocket = ({ pocket, items }: BagPocket) => `- ${pocket}: ${items.map((i) => `${itemText(i)} (${i.description})`).join(", ")}`;
-  return ["Bag:", ...bag.map(pocket)].join("\n");
-}
-
-function moveFacts(move: PartyMove): string {
-  return `${move.type}, power ${move.power ?? "---"}, accuracy ${move.accuracy ?? "---"}`;
-}
-
-function moveAtMaxPp(move: PartyMove): string {
-  return `${moveFacts(move)}, max PP ${move.maxPp}`;
-}
-
-function moveText(move: PartyMove): string {
-  return `${moveFacts(move)}, PP ${move.pp}/${move.maxPp}`;
-}
-
-function statsText(stats: Record<string, number>): string {
-  return Object.entries(stats)
-    .map(([stat, value]) => `${statLabel(stat)} ${value}`)
-    .join(", ");
-}
-
 function context(asked: Asked): string[] {
   switch (asked.kind) {
     case "walk":
       return asked.view.lines;
     case "choice":
-      if ("battle" in asked) return battleLines(asked.battle, asked.party);
+      if (inBattle(asked)) return battleLines(asked.battle, asked.party);
       return [...(asked.storage === undefined ? [] : [pcLine(asked.options[asked.storage])]), ...localView(asked.overworld)];
     case "shopMenu": {
       const buys = asked.sellable.length === 0 ? ["The Poké Mart buys none of the items of your Bag."] : ["The Poké Mart buys these items of your Bag (the money for one item):", ...asked.sellable.map((item) => `- ${itemText(item)}: ${item.price / 2}`)];
@@ -704,7 +583,8 @@ function useLine(asked: Asked & { items: BagItem[] }): string[] {
   if (asked.items.length === 0) return [];
   const moveItem = asked.items.find((item) => itemUse(item, asked) === "move");
   const moveHelp = moveItem ? ` On a move, write the Pokémon and then the move, for example use ${moveItem.name} on 1 ${asked.party[0].moves[0].name}.` : "";
-  return [`- use <item> [on <Pokémon>${moveItem ? " [<move>]" : ""}]: use an item of your Bag. The items that work now: ${asked.items.map((item) => itemWithTarget(item, asked)).join(", ")}.${pokemonHelp(asked.party)}${moveHelp}`, ...(asked.kind === "walk" ? stoneLines(asked.overworld.stones, asked.party) : [])];
+  const details = asked.kind === "walk" ? stoneLines(asked.overworld.stones, asked.party) : inBattle(asked) ? itemEstimates(asked.items, asked.battle.player, asked.party) : [];
+  return [`- use <item> [on <Pokémon>${moveItem ? " [<move>]" : ""}]: use an item of your Bag. The items that work now: ${asked.items.map((item) => itemWithTarget(item, asked)).join(", ")}.${pokemonHelp(asked.party)}${moveHelp}`, ...details];
 }
 
 const ITEM_TARGETS: Record<ItemUse, string> = { alone: "", pokemon: " (on a Pokémon)", move: " (on a move of a Pokémon)" };
@@ -770,114 +650,4 @@ function fieldMoveHints({ overworld }: WalkAsked): string[] {
 function partyLine(asked: Asked, name: "switch" | "send", help: string): string[] {
   const slots = sendable(asked);
   return slots.length === 0 ? [] : [`- ${name} <Pokémon>: ${help}.${pokemonHelp(asked.party, slots)}`];
-}
-
-function monPlace(party: PartyMon[], slot: number): string {
-  return `${slot + 1} ${party[slot].nickname}`;
-}
-
-/** The help for `<Pokémon>`, with a space before it. No help when there is no place to name. */
-function pokemonHelp(party: PartyMon[], slots: Iterable<number> = party.keys()): string {
-  const mons = [...slots].map((slot) => monPlace(party, slot));
-  if (mons.length === 0) return "";
-  return ` <Pokémon> can be ${mons.join(", ")}. Write its place in the party, its name, or both, for example ${mons[0]}.`;
-}
-
-function fights({ player, fights: facts, double }: BattleState): string[] {
-  if (struggles(player)) return [`- fight 0: no move of ${player.nickname} has PP, so ${player.nickname} uses STRUGGLE (NORMAL, power 50) and loses 1/4 of the damage that it does.`];
-  return player.moves.flatMap((move, i) => {
-    if (player.encoredSlot !== null && player.encoredSlot !== i) return [];
-    const other = double?.otherFoe?.fights[i];
-    const onFoes = double?.otherFoe ? [factText(facts[i], "foe 1"), factText(other ?? null, "foe 2")] : [factText(facts[i], null)];
-    const reach = double ? reachText(double, i) : null;
-    const known = [reach, ...onFoes].filter((text) => text !== null);
-    const about = move.pp === 0 ? ". No PP: you cannot use it." : known.length > 0 ? `. ${known.join(". ")}.` : "";
-    return [`- fight ${i}: ${move.name} (${moveText(move)})${about}${player.encoredSlot === i ? " The ENCORE allows only this move." : ""}`];
-  });
-}
-
-/** What the fight of the move `i` hits, and what to write for the foe that it hits. */
-function reachText({ reach, otherFoe, ally }: NonNullable<BattleState["double"]>, i: number): string | null {
-  const foes = otherFoe ? "both foes" : "the foe";
-  switch (reach[i]) {
-    case "one":
-      return otherFoe ? `Hits one foe: fight ${i} hits foe 1, fight ${i} on 2 hits foe 2` : `Hits ${foes}`;
-    case "both":
-      return `Hits ${foes}`;
-    case "all":
-      return `Hits ${foes}${ally ? " and your other Pokémon" : ""}`;
-    case "game":
-      return "The game chooses its foe";
-    default:
-      return "It does not aim at a foe";
-  }
-}
-
-function factText(fact: FightFacts | null, foe: string | null): string | null {
-  if (!fact) return null;
-  return "noEffect" in fact ? `No effect${foe ? ` on ${foe}` : ""}: ${fact.noEffect}` : `On ${foe ?? "the foe"}: ${fightText(fact)}`;
-}
-
-function fightText({ effect, stab, estimate }: Exclude<FightFacts, { noEffect: string }>): string {
-  const name = effect === 0 ? "no effect" : effect < 1 ? "not very effective" : effect > 1 ? "super effective" : "normal effect";
-  return [
-    `${name} ×${MULTIPLIERS[effect] ?? effect}`,
-    ...(stab ? ["STAB"] : []),
-    ...(estimate ? [`${rangeText(estimate.minPercent, estimate.maxPercent, "%")} of its HP now`, `${rangeText(estimate.minHits, estimate.maxHits)} hit${estimate.maxHits === 1 ? "" : "s"} to KO`] : []),
-  ].join(", ");
-}
-
-function rangeText(min: number, max: number, unit = ""): string {
-  return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
-}
-
-function battleLines(battle: BattleState, party: PartyMon[]): string[] {
-  const { player, enemy, lastTurn, foeTurns, double } = battle;
-  const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
-  return [
-    `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
-    ...(double ? doubleLines(battle) : []),
-    `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
-    ...(double?.ally ? [`Your other Pokémon in the battle, ${double.ally.nickname}: level ${double.ally.level}, HP ${double.ally.hp}/${double.ally.maxHp}, status ${double.ally.status}.`] : []),
-    foeLine(enemy, double?.otherFoe ? "Foe 1" : "Foe"),
-    ...(double?.otherFoe ? [foeLine(double.otherFoe.enemy, "Foe 2")] : []),
-    ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
-    ...(lastTurn ? [turnLine(lastTurn)] : []),
-    ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
-    ...(fewDamagePp(player.moves) ? ["Your damage moves have few PP: use the other moves that have an effect, or switch."] : []),
-  ];
-}
-
-function foeLine(foe: BattleState["enemy"], label: string): string {
-  return `${label} ${foe.species} (${foe.types.join(", ")}): level ${foe.level}, HP ${foe.hpPercent}%, status ${foe.status}. States: ${foe.states.join(", ") || "none"}. Stat stages: ${stagesText(foe.statStages)}. Moves seen: ${foe.movesSeen.join(", ") || "none"}.`;
-}
-
-function doubleLines({ player }: BattleState): string[] {
-  return [`This is a double battle: you choose an action for each of your Pokémon, one after the other, and the turn plays after the last choice. You choose now for ${player.nickname}. Each fight below tells what it hits.`];
-}
-
-/** All the damage moves together have a quarter of their PP or less, and a move still has PP. */
-function fewDamagePp(moves: PartyMove[]): boolean {
-  const damage = moves.filter(isDamageMove);
-  const sum = (pp: (move: PartyMove) => number) => damage.reduce((total, move) => total + pp(move), 0);
-  return damage.length > 0 && sum((move) => move.pp) * 4 <= sum((move) => move.maxPp) && moves.some((move) => move.pp > 0);
-}
-
-function ownedLine(species: string, inParty: number, inPc: number): string {
-  return inParty + inPc === 0 ? `You own no ${species}.` : `You own ${inParty + inPc} ${species}: ${inParty} in the party, ${inPc} in the PC.`;
-}
-
-function turnLine({ moves, player, foe }: BattleTurn): string {
-  const first = moves.length > 1 ? [`${moves[0].user} moved first.`] : [];
-  const used = moves.map((m) => `${m.user} used ${m.move}${m.results.length > 0 ? `: ${m.results.join(", ")}` : ""}.`);
-  return ["Last turn:", ...first, ...used, `Your ${sideText(player)}.`, `Foe ${sideText(foe)}.`].join(" ");
-}
-
-function sideText({ before, after }: BattleTurn["player"]): string {
-  return before.name === after.name ? `${before.name}: HP ${before.hp} → ${after.hp}` : `${before.name}: HP ${before.hp}, then ${after.name}: HP ${after.hp}`;
-}
-
-function stagesText(stages: Record<string, number>): string {
-  const changed = Object.entries(stages).filter(([, stage]) => stage !== 0);
-  return changed.map(([stat, stage]) => `${statLabel(stat)} ${stage > 0 ? "+" : ""}${stage}`).join(", ") || "none";
 }

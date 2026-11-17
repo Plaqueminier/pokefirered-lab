@@ -4,7 +4,7 @@ type Arrow = { d: string; label: string; lx: number; ly: number; anchor: "start"
 const LOOP = [
   { title: "Harness", tag: "🕹️ runs the game", lines: ["runs the emulator", "decides nothing, except field moves and speed"], next: "runs to" },
   { title: "Decision point", tag: "⏸️ game frozen", lines: ["the game waits", "walk, text, choice, battle…"], next: "asks" },
-  { title: "Model call", tag: "🤖 the Bot asks", lines: ["prompt → AI model", "action, reason, Mission"], next: "answer" },
+  { title: "Model call", tag: "🤖 the Bot asks", lines: ["prompt → AI model", "action, reason (Mission at a walk)"], next: "answer" },
   { title: "Macro-action", tag: "▶️ one game action", lines: ["goTo, fight, buy…", "or one Raw input"], next: "plays it" },
 ];
 const LOOP_W = 200;
@@ -112,10 +112,10 @@ const LOOKS = {
 type MemoryNode = { span: readonly [number, number]; y: number; w: number; label: string; sub: string; look: keyof typeof LOOKS; parent?: number };
 
 const NODES: MemoryNode[] = [
-  { span: [0, 3], y: Y_FOUR, w: 250, label: "Notes 1–4", sub: "seen by the model · 600 characters", look: "top" },
+  { span: [0, 3], y: Y_FOUR, w: 250, label: "Notes 1–4", sub: "in the walk prompt · 600 characters", look: "top" },
   { span: [0, 1], y: Y_TWO, w: 200, label: "Notes 1–2", sub: "Summary call · 400 characters", look: "plain", parent: 0 },
   { span: [2, 3], y: Y_TWO, w: 200, label: "Notes 3–4", sub: "Summary call · 400 characters", look: "plain", parent: 0 },
-  { span: [4, 5], y: Y_TWO, w: 200, label: "Notes 5–6", sub: "seen by the model · 400", look: "top" },
+  { span: [4, 5], y: Y_TWO, w: 200, label: "Notes 5–6", sub: "in the walk prompt · 400", look: "top" },
   ...NOTES.map(
     (i): MemoryNode => ({
       span: [i, i],

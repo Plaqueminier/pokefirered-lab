@@ -642,3 +642,76 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - In Pewter City with FLY known, 7 answers of 10 flew to Celadon City (`go K`), for example "FLY to Celadon is the fastest way there". 2 went to the Pokémon Center because the party is at level 6. 1 went there because FLY showed PP 0/15: the script gave the move with no PP, but FLY out of battle needs no PP. In Celadon City, no answer flew: the 10 answers went to the unseen cells of the city to find the Gym.
     - With HM02 in the Bag, no answer of 10 taught it. 2 answers said that Celadon City is not visited, for example "FLY cannot take me there", and 3 said that no known way goes there. Without a Pokémon that knows FLY, the prompt shows no Fly destination, so the model did not know the towns that FLY reaches. So the hint now names them.
     - A third run asked 10 times at the prompt with HM02 and the new hint: 4 answers taught HM02 (`teach HM02 on 1`), for example "HM02 FLY can take me there directly". 4 went to the Pokémon Center and 2 to the unseen cells. 3 reasons still said that Celadon City is not visited: the script sets the `FLAG_WORLD_MAP_*` flags, but the Atlas of the test Run has only Pallet Town and Pewter City, so the Known world and the hint do not agree. In a Run, the game sets the flag when the player enters the town, so the Atlas has the town too.
+
+## 49. The Battle prompt (2026-11-16)
+
+98. The model bot goes to version 48. At each Decision point in a battle, it sends the **Battle prompt**. The facts of a battle are now correct. Six of the seven Runs 00073 to 00079 end with a whiteout. 9 of the 10 whiteouts are against a Gym Leader or the rival. Run 00073 (bot versions 34 to 45, `claude-haiku-5-5`, with `claude-sonnet-5-5` as the Coach) had 4 badges. It lost to Koga in the Gym of Fuchsia City with a BLASTOISE at level 55, Paipa, and an ANTIDOTE in the Bag. The three other Pokémon were a KAKUNA at level 5, a METAPOD at level 8 and an ODDISH at level 17. Spec #100.
+
+    - Against KOFFING, the model chose DIG two times, and DIG missed two times: KOFFING has LEVITATE. The fight line said "super effective ×2, 1 hit to KO", also after the game text "makes GROUND moves miss with LEVITATE". During these turns, KOFFING used TOXIC.
+    - MUK used MINIMIZE at each turn. With accuracy -1 for Paipa and evasion +3 for MUK, the chance to hit was about 43%, but the fight lines said "accuracy 100". The stages were in the prompt, but the model did not calculate the chance.
+    - After TOXIC, the prompt said `status poison`, because the reader of the party put the toxic bit with poison. The model did not know that the damage grows at each turn. At 24 HP, it used a SUPER POTION, not the ANTIDOTE. Paipa fainted from the poison alone, and MUK then knocked out each of the three other Pokémon with one hit.
+    - In the three cases, the model made the good choice for the facts that it saw. The error came from the facts that the program wrote.
+
+99. The measures of Runs 00073 to 00079 (bot versions 34 to 46):
+
+    - The whiteouts: 9 of the 10 whiteouts come from a team with only one strong Pokémon. In the Runs of versions 34 to 37, the Coach never set `catchNew` (0 of 236 turns of the Coach). In version 46, it set it more often (25 of 71 and 22 of 88 turns), with 7 and 12 catches. Run 00078 still lost three times to Misty. The check of the team before a Gym stays for a later spec.
+    - The damage estimate: of the 2,703 `fight` decisions, it was right in about 97% of the cases that we can measure, so it stays. The errors were in the facts that it does not count: the two-turn moves, the chance to hit, the abilities and TOXIC. The model chose 68 two-turn moves, and 59 of them had "1 hit to KO" on their line.
+    - The parts of the prompt: a prompt has about 15,000 tokens for each decision. Only 34% to 47% of them are in the cache. The system prompt has 12,700 characters, and its paragraph of 2,574 characters about the Atlas is also in a battle. In a battle, the battle lines are only 3% of the prompt, and the actions 6% to 7%. The history of the decisions (often the walk before the battle) is 21% to 30%. The Memory tree is 14% to 29%, the party 13% to 21%, and the Coach advice and the Mission 10% to 14%. The Bag is 6% to 13%. The descriptions of the items, moves and abilities are 8% to 17%, and they never change. At a walk, the Known world is 11% to 20%.
+    - The notes and `zoom`: no Run used `zoom`. A reason names a note in less than 1% of the decisions. A model can use a note and not name it, so this is only a sign. The notes and the Memory tree do not change in this version: a later A/B measures them.
+
+    | Run | Decisions | Notes | Notes with coordinates | `zoom` | Reasons that name a note | Reasons that name the Coach |
+    | --- | --- | --- | --- | --- | --- | --- |
+    | 00073 | 2818 | 1095 | 39% | 0 | 26 | 49 |
+    | 00075 | 941 | 59 | 37% | 0 | 0 | 0 (no Coach) |
+    | 00077 | 1127 | 403 | 39% | 0 | 2 | 27 |
+    | 00078 | 1434 | 628 | 23% | 0 | 8 | 95 |
+    | 00079 | 1886 | 206 | 3% | 0 | 0 | 58 |
+
+100. The A/B of spec #100 asked `claude-haiku-5-5` again at 320 recorded decisions, 3 answers for each moment and variant, with a script outside the lab. The prompt of version 46 is the prompt of the code before the Battle prompt:
+
+    | Moments | Prompt of version 46 | Corrected facts | Battle prompt only | Battle prompt and corrected facts |
+    | --- | --- | --- | --- | --- |
+    | A two-turn move when a one-turn move KOs (9 moments) | 33% good | 56% | 74% | 85% |
+    | DIG against KOFFING (2 moments) | 5/6 | 6/6 | 5/6 | 6/6 |
+    | Simple battles with one clear best move (20 moments) | 51 good, 0 bad | – | 54 good, 0 bad | – |
+    | Prompt tokens | 11,800 to 15,400 | the same | 7,300 to 10,600 | 8,400 to 9,300 |
+
+    At TOXIC with low HP (2 moments, 6 answers for each variant), no variant with only the corrected facts chose the ANTIDOTE. With the effect of each item on the `use` line, the Battle prompt chose the ANTIDOTE 3 times of 6. So a short prompt about the battle gives better decisions for fewer tokens. A fact works best as a number on the line of the action, as the damage estimate does.
+
+101. What version 48 changes:
+
+    - Bad poison (issue #102). The toxic bit of the status gives `bad poison`. In a battle, the line of the Pokémon gives the poison damage of the next 3 turns from the toxic counter: `status bad poison (poison damage 50, 60, 70 HP in the next 3 turns)`. At a walk, the same Pokémon shows `poison`, because out of a battle the game hurts it as with poison.
+    - The abilities of the foe (issue #103). The facts know the abilities of Generation 3 that stop a move: LEVITATE, FLASH FIRE, VOLT ABSORB, WATER ABSORB, SOUNDPROOF and WONDER GUARD. The fight line says `No effect: KOFFING has the ability LEVITATE, so GROUND moves miss it.` This is for a foe that surely has the ability. Each ability of its species stops the move, or a text of the battle showed it. When only one of its two abilities stops the move, the line says that the foe can have this ability.
+    - The chance to hit and the two turns (issue #104). A fight that can miss gives `Chance to hit now: 43%.` when the accuracy stage of the Pokémon or the evasion stage of the foe is not 0. The chance comes from the stage table of the engine. A move with a charge turn or a semi-invulnerable turn says `It takes 2 turns: the foe acts at the 1st turn.` HYPER BEAM says that the Pokémon must recharge. These are new fields of the fight facts, so the Genetic bot plays as before.
+    - The Battle prompt (issue #105). A battle has its own system prompt, with only the rules of a battle. Its user prompt has no Memory tree, no Known world, no tries, no Stuck counter and no `zoom`. Its Bag has the pockets that work in a battle, and the items of the other pockets that work in a battle. It also has the Battles part of the Coach advice and the decisions from the one that started the battle. Its answer has no Mission and no Objective, so the ones of the last walk stay in force. Each system prompt stays the same from call to call, for the cache of the provider.
+    - The Item estimate and the names of the TMs (issue #106). Under the `use` line of a battle, each item that works now on the Pokémon in the battle gets one line. Examples: `SUPER POTION on Paipa: HP 24 → 74, the bad poison stays (poison damage 50, 60, 70 HP in the next 3 turns).` and `ANTIDOTE on Paipa: cures bad poison.` A REVIVE gives the HP of each fainted Pokémon. An X item gives its stat and "+1 stage". The TM CASE gives the move of each TM and HM, for example `TM05 ROAR`.
+    - The return to the walk (issue #107). In the last decisions of a walk prompt, a finished battle is one line. The line has the foe, the result, the fainted Pokémon, the walk that the battle stopped and the Objective from before the battle. So the walk decisions before the battle stay in the 15 last decisions. The first walk prompt after the battle shows the same line before the actions. The start of a battle in the Run record now keeps the foe, and the Battle block of the panel "Model" shows the return line.
+    - The battle lab (issue #101). `bun run battle-lab` replays the Run records to the 34 **Battle moments** of the A/B and keeps a snapshot of each one. Then it asks models again with the prompt of the current code. Each answer is good, bad or other, from the first words of its action.
+    - The first measure of the Battle prompt found a bug: the symbols read each unsigned char of the game as signed. The effect of DIG (155) and of SKULL BASH (145) was then negative, and their fight lines did not tell the 2 turns. The reader of the moves now reads the effect as a byte. The other unsigned chars of the Harness still read as signed: for example, the power of EXPLOSION (250) shows `power ---`. A fix in the symbols changes each read of the Harness, so it stays for a later issue.
+
+102. The measure of version 48 uses the battle lab on the 34 moments, with 3 answers for each moment. The models are `claude-haiku-5-5` and `claude-sonnet-5-5` on the Claude Code provider, with reasoning `low`. Version 46 is the code before the Battle prompt. Version 48 is the code of the Battle prompt. We measured it before the merge with step 48, when its label was 47. The results file now gives it the label 48. After the merge, the 34 prompts of a battle are the same, character for character, because FLY changes only the walk prompt. The snapshots of version 48 come from a new extraction. The Sonnet answers of version 46 come from the code of the battle lab before version 48. The report is in `evals/battle/report.md`.
+
+    | Kind | Bot | Model | Answers | Good | Bad | Other | Mean prompt tokens |
+    | --- | --- | --- | --- | --- | --- | --- | --- |
+    | clear | 46 | Haiku | 60 | 51 | 0 | 9 | 11,957 |
+    | clear | 48 | Haiku | 60 | 53 | 0 | 7 | 6,242 |
+    | clear | 46 | Sonnet | 60 | 52 | 0 | 8 | 11,754 |
+    | clear | 48 | Sonnet | 60 | 53 | 0 | 7 | 6,221 |
+    | levitate | 46 | Haiku | 6 | 3 | 3 | 0 | 14,435 |
+    | levitate | 48 | Haiku | 6 | 6 | 0 | 0 | 7,353 |
+    | levitate | 46 | Sonnet | 6 | 4 | 2 | 0 | 14,414 |
+    | levitate | 48 | Sonnet | 6 | 6 | 0 | 0 | 7,332 |
+    | toxic | 46 | Haiku | 9 | 1 | 2 | 6 | 15,033 |
+    | toxic | 48 | Haiku | 9 | 4 | 2 | 3 | 8,257 |
+    | toxic | 46 | Sonnet | 9 | 1 | 4 | 4 | 15,013 |
+    | toxic | 48 | Sonnet | 9 | 9 | 0 | 0 | 8,236 |
+    | two-turn | 46 | Haiku | 27 | 10 | 17 | 0 | 16,358 |
+    | two-turn | 48 | Haiku | 27 | 20 | 7 | 0 | 6,823 |
+    | two-turn | 46 | Sonnet | 27 | 11 | 16 | 0 | 14,106 |
+    | two-turn | 48 | Sonnet | 27 | 22 | 5 | 0 | 6,802 |
+
+    - The prompt of a battle has 45% to 58% fewer tokens. No `clear` answer is bad with either version. The 7 other answers of version 48 are at the same three moments as with version 46.
+    - LEVITATE: 6 good answers of 6 for each model. No answer uses DIG on KOFFING.
+    - TOXIC: Sonnet uses the ANTIDOTE in its 9 answers (1 of 9 with version 46). Haiku uses it 3 times of 9 (0 with version 46), all at the third moment. At 24 HP, Haiku uses a SODA POP 3 times of 3. Its reasons read the line: "bad poison deals 50 next turn, which would faint it. Soda Pop restores 60 HP to 84". So it heals to live through the next turn, and the ANTIDOTE comes after.
+    - Two turns: Haiku goes from 10 to 20 good answers of 27, and Sonnet from 11 to 22. The A/B gave 85% to Haiku. Its variants were texts that a script changed, and the battle lab builds the prompt with the code of the Bot. The 6 bad answers of Haiku are at the two moments against GOLDEEN. Their line says "normal effect ×1, 100% of its HP now, 1 hit to KO. It takes 2 turns: the foe acts at the 1st turn." Their reasons say that GROUND is super effective on WATER, or that the Coach chose DIG.
+    - So version 48 corrects the facts that lost Run 00073, and the larger model uses all of them. The next measure is a Run of version 48.

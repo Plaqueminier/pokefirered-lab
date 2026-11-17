@@ -1,6 +1,6 @@
-import { battleTurn, type BattleTurn, hpPercent } from "./battle-facts";
+import { battleTurn, type BattleTurn, hpPercent, TOXIC_COUNTER_MAX } from "./battle-facts";
 import type { Memory } from "./memory";
-import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesTypes, STAGE_NAMES, type StageName, type Stats, statusOf } from "./party";
+import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesAbilities, speciesTypes, STAGE_NAMES, type StageName, type Stats, statusOf } from "./party";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
@@ -13,6 +13,7 @@ const ENEMY_PARTNER_BATTLER = 3;
 const ENEMY_BATTLERS = [ENEMY_BATTLER, ENEMY_PARTNER_BATTLER];
 const MOVE_UNAVAILABLE = 0xffff;
 const DEFAULT_STAT_STAGE = 6;
+const TOXIC_COUNTER_SHIFT = 8;
 const BATTLE_MENUS: Record<string, BattleMenu> = {
   HandleInputChooseAction: "battleAction",
   HandleInputChooseMove: "battleMove",
@@ -98,8 +99,8 @@ export type PrintedMove = { partyIndex: number; move: number };
 
 type StatStages = Record<StageName, number>;
 
-/** `states` are the volatile states of the battle, for example "seeded" or "confused". `encoredSlot`: the only move that FIGHT can play under an ENCORE. */
-export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { states: string[]; statStages: StatStages; encoredSlot: number | null };
+/** `states` are the volatile states of the battle, for example "seeded" or "confused". `encoredSlot`: the only move that FIGHT can play under an ENCORE. `abilities`: the abilities of the species, not the one of this Pokémon: a player cannot know which one it has. */
+export type BattleMon = Pick<PartyMon, "species" | "nickname" | "types" | "level" | "hp" | "maxHp" | "status" | "stats" | "moves"> & { abilities: string[]; states: string[]; statStages: StatStages; encoredSlot: number | null; toxicCounter: number };
 
 type BattlerMon = BattleMon & { partyIndex: number };
 
@@ -264,6 +265,7 @@ export class BattleWatch {
   private moves = new Map<number, Set<number>>();
   private open: { before: Battle; texts: string[]; choosing?: true } | null = null;
   private turns: { foe: number; turn: BattleTurn }[] = [];
+  private texts: string[] = [];
 
   // gLastPrintedMoves keeps the move of the last battle until the intro of the next one clears it.
   onFrame(battleStarted: boolean, printed: (PrintedMove | null)[]): void {
@@ -273,6 +275,7 @@ export class BattleWatch {
       this.moves = new Map();
       this.open = null;
       this.turns = [];
+      this.texts = [];
     } else for (const { partyIndex, move } of changed) this.moves.set(partyIndex, (this.moves.get(partyIndex) ?? new Set()).add(move));
   }
 
@@ -284,6 +287,7 @@ export class BattleWatch {
     if (before && !this.open?.choosing) this.open = { before, texts: [] };
     if (!this.open) return;
     this.open.texts.push(...texts);
+    this.texts.push(...texts);
     if (!now) this.open = null;
     else if (decision && now.double && this.open.texts.length === 0) {
       // The choice for one Pokémon of a double battle has no text: the turn starts after the choice for the other one.
@@ -292,6 +296,10 @@ export class BattleWatch {
       this.turns.push({ foe: this.open.before.enemy.partyIndex, turn: battleTurn(this.open.before, now, this.open.texts) });
       this.open = null;
     }
+  }
+
+  battleTexts(): readonly string[] {
+    return this.texts;
   }
 
   lastTurn(): BattleTurn | null {
@@ -321,14 +329,17 @@ function battleMon(mem: Memory, battler: number, decode: Decode): BattleMon {
   const mon = mem.global("gBattleMons").at(battler);
   const stages = mon.field("statStages");
   const species = mon.field("species").int();
+  const status1 = mon.field("status1").int();
   return {
     species: nameAt(mem, "gSpeciesNames", species, decode),
     types: speciesTypes(mem, species, decode),
+    abilities: speciesAbilities(mem, species, decode),
     nickname: decode(mon.field("nickname").bytes()),
     level: mon.field("level").int(),
     hp: mon.field("hp").int(),
     maxHp: mon.field("maxHP").int(),
-    status: statusOf(mon.field("status1").int()),
+    status: statusOf(status1),
+    toxicCounter: (status1 >>> TOXIC_COUNTER_SHIFT) & TOXIC_COUNTER_MAX,
     states: battleStates(mem, battler, mon.field("status2").int(), decode),
     encoredSlot: encoredSlot(mem, battler),
     moves: readMoves(mem, decode, mon.field("ppBonuses").int(), (slot) => ({ move: mon.field("moves").at(slot).int(), pp: mon.field("pp").at(slot).int() })),

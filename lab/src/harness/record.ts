@@ -19,10 +19,10 @@ export const RUNS_DIR = join(import.meta.dir, "..", "..", "runs");
 
 export type ButtonHold = [keys: number, frames: number];
 
-/** `trainer`: the battle is against a trainer. A record without the format 1 does not tell it. */
+/** `trainer`: the battle is against a trainer. A record without the format 1 does not tell it. `foe`: the name of the trainer, or the species of a wild Pokémon. A record from before bot version 48 does not tell it. */
 export type GameEvent = { frame: number } & (
   | { type: "map"; map: string }
-  | { type: "battle"; state: "start"; trainer?: boolean }
+  | { type: "battle"; state: "start"; trainer?: boolean; foe?: string }
   | { type: "battle"; state: "end" }
   | { type: "milestone"; milestone: Milestone }
   | StateEvent
@@ -97,21 +97,27 @@ export type LightModelEvent = WithoutPrompt<ModelEvent>;
 
 export type LightSummaryEvent = WithoutPrompt<SummaryEvent>;
 
-function withTrainer(event: RunEvent, trainers: ReadonlyMap<number, boolean>): RunEvent {
+export type BattleStart = Extract<GameEvent, { type: "battle"; state: "start" }>;
+
+export function isBattleStart(event: RunEvent): event is BattleStart {
+  return event.type === "battle" && event.state === "start";
+}
+
+function withStartFacts(event: RunEvent, starts: ReadonlyMap<number, BattleStart>): RunEvent {
   if (event.type !== "battle" || event.state !== "start") return event;
-  const trainer = trainers.get(event.frame);
-  return trainer === undefined ? event : { ...event, trainer };
+  const { trainer, foe } = starts.get(event.frame) ?? {};
+  return { ...event, ...(trainer === undefined ? {} : { trainer }), ...(foe === undefined ? {} : { foe }) };
 }
 
 // Puts the state events of a replay into events with none: for a record from before format 1 (the migration), and for a Continued Run, which reads them again.
 export function withStateEvents(events: readonly RunEvent[], replayed: readonly RunEvent[]): RunEvent[] {
   const added = replayed.filter(isStateEvent);
-  const trainers = new Map(replayed.flatMap((event) => (event.type === "battle" && event.state === "start" && event.trainer !== undefined ? [[event.frame, event.trainer]] : [])));
+  const starts = new Map(replayed.flatMap((event) => (event.type === "battle" && event.state === "start" ? [[event.frame, event]] : [])));
   const merged: RunEvent[] = [];
   let next = 0;
   for (const event of events) {
     while (next < added.length && (added[next].frame < event.frame || (added[next].frame === event.frame && !isGameEvent(event)))) merged.push(added[next++]);
-    merged.push(withTrainer(event, trainers));
+    merged.push(withStartFacts(event, starts));
   }
   return [...merged, ...added.slice(next)];
 }
@@ -230,7 +236,7 @@ export class GameWatch {
     const events: GameEvent[] = [];
     const battle = this.game.battleUnderway();
     if (battle !== this.#battle) {
-      events.push(battle ? { frame, type: "battle", state: "start", trainer: this.game.eventReads().trainerBattle() } : { frame, type: "battle", state: "end" });
+      events.push(battle ? this.#battleStart(frame) : { frame, type: "battle", state: "end" });
       this.#stateTrack.onBattleChange(frame, battle);
     }
     this.#battle = battle;
@@ -254,6 +260,12 @@ export class GameWatch {
     // The game moves the save block in memory at each map load: out of the overworld, the place can read as zeros.
     if (mode === "overworld") this.#onPlace(frame);
     return events;
+  }
+
+  #battleStart(frame: number): GameEvent {
+    const reads = this.game.eventReads();
+    const foe = reads.battleFoe();
+    return { frame, type: "battle", state: "start", trainer: reads.trainerBattle(), ...(foe === null ? {} : { foe }) };
   }
 
   #onPlace(frame: number): void {
@@ -444,6 +456,11 @@ export function continuationOf(parent: RunRecord): Continuation {
 export function extendedRecord(played: RunRecord, old: RunRecord, earlierEvents: number): RunRecord {
   const part: RunPart = { frame: new RecordPlayer(old).frames, events: earlierEvents, bot: old.header.bot, result: old.result };
   return { ...played, header: { ...played.header, parent: old.header.parent, parts: [...(old.header.parts ?? []), part] } };
+}
+
+/** The bot that played a frame: each earlier part of a Run has its own bot, and the header keeps the bot of the last part. */
+export function botAtFrame({ bot, parts }: RunHeader, frame: number): RunHeader["bot"] {
+  return parts?.find((part) => frame < part.frame)?.bot ?? bot;
 }
 
 // Before the starter option, the model chose freely; before the thinking option, all the Model calls had one level.

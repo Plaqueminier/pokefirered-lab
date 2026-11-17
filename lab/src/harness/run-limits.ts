@@ -12,6 +12,11 @@ export class RunEnd extends Error {
   }
 }
 
+export function afterAction(noProgress: NoProgress, progressed: boolean, decisionPoint: boolean, events: number): NoProgress {
+  if (progressed) return { stuck: 0, since: events };
+  return decisionPoint ? { ...noProgress, stuck: noProgress.stuck + 1 } : noProgress;
+}
+
 type Limits = { goal: Milestone; lastFrame: number; noProgressLimit: number; costLimit: number; tokenLimit: number; progress: number; firstEvent: number; stopAtWhiteout: boolean };
 
 export class RunLimits {
@@ -40,8 +45,7 @@ export class RunLimits {
   atAction(milestones: Milestone[], progress: number, decisionPoint: boolean, events: number): void {
     if (milestones.includes(this.limits.goal)) throw new RunEnd("goal");
     if (this.#whitedOut) throw new RunEnd("whiteout");
-    if (progress > this.#progress) this.#noProgress = { stuck: 0, since: events };
-    else if (decisionPoint) this.#noProgress = { ...this.#noProgress, stuck: this.#noProgress.stuck + 1 };
+    this.#noProgress = afterAction(this.#noProgress, progress > this.#progress, decisionPoint, events);
     // A text of a talk changes while it is read: keep the highest count, so a lower one does not reset the count later.
     this.#progress = Math.max(this.#progress, progress);
     if (this.#noProgress.stuck >= this.limits.noProgressLimit) throw new RunEnd("no progress");

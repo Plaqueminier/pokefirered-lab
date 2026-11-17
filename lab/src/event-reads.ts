@@ -87,6 +87,10 @@ export class EventReads {
     return this.trainerBattle() ? this.trainerName(this.mem.global("gTrainerBattleOpponent_A").int()) : null;
   }
 
+  battleFoe(): string | null {
+    return this.battleOpponent() ?? this.enemyParty()?.[0]?.species ?? null;
+  }
+
   battleSide(side: keyof typeof SIDES): BattleSide | null {
     const { battler, party } = SIDES[side];
     const mon = this.mem.global("gBattleMons").at(battler);

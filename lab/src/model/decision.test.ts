@@ -153,7 +153,7 @@ describe("readAction", () => {
     expect(readAction("fight 2 on 2", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "fight", move: 2, foe: 2 });
     expect(readAction("run", { kind: "battleAction", party, battle, items: [] })).toEqual({ name: "run" });
     expect(readAction("press A", { kind: "partyPick", party, battle, items: [] })).toEqual({ name: "press", button: "A" });
-    expect(() => readAction("fight 1", { kind: "partyPick", party, battle, items: [] })).toThrow('"fight" is not an action now: use zoom or press');
+    expect(() => readAction("fight 1", { kind: "partyPick", party, battle, items: [] })).toThrow('"fight" is not an action now: use press');
   });
 
   test("press Start is not read: its reason tells that there is no Start menu, names use and the items of the Bag that work now, or tells that none works", () => {

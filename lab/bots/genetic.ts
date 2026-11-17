@@ -4,7 +4,7 @@ import { type ChoiceCriterion, type Genome, scoreOf } from "../src/genetic/genom
 import { type WalkAction, type WalkTarget, walkActions } from "../src/genetic/walk";
 import type { ActionResult, AvailableAction, Bot, Harness, MacroAction, Observation } from "../src/harness/harness";
 import { type Cell, cellKey } from "../src/harness/path";
-import { B_PRESSES } from "../src/model/prompt";
+import { B_PRESSES } from "../src/model/history";
 import { approaches, interactCell, type Overworld } from "../src/model/targets";
 
 export const NO_PROGRESS_LIMIT = 200;

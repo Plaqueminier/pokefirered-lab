@@ -2,7 +2,7 @@ import type { PartyMon, Status } from "../src/party";
 import { Bar, Card, ExpBar, hpTone, Num, Pill, StatBar, Tooltip, TypeChip } from "./components";
 import { HoverCard } from "./components-layers";
 
-const STATUS: Record<Exclude<Status, "none">, string> = { sleep: "SLP", poison: "PSN", burn: "BRN", freeze: "FRZ", paralysis: "PAR" };
+const STATUS: Record<Exclude<Status, "none">, string> = { sleep: "SLP", poison: "PSN", "bad poison": "PSN", burn: "BRN", freeze: "FRZ", paralysis: "PAR" };
 
 const STATS = [
   ["attack", "Attack"],

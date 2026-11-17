@@ -18,7 +18,7 @@ const BLOCK_TITLES = [
   [/^Exits of this map/, "Targets"],
   [/^Full Atlas/, "Full Atlas"],
   [/^Node #|^There is no node/, "Zoom"],
-  [/^Battle against/, "Battle"],
+  [/^Battle against|^Back to the walk/, "Battle"],
   [/^The Poké Mart sells/, "Poké Mart"],
   [/^The question is/, "Question"], // The prompts of the old Run records
   [/^Actions/, "Actions"],
@@ -165,7 +165,8 @@ export function unusualCalls(events: readonly ShownEvent[]): UnusualCall[] {
   const rows = callsWithActions(events);
   const calls = rows.map((row) => row.call);
   const medians = { cost: median(calls.map((c) => c.usage.cost)), latency: median(calls.map((c) => c.latencyMs)), tokens: median(calls.map((c) => c.usage.promptTokens)) };
-  let last: Decision | null = null;
+  let mission = "";
+  let objective = "";
   const advice = new Map<string, { text: string; from: number }>();
   let wants: { label: string; text: string; from: number }[] = [];
   return rows.map(({ at, call, played }, index) => {
@@ -174,15 +175,16 @@ export function unusualCalls(events: readonly ShownEvent[]): UnusualCall[] {
     const written = wantEntries(decision?.advice);
     if (written.length > 0) wants = written.map((entry) => ({ ...entry, from: index }));
     const before = calls.slice(Math.max(0, index - REPEATS + 1), index);
-    const missionChanged = !!decision && !!last && decision.mission !== last.mission;
-    const objectiveChanged = !!decision && !!last && decision.objective !== last.objective;
+    const missionChanged = !!decision?.mission && mission !== "" && decision.mission !== mission;
+    const objectiveChanged = !!decision?.objective && objective !== "" && decision.objective !== objective;
     const why: Partial<Record<Flag, string>> = {};
     if (!decision) why.unreadable = call.error || "unreadable";
     else {
       if (missionChanged) why.mission = decision.mission || "–";
       if (before.length === REPEATS - 1 && before.every((c) => c.decision?.action === decision.action) && (call.stuck ?? 0) > (before[0].stuck ?? 0))
         why.repeat = `${decision.action} ${REPEATS} times, no progress`;
-      last = decision;
+      mission = decision.mission || mission;
+      objective = decision.objective || objective;
     }
     const refused = played.map(refusal).find(Boolean);
     if (refused) why.impossible = refused;

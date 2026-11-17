@@ -1,7 +1,7 @@
 import { mapNamed, personName } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { callTurns, type RunEvent, textsOf } from "../harness/record";
-import type { PartyMon } from "../party";
+import { type PartyMon, walkStatus } from "../party";
 
 export function importantEvents(before: Observation | null, now: Observation, events: readonly RunEvent[]): string[] {
   const start = events.findLastIndex((e) => e.type === "model") + 1;
@@ -42,7 +42,7 @@ function careFact(party: PartyMon[]): string[] {
   const needs = party.flatMap((mon, slot) => {
     const problems = [
       ...(mon.hp * 2 < mon.maxHp ? [`HP ${mon.hp}/${mon.maxHp}`] : []),
-      ...(mon.status === "none" ? [] : [`status ${mon.status}`]),
+      ...(mon.status === "none" ? [] : [`status ${walkStatus(mon.status)}`]),
       ...mon.moves.filter((move) => move.pp * 4 <= move.maxPp).map((move) => `${move.name} PP ${move.pp}/${move.maxPp}`),
     ];
     return problems.length === 0 ? [] : [`${slot + 1} ${mon.nickname} ${problems.join(", ")}`];

@@ -1,6 +1,6 @@
 import { type ActionEvent, type CallTurn, type Coach, callTurns, isDecision, type ModelSettings, type RunEvent } from "../harness/record";
 import type { BagPocket } from "../bag";
-import { ADVICE_ORDER, ADVICE_PARTS, addAdvice, type CoachAdvice, callKind, modelEvents, type TrainGoal } from "../protocol";
+import { ADVICE_LABELS, ADVICE_ORDER, ADVICE_PARTS, addAdvice, type CoachAdvice, callKind, modelEvents, type TrainGoal } from "../protocol";
 import { type Asked, readFields } from "./decision";
 import type { JsonSchema } from "./openrouter";
 import type { TurnKind } from "./prompt";
@@ -195,18 +195,36 @@ function decisionsAgo(turns: readonly CallTurn[], at: number): string {
   return `${after} decision${after === 1 ? "" : "s"} ago`;
 }
 
-/** The last text of each part, with the turn that wrote it and the number of decisions after it. */
-export function adviceLine(events: readonly RunEvent[]): string[] {
-  const turns = callTurns(events);
-  const latest = new Map<string, { text: string; from: number }>();
+type Latest = Map<string, { text: string; from: number }>;
+
+function latestAdvice(turns: readonly CallTurn[]): Latest {
+  const latest: Latest = new Map();
   turns.forEach((turn, at) => addAdvice(latest, turn.call?.decision?.advice, at));
-  if (latest.size === 0) return [];
-  const lines = ADVICE_ORDER.flatMap((label) => {
+  return latest;
+}
+
+function partLines(turns: readonly CallTurn[], latest: Latest, labels: readonly string[]): string[] {
+  return labels.flatMap((label) => {
     const part = latest.get(label);
     const call = part && turns[part.from].call;
     if (!part || !call) return [];
     return [`- ${label} (${callKind(call) ?? "coach"} turn, ${decisionsAgo(turns, part.from)}): ${part.text}`];
   });
+}
+
+/** The last text of each part, with the turn that wrote it and the number of decisions after it. */
+export function adviceLine(events: readonly RunEvent[]): string[] {
+  const turns = callTurns(events);
+  const latest = latestAdvice(turns);
+  const lines = partLines(turns, latest, ADVICE_ORDER);
+  if (lines.length === 0) return [];
   const oldest = Math.min(...[...latest.values()].map((part) => part.from));
   return ["Coach advice, the last one of your Coach for each part:", ...lines, ...sinceAdvice(turns, oldest)];
+}
+
+/** In a battle, only the Battles part, with no facts since: they are about the walk. */
+export function battleAdviceLine(events: readonly RunEvent[]): string[] {
+  const turns = callTurns(events);
+  const lines = partLines(turns, latestAdvice(turns), [ADVICE_LABELS.battles]);
+  return lines.length === 0 ? [] : ["Coach advice for the battles, the last one of your Coach:", ...lines];
 }

@@ -163,19 +163,20 @@ export function ProvidersPage() {
 }
 
 const PROMPT_PARTS = [
-  ["Rules", "the goal, the rules, a short generic Guide"],
+  ["Rules", "the goal, the rules, a short generic Guide; in a battle, the rules of a battle only"],
   ["Milestones", "the ones reached, and the next one: a short text, with a name and a place for most of them"],
-  ["Memory tree", "the top nodes; `zoom` opens a node"],
-  ["Bag, money, party", "as the Summary screen and the Bag show them, with the description of each held item; at a walk, the Pokémon in the boxes when there are some, and one line when a REPEL is active; on an underground map with a REPEL in the Bag and none active, what a REPEL does; after the text that a REPEL stopped, one line when the Bag has another; with a BICYCLE in the Bag, its frames for each cell, and whether the player rides or walks"],
+  ["Memory tree", "the top nodes; `zoom` opens a node; not in a battle"],
+  ["Bag, money, party", "as the Summary screen and the Bag show them, with the description of each held item and, since bot version 48, the move of each TM and HM in the TM CASE (`TM05 ROAR ×1`); at a walk, the Pokémon in the boxes when there are some, and one line when a REPEL is active; on an underground map with a REPEL in the Bag and none active, what a REPEL does; after the text that a REPEL stopped, one line when the Bag has another; with a BICYCLE in the Bag, its frames for each cell, and whether the player rides or walks"],
   ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
-  ["Mission", "the story step, kept until it is reached"],
-  ["Objective", "what the model does now"],
-  ["Coach advice", "in a Run with a Coach: the last text of each part (Team, Shopping, Progress, Battles), its turn and the decisions since, then what happened since: the heals, the purchases, the items, each give, take and use of an item on a Pokémon or a move, the catches, the levels, the evolutions, the fainted Pokémon, the trainers beaten and the first visits of a map, with the same count of decisions; at the battle menu, a line when the Coach wants this new species caught, or a Pokémon of the party trained that did not fight this foe yet"],
-  ["Stuck counter", "the Decision points since the last progress"],
-  ["Tries", "the tries since the last progress, with their results"],
-  ["Last decisions", "with the texts of the game and the line of each say"],
+  ["Mission", "the story step, kept until it is reached; a battle does not change it"],
+  ["Objective", "what the model does now; a battle does not change it"],
+  ["Coach advice", "in a Run with a Coach: the last text of each part (Team, Shopping, Progress, Battles), its turn and the decisions since, then what happened since: the heals, the purchases, the items, each give, take and use of an item on a Pokémon or a move, the catches, the levels, the evolutions, the fainted Pokémon, the trainers beaten and the first visits of a map, with the same count of decisions; at the battle menu, a line when the Coach wants this new species caught, or a Pokémon of the party trained that did not fight this foe yet; in a battle, only the Battles part, with no facts since"],
+  ["Stuck counter", "the Decision points since the last progress; not in a battle"],
+  ["Tries", "the tries since the last progress, with their results; not in a battle"],
+  ["Last decisions", "with the texts of the game and the line of each say. In a battle, they start at the decision that started it. At a walk, each finished battle is one line"],
   ["Events", "the important events, which ask for a note"],
+  ["Return line", "at the first walk after a battle: the result, the fainted Pokémon, the stopped walk and the Objective from before the battle"],
   ["Actions", "the actions of the screen"],
 ] as const;
 
@@ -188,8 +189,8 @@ const ANSWER = [
   ["advice", '{"team": "Catch a PIDGEY on Route 1, then train it to level 10.", "shopping": "Buy 5 POTIONS.", "progress": "", "battles": "Use WATER GUN on rock types.", "catchNew": true, "train": [{"pokemon": "Pidgey", "level": 10}]}', "only at a turn of the Coach (Character, Reflection, Review): what the player must do until the next turn of the Coach, in 4 parts of one or two short sentences; after 200 characters, the program removes the sentences that do not fit; an empty part keeps the last text of this part. Then catchNew and train (3 Pokémon at most), which each turn writes again and which the program checks at the battle menu"],
   ["action", '"goTo 20 45"', "one action of the screen"],
   ["reason", '"The unseen area west…"', "why, in one or two sentences"],
-  ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached"],
-  ["objective", '"Explore the unseen area…"', "what the model does now"],
+  ["mission", '"Reach Pewter City…"', "the story step, kept until it is reached; not in a battle"],
+  ["objective", '"Explore the unseen area…"', "what the model does now; not in a battle"],
   ["note", '""', "a new note of the Memory tree, or empty"],
   ["say", '"This forest smells like burnt crust."', "what the trainer says out loud, in the voice of the character, or empty; only the people who watch read it, the last decisions show it, and the panel “Model” shows it as “Says”"],
   ["remove", "[3, 7]", "only at a Review turn: the numbers of sentences to remove from the top nodes"],
@@ -198,10 +199,10 @@ const ANSWER = [
 // A copy of the actions of the model bot at each screen: change it with them.
 const SCREENS = [
   { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "on a floor of a cave, a forest or a large building, What is left: the unseen places and the exits not taken, from the game", "the map as a grid: `?` an unseen cell that an open cell leads to, a blank any other unseen cell, `-` `_` `[` `]` a thin wall, `t` `r` `b` `w` an obstacle or water whose HM is in the Bag or whose move a Pokémon knows, a cut tree or a rock that the party can remove is an open cell, `w` with “a walk crosses it with SURF” in the legend when the party can use SURF, `b` with “push(x, y, direction) moves it” when the party can use STRENGTH, `s` a switch when the Bag has HM04 or a Pokémon knows STRENGTH, a letter is a target", "when the party can use STRENGTH and the map has a boulder that the player saw: one line for `push`, and while a boulder of the map is not on its first cell, one line that tells how to return it there", "on a map where the player saw a spin tile: `→` `←` `↑` `↓` a spin tile, `o` a stop tile, a rule line under the legend, the block Parts of this map, and one more `goTo` line", "with a TM or an HM in the Bag: one line for `teach`, and one line when its Field move can help on this map (for HM02, on each map)", "with an item in the Bag that has an effect when a Pokémon holds it: one line for `give`, and with a Pokémon that holds an item: one line for `take`", "on a map that is dark for the model: one line for the dark, and `go` to unseen cells continues in the same direction, then along a wall"], actions: ["go", "goTo", "push", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"] },
-  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES"], actions: ["choose", "zoom"] },
-  { title: "⚔️ Battle action", adds: ["your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use", "zoom"] },
-  { title: "🎯 Move menu", adds: ["the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "zoom", "press"] },
-  { title: "🔁 Party menu", adds: ["the Pokémon that can go into the battle, with their places", "for example after a faint"], actions: ["send", "zoom", "press"] },
+  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES", "in a battle: the Battle prompt, with no `zoom`"], actions: ["choose", "zoom"] },
+  { title: "⚔️ Battle action", adds: ["the Battle prompt", "your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use"] },
+  { title: "🎯 Move menu", adds: ["the Battle prompt", "the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "press"] },
+  { title: "🔁 Party menu", adds: ["the Battle prompt", "the Pokémon that can go into the battle, with their places", "for example after a faint"], actions: ["send", "press"] },
   { title: "🛒 Poké Mart", adds: ["the items for sale with their prices and descriptions", "the items of the Bag that the Mart buys, the money"], actions: ["buy", "sell", "leave", "zoom"] },
   { title: "💾 Item PC", adds: ["the items in the PC and in the ITEMS pocket, with quantities", "1 with no quantity; `leave` returns to the menu of the PC"], actions: ["withdraw", "deposit", "leave", "zoom"] },
   { title: "📦 Pokémon PC", adds: ["the Pokémon in the boxes, with a number: species, nickname, level, box", "`deposit` names a Pokémon of the party, `withdraw` a number or a name of the list; no `withdraw` with empty boxes"], actions: ["deposit", "withdraw", "leave", "zoom"] },
@@ -233,11 +234,20 @@ export function PromptPage() {
       lead="At each Decision point, except when a walk continues after a wild battle or after a trigger with no text, the model bot sends one prompt to its AI model and reads one action in the answer."
       details={[
         ["Model call", "at each walk (except when a walk continues after a wild battle or after a trigger with no text), choice, battle action or move, in the party menu, at the shop menu of a Poké Mart, at the item PC, at the Pokémon PC, at the naming screen and when a Pokémon must forget a move to learn a new one."],
-        ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003)."],
+        ["Answer", "an action, its reason, the Mission (the story step, kept until it is reached) and the Objective (what the model does now) (ADR 0003). In a battle, the answer has no Mission and no Objective: those of the last walk stay in force."],
+        ["Two kinds of prompt", "The walk prompt is for each Decision point that is not in a battle. The Battle prompt is for each Decision point in a battle. These are a battle action, the move menu, the party menu of a battle and a choice in a battle. Each kind has its own system prompt. This prompt stays the same from call to call, so the provider caches it. The Coach turns are at a walk, so they use the walk prompt."],
+        [
+          "Battle prompt",
+          "Its system prompt has the intro, the long-term goal, the whiteout rule and the Coach rule. It also has what each battle decision shows and the battle rules. Then it has the answer (reason, action, note and say), the program rules that apply in a battle, and the advice for battles. It has no rule of the Atlas or of the Memory tree. The user prompt has the Milestones and the next one, the character, the money and the party with all the descriptions. Its Bag has the pockets that work in a battle (ITEMS, POKé BALLS, BERRY POUCH) with their descriptions. It also has the items of the other pockets that work in a battle, for example the POKé FLUTE of KEY ITEMS. Then it has the battle lines and what the game waits for. It shows the Mission and the Objective to read. It shows the Battles part of the Coach advice (with no facts since) and the battle lines of the Coach. It ends with the decisions from the one that started the battle (15 at most), the important events, and the actions with no `zoom`. It has no Memory tree, no Known world, no tries, no stuck counter and no loop warning.",
+        ],
         ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
-          "Each prompt",
-          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a short text only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some (at a Reflection or Review turn, the items of the PC and the box Pokémon in detail, and at a Review turn the counts of the game), the lines of the REPEL and the line of the BICYCLE, and the part of the Decision point (at a walk, the list What is left on a floor, then the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the Coach advice in a Run with a Coach, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
+          "Walk prompt",
+          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a short text only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some (at a Reflection or Review turn, the items of the PC and the box Pokémon in detail, and at a Review turn the counts of the game), the lines of the REPEL and the line of the BICYCLE, and the part of the Decision point (at a walk, the list What is left on a floor, then the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the Coach advice in a Run with a Coach, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the return line after a battle and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
+        ],
+        [
+          "Return to the walk",
+          "in the last decisions of a walk prompt, each finished battle is one line. So the walk decisions before the battle stay in the 15 last decisions. The line gives the foe: the name of the trainer, or the species of the wild Pokémon. The start of a battle in the Run record keeps it since bot version 48. It gives the number of decisions and the result (won, lost, ran, caught, or the foe fled). It names the Pokémon of the party that fainted, and the cell and the map of the walk that the battle stopped. It ends with the Objective from before the battle. The first walk prompt after a battle shows the same line before the actions. So the model continues its plan, or changes it, for example to heal. The next walks do not show it.",
         ],
         [
           "Known world",
@@ -256,14 +266,34 @@ export function PromptPage() {
         ["`viewAtlas`", "the full Atlas, one time at most at each Decision point. No frames run."],
         [
           "Choice",
-          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, also in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the first option (SOMEONE'S PC or BILL'S PC) opens the boxes, which keep the Pokémon.",
+          "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, and only `choose <option>` in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the first option (SOMEONE'S PC or BILL'S PC) opens the boxes, which keep the Pokémon.",
         ],
         ["Battle: own", "in a wild battle, one line after the foe tells how many Pokémon of its species the player owns, in the party and in the PC: `You own 2 PIDGEY: 1 in the party, 1 in the PC.` or `You own no PIDGEY.`"],
         [
           "Battle: damage",
-          "each `fight` shows its effect on the foe (×2, ×½, ×0), STAB and the damage estimate: the formula of the game with no critical hit and no held item, random factor 85% to 100%, in percent of the foe HP and in hits to KO. No estimate for a move with no power. A move with fixed damage (SEISMIC TOSS, DRAGON RAGE…) shows its effect only. Abilities, held items and weather are not in it.",
+          "each `fight` shows its effect on the foe (×2, ×½, ×0), STAB and the damage estimate: the formula of the game with no critical hit and no held item, random factor 85% to 100%, in percent of the foe HP and in hits to KO. No estimate for a move with no power. A move with fixed damage (SEISMIC TOSS, DRAGON RAGE…) shows its effect only. Held items and weather are not in it, and abilities only as the page tells in “Battle: abilities”.",
+        ],
+        [
+          "Battle: abilities",
+          "the facts know the abilities of Generation 3 that stop a move. LEVITATE stops the GROUND moves. FLASH FIRE stops the FIRE moves. VOLT ABSORB and WATER ABSORB stop the ELECTRIC and the WATER moves that do damage. SOUNDPROOF stops the sound moves of the game, for example GROWL and SING. WONDER GUARD stops each damage move that is not super effective. The abilities of the foe are the abilities of its species in the data of the game: a player can know them, as the types. When a text of the battle showed the ability of the foe (`Foe KOFFING makes GROUND moves miss with LEVITATE!`), only this ability counts. When each ability that the foe can have stops the move, the fight shows no estimate: `No effect: KOFFING has the ability LEVITATE, so GROUND moves miss it.` When only one of the two abilities of the species stops it, the fight keeps its estimate. It adds `LAPRAS can have the ability WATER ABSORB: then …`. The effect and the estimate of the fight facts stay the facts of the type chart, so the Genetic bot plays as before.",
+        ],
+        [
+          "Battle: hit",
+          "when the accuracy stage of the Pokémon or the evasion stage of the foe changes it, each `fight` that can miss gives `Chance to hit now: 43%.` The chance is the accuracy of the move times the ratio of the stage table of the engine (33/100 at -6 to 3/1 at +6). The stage is the accuracy stage minus the evasion stage, and FORESIGHT skips the evasion. With no stage change, the line has no chance to hit. A move that never misses (SWIFT, VITAL THROW…) has none either. The rules tell that the chance counts only the stages, not the held items, the abilities or the weather.",
+        ],
+        [
+          "Battle: 2 turns",
+          "a move with a charge turn or a semi-invulnerable turn adds `It takes 2 turns: the foe acts at the 1st turn.` These moves are DIG, FLY, DIVE, BOUNCE, SKULL BASH, SOLARBEAM, SKY ATTACK and RAZOR WIND. A move with a recharge turn (HYPER BEAM…) adds `After it, IVY must recharge for 1 turn: the foe acts at this turn.` The estimate keeps its number of hits. The Genetic bot does not read these facts.",
         ],
         ["Battle: double", "each `fight` also tells what it hits, and shows its effect on each foe (page “Double battle”)."],
+        [
+          "Battle: bad poison",
+          "since bot version 48, the toxic bit of the status gives `bad poison`, the poison of TOXIC. In a battle, the line of your Pokémon gives the poison damage of the next 3 turns from the toxic counter: `status bad poison (poison damage 30, 40, 50 HP in the next 3 turns)`. The damage of a turn is the counter × 1/16 of the max HP (at least 1). The counter grows by 1 at each turn, up to 15. The rules say that an ANTIDOTE cures it. Out of a battle, the game hurts the Pokémon as with poison, so the party shows `poison`.",
+        ],
+        [
+          "Battle: Item estimate",
+          "since bot version 48, a battle shows one line under the use line for each item that works now on the Pokémon in the battle. The line comes from the effect data of the item in the game (gItemEffectTable). It gives the HP from → to, up to the max HP (`POTION on IVY: HP 80 → 100.`), and the status that the item cures (`ANTIDOTE on IVY: cures bad poison.`). When the Pokémon has poison or bad poison and the item gives HP with no cure, the line says that the poison stays. It gives the poison damage of the next turns (`SODA POP on IVY: HP 80 → 140, the bad poison stays (poison damage 30, 40, 50 HP in the next 3 turns).`). Poison takes 1/8 of the max HP at each turn. A REVIVE gives the HP of each fainted Pokémon (`REVIVE: 2 PIDGEY HP 0 → 5.`). An X item gives its stat and its stage (`X ATTACK on IVY: attack +1 stage.`), until the stage is +6. An item with no effect now, for example a POTION at full HP, has no line. The rules tell the Item estimate.",
+        ],
         ["Battle: turns", "the line `Last turn: …` tells who moved first, the moves, their results (critical hit, miss) and the HP before and after. `Your moves on this foe: …` lists the moves already used on this foe, with their results. Both sides show their states after their status (`States: seeded, confused.`)."],
         [
           "Battle: no effect",
@@ -376,7 +406,7 @@ export function ProgressPage() {
     <Page
       lead="The model bot counts the Decision points with no progress, and stops to think at fixed times."
       details={[
-        ["Stuck counter", "the Decision points since the last progress (`harness.noProgress.stuck`). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The prompt shows it at each call; `noProgressLimit` ends a Run on it."],
+        ["Stuck counter", "the Decision points since the last progress (`harness.noProgress.stuck`). Each Macro-action or Raw input that ends at a Decision point adds 1, also when it is impossible, and also in a battle. Progress makes it 0 again. The walk prompt shows it at each call, and the Battle prompt does not; `noProgressLimit` ends a Run on it."],
         ["Progress", "a new map, a new Milestone, a new exit in the Atlas (a wide exit or a warp or an edge seen for the first time, or a new floor of an Elevator), a level up, a new text of a person, a trainer beaten, an item found (an item ball or a hidden item), or a new species caught (owned in the Pokédex). A new cell seen is progress only on a map that is dark for the model. A text heard before from the same person is not progress."],
         ["Reflection turn", "the first walk with a Model call at 20 on the stuck counter, then at 40, 60… A normal Model call, with an instruction: read the Memory tree and the full Atlas (after the extract), zoom freely, write a lesson in `note` (what failed, why, what next) and set a new `objective`. With a TM or an HM in the Bag, it also shows each one, its move, who can learn it, and the question: does it help your Objective? No `viewAtlas` there."],
         [
@@ -390,7 +420,7 @@ export function ProgressPage() {
         ],
         ["Walk after a wild battle", "a `go` or a `goTo` that a wild battle stopped continues after the battle, with no Model call. The model chooses again if a Pokémon fainted in the battle, if a Pokémon has a status, if the first Pokémon that can fight has less than half of its HP or no damage move with PP, if the walk left the map of the decision (except a lead, a far map, a target By FLY or a `goTo` with a map), after a `goTo` to a spin tile (a new walk would slide again from the end of the slide), or after a `walkOn` on a dark map. A trainer battle ends the walk."],
         ["Walk after a trigger", "a `go` or a `goTo` that a trigger stopped continues with no Model call. This occurs when the game showed no text since the interruption and the player is still on a cell of a trigger. The party does not count. The walk does not continue a second time after the same cell of a trigger, and the next prompt does not show the interruption. One walk can continue after a battle and then after a trigger, and the faints count from the first interruption. The other rules of the map, the spin tile and the dark map stay the same."],
-        ["Loop warning", "when the last 3 decisions that played an action played the same actions with the same results, the prompt adds one line “Warning: …” after the tries since the last progress. A `zoom` or a `viewAtlas` does not count."],
+        ["Loop warning", "when the last 3 decisions that played an action played the same actions with the same results, the walk prompt adds one line “Warning: …” after the tries since the last progress. The Battle prompt has no tries and no warning. A `zoom` or a `viewAtlas` does not count."],
         ["Notes", "a fact that the game proved, a lesson (what works, what fails and why), a guess that starts with “Guess:”, or the advice of a person that helps later (“A person said: you can never have too many Poké Balls”). When a note becomes false or ends (a guess disproved, a person that moved, a trainer beaten), the model writes a new note that says so. Never HP or PP values. The program removes a sentence with an HP or PP number and a note with nearly the same words as one of the last 32 notes (a number, a negation or “Guess:” in only one of them makes two facts), and it writes “Guess:” before a sentence with a word like “might” or “likely”. It also removes a sentence that says that a place is explored, crossed, exhausted or a dead end, except one that starts with “Guess:” or “A person said:”, and a sentence with nearly the same words as one that a Review turn removed."],
         ["Character turn", "the first Model call of a Run with no Pokémon. The program selects an idea at random from 100 jobs, 12 traits, 33 hobbies and 31 countries with their language (a shy baker who collects old maps, from Japan), and the model writes the first Pokémon in `starter`, a style of the nicknames (the request asks that it mixes the job, the hobby and the language; the nicknames, and the names when the game has none yet, sound like the language, with no accents, and the other answers stay in English) and the trainer in `character` (400 characters at most, then cut), how the trainer talks in English in `voice` (200 characters at most, clear but natural, with no catchphrase), and the two names in `name` and `rival`. A name has 1 to 7 characters from the keyboard of the game, with no space at its start or its end; the program asks again after a bad name. Before the first action, the Run boots again with the names, at the same frame and with the same screen. A continued Run with an action in its parent keeps the names of its game, and the turn tells them to the model. Each later prompt has “Your character: …”, with the names and the voice, and each answer can give one line in this voice in `say`: only the people who watch read it, and the `reason` stays plain. At a Poké Ball, the program answers with no Model call: YES to this Pokémon, NO to another. The panel “Model” shows the names, the character and the voice in a block on each Model call, and “Normal trainer” for a Run with no Character turn. There is no block while a Character turn has no readable answer."],
         ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run; the other Model calls use the reasoning level of the Run. In a Run with a Coach, all the calls of the Coach use the thinking level, also the summaries and the move to forget, and the player uses only the reasoning level. After an empty answer, when the reasoning took all the tokens, the next calls of the same turn use the reasoning level. The panel “Model” shows the text of the reasoning in a block."],
@@ -407,7 +437,7 @@ export function ProgressPage() {
             rows={[
               ["+1", "at each action that ends at a Decision point, also impossible, also in a battle"],
               ["0", "at progress"],
-              ["Prompt", "shows it at each call; `noProgressLimit` ends a Run on it"],
+              ["Prompt", "the walk prompt shows it at each call, the Battle prompt does not; `noProgressLimit` ends a Run on it"],
             ]}
           />
         </Block>
@@ -489,7 +519,7 @@ export function MemoryPage() {
         <Block label="👁️ What the model sees">
           <Terms
             rows={[
-              ["Top nodes", "in each prompt"],
+              ["Top nodes", "in each walk prompt, and not in a battle"],
               ["`zoom a-b`", "opens the two halves of a node, down to the notes"],
               ["Cost", "a Summary call counts in the cost of the Run, or in its tokens on a Plan provider"],
             ]}

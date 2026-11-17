@@ -377,7 +377,7 @@ export type TrainGoal = { pokemon: string; level: number };
 /** `catchNew` and `train`: since bot version 42, each turn of the Coach writes them again, in place of the last ones. */
 export type CoachAdvice = Partial<Record<(typeof ADVICE_PARTS)[number], string>> & { catchNew?: boolean; train?: TrainGoal[] };
 
-const ADVICE_LABELS = { team: "Team", shopping: "Shopping", progress: "Progress", battles: "Battles" } as const;
+export const ADVICE_LABELS = { team: "Team", shopping: "Shopping", progress: "Progress", battles: "Battles" } as const;
 
 /** The labels in the order that the prompt and the Viewer show them. "Advice" is the one text that the Coach wrote before bot version 34. */
 export const ADVICE_ORDER = ["Advice", ...ADVICE_PARTS.map((part) => ADVICE_LABELS[part])];
