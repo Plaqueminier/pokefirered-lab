@@ -15,7 +15,7 @@ const LONG_MARK = "*";
 const BLANK = " ";
 const PLAYER_SIGN = "@";
 const RULER_EVERY = 10;
-const FIELD_MOVES: Record<FieldMove, { hm: string; sign: string; legend: string }> = {
+export const FIELD_MOVES: Record<FieldMove, { hm: string; sign: string; legend: string }> = {
   CUT: { hm: "HM01", sign: "t", legend: "a cut tree" },
   "ROCK SMASH": { hm: "HM06", sign: "r", legend: "a rock that ROCK SMASH breaks" },
   STRENGTH: { hm: "HM04", sign: "b", legend: "a boulder that STRENGTH pushes" },
@@ -279,7 +279,8 @@ function cellRows(map: AtlasMap, cell: (c: Cell) => string): string[] {
   return range(0, map.height - 1).map((y) => range(0, map.width - 1).map((x) => cell({ x, y })).join(""));
 }
 
-function gridLines(map: AtlasMap, rows: string[]): string[] {
+/** The rows of a map with a ruler of x on top, each 10 rows, and y at the left of each row. */
+export function gridLines(map: Pick<AtlasMap, "width" | "height">, rows: string[]): string[] {
   const digits = Math.max(2, String(map.height - 1).length);
   const margin = " ".repeat(digits + 4);
   const columns = range(0, map.width - 1);

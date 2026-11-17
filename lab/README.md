@@ -114,6 +114,43 @@ bun run battle-lab report
 
 `report.md` has bot versions 46 and 48 on `claude-code:haiku@low` and `claude-code:sonnet@low`, 3 repeats for each moment. Version 46 is the code before the Battle prompt, and version 48 the code of the Battle prompt. The lab history gives the numbers (step 49). `moments-v46.json` keeps the snapshots of version 46, from before the extraction of version 48. To measure version 46 again, use them with the code of the battle lab before version 48 (commit `330e4a5eb`). `results-before-v48.jsonl` keeps the results from before the merge with FLY, when the code of the Battle prompt had the label 47.
 
+## Test another prompt
+
+To test a new prompt of the model bot, for example a walk with SURF, extend the two labs. Use the parts that they share:
+
+- `src/model/lab.ts` has the client of each provider (`askAll`), the options of `run` (`runOptions`), the results file (`readResults`) and the key of a prompt (`hashOf`). `askAll` makes only the calls that the results file does not have, and it stops at the cost limit.
+- `battle-lab.ts` takes its moments from the **Run records**. A moment is a Run id and the frame of a **Model call**. `extract` replays the record to that frame, and the current code of the Bot builds the prompt from the snapshot. This works at each **Decision point**, not only in a battle. For a walk prompt, make `<name>-lab.ts` next to it, and export from `battle-lab.ts` the functions that you need (`extractRun`, `momentPrompt`, `scoreOf`). Do not copy them.
+
+Take the moments from a real **Run** that is at the state that you want to test. A save that you make for the test often has a bad state, for example a party with 1 HP or no **Mission**. Before you pay for calls, read the prompt with `show <moment>`: it costs nothing. Then start with `--repeats 1 --cost-limit 0.2`.
+
+## Take screenshots of the game
+
+`bun run shot` boots a ROM with a save, plays buttons at given frames, and writes the screen to PNG files. No Bot plays, and no **Run record** is written.
+
+```
+bun run shot [--keys "<frame>:<button>[+<button>][/<frames held>] ..."] [--frames <last frame>] [--every <n>] [--at <frame>,...]
+  [--sheet] [--columns <n>] [--scale <n>] [--save <file>] [--rom <name>] [--seed <n>] [--out <folder>]
+```
+
+- `--keys` gives the presses, for example `"120:A 300:Start 360:Down+B/16"`. The buttons are A, B, Select, Start, Right, Left, Up, Down, R and L. A press holds its buttons 4 frames, or the frames after `/`. Frame 0 is the boot.
+- The command plays to the frame `--frames`, or 120 frames after the last press. It writes the screen each `--every` frames, at each frame of `--at`, and at the last frame, to `<out>/frame-<frame>.png`. The default folder is `.cache/shots/`. The command prints the path of each file.
+- `--sheet` also writes `sheet.png`: all the screens in one image, `--columns` across (4 by default), each with its frame number at its top left corner.
+- `--scale 2` makes each pixel 2 x 2 pixels. `--save` is `saves/start.sav` by default. `--rom pokefirered_modern_lab_arena` boots the Arena build.
+
+## Print a map
+
+`bun run map` prints a map of the game as text. The legend is in the output. It gives:
+
+- the cells, and the elevation of each cell (bits 12 to 15 of its block);
+- the connections and the warps;
+- the people, the **Fixed obstacles**, the **Things to check** and the triggers.
+
+```
+bun run map [<map name>] [--save <file>] [--rom <name>]
+```
+
+The map name is the name of the folder in `data/maps/`, for example `Route4` or `VictoryRoad_1F`. With no name, the command prints the map of the player. The command boots the save (`saves/start.sav` by default) to the first walk: the flags of the save tell which people and obstacles the map has. The map of the player has the cells of the game now, after its map scripts. Another map has the cells of the ROM. For a name that does not exist, the command gives the map names that contain it.
+
 ## Make a Race
 
 A **Race** plays many **Run records** on a map of Kanto, in the Race tab of the Viewer. It needs the track and the State track of each record, and a record below format 3 does not have them.
@@ -125,7 +162,7 @@ An **Evolution** makes its own **Races**, with no command: after each **Generati
 
 ## Checks
 
-In `lab/`: `bun run lint && bun run knip && bun run typecheck && bun run test`.
+In `lab/`: `bun run check && bun run test`. `bun run check` runs lint, knip, typecheck and `bun run rules` (the rules of `../CODING_STANDARDS.md` on the new lines since master).
 
 `bun run test` runs the test files in parallel (`bun test --parallel`, one worker for each CPU core). Most of the time goes to the tests that play the game in the emulator. A plain `bun test` runs the files one after the other: it takes about three times longer.
 
@@ -139,7 +176,43 @@ The Arena tests need the ROM from `make lab ARENA=1` at the repo root (`pokefire
 - `src/model/`: the parts of the model bot (request, prompt, answer).
 - `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria), the **Fitness** of a **Run record**, and the **Evolution** with its command, which the Viewer can also start.
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
+- `src/tools/`: the commands for the work on the lab: `shot` (screenshots of the game, and a PNG writer with no library) and `map` (a map as text).
 - `src/server.ts` and `viewer/`: the Viewer.
+- `src/checks/`: `bun run rules`.
 - `bots/`: the **Bots**.
 
 `saves/`, `runs/`, `races/`, `evals/` and `.cache/` are not in git. Never put a ROM in git or on a public URL.
+
+The walk prompt of the model bot comes from these files, in this order:
+
+1. `src/game.ts` reads the grid of the map (`grid()`, `mapView()`).
+2. `src/harness/atlas.ts` keeps what the player saw (the **Atlas**).
+3. `src/model/targets.ts` writes the lines of the targets, and `src/model/extract.ts` draws the map and its legend.
+4. `src/model/prompt.ts` puts the lines together.
+
+Before you write a helper, look for it in these files:
+
+- `src/state-track.ts`: the party and the team of a **Run** at a frame, from its **State track** (`partyOf`, `teamTimeline`, `FrameList`).
+- `viewer/race-deaths.ts`: the **Starter** of a **Run**, the Pokémon of its line in a team (`starterOf`, `leadOf`), and the deaths.
+- `viewer/race-art.ts`: the world and the sprites of the ROM (`loadWorld`, `loadArt`), and the size of a canvas (`fitCanvas`).
+- `viewer/stats-format.ts`: a game time as text (`clock`, `raceTime`, `spanText`).
+- `viewer/cursor.ts`: the data that the server sends (`useStore`, `fetched`, `EventChunks`).
+- `viewer/mapdraw.ts`: the drawing of a map and the names of the places.
+
+## Add a Field move
+
+SURF, STRENGTH and FLY each changed the same files. In order:
+
+1. `src/game.ts`: the type `FieldMove`, the obstacles of the move, and the read of the badge and of the Pokémon that knows the move.
+2. `src/harness/game-events.ts`: the **Game event** of the move. Then its kind in `viewer/timeline-events.ts` and `viewer/timeline.tsx`, and the demo in `viewer/components-tab-lab.tsx`.
+3. In `src/harness/`:
+   - `path.ts`: the route and its cost;
+   - `walk-driver.ts`: the walk that uses the move;
+   - `menu-driver.ts`: the menu of the move;
+   - `harness.ts`: the **Macro-action**;
+   - `atlas.ts`: what the **Atlas** keeps.
+4. `src/model/extract.ts` (the signs of the map), `src/model/targets.ts` and `src/model/prompt.ts` (the lines for the model).
+5. The tests: `src/harness/field-move.test.ts` plays the move in the ROM. Also `path.test.ts`, `extract.test.ts` and `prompt.test.ts`.
+6. The docs of the table of `../CODING_STANDARDS.md`, and `BOT_VERSION` in `src/model/opening.ts`.
+
+`bun run map <map name>` shows the cells and the obstacles of a map, and `bun run shot` shows the screen of the move.

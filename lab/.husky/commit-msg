@@ -1,0 +1,7 @@
+# Git takes the first paragraph of a message as its title. With no blank line
+# after the first line, the body becomes part of the title in `git log --oneline`.
+line2=$(grep -v '^#' "$1" | sed -n '2p')
+if [ -n "$line2" ]; then
+  echo "commit-msg: put a blank line after the title line of the message." >&2
+  exit 1
+fi

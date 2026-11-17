@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Game, MapGrid, MapKind, Warp } from "../game";
-import { AtlasWatch, type ExitPlace, mapNamed, placeFromInside, placeFromOutside } from "./atlas";
+import type { MapGrid, MapKind, Warp } from "../game";
+import { type AtlasGame, AtlasWatch, type ExitPlace, mapNamed, placeFromInside, placeFromOutside } from "./atlas";
+import { fake } from "./fakes";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
+
+// The members that a test does not read: each fake starts from these.
+const QUIET = { rivalName: () => "", flashActive: () => false, flashUser: () => null, flashBadgeMissing: () => null, actors: () => ({ people: [], obstacles: [] }), allMapNames: [] };
 
 function grid(name: string, num: number, warps: Warp[]): MapGrid {
   return { name, group: 0, num, x0: 0, y0: 0, width: 3, height: 1, mapWidth: 3, mapHeight: 1, kinds: "...", warps, connections: [], signs: [], outside: false } as unknown as MapGrid;
@@ -13,6 +17,7 @@ function walk(grids: MapGrid[], places: [string, number][], knowledge: Knowledge
   let at = 0;
   const here = () => grids.find((g) => g.name === places[at][0])!;
   const game = {
+    ...QUIET,
     mode: () => "overworld",
     battleUnderway: () => false,
     flyLanding: () => false,
@@ -21,12 +26,11 @@ function walk(grids: MapGrid[], places: [string, number][], knowledge: Knowledge
     gridOf: (_group: number, num: number) => grids.find((g) => g.num === num) ?? null,
     usableFieldMoves: () => new Set(),
     grid: () => null,
-    actorsOf: () => ({ people: [], obstacles: [] }),
     obstaclesOf: () => [],
     mapView: (name: string) => ({ grid: grids.find((g) => g.name === name), actors: { people: [], obstacles: [] } }),
     allMapNames: [grids.map((g) => g.name)],
   };
-  const watch = new AtlasWatch(game as unknown as Game, knowledge);
+  const watch = new AtlasWatch(fake<AtlasGame>(game), knowledge);
   for (at = 0; at < places.length; at++) watch.onFrame();
   return watch.atlas();
 }
@@ -37,6 +41,7 @@ describe("what the people said", () => {
   const watchOf = () => {
     const state = { battle: false };
     const game = {
+      ...QUIET,
       mode: () => "overworld",
       battleUnderway: () => state.battle,
       flyLanding: () => false,
@@ -45,11 +50,10 @@ describe("what the people said", () => {
       gridOf: () => room,
       usableFieldMoves: () => new Set(),
       grid: () => null,
-      actorsOf: () => ({ people: [man], obstacles: [] }),
       obstaclesOf: () => [],
       mapView: () => ({ grid: room, actors: { people: [man], obstacles: [] } }),
     };
-    const watch = new AtlasWatch(game as unknown as Game, "player");
+    const watch = new AtlasWatch(fake<AtlasGame>(game), "player");
     watch.onFrame();
     return { watch, state };
   };
@@ -100,6 +104,7 @@ describe("what a player sees on a Dark map", () => {
     const grid = room("Cave", cave);
     const state = { x: 10, y: 10, flash: false, flashUser: null as number | null };
     const game = {
+      ...QUIET,
       mode: () => "overworld",
       battleUnderway: () => false,
       flyLanding: () => false,
@@ -115,7 +120,7 @@ describe("what a player sees on a Dark map", () => {
       mapView: () => ({ grid, actors: { people: [man], obstacles: [rock] } }),
       allMapNames: [["Cave"]],
     };
-    return { watch: new AtlasWatch(game as unknown as Game, knowledge), state };
+    return { watch: new AtlasWatch(fake<AtlasGame>(game), knowledge), state };
   };
   const seenCount = (watch: AtlasWatch) => [...watch.sight().Cave].filter((seen) => seen === "1").length;
   const seenAt = (watch: AtlasWatch, x: number, y: number) => watch.sight().Cave[y * SIZE + x] === "1";
@@ -286,6 +291,7 @@ describe("the slides that the player took", () => {
   test("a goTo that slid keeps the slide, from its spin tile to the cell where the player stopped, also after a later goTo", () => {
     const room = { ...grid("Hideout", 0, []), width: 4, mapWidth: 4, kinds: "→..." };
     const game = {
+      ...QUIET,
       mode: () => "overworld",
       battleUnderway: () => false,
       flyLanding: () => false,
@@ -294,11 +300,10 @@ describe("the slides that the player took", () => {
       gridOf: () => room,
       usableFieldMoves: () => new Set(),
       grid: () => null,
-      actorsOf: () => ({ people: [], obstacles: [] }),
       obstaclesOf: () => [],
       mapView: () => ({ grid: room, actors: { people: [], obstacles: [] } }),
     };
-    const watch = new AtlasWatch(game as unknown as Game, "player");
+    const watch = new AtlasWatch(fake<AtlasGame>(game), "player");
     watch.onFrame();
     watch.onAction({ action: { name: "goTo", x: 0, y: 0 }, result: { status: "done", slidTo: { x: 3, y: 0 }, frames: 40 } });
     watch.onAction({ action: { name: "goTo", x: 2, y: 0 }, result: { status: "done", frames: 8 } });

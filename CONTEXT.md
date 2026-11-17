@@ -296,6 +296,14 @@ A snapshot of the full emulator state at one frame. It becomes invalid after eac
 One emulator instance that plays the game from a **Starting save**. The **Harness** plays 10 emulators at most at the same time: the own **Run** of the **Viewer**, and 9 **Runs** of **Bots** or replays, enough for a **Grid** of 9. This is a choice: the machine can play about 12 at full speed. An **Evolution** plays its own **Runs** out of this limit, 12 at the same time by default. A **Run** plays on one seed of the game: the seed of the **Lab build** unless a person gives another one, and its **Run record** keeps it.
 _Avoid_: game, instance, session
 
+**Run id**:
+The number of a **Run**, on 5 digits at the start of the file name of its **Run record** (`00073`). It never changes, also for an **Extended Run**. The place of a **Run** in a **Grid** (1 to 9) is not its Run id.
+_Avoid_: Run number, index, slot
+
+**Starter**:
+The first Pokémon of a **Run**, the one that the player chooses in the lab of Professor Oak: one of BULBASAUR, CHARMANDER or SQUIRTLE, or a later form of its line. The **Viewer** shows its nickname, the name that the **Bot** gave it, and its species only next to that name.
+_Avoid_: first Pokémon, lead (a **Lead** is a target of a walk)
+
 **Milestone**:
 A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
 _Avoid_: flag (a flag is one bit of the save), achievement

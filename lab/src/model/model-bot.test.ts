@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { BOT_VERSION } from "./opening";
 import { canWalkAgain, chainAfter, modelBot, unknownScreen, walkGoesOn } from "../../bots/model";
 import { Harness } from "../harness/harness";
 import { type ModelEvent, type ModelSettings, modelTotals, type Prompt, type RunEvent, replay, type SummaryEvent } from "../harness/record";
@@ -280,7 +281,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: "48", model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: BOT_VERSION, model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -749,4 +750,9 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("model bot at a
     expect(harness.actions.find(({ action }) => action.name === "interact")).toMatchObject({ action: { x: 2, y: 4 }, result: { status: "done" } });
     expect(prompts.at(-1)?.user).toContain("The game waits for the shop menu of a Poké Mart.");
   });
+});
+
+test("the README gives the version of the model bot", () => {
+  const readme = readFileSync(join(import.meta.dir, "..", "..", "README.md"), "utf8");
+  expect(readme).toContain(`the model bot (\`bots/model.ts\`, version ${BOT_VERSION}, no goal)`);
 });

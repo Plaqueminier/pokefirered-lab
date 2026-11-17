@@ -38,7 +38,7 @@ export class EvolveProcess {
     });
     this.#child = child;
     const readErrors = (async () => {
-      for await (const chunk of child.stderr.pipeThrough(new TextDecoderStream())) {
+      for await (const chunk of child.stderr.pipeThrough<string>(new TextDecoderStream())) {
         process.stderr.write(chunk);
         errors += chunk;
       }

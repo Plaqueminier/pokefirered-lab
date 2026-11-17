@@ -1,6 +1,6 @@
 # History of the lab
 
-The steps of the lab, in order. Each step gives what we added, and what a Run taught us when a Run caused the step. Use it as the plan of a video. Add a step at the end of each piece of work.
+The steps of the lab, in order. Each step gives what we added, and what a Run taught us when a Run caused the step. Use it as the plan of a video. Add a step at the end of each piece of work on the model bot, the Harness or the Viewer. The Genetic bot and its Evolutions get no step here.
 
 ## 1. The emulator and the Viewer (2026-10-09 to 10-10)
 

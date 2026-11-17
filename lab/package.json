@@ -10,10 +10,14 @@
     "evolve": "bun run src/genetic/evolve.ts",
     "learn-lab": "bun run src/model/learn-lab.ts",
     "battle-lab": "bun run src/model/battle-lab.ts",
+    "shot": "bun run src/tools/shot.ts",
+    "map": "bun run src/tools/map.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings",
     "knip": "knip",
     "test": "bun test --parallel",
+    "rules": "bun run src/checks/diff-rules.ts",
+    "check": "bun run lint && bun run knip && bun run typecheck && bun run rules",
     "prepare": "cd .. && husky lab/.husky"
   },
   "devDependencies": {

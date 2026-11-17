@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AtlasMap } from "./atlas";
+import { fake } from "./fakes";
 import { type Cell, type MapCells, type RouteMap, walkable } from "./path";
 import { noFootWayReason } from "./route-reasons";
 import { numberParts, partAt, partNear, routeOntoSpin, slideEnd, withOpenTile } from "./slides";
@@ -79,8 +80,8 @@ describe("the Parts of a map with spin tiles", () => {
 
   test("the route onto a spin tile ends with the step from the cell next to it that the search chooses", () => {
     const rows = ["#####", "#...#", "#.#→#", "#...#", "#####"];
-    const map = { name: "Maze", ...cells(rows), warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [] } as unknown as RouteMap;
-    const maps = (name: string) => (name === "Maze" ? map : null);
+    const map = { name: "Maze", ...cells(rows), height: rows.length, blocks: undefined, warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [] };
+    const maps = (name: string) => (name === "Maze" ? fake<RouteMap>(map) : null);
     const tile = { map: "Maze", x: 3, y: 2 };
     expect(routeOntoSpin({ map: "Maze", x: 1, y: 1 }, tile, withOpenTile(maps, tile))).toEqual({ from: { map: "Maze", x: 3, y: 1 }, direction: "south" });
     expect(routeOntoSpin({ map: "Maze", x: 1, y: 3 }, tile, withOpenTile(maps, tile))).toEqual({ from: { map: "Maze", x: 3, y: 3 }, direction: "north" });

@@ -120,6 +120,9 @@ function isOnOk({ cursor, columns }: NamingScreen): boolean {
   return cursor.x === columns && cursor.y === NAMING_OK_ROW;
 }
 
+// The members of the Game that a MenuDriver and its MessageReader read. A test fakes these only (see fakes.ts).
+export type MenuGame = Pick<Game, "bagMenu" | "bagQuantity" | "battleCursor" | "battleMenuSlot" | "battleTargetCursor" | "boxMons" | "buyList" | "currentBox" | "findInBag" | "flashActive" | "flyLanding" | "flyMap" | "flyUser" | "itemPcRow" | "itemStorageCursor" | "keysRead" | "menuMessage" | "messageText" | "messages" | "money" | "namingScreen" | "party" | "partyMenu" | "pcItems" | "pcQuantity" | "pcTransfer" | "pokemonPcCursor" | "requireBattle" | "shopMenu" | "startMenu" | "storageScreen" | "tradeDone" | "tradeQuantity" | "tradeYesNo" | "waitingFor" | "waitingTexts" | "whitingOut" | "withdrawMenuCursor" | "wordScreen">;
+
 export class MessageReader {
   readonly text: string[] = [];
   private messages: Messages;
@@ -129,7 +132,7 @@ export class MessageReader {
   private sawWhiteOut = false;
   closedAfterPress = false;
 
-  constructor(private readonly game: Game) {
+  constructor(private readonly game: MenuGame) {
     this.messages = game.messages();
     for (const window of this.messages.onScreen) this.push(window);
   }
@@ -169,7 +172,7 @@ export class MenuDriver {
   private leftWordScreen = false;
 
   constructor(
-    private readonly game: Game,
+    private readonly game: MenuGame,
     private readonly frames: Input,
   ) {}
 

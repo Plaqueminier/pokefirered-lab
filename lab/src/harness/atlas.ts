@@ -27,6 +27,12 @@ export type AtlasSlide = { from: Cell; to: Cell };
 export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text: string | null; pc?: true };
 
 /** x and y: where the player last saw the person on the screen, not where the person is now. */
+// The members of the Game that an AtlasWatch reads. A test fakes these only (see fakes.ts).
+export type AtlasGame = Pick<
+  Game,
+  "actors" | "allMapNames" | "battleUnderway" | "flashActive" | "flashBadgeMissing" | "flashUser" | "flyLanding" | "grid" | "gridOf" | "map" | "mapView" | "mode" | "obstaclesOf" | "player" | "rivalName" | "usableFieldMoves"
+>;
+
 export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
 
 export type AtlasMap = {
@@ -130,7 +136,7 @@ export class AtlasWatch {
   #flew = false;
 
   constructor(
-    private readonly game: Game,
+    private readonly game: AtlasGame,
     private readonly knowledge: KnowledgeLevel,
   ) {}
 

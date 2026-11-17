@@ -133,7 +133,7 @@ export class PoolReplay {
       if (data.type === "error") this.#error = data.error;
       else if (data.type === "screen") this.#view = { frame: data.frame, screen: data.screen };
     };
-    this.#worker.onerror = (event) => {
+    this.#worker.onerror = (event: ErrorEvent) => {
       this.#error = event.message;
     };
     this.#post({ type: "start", record });
@@ -213,7 +213,7 @@ export class RunPool {
           if (data.type === "end") resolve(data.replay);
           if (data.type === "error") reject(new Error(data.error));
         };
-        worker.onerror = (event) => reject(new Error(event.message));
+        worker.onerror = (event: ErrorEvent) => reject(new Error(event.message));
         worker.postMessage({ type: "toEnd", record } satisfies ReplayWorkerMessage);
       });
     } finally {
