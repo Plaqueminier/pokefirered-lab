@@ -13,6 +13,7 @@ import { type BotInfo, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } fro
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
+import { type Checkpoint, checkpointProblem, type CheckpointRead, type HarnessCheckpoint, type HarnessState, type Resume } from "./checkpoint";
 import type { Genome } from "../genetic/genome";
 import { isStateEvent, withoutFormat } from "./game-events";
 import { ItemDriver } from "./item-driver";
@@ -25,6 +26,7 @@ import {
   type ActionEvent,
   ButtonTrack,
   GameWatch,
+  isCurrentRecord,
   isGameEvent,
   type ModelAnswer,
   type ModelEvent,
@@ -202,8 +204,10 @@ export type HarnessOptions = {
   noProgressLimit?: number;
   /** When it gives true, the Run ends with "user stop" after the Macro-action or the Raw input that plays, and at once in a Model call: see `untilStop`. */
   stopAsked?: () => boolean;
-  /** The Run continues this Run record: the Harness replays its buttons and keeps its events. `name` is its file in lab/runs/. */
+  /** The Run continues this Run record: the Harness loads its Checkpoint or replays its buttons, and keeps its events. `name` is its file in lab/runs/. */
   parent?: ParentRecord;
+  /** The read of the Checkpoint at the end of the parent: a good one replaces the replay, and else `resumed` gives the problem. */
+  checkpoint?: CheckpointRead;
 };
 
 export type ParentRecord = { name: string; record: RunRecord };
@@ -263,7 +267,7 @@ export class Harness {
   readonly #buttons = new ButtonTrack();
   readonly #watch: GameWatch;
   readonly #atlas: AtlasWatch;
-  readonly #events: RunEvent[] = [];
+  #events: RunEvent[] = [];
   readonly #menus: MenuDriver;
   readonly #items: ItemDriver;
   readonly #parent: string | null;
@@ -271,6 +275,7 @@ export class Harness {
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
   #playStart: { frame: number; rawInputs: number } | null = null;
   #phase: Phase = { kind: "ready" };
+  #resumed: Resume | null = null;
 
   private constructor(run: Run, options: HarnessOptions) {
     this.#run = run;
@@ -302,11 +307,8 @@ export class Harness {
     }
     const opened = run ?? (await Run.open({ startSave, names: options.parent?.record.header.names, seed: options.seed ?? options.parent?.record.header.seed }));
     try {
+      if (options.parent) return Harness.fromParent(opened, options, options.parent.record);
       const harness = new Harness(opened, options);
-      if (options.parent) {
-        harness.replayParent(options.parent.record);
-        return harness;
-      }
       const interruption = harness.#walk.settle();
       if (interruption) throw new Error(`the game interrupts the start of the Run: ${interruption}`);
       return harness;
@@ -341,13 +343,70 @@ export class Harness {
     return this.#run.screenHash();
   }
 
+  get resumed(): Resume | null {
+    return this.#resumed;
+  }
+
+  checkpoint(): HarnessCheckpoint {
+    const { core } = this.#run;
+    return { emulator: { state: core.saveState(), flash: core.saveData() }, harness: structuredClone(this.watchState()) };
+  }
+
+  private watchState(): HarnessState {
+    return { game: this.#watch.snapshot(), atlas: this.#atlas.snapshot(), battles: this.#battles.snapshot(), rideChosen: this.#walk.rideChosen };
+  }
+
+  private static fromParent(run: Run, options: HarnessOptions, record: RunRecord): Harness {
+    const read = options.checkpoint ?? null;
+    const harness = new Harness(run, options);
+    if (read === null || "problem" in read) return harness.replayed(record, read?.problem ?? null);
+    const problem = checkpointProblem(read.checkpoint, record, run, harness.watchState());
+    if (problem) return harness.replayed(record, problem);
+    try {
+      harness.load(record, read.checkpoint);
+      harness.#resumed = { from: "checkpoint" };
+      return harness;
+    } catch (error) {
+      // A load that fails can leave a part of the Checkpoint in the emulator and in the watches.
+      run.reboot();
+      return new Harness(run, options).replayed(record, `the Checkpoint does not load: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private replayed(record: RunRecord, problem: string | null): Harness {
+    this.replayParent(record);
+    this.#resumed = { from: "replay", problem };
+    return this;
+  }
+
+  // The watches take the objects of the Checkpoint: one Checkpoint loads in one Harness only.
+  private load(record: RunRecord, { emulator, harness }: Checkpoint): void {
+    if (!isCurrentRecord(record)) throw new Error("the Run record has no track or no State track");
+    const { core } = this.#run;
+    if (!core.loadSaveData(emulator.flash) || !core.loadState(emulator.state)) throw new Error("the emulator does not load the savestate");
+    const frames = new RecordPlayer(record).frames;
+    if (this.frame !== frames) throw new Error(`the savestate is at frame ${this.frame}, and the Run record ends at frame ${frames}`);
+    this.#watch.restore(harness.game, record);
+    this.#atlas.restore(harness.atlas);
+    this.#battles.restore(harness.battles);
+    this.#walk.restore(harness.rideChosen);
+    this.#buttons.restore(record.buttons);
+    this.#events = Array.from(record.events);
+    this.#playStart = this.startOfPlay(record);
+  }
+
+  private startOfPlay({ result }: RunRecord): { frame: number; rawInputs: number } {
+    return { frame: this.frame - result.frames, rawInputs: this.rawInputs - result.rawInputs };
+  }
+
   close(): void {
     this.#run.core.close();
   }
 
   async play(bot: Bot): Promise<RunResult> {
     if (this.#phase.kind !== "ready") throw new Error("a Harness plays one Run");
-    const { frame: start, rawInputs } = this.#playStart ?? { frame: this.frame, rawInputs: this.rawInputs };
+    this.#playStart ??= { frame: this.frame, rawInputs: this.rawInputs };
+    const { frame: start, rawInputs } = this.#playStart;
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? bot.noProgressLimit ?? Number.POSITIVE_INFINITY;
@@ -370,6 +429,13 @@ export class Harness {
       this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}), ...(bot.genome ? { genome: bot.genome } : {}) }, result };
     }
     return result;
+  }
+
+  /** After the end of a part, the next `play` continues the same Run in this Harness, with no replay. */
+  nextPart(): void {
+    if (this.#phase.kind !== "ended") throw new Error("the next part starts after the end of a part");
+    this.#phase = { kind: "ready" };
+    this.#resumed = { from: "live" };
   }
 
   /** The last text of the game in the results of the actions. */
@@ -942,7 +1008,7 @@ export class Harness {
     // The maps, the battles and the Milestones tell that it is the same game. The state events come from the replay: a better read of the game can change them (run 68: a party read that skipped frames lost 7 heals).
     if (!Bun.deepEquals(withoutFormat(this.#events), withoutFormat(record.events.filter(isGameEvent)))) throw new Error("the Run record does not replay the same game: its maps, battles or Milestones are different");
     this.#events.splice(0, this.#events.length, ...withStateEvents(record.events.filter((event) => !isStateEvent(event)), this.#events));
-    this.#playStart = { frame: this.frame - record.result.frames, rawInputs: this.rawInputs - record.result.rawInputs };
+    this.#playStart = this.startOfPlay(record);
   }
 
   private replayedState(before: readonly RunEvent[], actionMarks: readonly ReplayMark[], partStarts: readonly number[]): ReplayedState {

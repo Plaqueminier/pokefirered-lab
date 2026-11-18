@@ -40,6 +40,32 @@ type Mode = ReturnType<Game["mode"]>;
 
 type Moment = { inBattle: boolean; whitingOut: boolean };
 
+export type StateWatchSnapshot = {
+  battle: FaintWatchSnapshot;
+  levels: WatchedMon[];
+  pending: Purchase | null;
+  seen: Seen | null;
+  inBattle: boolean;
+  whitingOut: boolean;
+  blocks: string;
+  avatar: Avatar | null;
+  lastOverworldMap: string | null;
+  landing: boolean;
+  itemHealTops: Map<number, number>;
+};
+
+type Avatar = { onLand: boolean; map: string };
+
+type Purchase = { item: string; count: number };
+
+type FaintWatchSnapshot = { enemy: { key: Uint8Array; party: WatchedMon[] } | null; caught: boolean };
+
+type TeamSnapshot = { bytes: Uint8Array | null; team: string; health: string };
+
+type FightSnapshot = { trainer: string | null; bytes: Uint8Array | null; sides: string };
+
+export type StateTrackSnapshot = { team: TeamSnapshot; fight: FightSnapshot | null };
+
 export class StateWatch {
   readonly #game: Game;
   readonly #reads: EventReads;
@@ -50,15 +76,45 @@ export class StateWatch {
   #inBattle = false;
   #whitingOut = false;
   #blocks = "";
-  #avatar: { onLand: boolean; map: string } | null = null;
+  #avatar: Avatar | null = null;
   #lastOverworldMap: string | null = null;
   #landing = false;
   // After an item heal, Task_PartyMenuModifyHP (party_menu.c) sets the HP back to the old HP and raises it by 1 at each frame up to the new HP: these frames are no heal. The start and the end of a battle forget them.
-  readonly #itemHealTops = new Map<number, number>();
+  #itemHealTops = new Map<number, number>();
 
   constructor(game: Game) {
     this.#game = game;
     this.#reads = game.eventReads();
+  }
+
+  snapshot(): StateWatchSnapshot {
+    return {
+      battle: this.#battle.snapshot(),
+      levels: this.#levels.snapshot(),
+      pending: this.#pending.snapshot(),
+      seen: this.#seen,
+      inBattle: this.#inBattle,
+      whitingOut: this.#whitingOut,
+      blocks: this.#blocks,
+      avatar: this.#avatar,
+      lastOverworldMap: this.#lastOverworldMap,
+      landing: this.#landing,
+      itemHealTops: this.#itemHealTops,
+    };
+  }
+
+  restore(snapshot: StateWatchSnapshot): void {
+    this.#battle.restore(snapshot.battle);
+    this.#levels.reset(snapshot.levels);
+    this.#pending.restore(snapshot.pending);
+    this.#seen = snapshot.seen;
+    this.#inBattle = snapshot.inBattle;
+    this.#whitingOut = snapshot.whitingOut;
+    this.#blocks = snapshot.blocks;
+    this.#avatar = snapshot.avatar;
+    this.#lastOverworldMap = snapshot.lastOverworldMap;
+    this.#landing = snapshot.landing;
+    this.#itemHealTops = snapshot.itemHealTops;
   }
 
   onFrame(mode: Mode): StateEvent[] {
@@ -213,13 +269,23 @@ function moneyCause(change: number, purchase: boolean, sold: boolean, { inBattle
 }
 
 export class StateTrackWatch {
-  readonly entries: StateEntry[] = [];
+  entries: StateEntry[] = [];
   readonly #reads: EventReads;
   readonly #team = new TeamWatch();
   #fight: FightWatch | null = null;
 
   constructor(game: Game) {
     this.#reads = game.eventReads();
+  }
+
+  snapshot(): StateTrackSnapshot {
+    return { team: this.#team.snapshot(), fight: this.#fight?.snapshot() ?? null };
+  }
+
+  restore(snapshot: StateTrackSnapshot, entries: readonly StateEntry[]): void {
+    this.entries = Array.from(entries);
+    this.#team.restore(snapshot.team);
+    this.#fight = snapshot.fight && FightWatch.restored(snapshot.fight);
   }
 
   onBattleChange(frame: number, underway: boolean): void {
@@ -240,16 +306,16 @@ export class StateTrackWatch {
 type NewEntry<K extends StateEntry["kind"]> = Omit<Extract<StateEntry, { kind: K }>, "frame">;
 
 class Latest {
-  #text: string;
+  text: string;
 
   constructor(start: unknown) {
-    this.#text = JSON.stringify(start);
+    this.text = JSON.stringify(start);
   }
 
   changed(value: unknown): boolean {
     const text = JSON.stringify(value);
-    if (text === this.#text) return false;
-    this.#text = text;
+    if (text === this.text) return false;
+    this.text = text;
     return true;
   }
 }
@@ -258,6 +324,16 @@ class TeamWatch {
   #bytes: Uint8Array | null = null;
   readonly #team = new Latest([]);
   readonly #health = new Latest([]);
+
+  snapshot(): TeamSnapshot {
+    return { bytes: this.#bytes, team: this.#team.text, health: this.#health.text };
+  }
+
+  restore({ bytes, team, health }: TeamSnapshot): void {
+    this.#bytes = bytes;
+    this.#team.text = team;
+    this.#health.text = health;
+  }
 
   onFrame(reads: EventReads): (NewEntry<"team"> | NewEntry<"health">)[] {
     const bytes = reads.partyStateBytes();
@@ -279,6 +355,17 @@ class FightWatch {
 
   constructor(private readonly trainer: string | null) {}
 
+  static restored({ trainer, bytes, sides }: FightSnapshot): FightWatch {
+    const fight = new FightWatch(trainer);
+    fight.#bytes = bytes;
+    fight.#sides.text = sides;
+    return fight;
+  }
+
+  snapshot(): FightSnapshot {
+    return { trainer: this.trainer, bytes: this.#bytes, sides: this.#sides.text };
+  }
+
   first(): NewEntry<"battle"> {
     return { kind: "battle", trainer: this.trainer, player: null, foe: null };
   }
@@ -295,8 +382,17 @@ class FightWatch {
 
 // The faint of an enemy, and the catch.
 class BattleWatch {
-  #enemy: { key: Uint8Array; party: WatchedMon[] } | null = null;
+  #enemy: FaintWatchSnapshot["enemy"] = null;
   #caught = false;
+
+  snapshot(): FaintWatchSnapshot {
+    return { enemy: this.#enemy, caught: this.#caught };
+  }
+
+  restore({ enemy, caught }: FaintWatchSnapshot): void {
+    this.#enemy = enemy;
+    this.#caught = caught;
+  }
 
   onFrame(reads: EventReads, inBattle: boolean): StateEvent[] {
     if (!inBattle) {
@@ -323,6 +419,10 @@ class BattleWatch {
 class LevelWatch {
   #party: WatchedMon[] = [];
 
+  snapshot(): WatchedMon[] {
+    return this.#party;
+  }
+
   reset(party: WatchedMon[]): void {
     this.#party = party;
   }
@@ -340,13 +440,21 @@ class LevelWatch {
 
 // The buy list puts the item in the Bag in one frame, and takes the money in a later one.
 class PendingPurchase {
-  #item: { item: string; count: number } | null = null;
+  #item: Purchase | null = null;
+
+  snapshot(): Purchase | null {
+    return this.#item;
+  }
+
+  restore(item: Purchase | null): void {
+    this.#item = item;
+  }
 
   remember(item: string, count: number): void {
     this.#item = { item, count };
   }
 
-  take(): { item: string; count: number } | null {
+  take(): Purchase | null {
     const item = this.#item;
     this.#item = null;
     return item;

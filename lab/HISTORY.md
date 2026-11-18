@@ -741,3 +741,13 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - CUT, SURF and a flight keep their measured frames: 545, 452 and 700. A warp costs 64 frames and a jump 32 frames, as before.
     - So a flight now replaces a walk of more than 87 steps with the Running Shoes, or of more than 116 steps on the BICYCLE. On foot, a walk of 44 steps or more still flies.
     - The estimate of the route search now counts at most the frames of a flight. It counts 0 on a map with a warp to the same map, for example the Gym of Saffron City. As in version 49, it can still count too much for a route that leaves the map by a warp and returns by another warp.
+
+## 52. A Continued Run with no replay (2026-11-18)
+
+105. In the Viewer, a Continued Run and an Extended Run start at the end of their parent with no replay. Before, the Harness replayed all the buttons of the parent at about 1,700 frames/s, and the emulator took most of this time. Run 00061 has 4,959,197 frames in 10 parts, so each extend replayed for about 30 to 50 minutes. Each new part made the next replay longer.
+
+    - At the end of a Run, the server writes the **Checkpoint** next to the Run record: `<name>.json.checkpoint`. It has the savestate (397 KB), the save data (128 KB) and the state of the watches of the Harness. The savestate of mGBA has no save data, so the Checkpoint keeps the save data too.
+    - A load of a savestate gives the same game as a play of the same buttons. 12 bytes of the audio state drift, and the game does not read them.
+    - The Harness loads a Checkpoint only for the same Run record, of the same format and with the same fields. Else it replays the buttons, and a notice tells why.
+    - The tests found that a replay does not give the Atlas of the Run: `observe()` looks at the people at each Decision point, and a replay does not. A Checkpoint keeps the Atlas of the Run itself. A Run from the Checkpoint gives the same Run record as a Run from a replay. It also gives the same Atlas as the Run that continues in its own Harness.
+    - The worker of an ended Run stays idle with its Harness. "Keep the same Run" then continues in this worker, with no Checkpoint. A worker keeps the modules that it loaded. So after a change of a file of `lab/src` or `lab/bots`, the new part starts from the Checkpoint in a new worker. The Viewer keeps 4 idle workers at most: a long Run keeps hundreds of MB of prompts. They take no place, and a removed cell closes its worker.

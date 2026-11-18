@@ -157,7 +157,9 @@ export class Core implements WritableBus {
     return out;
   }
 
+  // mGBA reads a whole state from the pointer: a shorter array would let it read past its end.
   loadState(state: Uint8Array): boolean {
+    if (state.length !== Number(this.f.lab_state_size(this.handle))) return false;
     return this.f.lab_state_load(this.handle, ptr(state));
   }
 }

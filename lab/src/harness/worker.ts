@@ -1,8 +1,9 @@
-import { InventoryHistory } from "../inventory";
+import { InventoryHistory, type InventorySnapshot } from "../inventory";
 import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
-import { Harness, loadBot } from "./harness";
-import type { WorkerMessage, WorkerStart } from "./pool";
+import { type Checkpoint, checkpointOf, readCheckpoint } from "./checkpoint";
+import { type Bot, Harness, loadBot } from "./harness";
+import type { RunSpec, WorkerCommand, WorkerMessage } from "./pool";
 import { extendedRecord, parentRecord, type RunEvent, type RunRecord } from "./record";
 
 declare const self: Worker;
@@ -15,10 +16,23 @@ class ViewPoster {
   #lastScreen = Number.NEGATIVE_INFINITY;
   #lastState = Number.NEGATIVE_INFINITY;
   #events = 0;
-  readonly #inventory = new InventoryHistory();
+  #inventory = new InventoryHistory();
   #inventorySent = 0;
 
   constructor(private readonly run: Run) {}
+
+  get inventory(): InventorySnapshot {
+    return this.#inventory.snapshot();
+  }
+
+  restoreInventory(snapshot: InventorySnapshot): void {
+    this.#inventory = InventoryHistory.restored(snapshot);
+  }
+
+  restart(): void {
+    this.#events = 0;
+    this.#inventorySent = 0;
+  }
 
   onFrame(harness: Harness): void {
     this.#inventory.onFrame(this.run.frame, () => this.run.game.inventory());
@@ -59,44 +73,90 @@ class ViewPoster {
   }
 }
 
-self.onmessage = async ({ data: { spec, stop } }: MessageEvent<WorkerStart>) => {
-  let opened: { harness: Harness; poster: ViewPoster } | null = null;
-  let earlier: { record: RunRecord; events: number } | null = null;
+type Idle = { harness: Harness; poster: ViewPoster; record: RunRecord };
+
+let idle: Idle | null = null;
+// Each part of the Run has its own PoolRun, with its own stop flag: the Harness reads the flag of the part that plays.
+const stop: { flag: Int32Array } = { flag: new Int32Array(new SharedArrayBuffer(4)) };
+
+async function start({ bot: name, model, genome, from, ...options }: RunSpec): Promise<void> {
+  const bot = await loadBot(name, model, genome);
+  const parent = from && (await parentRecord(from.record));
+  const read = (from && (await readCheckpoint(from.record))) ?? undefined;
+  const run = await Run.open({ names: parent?.record.header.names, seed: parent?.record.header.seed });
+  const poster = new ViewPoster(run);
+  const harness = await Harness.open(
+    {
+      ...options,
+      parent,
+      checkpoint: read,
+      stopAsked: () => Atomics.load(stop.flag, 0) === 1,
+      onFrame: (h) => poster.onFrame(h),
+      onAction: (_, h) => poster.onEvents(h.events),
+      onCallStart: (kind, h) => {
+        poster.postNow(h);
+        post({ type: "call-start", kind });
+      },
+      onModelCall: (_, h) => poster.onEvents(h.events),
+      onSummaryCall: (_, h) => poster.onEvents(h.events),
+    },
+    run,
+  );
+  if (harness.resumed?.from === "checkpoint" && read && "checkpoint" in read) poster.restoreInventory(read.checkpoint.inventory);
+  const earlier = parent && from?.kind === "extended" ? { record: parent.record, events: harness.events.length } : null;
+  await playPart(harness, poster, bot, earlier);
+}
+
+async function extend({ bot: name, model, genome }: RunSpec): Promise<void> {
+  if (!idle) throw new Error("the worker has no Run to continue");
+  const { harness, poster, record } = idle;
+  idle = null;
+  const bot = await loadBot(name, model, genome);
+  poster.restart();
+  harness.nextPart();
+  await playPart(harness, poster, bot, { record, events: record.events.length });
+}
+
+function checkpointAtEnd(record: RunRecord, harness: Harness, poster: ViewPoster): Checkpoint | null {
+  try {
+    return checkpointOf(record, harness.checkpoint(), poster.inventory);
+  } catch (e) {
+    console.error(`no Checkpoint at the end of the Run: ${e}`);
+    return null;
+  }
+}
+
+async function playPart(harness: Harness, poster: ViewPoster, bot: Bot, earlier: { record: RunRecord; events: number } | null): Promise<void> {
+  const { resumed } = harness;
+  if (resumed) post({ type: "resumed", resume: resumed });
+  // The replay of a parent Run runs no Macro-action: post its events and its last screen now.
+  poster.postNow(harness);
+  poster.onEvents(harness.events);
   let error: string | null = null;
   try {
-    const { bot: name, model, genome, from, ...options } = spec;
-    const bot = await loadBot(name, model, genome);
-    const parent = from && (await parentRecord(from.record));
-    const run = await Run.open({ names: parent?.record.header.names, seed: parent?.record.header.seed });
-    const poster = new ViewPoster(run);
-    const harness = await Harness.open(
-      {
-        ...options,
-        parent,
-        stopAsked: () => Atomics.load(stop, 0) === 1,
-        onFrame: (h) => poster.onFrame(h),
-        onAction: (_, h) => poster.onEvents(h.events),
-        onCallStart: (kind, h) => {
-          poster.postNow(h);
-          post({ type: "call-start", kind });
-        },
-        onModelCall: (_, h) => poster.onEvents(h.events),
-        onSummaryCall: (_, h) => poster.onEvents(h.events),
-      },
-      run,
-    );
-    opened = { harness, poster };
-    if (parent && from?.kind === "extended") earlier = { record: parent.record, events: harness.events.length };
-    // The replay of a parent Run runs no Macro-action: post its events and its last screen now.
-    poster.postNow(harness);
-    poster.onEvents(harness.events);
     await harness.play(bot);
   } catch (e) {
     error = String(e);
   }
-  opened?.poster.postFinal(opened.harness);
-  const played = opened?.harness.record() ?? null;
-  post({ type: "end", record: played && earlier ? extendedRecord(played, earlier.record, earlier.events) : played, error });
-  opened?.harness.close();
-  process.exit(0);
+  poster.postFinal(harness);
+  const played = harness.record();
+  const record = earlier ? extendedRecord(played, earlier.record, earlier.events) : played;
+  const checkpoint = error === null ? checkpointAtEnd(record, harness, poster) : null;
+  post({ type: "end", record, error, checkpoint });
+  if (checkpoint) idle = { harness, poster, record };
+  else harness.close();
+}
+
+self.onmessage = async ({ data }: MessageEvent<WorkerCommand>) => {
+  if (data.type === "close") {
+    idle?.harness.close();
+    process.exit(0);
+  }
+  stop.flag = data.stop;
+  try {
+    await (data.type === "start" ? start(data.spec) : extend(data.spec));
+  } catch (e) {
+    post({ type: "end", record: null, error: String(e), checkpoint: null });
+  }
+  if (!idle) process.exit(0);
 };

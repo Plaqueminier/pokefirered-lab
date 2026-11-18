@@ -6,8 +6,9 @@ import { join } from "node:path";
 import starter from "./scripted-bot";
 import { ROM_FILE, Run, START_SAVE, screenHash } from "../run";
 import { Harness, type HarnessOptions } from "./harness";
+import { type Checkpoint, checkpointKey, removeCheckpoint, writeCheckpoint } from "./checkpoint";
 import { RunPool } from "./pool";
-import { RecordPlayer, type RunRecord, RUNS_DIR } from "./record";
+import { continuationOf, RecordPlayer, type RunRecord, RUNS_DIR } from "./record";
 
 const STARTER = join(import.meta.dir, "scripted-bot.ts");
 const ready = existsSync(ROM_FILE) && existsSync(START_SAVE);
@@ -122,6 +123,49 @@ export const modelBot = (options) => real(options, () => (_prompt, { signal }) =
       expect(continued.record?.header.parts).toBeUndefined();
     } finally {
       await rm(path);
+    }
+  });
+
+  test("an ended Run keeps its worker: an extend in it plays with no replay; an extend from the checkpoint file or with a replay gives the same Run record", async () => {
+    const name = `00000-pool-test-live-${process.pid}.json`;
+    const path = join(RUNS_DIR, name);
+    const presser = join(mkdtempSync(join(tmpdir(), "bot-")), "presser.ts");
+    await Bun.write(presser, 'export default { name: "presser", version: "2", play: async (h) => void (await h.press("B")) };');
+    const pool = new RunPool(2, 1);
+    const first = pool.start({ bot: presser });
+    const end = await first.done;
+    const old = end.record as RunRecord;
+    const checkpoint = first.takeCheckpoint();
+    expect(checkpoint?.key).toBe(checkpointKey(old));
+    expect(first.takeCheckpoint()).toBeNull();
+    expect(first.idle).toBe(true);
+    expect(pool.idleRunFor(checkpointKey(old))).toBe(first);
+    expect(await first.resumed).toBeNull();
+    await Bun.write(path, JSON.stringify(old));
+    const spec = { bot: presser, from: { record: name, kind: "extended" } } as const;
+    try {
+      const live = pool.extendIn(first, spec, continuationOf(old));
+      expect(first.idle).toBe(false);
+      expect(pool.idleRunFor(checkpointKey(old))).toBeUndefined();
+      expect(await live.resumed).toEqual({ from: "live" });
+      const played = await live.done;
+      expect(played.error).toBeNull();
+      expect(played.record?.header.parts).toHaveLength(1);
+      expect(live.events).toEqual(played.record?.events ?? []);
+
+      const replayed = await pool.start(spec).done;
+      expect(replayed.record).toEqual(played.record);
+      expect(live.idle).toBe(false);
+
+      await writeCheckpoint(name, checkpoint as Checkpoint);
+      const fromFile = pool.start(spec);
+      expect(await fromFile.resumed).toEqual({ from: "checkpoint" });
+      expect((await fromFile.done).record).toEqual(played.record);
+      pool.remove(fromFile);
+      expect(fromFile.idle).toBe(false);
+    } finally {
+      await rm(path);
+      await removeCheckpoint(name);
     }
   });
 

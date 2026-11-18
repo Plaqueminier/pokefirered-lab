@@ -7,7 +7,7 @@ import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider,
 import { Run, type RunOrigin } from "../run";
 import type { Fitness } from "../genetic/fitness";
 import type { TrainerNames } from "../save-file";
-import { isStateEvent, type StateEvent, StateTrackWatch, StateWatch } from "./game-events";
+import { isStateEvent, type StateEvent, type StateTrackSnapshot, StateTrackWatch, StateWatch, type StateWatchSnapshot } from "./game-events";
 import type { ActionEntry, Bot, KnowledgeLevel, ParentRecord, RunResult } from "./harness";
 
 /** Format 1: the Game events of the state. Format 2: the `track`. Format 3: the State track. */
@@ -196,7 +196,11 @@ export function isCurrentRecord(record: RunRecord): record is CurrentRecord {
 }
 
 export class ButtonTrack {
-  readonly holds: ButtonHold[] = [];
+  holds: ButtonHold[] = [];
+
+  restore(holds: readonly ButtonHold[]): void {
+    this.holds = holds.map(([keys, frames]): ButtonHold => [keys, frames]);
+  }
 
   push(keys: number): void {
     const last = this.holds.at(-1);
@@ -204,6 +208,8 @@ export class ButtonTrack {
     else this.holds.push([keys, 1]);
   }
 }
+
+export type GameWatchSnapshot = { map: string | null; battle: boolean; milestones: Set<Milestone>; maps: Set<string>; levels: number; flags: number; facing: number; stateEvents: StateWatchSnapshot; stateTrack: StateTrackSnapshot };
 
 export class GameWatch {
   #map: string | null = null;
@@ -215,7 +221,7 @@ export class GameWatch {
   #facing = 0;
   readonly #stateEvents: StateWatch;
   readonly #stateTrack: StateTrackWatch;
-  readonly track: Track = [];
+  track: Track = [];
 
   constructor(private readonly game: Game) {
     this.#stateEvents = new StateWatch(game);
@@ -224,6 +230,33 @@ export class GameWatch {
 
   get stateTrack(): readonly StateEntry[] {
     return this.#stateTrack.entries;
+  }
+
+  snapshot(): GameWatchSnapshot {
+    return {
+      map: this.#map,
+      battle: this.#battle,
+      milestones: this.#milestones,
+      maps: this.#maps,
+      levels: this.#levels,
+      flags: this.#flags,
+      facing: this.#facing,
+      stateEvents: this.#stateEvents.snapshot(),
+      stateTrack: this.#stateTrack.snapshot(),
+    };
+  }
+
+  restore(snapshot: GameWatchSnapshot, { track, state }: CurrentRecord): void {
+    this.#map = snapshot.map;
+    this.#battle = snapshot.battle;
+    this.#milestones = snapshot.milestones;
+    this.#maps = snapshot.maps;
+    this.#levels = snapshot.levels;
+    this.#flags = snapshot.flags;
+    this.#facing = snapshot.facing;
+    this.#stateEvents.restore(snapshot.stateEvents);
+    this.#stateTrack.restore(snapshot.stateTrack, state);
+    this.track = Array.from(track);
   }
 
   get gameProgress(): number {

@@ -1,5 +1,5 @@
 // Usage: bun run viewer   (ROM: LAB_ROM=pokefirered_modern_lab by default)
-import { mkdir, readdir, rename } from "node:fs/promises";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { geneticBot } from "../bots/genetic";
@@ -15,7 +15,8 @@ import { ScreenFanout } from "./screens";
 import { EventFeed } from "./event-feed";
 import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
-import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd } from "./harness/pool";
+import { checkpointKey, removeCheckpoint, type Resume, writeCheckpoint } from "./harness/checkpoint";
+import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd, type RunSpec } from "./harness/pool";
 import { type Continuation, continuationOf, extendedOptions, factsAt, Keyframes, limitOf, modelFacts, type ModelOptions, modelTotals, originDifferences, providerOf, readRunHeader, readRunRecord, recordFacts, RecordPlayer, replaceRecord, replayStart, type RunEvent, type RunRecord, RUNS_DIR, type SpendLimit, writeRecord } from "./harness/record";
 import { runCharacter } from "./model/character";
 import { providerProblem, providerStatuses } from "./model/providers";
@@ -232,6 +233,8 @@ const live = new LivePlay(run);
 const pool = new RunPool(MAX_RUNS - 1);
 const grid = new GridPlay(pool);
 const writtenRecords = new Map<number, string>();
+// The fileStamp of each Run record that a Run of the pool wrote, by the id of the Run.
+const writtenStamps = new Map<number, string>();
 const evolution = new EvolveProcess((evolutionRun, problem) => {
   send({ type: "evolution", run: evolutionRun });
   if (problem) send({ type: "notice", text: problem });
@@ -466,6 +469,31 @@ async function extendRun(name: string, limit: SpendLimit): Promise<string> {
   return launch(bot.name, extendedOptions(bot.model, limit), 1, { from: { record: name, kind: "extended" }, record });
 }
 
+// A worker keeps the modules that it loaded: after a change of the code, the next part needs a new worker.
+async function newestCodeChange(): Promise<number> {
+  let newest = 0;
+  for (const dir of [import.meta.dir, join(import.meta.dir, "..", "bots")]) {
+    for (const file of await readdir(dir, { recursive: true })) if (file.endsWith(".ts")) newest = Math.max(newest, (await stat(join(dir, file))).mtimeMs);
+  }
+  return newest;
+}
+
+/** The time and the size of a Run record file: a change of the file after the write of the Run makes its idle worker stale. */
+async function fileStamp(name: string): Promise<string> {
+  const { mtimeMs, size } = await stat(join(RUNS_DIR, name));
+  return `${mtimeMs}:${size}`;
+}
+
+/** The ended Run whose idle worker can play the next part of this Run record. It closes an idle worker that cannot. */
+function liveRunFor(record: RunRecord, newestCode: number, stamp: string): PoolRun | undefined {
+  const run = pool.idleRunFor(checkpointKey(record));
+  const since = run?.idleSince ?? null;
+  if (!run || since === null) return undefined;
+  if (since >= newestCode && writtenStamps.get(run.id) === stamp) return run;
+  run.closeWorker();
+  return undefined;
+}
+
 async function launch(name: string, given: ModelOptions, count: number, start: { from: RunFrom; record: RunRecord } | null): Promise<string> {
   if (!(await botNames()).includes(name)) return `No Bot ${name} in lab/bots/.`;
   if (!Number.isInteger(count) || count < 1) return `No new Run: the count ${count} is not a whole number from 1.`;
@@ -479,21 +507,48 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
   const { model } = bot;
   const genome = bot.genome && start?.record.header.bot.genome;
   if (bot.genome && !genome) return "No Run: the Genetic bot plays the Genome of a Run record. Continue a Run record of the Genetic bot, or start an Evolution in the tab Evolutions.";
-  const started = pool.startAll({ bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) }, count, start && continuationOf(start.record));
+  const spec: RunSpec = { bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) };
+  const extended = start?.from.kind === "extended" ? { start, code: await newestCodeChange(), stamp: await fileStamp(start.from.record) } : null;
+  // No await from here to extendIn: the idle limit cannot close the worker between the two.
+  const continued = start && continuationOf(start.record);
+  const live = extended && liveRunFor(extended.start.record, extended.code, extended.stamp);
+  const started = live && continued ? [pool.extendIn(live, spec, continued)] : pool.startAll(spec, count, continued);
   show(botRun(started[0]));
-  for (const run of started) void run.done.then((end) => onBotEnd(run, end));
+  for (const run of started) {
+    void run.done.then((end) => onBotEnd(run, end));
+    if (start) void run.resumed.then((resume) => resume && send({ type: "notice", text: `Run ${run.id}: ${resumeText(resume, start.from.record)}.` }));
+  }
   const origin = start ? ` from the end of ${start.from.record}${start.from.kind === "extended" ? ", in the same Run" : ""}` : "";
   const runs = count === 1 ? `Run ${started[0].id}: the Bot ${name} plays` : `Runs ${started[0].id} to ${started[count - 1].id}: the Bot ${name} plays ${count} times`;
   return `${runs}${origin}${model ? ` with the model ${modelLabel(model)} on ${providerOf(model)} (limit ${spendText(limitOf(model))} for each Run)` : ""}.`;
 }
 
-async function onBotEnd({ id, spec }: PoolRun, { record, error }: RunEnd): Promise<void> {
+function resumeText(resume: Resume, parent: string): string {
+  if (resume.from === "live") return `it continues from the end of ${parent} in the worker of its Run, with no replay`;
+  if (resume.from === "checkpoint") return `it starts at the end of ${parent} from its Checkpoint, with no replay`;
+  return `it replays the buttons of ${parent}: ${resume.problem ?? "it has no Checkpoint"}`;
+}
+
+// An extended Run keeps its name, also a name in the folder of an Evolution: its Checkpoint goes next to it.
+async function writtenName({ from }: RunSpec, record: RunRecord): Promise<string> {
+  if (from?.kind !== "extended") return basename(await writeRecord(record));
+  await replaceRecord(from.record, record);
+  return from.record;
+}
+
+async function onBotEnd(run: PoolRun, { record, error }: RunEnd): Promise<void> {
+  const { id, spec } = run;
+  const checkpoint = run.takeCheckpoint();
   const failure = error ? ` · error: ${error}` : "";
   try {
     const lastText = record?.result.lastText === undefined ? "" : ` (last text "${record.result.lastText}")`;
     const planLimit = record?.result.planLimit === undefined ? "" : ` (${record.result.planLimit})`;
-    const written = record && basename(await (spec.from?.kind === "extended" ? replaceRecord(spec.from.record, record) : writeRecord(record)));
-    if (written) writtenRecords.set(id, written);
+    const written = record && (await writtenName(spec, record));
+    if (written) {
+      writtenRecords.set(id, written);
+      writtenStamps.set(id, await fileStamp(written));
+      await (checkpoint ? writeCheckpoint(written, checkpoint) : removeCheckpoint(written)).catch((e) => send({ type: "notice", text: `Run ${id}: the Checkpoint of ${written} is not written (${e}).` }));
+    }
     const end = record ? `end: ${record.result.endReason}${lastText}${planLimit}, Run record runs/${written}` : "no Run record";
     send({ type: "notice", text: `Run ${id} (${spec.bot}): ${end}${failure}.` });
     await sendRecords();
@@ -654,6 +709,7 @@ async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Pro
       pool.remove(poolRun);
       settled.delete(poolRun.id);
       writtenRecords.delete(poolRun.id);
+      writtenStamps.delete(poolRun.id);
       screens.forget(poolRun.id);
       if (shown.id === poolRun.id) show(viewerRun);
       break;

@@ -305,12 +305,32 @@ export function enemyMovesPrinted(mem: Memory): (PrintedMove | null)[] {
   });
 }
 
+export type BattleWatchSnapshot = {
+  last: (PrintedMove | null)[];
+  moves: Map<number, Set<number>>;
+  open: { before: Battle; texts: string[]; choosing?: true } | null;
+  turns: { foe: number; turn: BattleTurn }[];
+  texts: string[];
+};
+
 export class BattleWatch {
-  private last: (PrintedMove | null)[] = [];
-  private moves = new Map<number, Set<number>>();
-  private open: { before: Battle; texts: string[]; choosing?: true } | null = null;
-  private turns: { foe: number; turn: BattleTurn }[] = [];
+  private last: BattleWatchSnapshot["last"] = [];
+  private moves: BattleWatchSnapshot["moves"] = new Map();
+  private open: BattleWatchSnapshot["open"] = null;
+  private turns: BattleWatchSnapshot["turns"] = [];
   private texts: string[] = [];
+
+  snapshot(): BattleWatchSnapshot {
+    return { last: this.last, moves: this.moves, open: this.open, turns: this.turns, texts: this.texts };
+  }
+
+  restore({ last, moves, open, turns, texts }: BattleWatchSnapshot): void {
+    this.last = last;
+    this.moves = moves;
+    this.open = open;
+    this.turns = turns;
+    this.texts = texts;
+  }
 
   // gLastPrintedMoves keeps the move of the last battle until the intro of the next one clears it.
   onFrame(battleStarted: boolean, printed: (PrintedMove | null)[]): void {

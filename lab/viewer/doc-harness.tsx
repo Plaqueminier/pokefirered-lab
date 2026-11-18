@@ -336,14 +336,39 @@ export function RecordPage() {
         ["Replay", "choose the record in the list of the Run, in the top bar."],
         [
           "Continue",
-          "“continue” in the form “Bots”: the Harness replays the keys of the record, keeps its events (Memory tree, Mission, Atlas, and in a battle the last turn and the turns against the foe), and the Bot continues to play. The replay must give the map, battle and Milestone events of the record, or the Harness refuses to start. The other Game events come from the replay, so a better read of the game replaces those of the record. The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones. The Genetic bot continues with the Genome of the header.",
+          "“continue” in the form “Bots”: the Harness loads the Checkpoint of the record or replays its keys, and keeps its events. " +
+            "The events give the Memory tree, the Mission, the Atlas, and in a battle the last turn and the turns against the foe. " +
+            "Then the Bot continues to play. " +
+            "A replay must give the map, battle and Milestone events of the record, or the Harness refuses to start. " +
+            "With a replay, the other Game events come from the replay, so a better read of the game replaces those of the record. " +
+            "The new record has the old keys and events, then the new ones. Its cost limit or its Token limit counts the new Model calls only, and its model and its Model provider can be other ones. " +
+            "The Genetic bot continues with the Genome of the header.",
         ],
         [
           "Keep the same Run",
-          "the checkbox of the form “Bots” after “continue”: an Extended Run plays on with the model, the Coach and the Model provider of the record, and the Bot version of now. It keeps the id, and its new record replaces the file under the same name, so it has no new parent. The header lists each earlier part with its Bot, its result and its end. The limit counts from 0. The checkbox is disabled when another record names this one as its parent, or when a Run plays from it.",
+          "the checkbox of the form “Bots” after “continue”: an Extended Run continues with the model, the Coach and the Model provider of the record, and the Bot version of now. " +
+            "It keeps the id, and its new record replaces the file under the same name, so it has no new parent. " +
+            "The header lists each earlier part with its Bot, its result and its end. The limit counts from 0. " +
+            "The checkbox is disabled when another record names this one as its parent, or when a Run plays from it. " +
+            "The new part continues in the worker of the last part when this worker is still idle. Then it has no replay and no Checkpoint. " +
+            "A file of `lab/src` or `lab/bots` that changed since the start of the worker needs a new worker, which loads the Checkpoint.",
+        ],
+        [
+          "Checkpoint",
+          "at the end of a Run of the Viewer, the server writes `<name>.json.checkpoint` next to the record: the savestate, the save data and the state of the watches of the Harness. " +
+            "Continue and Keep the same Run load it in place of the replay. A notice tells how the Run started. " +
+            "With a Checkpoint of another record, of another format or with other fields, the Harness replays the keys, and the notice tells why. " +
+            "A Run that ends with an error writes none. `--continue` of `bun run bot` replays the keys.",
         ],
         ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
-        ["Parallel Runs", "10 emulators at most: the Viewer Run, and 9 places in workers for the Runs of the Bots (at full speed) and the replays of the Grid (at the speed of its cursor), all with no sound. A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit. An Evolution plays its own Runs out of this limit (page “Evolution”)."],
+        [
+          "Parallel Runs",
+          "10 emulators at most: the Viewer Run, and 9 places in workers. " +
+            "The places are for the Runs of the Bots, at full speed, and the replays of the Grid, at the speed of its cursor. They have no sound. " +
+            "A Run of a Bot gives the same Run record as alone. The form “Bots” starts N Runs of a Bot at one time, each with its own limit. " +
+            "After its end, the worker of a Run stays idle for Keep the same Run: 4 idle workers at most, out of the limit of 10. A removed cell closes its worker. " +
+            "An Evolution plays its own Runs out of this limit (page “Evolution”).",
+        ],
       ]}
     >
       <div class={BLOCKS2}>
@@ -375,7 +400,7 @@ export function RecordPage() {
       </div>
       <div class={GRID3}>
         <DocCard icon={Play} title="Replay" lines={["choose the record in the list of the Run, in the top bar"]} />
-        <DocCard icon={Repeat} title="Continue" lines={["the Harness replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit or the Token limit counts the new Model calls only"]} />
+        <DocCard icon={Repeat} title="Continue" lines={["the Harness loads the Checkpoint or replays the keys, keeps the Memory tree, the Mission and the Atlas", "the cost limit or the Token limit counts the new Model calls only"]} />
         <DocCard icon={Layers} title="10 at most" lines={["the Viewer Run, and 9 places in workers for the Runs of the Bots and the Grid replays", "a Run in a worker gives the same record as alone"]} />
       </div>
     </Page>

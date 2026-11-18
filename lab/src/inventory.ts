@@ -38,6 +38,8 @@ function same(a: Inventory, b: Inventory): boolean {
   return changes(a, b).length === 0;
 }
 
+export type InventorySnapshot = { entries: readonly InventoryAt[]; pending: InventoryAt | null; end: number };
+
 /** An entry only when a quantity changes; a change counts when the next read agrees, at the frame of its first read. */
 export class InventoryHistory {
   #pending: InventoryAt | null = null;
@@ -46,6 +48,16 @@ export class InventoryHistory {
     readonly entries: InventoryAt[] = [],
     private end = -1,
   ) {}
+
+  static restored({ entries, pending, end }: InventorySnapshot): InventoryHistory {
+    const history = new InventoryHistory([...entries], end);
+    history.#pending = pending;
+    return history;
+  }
+
+  snapshot(): InventorySnapshot {
+    return { entries: this.entries, pending: this.#pending, end: this.end };
+  }
 
   onFrame(frame: number, read: () => Inventory): void {
     if (frame % READ_EVERY === 0) this.add(frame, read);

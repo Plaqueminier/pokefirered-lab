@@ -73,6 +73,10 @@ export class Run {
     for (const [keys, frames] of holds) for (let i = 0; i < frames; i++) this.runFrame(keys);
   }
 
+  reboot(): void {
+    this.boot(this.#save, this.#origin.names, this.#origin.seed);
+  }
+
   // The game reads gLabRngSeed from the ROM at boot, and a patch of the ROM image stays after a reset in this core.
   private boot(save: Uint8Array | null, names: TrainerNames | null, seed: number): void {
     if (names && !save) throw new Error("no Starting save to write the names in");

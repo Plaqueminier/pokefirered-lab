@@ -46,6 +46,10 @@ export class WalkDriver {
     return this.game.hasRunningShoes() && grid.allowsRunning ? RUN_STEP_FRAMES : WALK_STEP_FRAMES;
   }
 
+  restore(rideChosen: boolean): void {
+    this.chosen = rideChosen;
+  }
+
   chooseRide(on?: number): Outcome {
     const place = this.items.usablePlace(BICYCLE, on, true);
     return "status" in place ? place : this.matchRide(!this.chosen);

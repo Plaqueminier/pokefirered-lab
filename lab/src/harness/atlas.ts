@@ -151,11 +151,26 @@ type CaveGrid = Pick<MapGrid, "cave">;
 
 type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 
+// `talk.person` is an object of `visits`: a copy must keep them as one object, as `structuredClone` does.
+export type AtlasSnapshot = {
+  visits: Map<string, Visit>;
+  grids: Map<string, MapGrid | null>;
+  blocks: Map<string, EdgeBlock | null>;
+  place: Place | null;
+  lastAction: ActionEntry | null;
+  talk: Talk | null;
+  lastTalk: Atlas["lastTalk"];
+  battle: "none" | "during" | "after";
+  inDarkness: boolean;
+  darkCells: number;
+  flew: boolean;
+};
+
 export class AtlasWatch {
-  readonly #visits = new Map<string, Visit>();
-  readonly #grids = new Map<string, MapGrid | null>();
+  #visits = new Map<string, Visit>();
+  #grids = new Map<string, MapGrid | null>();
   readonly #elevations = new Map<string, boolean>();
-  readonly #blocks = new Map<string, EdgeBlock | null>();
+  #blocks = new Map<string, EdgeBlock | null>();
   #place: Place | null = null;
   #lastAction: ActionEntry | null = null;
   #talk: Talk | null = null;
@@ -169,6 +184,36 @@ export class AtlasWatch {
     private readonly game: AtlasGame,
     private readonly knowledge: KnowledgeLevel,
   ) {}
+
+  snapshot(): AtlasSnapshot {
+    return {
+      visits: this.#visits,
+      grids: this.#grids,
+      blocks: this.#blocks,
+      place: this.#place,
+      lastAction: this.#lastAction,
+      talk: this.#talk,
+      lastTalk: this.#lastTalk,
+      battle: this.#battle,
+      inDarkness: this.#inDarkness,
+      darkCells: this.#darkCells,
+      flew: this.#flew,
+    };
+  }
+
+  restore(snapshot: AtlasSnapshot): void {
+    this.#visits = snapshot.visits;
+    this.#grids = snapshot.grids;
+    this.#blocks = snapshot.blocks;
+    this.#place = snapshot.place;
+    this.#lastAction = snapshot.lastAction;
+    this.#talk = snapshot.talk;
+    this.#lastTalk = snapshot.lastTalk;
+    this.#battle = snapshot.battle;
+    this.#inDarkness = snapshot.inDarkness;
+    this.#darkCells = snapshot.darkCells;
+    this.#flew = snapshot.flew;
+  }
 
   // The grids are shared: they never change after the first visit.
   clone(): AtlasWatch {
