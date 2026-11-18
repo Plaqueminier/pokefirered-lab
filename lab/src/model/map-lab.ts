@@ -18,7 +18,7 @@ const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
 const PALLET_DOOR = { x: 6, y: 7 };
 
 // The settings of the model bot in Runs 00078 and 00079.
-const SETTINGS: ModelSettings = { id: "claude-haiku-5-5", reasoning: "low", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: false, coach: { id: "claude-opus-5-5" }, provider: "claude-code", tokenLimit: 20_000_000 };
+const SETTINGS: ModelSettings = { id: "claude-haiku-5-5", reasoning: "low", thinking: "medium", temperature: null, starter: "free", whiteoutLimit: null, timeLimit: null, coach: { id: "claude-opus-5-5" }, provider: "claude-code", tokenLimit: 20_000_000 };
 
 // Cells from where land at another elevation is on the screen, and no stairs join the two elevations on the map.
 const SPOTS: readonly ({ map: string } & Cell)[] = [
@@ -72,7 +72,7 @@ async function snapshot(spot: { map: string } & Cell): Promise<Moment> {
 
 function inputOf(moment: Moment, variant: Variant): PromptInput {
   const observation = moment.observation;
-  const input = { observation, before: null, events: [], noProgress: { stuck: 0, since: 0 }, names: null };
+  const input = { observation, before: null, events: [], noProgress: { stuck: 0, since: 0 }, names: null, frame: 0, whiteouts: 0 };
   if (variant !== "old" || observation.mode !== "overworld") return input;
   // All the cells at the elevation of the shore: each step joins, as in version 48, and SURF still starts on each shore.
   const blocks = observation.grid.blocks.map((block) => (block & ((1 << ELEVATION_SHIFT) - 1)) | (SHORE_ELEVATION << ELEVATION_SHIFT));

@@ -1,6 +1,6 @@
-import { CircleDollarSign, CircleQuestionMark, Crown, Flag, House, type LucideIcon, Skull, Square, Swords } from "lucide-preact";
+import { CircleDollarSign, CircleQuestionMark, Crown, Flag, House, type LucideIcon, Skull, Square, Swords, Timer } from "lucide-preact";
 import { h, render } from "preact";
-import type { EndReason } from "../src/harness/harness";
+import type { EndReason } from "../src/protocol";
 import { TILE } from "../src/race/file";
 import { type Tone, typeToken } from "./components";
 import type { Dot } from "../src/race/file";
@@ -13,6 +13,7 @@ export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | und
   "token limit": { icon: CircleDollarSign, tone: "warn" },
   "plan limit": { icon: CircleDollarSign, tone: "warn" },
   "frame budget": { icon: CircleDollarSign, tone: "warn" },
+  "time limit": { icon: Timer, tone: "warn" },
   whiteout: { icon: Skull, tone: "bad" },
   "no progress": { icon: CircleQuestionMark, tone: "info" },
   "unknown screen": { icon: CircleQuestionMark, tone: "info" },

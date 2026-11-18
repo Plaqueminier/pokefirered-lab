@@ -20,6 +20,7 @@ import { type TimelineKind, timelineEvents } from "./timeline-events";
 
 export const RECORD = "00017-model-10-2026-10-27T09-38-59.686Z.json";
 const GENETIC_RECORD = "00020-genetic-2-2026-11-11T10-02-31.512Z.json";
+const LIMIT_RECORD = "00018-model-51-2026-11-18T09-12-03.511Z.json";
 
 function move(name: string, type: string, power: number | null, accuracy: number | null, pp: number, maxPp: number, description: string): PartyMove {
   return { name, type, effect: 0, power, accuracy, pp, maxPp, description };
@@ -191,9 +192,10 @@ const DEMO_RUNS: RunSummary[] = [
     error: null,
     from: null,
     continued: null,
-    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", stopAtWhiteout: true, spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 } },
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 1 }, reasoning: "off", thinking: "medium", starter: "free", whiteoutLimit: 1, timeLimit: null, spent: { unit: "dollars", amount: 0.37 }, ownSpent: { unit: "dollars", amount: 0.37 } },
     frame: 52_000,
     milestone: "has-pokemon",
+    whiteouts: 0,
     battle: false,
     calling: { kind: "model", since: 0 },
     record: null,
@@ -212,6 +214,7 @@ const DEMO_RUNS: RunSummary[] = [
     model: null,
     frame: 81_000,
     milestone: "first-rival-battle",
+    whiteouts: 0,
     battle: false,
     calling: null,
     record: RECORD,
@@ -258,28 +261,38 @@ const BOTS_STATES = {
   full: { label: "No free place", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 0, limit: 9 } },
   none: { label: "No Bot in bots/", shown: { kind: "viewer", replay: null }, bots: [], places: { free: 9, limit: 9 } },
   same: { label: "Keep the same Run", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: RECORD, sameRun: true } },
+  limitEnd: { label: "Ended at its Whiteout limit", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: LIMIT_RECORD, sameRun: true } },
   genetic: { label: "Continue a Run of the Genetic bot", shown: { kind: "viewer", replay: null }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, initial: { from: GENETIC_RECORD, sameRun: false } },
   busy: { label: "A Run plays from the record", shown: { kind: "bot", run: DEMO_RUNS[0] }, bots: DEMO_BOTS, places: { free: 6, limit: 9 }, runs: [{ ...DEMO_RUNS[0], from: { record: RECORD, kind: "continued" } }], initial: { from: RECORD, sameRun: false } },
 } satisfies Record<string, BotsState>;
 
 const CONTINUED_RECORD = "00016-model-9-2026-10-27T08-40-44.237Z.json";
 
-const DEMO_RECORDS = [RECORD, CONTINUED_RECORD, GENETIC_RECORD];
+const DEMO_RECORDS = [RECORD, CONTINUED_RECORD, LIMIT_RECORD, GENETIC_RECORD];
 
 const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
   [RECORD]: {
     bot: "model",
     version: "10",
-    model: { id: "gpt-6.1-terra", provider: "codex", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, stopAtWhiteout: true },
+    model: { id: "gpt-6.1-terra", provider: "codex", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, whiteoutLimit: 1, timeLimit: null },
     continued: false,
+    endReason: "token limit",
   },
   [CONTINUED_RECORD]: {
     bot: "model",
     version: "9",
-    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "dollars", amount: 1 }, stopAtWhiteout: true },
+    model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "dollars", amount: 1 }, whiteoutLimit: 1, timeLimit: null },
     continued: true,
+    endReason: "cost limit",
   },
-  [GENETIC_RECORD]: { bot: "genetic", version: "2", model: null, continued: false },
+  [LIMIT_RECORD]: {
+    bot: "model",
+    version: "51",
+    model: { id: "claude-haiku-5-5", provider: "claude-code", reasoning: "low", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, whiteoutLimit: 3, timeLimit: 10 },
+    continued: false,
+    endReason: "whiteout",
+  },
+  [GENETIC_RECORD]: { bot: "genetic", version: "2", model: null, continued: false, endReason: null },
 };
 
 export function BotsDemo() {
@@ -472,7 +485,7 @@ const DEMO_REPLAY: ReplayStatus = {
   frames: 457065,
   ended: false,
   endReason: "cost limit",
-  model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 10 }, reasoning: "off", thinking: "medium", starter: "free", stopAtWhiteout: true, calls: 312, spent: { unit: "dollars", amount: 4.21 }, totalCalls: 717, totalSpent: { unit: "dollars", amount: 10.02 } },
+  model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", limit: { unit: "dollars", amount: 10 }, reasoning: "off", thinking: "medium", starter: "free", whiteoutLimit: 1, timeLimit: null, calls: 312, spent: { unit: "dollars", amount: 4.21 }, totalCalls: 717, totalSpent: { unit: "dollars", amount: 10.02 } },
   continued: null,
   gameEvents: 393,
   reached: 200000,
@@ -507,7 +520,7 @@ const DEMO_CELL: GridCell = {
   name: "Run 3",
   bot: "model",
   model: { id: "deepseek/deepseek-v4-flash" },
-  whiteoutEnds: true,
+  limits: { whiteoutLimit: 3, timeLimit: null, whiteouts: 0 },
   frame: 52_000,
   milestone: "has-pokemon",
   spent: { unit: "dollars", amount: 0.37 },
@@ -525,11 +538,15 @@ const CELL_STATES: Record<string, { label: string; cell: GridCell | null }> = {
   battle: { label: "In battle", cell: { ...DEMO_CELL, state: { kind: "battle" } } },
   ended: { label: "Live, ended", cell: { ...DEMO_CELL, state: { kind: "ended", result: "cost limit" }, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD } } },
   replay: { label: "Replay", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD } } },
-  evolution: { label: "Replay of an Evolution", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: "evolutions/v5/00003-genetic-2.json", record: "evolutions/v5/00003-genetic-2.json", bot: "genetic 2", model: null, whiteoutEnds: false, spent: null, recordRun: { id: 3, evolution: "v5", file: "evolutions/v5/00003-genetic-2.json" } } },
+  evolution: { label: "Replay of an Evolution", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: "evolutions/v5/00003-genetic-2.json", record: "evolutions/v5/00003-genetic-2.json", bot: "genetic 2", model: null, limits: null, spent: null, recordRun: { id: 3, evolution: "v5", file: "evolutions/v5/00003-genetic-2.json" } } },
   tokens: { label: "On a Plan provider", cell: { ...DEMO_CELL, model: { id: "claude-haiku-5-5" }, spent: { unit: "tokens", amount: 412_000 } } },
   coach: { label: "With a Coach", cell: { ...DEMO_CELL, model: { id: "claude-haiku-5-5", coach: { id: "claude-opus-5-5" } } } },
-  playsOn: { label: "Plays on after a whiteout", cell: { ...DEMO_CELL, whiteoutEnds: false } },
-  noModel: { label: "A Bot with no model", cell: { ...DEMO_CELL, bot: "starter", model: null, whiteoutEnds: false, spent: null } },
+  firstWhiteout: { label: "The first whiteout ends the Run", cell: { ...DEMO_CELL, limits: { whiteoutLimit: 1, timeLimit: null, whiteouts: 0 } } },
+  noLimit: { label: "No whiteout limit", cell: { ...DEMO_CELL, limits: { whiteoutLimit: null, timeLimit: null, whiteouts: 2 } } },
+  whiteoutCount: { label: "A Whiteout limit of 3, after a whiteout", cell: { ...DEMO_CELL, limits: { whiteoutLimit: 3, timeLimit: null, whiteouts: 1 } } },
+  lastWhiteout: { label: "One whiteout left, and a Time limit", cell: { ...DEMO_CELL, frame: 1_500_000, limits: { whiteoutLimit: 3, timeLimit: 10, whiteouts: 2 } } },
+  limitReached: { label: "Ended at its Whiteout limit", cell: { ...DEMO_CELL, state: { kind: "ended", result: "whiteout" }, limits: { whiteoutLimit: 3, timeLimit: null, whiteouts: 3 } } },
+  noModel: { label: "A Bot with no model", cell: { ...DEMO_CELL, bot: "starter", model: null, limits: null, spent: null } },
   noNickname: { label: "A starter with no nickname", cell: { ...DEMO_CELL, party: [{ ...DEMO_PARTY[0], nickname: "IVYSAUR" }, ...DEMO_PARTY.slice(1)] } },
   noStarter: { label: "The starter in the PC", cell: { ...DEMO_CELL, party: DEMO_PARTY.slice(1) } },
   noParty: { label: "A Run record with no State track", cell: { ...DEMO_CELL, kind: "replay", runId: 7, name: RECORD, record: RECORD, recordRun: { id: 61, evolution: null, file: RECORD }, party: null } },

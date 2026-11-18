@@ -121,7 +121,7 @@ const REASONING_OPTIONS = ["off", "low", "medium", "high"].map((level) => ({ val
 
 function FieldDemo() {
   const [reasoning, setReasoning] = useState("off");
-  const [whiteout, setWhiteout] = useState(true);
+  const [follow, setFollow] = useState(true);
   const [sound, setSound] = useState(false);
   return (
     <div class="grid max-w-[640px] gap-4 sm:grid-cols-2">
@@ -141,8 +141,8 @@ function FieldDemo() {
         <Input value="MEWTWO" invalid />
       </Field>
       <div class="flex flex-col justify-end gap-3 pb-1">
-        <Switch on={whiteout} onChange={setWhiteout}>
-          Stop at a whiteout
+        <Switch on={follow} onChange={setFollow}>
+          Follow the player
         </Switch>
         <Checkbox on={sound} onChange={setSound}>
           Sound
@@ -935,7 +935,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Bots",
-    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with its Model provider and the maximum total cost or tokens, and it stops the shown Run. “Keep the same Run” shows the settings of the record as locked fields, with only the limit to change; it is disabled, with its reason, when a Run plays from the record or another record continues it. A provider that is not ready is disabled, with its reason.",
+    rule: "The form of the button “Bots”: it starts N Runs of a Bot within the free places, from the Starting save or as the continuation of a Run record, with its Model provider and the maximum total cost or tokens, and it stops the shown Run. “Keep the same Run” shows the settings of the record as locked fields, with only the cost limit or the Token limit to change. It is disabled, with its reason, when a Run plays from the record, when another record continues it, or when the Run ended at its Whiteout limit or its Time limit. A provider that is not ready is disabled, with its reason.",
     demo: () => <BotsDemo />,
   },
   {
@@ -959,7 +959,7 @@ const ENTRIES: Entry[] = [
   {
     category: "lab",
     title: "Grid cell",
-    rule: "A cell of the Grid tab. In a Grid of 9: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens; the screen takes all the place that the cell gives, and the facts go at its side when the cell is wide. A dim layer shows a wait for the model, a Summary call of the memory or the end. The buttons of a Run that plays show on a hover. A Run record can go in any cell; an ended Run can replay its record or continue it, and an ended live Run can leave the Grid; an empty cell offers the Run records. In a Grid of 2 or 4, a band on top gives the Run id of its Run record (“#…” until a new Run writes it; the name of the Evolution before it for a record of an Evolution), the name of the trainer (the rival in its tooltip), the place of a live Run, the nickname of the starter with a star, and “whiteout = death” in red when a whiteout ends the Run, else “whiteout = plays on”. Under it: the screen, the player and the Coach on two lines, the facts, and the 6 places of the party, each with its large MonIcon, its Name, level, HpBar and StatusPill. The starter has an accent ring, and a Pokémon with no HP is grey. A party that is not known gives a text: a live Run before the worker reads the game, or a Run record with no State track. A click on the band, the screen, the player or the facts shows the Run in the Lab tab; the party takes no click. A wide cell puts the party at the right of the screen, and a narrow cell puts it under the screen.",
+    rule: "A cell of the Grid tab. In a Grid of 9: the screen of a Run, its name, the Pills live or replay and its state, the names of its character, its Bot and model, its game time, last Milestone and cost or tokens; the screen takes all the place that the cell gives, and the facts go at its side when the cell is wide. A dim layer shows a wait for the model, a Summary call of the memory or the end. The buttons of a Run that plays show on a hover. A Run record can go in any cell; an ended Run can replay its record or continue it, and an ended live Run can leave the Grid; an empty cell offers the Run records. In a Grid of 2 or 4, a band on top gives the Run id of its Run record (“#…” until a new Run writes it; the name of the Evolution before it for a record of an Evolution), the name of the trainer (the rival in its tooltip), the place of a live Run, the nickname of the starter with a star, and the Whiteout limit: “whiteout = death” in red for a limit of 1, “whiteouts 1 of 3” for a higher limit (amber after a whiteout, red when one or none is left), else “no whiteout limit”. With a Time limit, the time fact also gives the time left. Under it: the screen, the player and the Coach on two lines, the facts, and the 6 places of the party, each with its large MonIcon, its Name, level, HpBar and StatusPill. The starter has an accent ring, and a Pokémon with no HP is grey. A party that is not known gives a text: a live Run before the worker reads the game, or a Run record with no State track. A click on the band, the screen, the player or the facts shows the Run in the Lab tab; the party takes no click. A wide cell puts the party at the right of the screen, and a narrow cell puts it under the screen.",
     demo: () => <GridCellDemo />,
   },
   {

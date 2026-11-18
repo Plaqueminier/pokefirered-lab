@@ -8,7 +8,7 @@ import { decodeTrack } from "./file";
 import { makeRace, writeRace } from "./make";
 
 const header = { rom: "rom", seed: 1, startSave: null, knowledge: "player" } as const;
-const modelBot = { name: "model", version: "12", model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } } as const;
+const modelBot = { name: "model", version: "12", model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "medium", temperature: null, starter: "free", whiteoutLimit: 1, timeLimit: null } } as const;
 
 function record(fields: Partial<RunRecord>): RunRecord {
   return {

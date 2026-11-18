@@ -50,7 +50,7 @@ describe.skipIf(!ready)("RunPool", () => {
     expect(error).toContain("bots/nobody.ts");
     await Promise.all(others.map((run) => run.done));
     expect((await pool.start({ bot: STARTER, frameBudget: 10 }).done).record?.result.endReason).toBe("frame budget");
-    const notModel = await pool.start({ bot: STARTER, model: { id: "a/b", costLimit: 0.5, reasoning: "off", thinking: "off", temperature: null, starter: "free", stopAtWhiteout: true } }).done;
+    const notModel = await pool.start({ bot: STARTER, model: { id: "a/b", costLimit: 0.5, reasoning: "off", thinking: "off", temperature: null, starter: "free", whiteoutLimit: 1, timeLimit: null } }).done;
     expect(notModel).toEqual({ record: null, error: `Error: ${STARTER} is not a model bot: it does not export modelBot(model)` });
   });
 
@@ -79,7 +79,7 @@ describe.skipIf(!ready)("RunPool", () => {
     const bot = join(mkdtempSync(join(tmpdir(), "lab-bot-")), "waiting-model.ts");
     await Bun.write(bot, `import { modelBot as real } from ${JSON.stringify(join(import.meta.dir, "../../bots/model.ts"))};
 export const modelBot = (options) => real(options, () => (_prompt, { signal }) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason))));`);
-    const run = new RunPool().start({ bot, model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "off", temperature: null, starter: "free", stopAtWhiteout: true } });
+    const run = new RunPool().start({ bot, model: { id: "a/b", costLimit: 1, reasoning: "off", thinking: "off", temperature: null, starter: "free", whiteoutLimit: 1, timeLimit: null } });
     while (run.calling === null) await Bun.sleep(5);
     run.stop();
     const { record, error } = await run.done;

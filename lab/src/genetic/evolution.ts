@@ -1,7 +1,7 @@
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Milestone } from "../game";
-import type { EndReason } from "../harness/harness";
+import type { EndReason } from "../protocol";
 import { isCurrentRecord, RUNS_DIR, type RunRecord, withGenome, writeRecord } from "../harness/record";
 import { BESTS_RACE, evolutionPath, generationRace, PLAIN_NAME } from "../protocol";
 import { RACE_VERSION, type RaceRun } from "../race/file";

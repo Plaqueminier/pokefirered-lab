@@ -125,6 +125,7 @@ describe.skipIf(!ready)("checkpoint of a Run", () => {
       await live.play(starter);
       const record = live.record();
       const checkpoint = checkpointOf(record, live.checkpoint(), NO_INVENTORY);
+      const parentEnd = live.frame;
       stop = null;
       live.nextPart();
       const result = await live.play(finisher);
@@ -135,7 +136,7 @@ describe.skipIf(!ready)("checkpoint of a Run", () => {
       const resumed = await Harness.open({ parent: { name: "parent.json", record }, checkpoint: { checkpoint } });
       try {
         await resumed.play(finisher);
-        expect(resumed.record()).toEqual({ ...played, header: { ...played.header, parent: "parent.json" } });
+        expect(resumed.record()).toEqual({ ...played, header: { ...played.header, parent: "parent.json", runStart: parentEnd } });
         expect(checkpointDifferences(checkpointOf(played, resumed.checkpoint(), NO_INVENTORY), checkpointOf(played, live.checkpoint(), NO_INVENTORY))).toEqual([]);
       } finally {
         resumed.close();

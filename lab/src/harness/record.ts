@@ -3,7 +3,7 @@ import { mkdir, open, readdir, rename } from "node:fs/promises";
 import type { CoachAdvice } from "../protocol";
 import { join } from "node:path";
 import type { Game, Milestone } from "../game";
-import { DEFAULT_PROVIDER, DEFAULT_STARTER, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { DEFAULT_PROVIDER, DEFAULT_STARTER, END_REASONS, type EndReason, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import type { Fitness } from "../genetic/fitness";
 import type { TrainerNames } from "../save-file";
@@ -42,7 +42,10 @@ type Starter = (typeof STARTERS)[number];
 /** Always on the provider of the player, so that one limit unit counts both models. */
 export type Coach = { id: string };
 
-export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; stopAtWhiteout: boolean; coach?: Coach } & ModelLimit;
+export type ModelSettings = { id: string; reasoning: ReasoningLevel; thinking: ReasoningLevel; temperature: number | null; starter: Starter; whiteoutLimit: number | null; timeLimit: number | null; coach?: Coach } & ModelLimit;
+
+// Run records from before the Whiteout limit hold `stopAtWhiteout`: true was a limit of 1. A record from before bot version 9 has neither, and continued after a whiteout.
+type StoredModelSettings = ModelSettings & { stopAtWhiteout?: boolean };
 
 // Run records from before the Model providers have no provider: they played on OpenRouter.
 type ModelLimit = { provider?: "openrouter"; costLimit: number; tokenLimit?: undefined } | { provider: PlanProvider; tokenLimit: number; costLimit?: undefined };
@@ -56,7 +59,7 @@ export function limitOf(settings: ModelLimit): Spend {
 }
 
 /** The options of a model bot as a person gives them (the command line, the Viewer): a missing option takes its default. */
-export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; stopAtWhiteout?: boolean; coach?: { id?: string } };
+export type ModelOptions = { id?: string; provider?: string; costLimit?: number; tokenLimit?: number; reasoning?: string; thinking?: string; temperature?: number | null; starter?: string; whiteoutLimit?: number | null; timeLimit?: number | null; coach?: { id?: string } };
 
 export type SpendLimit = Pick<ModelOptions, "costLimit" | "tokenLimit">;
 
@@ -179,8 +182,8 @@ type RunBot = Pick<Bot, "name" | "version" | "model" | "genome">;
 
 type RunPart = Continuation & { bot: RunBot; result: RunResult };
 
-/** `parent`: the file in lab/runs/ of the Run record that this Run continues. `genomeId`: the id of the Genome in its Evolution. `fitness`: the Fitness of the Run, at a new best of an Evolution. */
-export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; parts?: RunPart[]; fitness?: Fitness; genomeId?: number };
+/** `parent`: the file in lab/runs/ of the Run record that this Run continues, and `runStart` the first frame of this Run. `genomeId`: the id of the Genome in its Evolution. `fitness`: the Fitness of the Run, at a new best of an Evolution. */
+export type RunHeader = Omit<RunOrigin, "names"> & { names?: TrainerNames | null; knowledge: KnowledgeLevel; bot: RunBot; parent?: string; runStart?: number; parts?: RunPart[]; fitness?: Fitness; genomeId?: number };
 
 /** The Run record with the id of its Genome in the header, and the Fitness of the Run when it is given. */
 export function withGenome(record: RunRecord, genomeId: number, fitness?: Fitness): RunRecord {
@@ -488,7 +491,7 @@ export function continuationOf(parent: RunRecord): Continuation {
 /** `earlierEvents`: the events of `old` in `played`. The replay of a record from before format 1 adds to them. */
 export function extendedRecord(played: RunRecord, old: RunRecord, earlierEvents: number): RunRecord {
   const part: RunPart = { frame: new RecordPlayer(old).frames, events: earlierEvents, bot: old.header.bot, result: old.result };
-  return { ...played, header: { ...played.header, parent: old.header.parent, parts: [...(old.header.parts ?? []), part] } };
+  return { ...played, header: { ...played.header, parent: old.header.parent, runStart: old.header.runStart, parts: [...(old.header.parts ?? []), part] } };
 }
 
 /** The bot that played a frame: each earlier part of a Run has its own bot, and the header keeps the bot of the last part. */
@@ -497,8 +500,25 @@ export function botAtFrame({ bot, parts }: RunHeader, frame: number): RunHeader[
 }
 
 // Before the starter option, the model chose freely; before the thinking option, all the Model calls had one level.
-function currentSettings(settings: ModelSettings): ModelSettings {
-  return { ...settings, starter: settings.starter ?? DEFAULT_STARTER, thinking: settings.thinking ?? settings.reasoning, stopAtWhiteout: settings.stopAtWhiteout ?? true };
+export function currentSettings({ stopAtWhiteout, ...settings }: StoredModelSettings): ModelSettings {
+  const whiteoutLimit = "whiteoutLimit" in settings ? settings.whiteoutLimit : stopAtWhiteout ? 1 : null;
+  return { ...settings, starter: settings.starter ?? DEFAULT_STARTER, thinking: settings.thinking ?? settings.reasoning, whiteoutLimit, timeLimit: settings.timeLimit ?? null };
+}
+
+/** The whiteouts of a Run that starts at the frame `runStart`, up to the frame `last`: a Continued Run does not count the ones of its parent. */
+export function runWhiteouts(events: readonly RunEvent[], runStart: number, last = Number.POSITIVE_INFINITY): number {
+  return events.filter((event) => event.type === "whiteout" && event.frame >= runStart && event.frame <= last).length;
+}
+
+/** The first frame of the Run of a Run record: the end of its parent, also for an Extended Run of a Continued Run. */
+export async function runStartFrame(header: RunHeader): Promise<number> {
+  return header.runStart ?? (await parentEnd(header))?.frame ?? 0;
+}
+
+async function parentEnd(header: RunHeader): Promise<Continuation | null> {
+  if (header.parent === undefined) return null;
+  const parent = await readRunRecord(header.parent);
+  return parent && continuationOf(parent);
 }
 
 export function extendedOptions(settings: ModelSettings | undefined, limit: SpendLimit): ModelOptions {
@@ -508,16 +528,14 @@ export function extendedOptions(settings: ModelSettings | undefined, limit: Spen
 export async function replayStart(header: RunHeader, onReadParent?: () => void): Promise<Continuation | null> {
   const last = header.parts?.at(-1);
   if (last) return { frame: last.frame, events: last.events };
-  if (header.parent === undefined) return null;
-  onReadParent?.();
-  const parent = await readRunRecord(header.parent);
-  return parent && continuationOf(parent);
+  if (header.parent !== undefined) onReadParent?.();
+  return parentEnd(header);
 }
 
 export function modelFacts(given: ModelSettings): ModelFacts {
   const settings = currentSettings(given);
-  const { id, reasoning, thinking, starter, stopAtWhiteout, coach } = settings;
-  return { id, provider: providerOf(settings), reasoning, thinking, starter, stopAtWhiteout, ...(coach ? { coach } : {}), limit: limitOf(settings) };
+  const { id, reasoning, thinking, starter, whiteoutLimit, timeLimit, coach } = settings;
+  return { id, provider: providerOf(settings), reasoning, thinking, starter, whiteoutLimit, timeLimit, ...(coach ? { coach } : {}), limit: limitOf(settings) };
 }
 
 const HEADER_BYTES = 64 * 1024;
@@ -532,13 +550,30 @@ function parsedJson(text: string): unknown {
 
 // A Run record has tens of MB, and the form asks for all the headers at once.
 export async function readRunHeader(name: string, dir = RUNS_DIR): Promise<RunHeader | null> {
+  return (await readRunHead(name, dir))?.header ?? null;
+}
+
+async function readRunHead(name: string, dir: string): Promise<{ header: RunHeader; whole: Record<string, unknown> | null } | null> {
   const file = Bun.file(join(dir, name));
   const start = await file.slice(0, HEADER_BYTES).text().catch(() => "");
   const end = start.indexOf(',"buttons":');
   const head = end < 0 ? null : parsedJson(`${start.slice(0, end)}}`);
-  if (isObject(head) && isRunHeader(head.header)) return head.header;
+  if (isObject(head) && isRunHeader(head.header)) return { header: head.header, whole: null };
   const whole: unknown = await file.json().catch(() => null);
-  return isObject(whole) && isRunHeader(whole.header) ? whole.header : null;
+  return isObject(whole) && isRunHeader(whole.header) ? { header: whole.header, whole } : null;
+}
+
+// The Harness writes the result after the events. A migration of an old record writes the State track after it, so the result is not always near the end: then the end reason is unknown.
+async function readEndReason(name: string, dir: string): Promise<EndReason | null> {
+  const file = Bun.file(join(dir, name));
+  const tail = await file.slice(Math.max(0, file.size - HEADER_BYTES)).text().catch(() => "");
+  const at = tail.lastIndexOf(',"result":');
+  return at < 0 ? null : endReasonOf(parsedJson(tail.slice(at + ',"result":'.length, -1)));
+}
+
+function endReasonOf(result: unknown): EndReason | null {
+  const reason = isObject(result) ? result.endReason : null;
+  return END_REASONS.find((known) => known === reason) ?? null;
 }
 
 function isRunHeader(value: unknown): value is RunHeader {
@@ -546,12 +581,15 @@ function isRunHeader(value: unknown): value is RunHeader {
 }
 
 export async function recordFacts(names: readonly string[], dir = RUNS_DIR): Promise<Record<string, RecordFacts>> {
-  const headers = await Promise.all(names.map(async (name) => ({ name, header: await readRunHeader(name, dir) })));
-  const continued = new Set(headers.map(({ header }) => header?.parent));
-  const facts = headers.flatMap(({ name, header }): [string, RecordFacts][] => {
-    if (!header) return [];
-    const { model } = header.bot;
-    return [[name, { bot: header.bot.name, version: header.bot.version, model: model ? modelFacts(model) : null, continued: continued.has(name) }]];
+  const heads = await Promise.all(names.map(async (name) => {
+    const head = await readRunHead(name, dir);
+    return { name, head, endReason: head?.whole ? endReasonOf(head.whole.result) : head && (await readEndReason(name, dir)) };
+  }));
+  const continued = new Set(heads.map(({ head }) => head?.header.parent));
+  const facts = heads.flatMap(({ name, head, endReason }): [string, RecordFacts][] => {
+    if (!head) return [];
+    const { bot } = head.header;
+    return [[name, { bot: bot.name, version: bot.version, model: bot.model ? modelFacts(bot.model) : null, continued: continued.has(name), endReason: endReason ?? null }]];
   });
   return Object.fromEntries(facts);
 }

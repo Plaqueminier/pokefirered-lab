@@ -1,4 +1,4 @@
-import type { EndReason } from "../src/harness/harness";
+import type { EndReason } from "../src/protocol";
 import type { StarterSpecies } from "../src/protocol";
 import type { RaceKiller } from "../src/race/file";
 import { STARTER_TYPE } from "./race-deaths";

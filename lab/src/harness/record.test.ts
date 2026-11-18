@@ -85,7 +85,7 @@ test("an Extended Run replaces its Run record under the same name: no other file
 });
 
 describe("recordFacts", () => {
-  const model = { id: "gpt-x", reasoning: "low", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: false, provider: "codex", tokenLimit: 30_000_000 } as const;
+  const model = { id: "gpt-x", reasoning: "low", thinking: "medium", temperature: null, starter: "free", whiteoutLimit: null, timeLimit: null, provider: "codex", tokenLimit: 30_000_000 } as const;
   const write = (dir: string, name: string, recordHeader: RunRecord["header"]) => Bun.write(join(dir, name), JSON.stringify({ format: 3, header: recordHeader, buttons: [[0, 6]], events: [], result }));
 
   test("it gives the Bot and the model of each Run record, and if another Run record continues it", async () => {
@@ -94,12 +94,13 @@ describe("recordFacts", () => {
     await write(dir, "00002-model-20-b.json", { ...header, bot: { name: "model", version: "20", model } });
     await write(dir, "00003-test-1-c.json", { ...header, parent: "00001-test-1-a.json" });
     const facts = await recordFacts(["00001-test-1-a.json", "00002-model-20-b.json", "00003-test-1-c.json"], dir);
-    expect(facts["00001-test-1-a.json"]).toEqual({ bot: "test", version: "1", model: null, continued: true });
+    expect(facts["00001-test-1-a.json"]).toEqual({ bot: "test", version: "1", model: null, continued: true, endReason: "goal" });
     expect(facts["00002-model-20-b.json"]).toEqual({
       bot: "model",
       version: "20",
-      model: { id: "gpt-x", provider: "codex", reasoning: "low", thinking: "medium", starter: "free", stopAtWhiteout: false, limit: { unit: "tokens", amount: 30_000_000 } },
+      model: { id: "gpt-x", provider: "codex", reasoning: "low", thinking: "medium", starter: "free", whiteoutLimit: null, timeLimit: null, limit: { unit: "tokens", amount: 30_000_000 } },
       continued: false,
+      endReason: "goal",
     });
     expect(facts["00003-test-1-c.json"].continued).toBe(false);
   });
@@ -118,13 +119,15 @@ describe("recordFacts", () => {
   });
 });
 
-test("an Extended Run takes the settings of its Run record, and a limit only when a person gives one; an old record gets the levels that it played with", () => {
-  const settings = { id: "gpt-x", reasoning: "low", thinking: "high", temperature: null, starter: "free", stopAtWhiteout: false, provider: "codex", tokenLimit: 30_000_000 } as const;
+test("an Extended Run takes the settings of its Run record, and a limit only when a person gives one; an old record gets the levels and the stop at a whiteout that it played with", () => {
+  const settings = { id: "gpt-x", reasoning: "low", thinking: "high", temperature: null, starter: "free", whiteoutLimit: null, timeLimit: null, provider: "codex", tokenLimit: 30_000_000 } as const;
   expect(extendedOptions(settings, {})).toEqual(settings);
   expect(extendedOptions(settings, { tokenLimit: 5_000_000 })).toEqual({ ...settings, tokenLimit: 5_000_000 });
   expect(extendedOptions(undefined, {})).toEqual({});
   const old = { id: "a/b", reasoning: "off", costLimit: 1 } as unknown as ModelSettings;
-  expect(extendedOptions(old, {})).toMatchObject({ reasoning: "off", thinking: "off", starter: "free" });
+  expect(extendedOptions(old, {})).toEqual({ id: "a/b", reasoning: "off", costLimit: 1, thinking: "off", starter: "free", whiteoutLimit: null, timeLimit: null });
+  const stopped = Object.assign({ stopAtWhiteout: true }, old);
+  expect(extendedOptions(stopped, {})).toMatchObject({ whiteoutLimit: 1 });
 });
 
 test("the part of an Extended Run counts the events of the old record that the new one holds: a replay of a record from before format 1 adds state events", () => {
@@ -140,12 +143,14 @@ test("a replay of an Extended Run starts its limit at its last earlier part; a R
   expect(await replayStart(header)).toBeNull();
 });
 
-test("a Run record cannot play on in the same Run with no header, with a Run record that continues it, or while a Run plays from it", () => {
-  const facts = { bot: "model", version: "20", model: null, continued: false };
+test("a Run record cannot play on in the same Run with no header, with a Run record that continues it, while a Run plays from it, or after it ended at one of its limits", () => {
+  const facts = { bot: "model", version: "20", model: null, continued: false, endReason: "token limit" } as const;
   expect(extendProblem(facts, false)).toBeNull();
   expect(extendProblem(undefined, false)).toContain("no header");
   expect(extendProblem({ ...facts, continued: true }, false)).toContain("continues this one");
   expect(extendProblem(facts, true)).toContain("plays from");
+  expect(extendProblem({ ...facts, endReason: "whiteout" }, false)).toBe("The Run ended at its whiteout limit.");
+  expect(extendProblem({ ...facts, endReason: "time limit" }, false)).toBe("The Run ended at its time limit.");
 });
 
 describe("isRunRecord", () => {

@@ -8,8 +8,8 @@ import { Popover, Select } from "./components-layers";
 import { ModelName } from "./components-race";
 import { type ScreenFeed, Store, useStore } from "./cursor";
 import { type CellState, cellTitle, type GridCell, gridCells, STATE_LOOKS } from "./grid-cells";
-import { PartySheet, StarterName, WhiteoutPill } from "./grid-party";
-import { spendText } from "../src/protocol";
+import { PartySheet, StarterName, WhiteoutPill, whiteoutLook } from "./grid-party";
+import { hoursText, spendText, timeLimitFrame } from "../src/protocol";
 import { BotsPanel, botRunKey, replayKey } from "./runs";
 import { clock } from "./stats-format";
 
@@ -136,10 +136,14 @@ function CellFacts({ cell }: { cell: GridCell }) {
   );
 }
 
+function timeText(frame: number, timeLimit: number | null): string {
+  return timeLimit === null ? clock(frame) : `${clock(frame)} · ${hoursText(Math.max(0, timeLimitFrame(timeLimit) - frame))} left`;
+}
+
 function RunFacts({ cell }: { cell: GridCell }) {
   return (
     <>
-      <Fact label="time" value={clock(cell.frame)} />
+      <Fact label="time" value={timeText(cell.frame, cell.limits?.timeLimit ?? null)} />
       <Fact label="Milestone" value={cell.milestone ?? "–"} />
       <Fact label="spent" value={cell.spent ? spendText(cell.spent) : "–"} />
     </>
@@ -256,7 +260,8 @@ function ModelLines({ cell }: { cell: GridCell }) {
 
 function PartyCell(props: CellProps) {
   const { cell, actions } = props;
-  const ends = cell.whiteoutEnds;
+  const look = whiteoutLook(cell.limits);
+  const ends = look.tone === "bad";
   return (
     <Card interactive size="sm" fill>
       <div class="group @container-size flex min-h-0 flex-1 flex-col gap-2">
@@ -265,7 +270,7 @@ function PartyCell(props: CellProps) {
           <StatePills cell={cell} />
           {cell.party && <StarterName party={cell.party} />}
           <span class="ml-auto shrink-0">
-            <WhiteoutPill ends={ends} />
+            <WhiteoutPill look={look} />
           </span>
         </button>
         <div class="flex min-h-0 flex-1 flex-col gap-2 cell-row:flex-row cell-row:gap-3">

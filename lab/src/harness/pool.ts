@@ -23,7 +23,7 @@ type PoolWorker = { worker: RunWorker; since: number };
 /** `plays`: the worker plays this part. `idle`: it waits with its Harness for the next part. `gone`: another PoolRun has it, or it closed. */
 type WorkerState = { kind: "plays"; worker: PoolWorker } | { kind: "idle"; worker: PoolWorker; key: string } | { kind: "gone" };
 
-export type RunSpec = { bot: string; model?: ModelSettings; genome?: Genome; from?: RunFrom } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit">;
+export type RunSpec = { bot: string; model?: ModelSettings; genome?: Genome; from?: RunFrom } & Pick<HarnessOptions, "knowledge" | "frameBudget" | "noProgressLimit" | "runStart">;
 
 export type RunEnd = { record: RunRecord | null; error: string | null };
 

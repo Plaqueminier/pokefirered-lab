@@ -1,5 +1,5 @@
 // The browser imports this file: no Node import here.
-import type { EndReason } from "../harness/harness";
+import type { EndReason } from "../protocol";
 import { type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 
 export const CELL = 16;

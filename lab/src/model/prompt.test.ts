@@ -9,7 +9,7 @@ import { CHARACTER_SCHEMA, characterTurn, forcedAnswer, readCharacterDecision, s
 import { type Asked, askedOf, BATTLE_SCHEMA, DECISION_SCHEMA, readAction, readDecision, sendable } from "./decision";
 import { importantEvents } from "./important-events";
 import { adviceLine, coachRole, coachWants, MAX_ADVICE_PART, MAX_TRAINED, readAdvice, wantLines, withAdvice } from "./coach";
-import type { CoachAdvice } from "../protocol";
+import { type CoachAdvice, GBA_FPS } from "../protocol";
 import { MAX_TRIES, tries } from "./history";
 import { battleSystemPrompt, missionLine, nextMilestone, systemPrompt, turnKind, turnRequest, userPrompt } from "./prompt";
 
@@ -42,8 +42,8 @@ function call(action: string, mission = "", note = ""): ModelEvent {
   };
 }
 
-const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [], memory: [], advice: [] };
-const SYSTEM = { starter: "free", stopAtWhiteout: false } as const;
+const NO_TURN = { noProgress: { stuck: 0, since: 0 }, turn: "normal" as const, happened: [], request: [], memory: [], advice: [], limits: { whiteoutLimit: null, timeLimit: null, whiteouts: 0, frame: 0 } };
+const SYSTEM = { starter: "free", whiteoutLimit: null, timeLimit: null } as const;
 const POTION = { name: "POTION", quantity: 5, description: "It restores the HP of one POKéMON by 20 points.", price: 300, battle: "pokemon", walk: "pokemon" };
 
 function route1(hp: number, items: object[], people: AtlasPerson[] = []): Observation {
@@ -1073,7 +1073,7 @@ describe("the naming screen", () => {
 });
 
 describe("the rules and the character turn", () => {
-  const settings = { starter: "free", stopAtWhiteout: true } as const;
+  const settings = { starter: "free", whiteoutLimit: 1, timeLimit: null } as const;
 
   test("a Run shows its character, nothing while it has none yet, and Normal trainer when it has no Character turn", () => {
     const played = call("go A");
@@ -1093,12 +1093,38 @@ describe("the rules and the character turn", () => {
     expect(prompt).toContain("Your character: Pastry names. A shy baker. Your first Pokémon: SQUIRTLE. Your name: Mira. Your rival: Crumb.");
   });
 
-  test("a free starter is the choice of the character; a given starter stays; a stop at a whiteout warns with no fear; with no stop, the rules tell what a whiteout costs", () => {
+  test("a free starter is the choice of the character; a given starter stays; a Whiteout limit of 1 warns with no fear; with no limit, the rules tell what a whiteout costs", () => {
     expect(systemPrompt(settings, false)).toContain("Take the first Pokémon that your character chose.");
     expect(systemPrompt({ ...settings, starter: "SQUIRTLE" }, false)).toContain("Choose SQUIRTLE as your first Pokémon.");
     expect(systemPrompt(settings, false)).toContain("If all your Pokémon faint, the Run ends.");
-    expect(systemPrompt({ ...settings, stopAtWhiteout: false }, false)).toContain("If all your Pokémon faint, the Run continues: you lose some money");
+    expect(systemPrompt({ ...settings, whiteoutLimit: null, timeLimit: null }, false)).toContain("If all your Pokémon faint, the Run continues: you lose some money");
     expect(systemPrompt(settings, false)).toContain("Give a nickname to each Pokémon that you get");
+  });
+
+  test("a Whiteout limit of 2 or more tells what a whiteout costs and when the Run ends; after the first whiteout, the walk and the battle count them, and the last one warns", () => {
+    const three = { ...settings, whiteoutLimit: 3 };
+    for (const system of [systemPrompt(three, false), battleSystemPrompt(three)]) {
+      expect(system).toContain("If all your Pokémon faint, you lose some money");
+      expect(system).toContain("The Run ends at the 3rd whiteout. So before a difficult battle, train your team");
+    }
+    const state = (whiteouts: number) => ({ ...NO_TURN, limits: { whiteoutLimit: 3, timeLimit: null, whiteouts, frame: 0 } });
+    const walk = route1(22, []);
+    const battle = wildPidgey({ party: 1 });
+    const prompts = (whiteouts: number) => [userPrompt(walk, askedOf(walk, false)!, [], state(whiteouts)), userPrompt(battle, askedOf(battle, false)!, [], state(whiteouts))];
+    for (const prompt of prompts(0)) expect(prompt).not.toContain("Whiteouts:");
+    for (const prompt of prompts(1)) expect(prompt).toContain("Whiteouts: 1 of 3.\n");
+    for (const prompt of prompts(2)) expect(prompt).toContain("Whiteouts: 2 of 3. One more whiteout ends the Run.");
+  });
+
+  test("a Time limit is a rule of the walk with the game time at each walk, and the battle has neither", () => {
+    const timed = { ...settings, timeLimit: 10 };
+    expect(systemPrompt(timed, false)).toContain("The Run ends after 10 hours of game time. The game is frozen while you think: only your actions use game time.");
+    expect(battleSystemPrompt(timed)).not.toContain("game time");
+    const state = { ...NO_TURN, limits: { whiteoutLimit: null, timeLimit: 1.5, whiteouts: 0, frame: Math.round((4 * 3600 + 12 * 60) * GBA_FPS) } };
+    const walk = route1(22, []);
+    const battle = wildPidgey({ party: 1 });
+    expect(userPrompt(walk, askedOf(walk, false)!, [], state)).toContain("Game time: 4 h 12 min of 1 h 30 min.");
+    expect(userPrompt(battle, askedOf(battle, false)!, [], state)).not.toContain("Game time");
   });
 
   test("the first Decision point of a Run with no Pokémon is a character turn; then each prompt has the character; a Run that already has a Pokémon and no character has no character turn", () => {

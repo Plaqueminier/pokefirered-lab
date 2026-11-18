@@ -9,7 +9,7 @@ import type { FlyDestination } from "../fly-destinations";
 import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, type MapScriptCells, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type SafariZone, type WaitingFor, walkRemoves } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
-import { type BotInfo, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } from "../protocol";
+import { type BotInfo, type EndReason, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } from "../protocol";
 import { Run, START_SAVE } from "../run";
 import type { TrainerNames } from "../save-file";
 import { type Atlas, AtlasWatch, type Sight } from "./atlas";
@@ -20,7 +20,7 @@ import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
 import { type Cell, type Destination, destinationOf, findRoute, headingAlong, kindAt, type MapSource, neighbours, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
 import { at, LoopGuard, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
-import { afterAction, RunEnd, RunLimits } from "./run-limits";
+import { afterAction, modelLimits, RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
   type ActionEvent,
@@ -38,6 +38,7 @@ import {
   type RunEvent,
   type RunHeader,
   type RunRecord,
+  runWhiteouts,
   type SummaryAnswer,
   type SummaryEvent,
   withStateEvents,
@@ -84,8 +85,6 @@ export type FlyUse = { usable: boolean; destinations: FlyTarget[] };
 
 export type Observation = ObservationBase &
   ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; safari?: SafariZone; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; fly: FlyUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
-
-export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
 export type RunResult = { endReason: EndReason; frames: number; milestones: Milestone[]; rawInputs: number; lastText?: string; planLimit?: string };
 
@@ -206,6 +205,8 @@ export type HarnessOptions = {
   stopAsked?: () => boolean;
   /** The Run continues this Run record: the Harness loads its Checkpoint or replays its buttons, and keeps its events. `name` is its file in lab/runs/. */
   parent?: ParentRecord;
+  /** The first frame of the Run, from which its whiteouts count. An Extended Run gives the start of its first part. By default: the frame where the play starts. */
+  runStart?: number;
   /** The read of the Checkpoint at the end of the parent: a good one replaces the replay, and else `resumed` gives the problem. */
   checkpoint?: CheckpointRead;
 };
@@ -214,7 +215,7 @@ export type ParentRecord = { name: string; record: RunRecord };
 
 export type ReplayStop = { frame: number; events: number };
 
-export type ReplayedState = { observation: Observation; events: RunEvent[]; noProgress: NoProgress; names: TrainerNames | null };
+export type ReplayedState = { observation: Observation; events: RunEvent[]; noProgress: NoProgress; names: TrainerNames | null; frame: number; whiteouts: number };
 
 // A mark of a replay, at the index of an event of the record: the start of a part of the Run, or the end of an action.
 type ReplayMark = { index: number } & ({ kind: "partStart" } | { kind: "action"; progressed: boolean; decisionPoint: boolean });
@@ -271,6 +272,7 @@ export class Harness {
   readonly #menus: MenuDriver;
   readonly #items: ItemDriver;
   readonly #parent: string | null;
+  #runStart: number | undefined;
   readonly #walk: WalkDriver;
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
   #playStart: { frame: number; rawInputs: number } | null = null;
@@ -289,6 +291,7 @@ export class Harness {
     this.#noProgressLimit = options.noProgressLimit;
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#parent = options.parent?.name ?? null;
+    this.#runStart = options.runStart;
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game, this.#knowledge);
     // A replay does not pass here, so an old Run record that stopped an evolution with B stays the same game.
@@ -329,6 +332,11 @@ export class Harness {
   get noProgress(): NoProgress {
     if (this.#phase.kind !== "playing") throw new Error("noProgress exists only while a Bot plays");
     return this.#phase.limits.noProgress;
+  }
+
+  get whiteouts(): number {
+    if (this.#phase.kind !== "playing") throw new Error("whiteouts exist only while a Bot plays");
+    return this.#phase.limits.whiteouts;
   }
 
   get rawInputs(): number {
@@ -410,14 +418,13 @@ export class Harness {
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
     const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
     const noProgressLimit = this.#noProgressLimit ?? bot.noProgressLimit ?? Number.POSITIVE_INFINITY;
-    const costLimit = bot.model?.costLimit ?? Number.POSITIVE_INFINITY;
-    const tokenLimit = bot.model?.tokenLimit ?? Number.POSITIVE_INFINITY;
-    const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, costLimit, tokenLimit, progress: this.progress(), firstEvent: this.#events.length, stopAtWhiteout: bot.model?.stopAtWhiteout ?? false });
+    const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, progress: this.progress(), ...modelLimits(bot.model), runStart: (this.#runStart ??= this.frame) }, this.#events);
     this.#phase = { kind: "playing", limits };
     let endReason: EndReason = "bot stopped";
     let planLimit: string | undefined;
     let result: RunResult | null = null;
     try {
+      limits.beforeFrame(this.frame);
       this.lightDarkMap();
       await bot.play(this);
     } catch (error) {
@@ -501,7 +508,7 @@ export class Harness {
   record(): RunRecord {
     if (this.#phase.kind !== "ended") throw new Error("no Run record: play a Bot first");
     const { bot, result } = this.#phase;
-    const header = { ...this.#run.origin, knowledge: this.#knowledge, bot, ...(this.#parent ? { parent: this.#parent } : {}) };
+    const header = { ...this.#run.origin, knowledge: this.#knowledge, bot, ...(this.#parent ? { parent: this.#parent, runStart: this.#runStart } : {}) };
     return { format: RECORD_FORMAT, header, buttons: this.#buttons.holds.map(([keys, frames]) => [keys, frames]), events: [...this.#events], track: [...this.#watch.track], state: [...this.#watch.stateTrack], result };
   }
 
@@ -925,7 +932,10 @@ export class Harness {
     this.#events.splice(firstEvent, 0, { type: "action", frame: start, ...entry });
     this.actionEnded(entry);
     this.#onAction?.(entry, this);
-    if (this.#phase.kind === "playing") this.#phase.limits.atAction(this.#run.game.milestones(), this.progress(), isDecisionPoint(this.#run.game.waitingFor()), this.#events.length);
+    if (this.#phase.kind === "playing") {
+      const waiting = this.#run.game.waitingFor();
+      this.#phase.limits.atAction(this.#run.game.milestones(), this.progress(), this.#events.length, { frame: this.frame, decisionPoint: isDecisionPoint(waiting), walk: waiting.kind === "walk" });
+    }
     this.stopIfAsked();
     return result;
   }
@@ -1030,7 +1040,7 @@ export class Harness {
     const marks: ReplayMark[] = [...partStarts.map((index): ReplayMark => ({ kind: "partStart", index })), ...actionMarks].toSorted((a, b) => a.index - b.index || Number(a.kind === "action") - Number(b.kind === "action"));
     let noProgress: NoProgress = { stuck: 0, since: 0 };
     for (const mark of marks.filter((m) => m.index < before.length)) noProgress = mark.kind === "partStart" ? { stuck: 0, since: placeOf(mark.index) } : afterAction(noProgress, mark.progressed, mark.decisionPoint, endOf(placeOf(mark.index)));
-    return { observation: this.observe(), events, noProgress, names: events.some((event) => event.type === "action") ? this.trainerNames() : null };
+    return { observation: this.observe(), events, noProgress, names: events.some((event) => event.type === "action") ? this.trainerNames() : null, frame: this.frame, whiteouts: runWhiteouts(events, 0) };
   }
 
   private progress(): number {
@@ -1101,10 +1111,10 @@ export class Harness {
   private advance(keys: number): boolean {
     if (this.#phase.kind === "playing") this.#phase.limits.beforeFrame(this.frame);
     this.#run.runFrame(keys);
-    if (this.#phase.kind === "playing") this.#phase.limits.afterFrame(() => this.#run.game.whitingOut());
     this.#buttons.push(keys);
     const events = this.#watch.onFrame(this.frame);
     this.#events.push(...events);
+    if (this.#phase.kind === "playing") this.#phase.limits.afterFrame(events);
     this.#atlas.onFrame();
     const started = events.some((e) => e.type === "battle" && e.state === "start");
     this.#battles.onFrame(started, this.#run.game.enemyMovesPrinted());

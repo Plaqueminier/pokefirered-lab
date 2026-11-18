@@ -4,19 +4,19 @@ import { safely } from "../game";
 import { evolutionGenome, type PlayerRun } from "../genetic/evolution";
 import { type Genome, readGenome } from "../genetic/genome";
 import { providerProblem } from "../model/providers";
-import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, tokensFromMillions } from "../protocol";
+import { actionText, DEFAULT_PROVIDER, MODEL_PROVIDERS, modelLabel, REASONING, SPEND_WORDS, spendText, spentIn, STARTERS, timeLimitText, tokensFromMillions, whiteoutLimitText } from "../protocol";
 import { isSeed } from "../run";
 import { errorText, Harness, KNOWLEDGE_LEVELS, type KnowledgeLevel, loadBot, type ParentRecord } from "./harness";
 import { limitOf, modelTotals, providerOf, readRecord, withGenome, writeRecord } from "./record";
 
 const USAGE = `Usage: bun run bot <name in bots/> [player|full] [--seed <0 to 0xffff>]
        bun run bot genetic --genome <Genome file>|<Evolution>:<Genome id> [player|full] [--seed <0 to 0xffff>]
-       bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--coach <model id>] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--no-stop-at-whiteout] [--continue <Run record>]`;
+       bun run bot model [<model id>] [player|full] [--provider ${MODEL_PROVIDERS.join("|")}] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning ${REASONING.join("|")}] [--thinking ${REASONING.join("|")}] [--coach <model id>] [--temperature <0 to 2>] [--starter ${STARTERS.join("|")}] [--whiteout-limit <number>|none] [--time-limit <hours, a multiple of 0.5>] [--continue <Run record>]`;
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
-  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "no-stop-at-whiteout": { type: "boolean" }, continue: { type: "string" }, genome: { type: "string" }, seed: { type: "string" } },
+  options: { provider: { type: "string" }, "cost-limit": { type: "string" }, "token-limit": { type: "string" }, reasoning: { type: "string" }, thinking: { type: "string" }, coach: { type: "string" }, temperature: { type: "string" }, starter: { type: "string" }, "whiteout-limit": { type: "string" }, "time-limit": { type: "string" }, continue: { type: "string" }, genome: { type: "string" }, seed: { type: "string" } },
 });
 const [name, ...rest] = positionals;
 const isLevel = (arg: string): arg is KnowledgeLevel => (KNOWLEDGE_LEVELS as readonly string[]).includes(arg);
@@ -26,7 +26,7 @@ if (!name || ids.length > 1) {
   process.exit(1);
 }
 const number = (value: string | undefined) => (value === undefined ? undefined : Number(value));
-const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: values.coach === undefined ? undefined : { id: values.coach }, temperature: number(values.temperature), starter: values.starter, stopAtWhiteout: values["no-stop-at-whiteout"] ? false : undefined };
+const model = { id: ids[0], provider: values.provider, costLimit: number(values["cost-limit"]), tokenLimit: values["token-limit"] === undefined ? undefined : tokensFromMillions(Number(values["token-limit"])), reasoning: values.reasoning, thinking: values.thinking, coach: values.coach === undefined ? undefined : { id: values.coach }, temperature: number(values.temperature), starter: values.starter, whiteoutLimit: values["whiteout-limit"] === "none" ? null : number(values["whiteout-limit"]), timeLimit: number(values["time-limit"]) };
 const seed = values.seed === undefined ? undefined : Number(values.seed);
 if (seed !== undefined && !isSeed(seed)) {
   console.error(`The seed ${values.seed} is not a whole number from 0 to 0xffff.`);
@@ -91,7 +91,7 @@ const harness = await Harness.open({
   },
 });
 const limit = bot.model && limitOf(bot.model);
-const settings = bot.model ? `, model ${modelLabel(bot.model)} on ${provider} (${limit && `${SPEND_WORDS[limit.unit].limit.toLowerCase()} ${spendText(limit)}`}, reasoning ${bot.model.reasoning}, thinking ${bot.model.thinking}, temperature ${bot.model.temperature ?? "of the model"}, starter ${bot.model.starter}, stop at a whiteout ${bot.model.stopAtWhiteout ? "on" : "off"})` : "";
+const settings = bot.model ? `, model ${modelLabel(bot.model)} on ${provider} (${limit && `${SPEND_WORDS[limit.unit].limit.toLowerCase()} ${spendText(limit)}`}, reasoning ${bot.model.reasoning}, thinking ${bot.model.thinking}, temperature ${bot.model.temperature ?? "of the model"}, starter ${bot.model.starter}, ${whiteoutLimitText(bot.model.whiteoutLimit)}, ${timeLimitText(bot.model.timeLimit)})` : "";
 const from = parent ? `, continues ${parent.name}` : "";
 console.log(`Bot ${bot.name} ${bot.version}${settings}${from}, Knowledge level ${knowledge}: first Decision point at frame ${harness.frame}`);
 const error = await harness.play(bot).then(

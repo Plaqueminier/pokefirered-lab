@@ -8,7 +8,7 @@ import { isDecisionPoint } from "../game";
 import { Memory } from "../memory";
 import type { BoxMon } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
-import type { BotInfo } from "../protocol";
+import { type BotInfo, GBA_FPS } from "../protocol";
 import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
@@ -359,6 +359,30 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     // The text of the selection waits for a key: the texts of the turn come with the next readText.
     expect(await harness.fight(1)).toMatchObject({ status: "done" });
     expect(await harness.readText()).toMatchObject({ status: "done", text: expect.arrayContaining(["SQUIRTLE has no moves left!", "SQUIRTLE used STRUGGLE!"]) });
+  });
+
+  test("a Time limit that comes in a battle lets the battle play to its end, then the Run ends", async () => {
+    const scout = await Harness.open();
+    await starter.play(scout);
+    await scout.goTo(12, 0, "Route1");
+    const limitFrame = scout.frame + 10;
+    const harness = await Harness.open();
+    const bot: Bot = {
+      name: "timed",
+      version: "1",
+      model: { ...modelSettings({}, {}), timeLimit: limitFrame / 3600 / GBA_FPS },
+      play: async (played) => {
+        await starter.play(played);
+        expect(await played.goTo(12, 0, "Route1")).toMatchObject({ status: "interrupted", reason: "battle" });
+        await played.readText();
+        await played.run();
+        await played.readText();
+        throw new Error("the Run continues after the Time limit");
+      },
+    };
+    expect(await harness.play(bot)).toMatchObject({ endReason: "time limit" });
+    expect(harness.frame).toBeGreaterThan(limitFrame + 60);
+    expect(harness.events.findLast((e) => e.type === "battle")).toMatchObject({ state: "end" });
   });
 
   test("in a wild battle, availableActions lists run, and run leaves the battle", async () => {
@@ -935,7 +959,7 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on
     const bot: Bot = {
       name: "whiteout",
       version: "1",
-      model: modelSettings({}, {}),
+      model: modelSettings({ whiteoutLimit: 1 }, {}),
       play: async (played) => {
         await played.goTo(26, 26);
         await played.readText();
@@ -957,6 +981,24 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on
     });
     expect(read.result.frames).toBeLessThan(3600);
     expect(harness.observe()).toMatchObject({ map: { name: "ViridianCity_PokemonCenter_1F" }, waitingFor: { kind: "walk" }, party: [{ hp: 22, maxHp: 22, status: "none" }] });
+  });
+
+  test("with a Whiteout limit of 2, the Run continues after the first whiteout and counts it", async () => {
+    const harness = await Harness.open({ startSave: WHITEOUT_SAVE });
+    let counted = 0;
+    const bot: Bot = {
+      name: "whiteout",
+      version: "1",
+      model: modelSettings({ whiteoutLimit: 2 }, {}),
+      play: async (played) => {
+        await played.goTo(26, 26);
+        await played.readText();
+        await played.readText();
+        counted = played.whiteouts;
+      },
+    };
+    expect(await harness.play(bot)).toMatchObject({ endReason: "bot stopped" });
+    expect(counted).toBe(1);
   });
 });
 

@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorText } from "../harness/harness";
 import type { ModelOptions, ModelSettings, Prompt, Usage } from "../harness/record";
-import { CLAUDE_MODELS, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS } from "../protocol";
+import { CLAUDE_MODELS, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, DEFAULT_WHITEOUT_LIMIT, hasNoReasoningOff, isPlanProvider, MODEL_PROVIDERS, type ModelProvider, type PlanProvider, type ProviderStatus, REASONING, type ReasoningLevel, STARTERS, timeLimitProblem, whiteoutLimitProblem } from "../protocol";
 import { type AskOptions, DECISION_FORMAT, type ModelClient, type ModelReply, NO_OPENROUTER_KEY, openRouter } from "./openrouter";
 
 const DEFAULT_COST_LIMIT = 0.5;
@@ -60,7 +60,11 @@ export function modelSettings(given: ModelOptions, env: Record<string, string | 
   const id = fullId(given.id || DEFAULT_MODELS[provider]);
   const coachId = given.coach?.id?.trim() ? fullId(given.coach.id.trim()) : "";
   const coach = coachId && coachId !== id ? { coach: { id: coachId } } : {};
-  const choice = { id, reasoning, thinking, temperature, starter, stopAtWhiteout: given.stopAtWhiteout ?? true, ...coach };
+  const whiteoutLimit = given.whiteoutLimit === undefined ? DEFAULT_WHITEOUT_LIMIT : given.whiteoutLimit;
+  const timeLimit = given.timeLimit ?? null;
+  const limitProblem = whiteoutLimitProblem(whiteoutLimit) ?? timeLimitProblem(timeLimit);
+  if (limitProblem) throw new Error(limitProblem);
+  const choice = { id, reasoning, thinking, temperature, starter, whiteoutLimit, timeLimit, ...coach };
   if (isPlanProvider(provider)) {
     if (given.costLimit !== undefined) throw new Error(`the provider ${provider} has a token limit, not a cost limit`);
     const tokenLimit = given.tokenLimit ?? DEFAULT_TOKEN_LIMIT;

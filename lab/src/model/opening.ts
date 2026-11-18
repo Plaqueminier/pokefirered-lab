@@ -9,7 +9,7 @@ import { type AnswerFormat, DECISION_FORMAT } from "./openrouter";
 import { battleSystemPrompt, systemPrompt, type TurnKind, turnRequest, userPrompt } from "./prompt";
 
 /** The version of the model bot. A change of what the bot sends to the model needs a new version, here and in the README. */
-export const BOT_VERSION = "50";
+export const BOT_VERSION = "51";
 
 const TURN_FORMATS: Record<TurnKind, AnswerFormat> = {
   normal: DECISION_FORMAT,
@@ -30,7 +30,7 @@ function turnFormat(turn: TurnKind, advises: boolean, battle: boolean): AnswerFo
 }
 
 /** The first prompt of a conversation, with the format of the answer: the bot and the battle lab build it here. */
-export function openingPrompt(settings: ModelSettings, { observation, before, events, noProgress, names }: PromptInput, asked: Asked, turn: TurnKind): Opening {
+export function openingPrompt(settings: ModelSettings, { observation, before, events, noProgress, names, frame, whiteouts }: PromptInput, asked: Asked, turn: TurnKind): Opening {
   const happened = importantEvents(before, observation, events);
   const tree = memoryTree(events);
   const memory = turn === "review" ? reviewMemory(tree) : { lines: memoryLines(tree), sentences: [] };
@@ -39,7 +39,8 @@ export function openingPrompt(settings: ModelSettings, { observation, before, ev
   const battle = inBattle(asked);
   const request = [...turnRequest(turn, settings.starter, names), ...(advises ? ADVICE_REQUEST : [])];
   const advice = coached ? [...(battle ? battleAdviceLine(events) : adviceLine(events)), ...wantLines(events, asked, observation.bag)] : [];
-  const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice });
+  const limits = { whiteoutLimit: settings.whiteoutLimit, timeLimit: settings.timeLimit, whiteouts, frame };
+  const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice, limits });
   const system = battle ? battleSystemPrompt(settings) : systemPrompt(settings, observation.party.length > 0, plays ? "coach" : "player");
   return { prompt: { system, user }, format: turnFormat(turn, advises, battle), plays, advises, thinks: turn !== "normal" || plays, sentences: memory.sentences };
 }

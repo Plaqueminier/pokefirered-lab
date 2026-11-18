@@ -1,4 +1,4 @@
-import type { EndReason } from "../src/harness/harness";
+import type { EndReason } from "../src/protocol";
 import type { StarterSpecies } from "../src/protocol";
 import { CELL, type RaceFile } from "../src/race/file";
 import { Store } from "./cursor";

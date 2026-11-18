@@ -751,3 +751,13 @@ The steps of the lab, in order. Each step gives what we added, and what a Run ta
     - The Harness loads a Checkpoint only for the same Run record, of the same format and with the same fields. Else it replays the buttons, and a notice tells why.
     - The tests found that a replay does not give the Atlas of the Run: `observe()` looks at the people at each Decision point, and a replay does not. A Checkpoint keeps the Atlas of the Run itself. A Run from the Checkpoint gives the same Run record as a Run from a replay. It also gives the same Atlas as the Run that continues in its own Harness.
     - The worker of an ended Run stays idle with its Harness. "Keep the same Run" then continues in this worker, with no Checkpoint. A worker keeps the modules that it loaded. So after a change of a file of `lab/src` or `lab/bots`, the new part starts from the Checkpoint in a new worker. The Viewer keeps 4 idle workers at most: a long Run keeps hundreds of MB of prompts. They take no place, and a removed cell closes its worker.
+
+## 53. The Whiteout limit and the Time limit (2026-11-18)
+
+106. The model bot goes to version 51. A Run now ends on two fixed limits, so that two Runs end on the same terms and a Race has a clock (issue #109). What version 51 changes:
+    - The **Whiteout limit** replaces the option "stop at a whiteout". The Run ends at the whiteout of this number, 3 by default, or never. Before, the first whiteout ended the Run, or no whiteout did.
+    - With a limit of 2 or more, the system prompt tells what a whiteout costs and at which whiteout the Run ends. After the first whiteout, the walk and the battle show "Whiteouts: 1 of 3.". When one whiteout is left, the line adds "One more whiteout ends the Run."
+    - The **Time limit** ends the Run after a number of hours of game time from frame 0. It is a multiple of 0.5, with no limit by default. A battle at the limit plays to its end, and the Run ends at the next walk, or at the start of another battle. So the badge that a script gives after the battle counts.
+    - The walk system prompt tells the Time limit, and the walk prompt shows "Game time: 4 h 12 min of 10 h." The line comes after the parts that a provider caches. The Battle prompt shows no time.
+    - An Extended Run keeps the two limits of the start and counts all its parts. So the Viewer does not extend a Run that ended at `whiteout` or at `time limit`. A Continued Run has its own limits.
+    - The list of the Viewer reads the end reason at the end of each Run record. So it refuses Extend also for an old Run record that ended at `whiteout`.

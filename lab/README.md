@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has two **Bots**: the model bot (`bots/model.ts`, version 50, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself, when a Pokémon of the party knows the move. The player must also have the badge of the move. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the flight takes fewer frames than the walk. This needs badge 3 and a Pokémon of the party that knows FLY. At each **Decision point** in a battle, the model bot sends the **Battle prompt**. It has a system prompt and a prompt about the battle only, with no **Memory tree** and no **Atlas**.
+The lab has two **Bots**: the model bot (`bots/model.ts`, version 51, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself, when a Pokémon of the party knows the move. The player must also have the badge of the move. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the flight takes fewer frames than the walk. This needs badge 3 and a Pokémon of the party that knows FLY. At each **Decision point** in a battle, the model bot sends the **Battle prompt**. It has a system prompt and a prompt about the battle only, with no **Memory tree** and no **Atlas**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -35,8 +35,15 @@ The lab has two **Bots**: the model bot (`bots/model.ts`, version 50, no goal) a
 
 ```
 bun run bot model [<model id>] [player|full] [--provider openrouter|claude-code|codex|grok] [--cost-limit <dollars>] [--token-limit <millions of tokens>] [--reasoning off|low|medium|high]
-  [--thinking off|low|medium|high] [--coach <model id>] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--no-stop-at-whiteout] [--continue <Run record>]
+  [--thinking off|low|medium|high] [--coach <model id>] [--temperature <0 to 2>] [--starter free|BULBASAUR|CHARMANDER|SQUIRTLE] [--whiteout-limit <number>|none] [--time-limit <hours>] [--continue <Run record>]
 ```
+
+Two limits end a **Run** of the model bot, and the system prompt tells them to the model:
+
+- `--whiteout-limit` is the **Whiteout limit**: the **Run** ends at the whiteout of this number, 3 by default. `none` gives no limit.
+- `--time-limit` is the **Time limit**, in hours of game time from frame 0, a multiple of 0.5. By default there is no limit. A battle at the limit plays to its end, and the **Run** ends at the next walk.
+
+An **Extended Run** keeps the two limits of its **Run record**, and the Viewer does not extend a **Run** that ended at one of them.
 
 The default models are `deepseek/deepseek-v4.1-flash`, `claude-haiku-5-5`, `gpt-5.6-luna` and `grok-4.7`. On `claude-code`, the aliases `haiku`, `sonnet`, `opus` and `fable` become the full ids `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`. To use a later version, give its full id. A **Plan provider** (`claude-code`, `codex`, `grok`) uses the quota of the subscription, and your own work uses the same quota. It takes `--token-limit` in millions of tokens (`0.5` is 500,000 tokens, and the default is 1) and refuses `--cost-limit` and `--temperature`; `openrouter` refuses `--token-limit`. At the end of the quota, the **Run** ends with `plan limit`, and you continue it later with `--continue`. `--coach` gives the **Run** a **Coach** on the same provider: it plays the Character, Reflection and Review turns, the Summary calls and the move to forget, at the `--thinking` level, which the player then never uses. A Coach with the model of the Run is no Coach. The page "Model providers" of the Doc tab tells how to log in, which Token limit to choose and what to do when a provider does not start.
 

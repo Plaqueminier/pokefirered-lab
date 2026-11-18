@@ -228,8 +228,8 @@ class ModelPlay {
   }
 
   private newConversation(observation: Observation, asked: Asked, turn: TurnKind): Conversation {
-    const { events, noProgress } = this.harness;
-    const { prompt, format, plays, advises, thinks, sentences } = openingPrompt(this.settings, { observation, before: this.#promptObservation, events, noProgress, names: this.harness.fixedNames() }, asked, turn);
+    const { events, noProgress, frame, whiteouts } = this.harness;
+    const { prompt, format, plays, advises, thinks, sentences } = openingPrompt(this.settings, { observation, before: this.#promptObservation, events, noProgress, names: this.harness.fixedNames(), frame, whiteouts }, asked, turn);
     return { mind: plays ? this.coach : this.player, format, advises, advice: {}, system: prompt.system, user: prompt.user, turns: [], atlasShown: showsAtlas(turn), impossible: 0, stuck: noProgress.stuck, turnKind: turn, thinks, sentences };
   }
 

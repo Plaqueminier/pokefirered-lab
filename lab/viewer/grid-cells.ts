@@ -28,7 +28,7 @@ export type GridCell = {
   name: string;
   bot: string;
   model: Pick<ModelFacts, "id" | "coach"> | null;
-  whiteoutEnds: boolean;
+  limits: CellLimits | null;
   frame: number;
   milestone: Milestone | null;
   spent: Spend | null;
@@ -57,9 +57,10 @@ function recordRunOf(name: string | null): RecordRun | null {
   return id === null ? null : { id, evolution: evolution?.evolution ?? null, file: name };
 }
 
-// The Harness stops at a whiteout only for a model bot that asks for it.
-function whiteoutEnds(model: Pick<ModelFacts, "stopAtWhiteout"> | null): boolean {
-  return model?.stopAtWhiteout ?? false;
+export type CellLimits = Pick<ModelFacts, "whiteoutLimit" | "timeLimit"> & { whiteouts: number };
+
+function limitsOf(model: Pick<ModelFacts, "whiteoutLimit" | "timeLimit"> | null, whiteouts: number): CellLimits | null {
+  return model && { whiteoutLimit: model.whiteoutLimit, timeLimit: model.timeLimit, whiteouts };
 }
 
 function liveState(run: RunSummary): CellState {
@@ -70,15 +71,15 @@ function liveState(run: RunSummary): CellState {
 }
 
 function liveCell(run: RunSummary): GridCell {
-  const { id, bot, model, frame, milestone, record, names, from, party } = run;
+  const { id, bot, model, frame, milestone, whiteouts, record, names, from, party } = run;
   const recordRun = recordRunOf(from?.kind === "extended" ? from.record : record);
-  return { kind: "live", runId: id, name: `Run ${id}`, bot, model, whiteoutEnds: whiteoutEnds(model), frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names, recordRun, party };
+  return { kind: "live", runId: id, name: `Run ${id}`, bot, model, limits: limitsOf(model, whiteouts), frame, milestone, spent: model?.spent ?? null, state: liveState(run), record, names, recordRun, party };
 }
 
 function replayCell(replay: GridReplay, cursor: number): GridCell {
-  const { id, name, bot, model, frame, milestone, spent, battle, endReason, error, frames, names, party } = replay;
+  const { id, name, bot, model, frame, milestone, whiteouts, spent, battle, endReason, error, frames, names, party } = replay;
   const state: CellState = error ? { kind: "ended", result: `error: ${error}` } : cursor >= frames ? { kind: "ended", result: endReason } : battle ? { kind: "battle" } : { kind: "plays" };
-  return { kind: "replay", runId: id, name, bot, model, whiteoutEnds: whiteoutEnds(model), frame, milestone, spent, state, record: name, names, recordRun: recordRunOf(name), party };
+  return { kind: "replay", runId: id, name, bot, model, limits: limitsOf(model, whiteouts), frame, milestone, spent, state, record: name, names, recordRun: recordRunOf(name), party };
 }
 
 // The Runs that play come before the ended ones, so a small Grid shows what plays now.

@@ -281,7 +281,7 @@ describe.skipIf(!ready)("model bot", () => {
     expect(battle).toContain("  - TAIL WHIP: NORMAL, power ---, accuracy 100, PP 30/30. The user wags its tail cutely, making the foe lower its DEFENSE stat.");
 
     const { header } = harness.record();
-    expect(header.bot).toEqual({ name: "model", version: BOT_VERSION, model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true } });
+    expect(header.bot).toEqual({ name: "model", version: BOT_VERSION, model: { id: "fake/model", provider: "openrouter", costLimit, reasoning: "off", thinking: "medium", temperature: null, starter: "free", whiteoutLimit: 3, timeLimit: null } });
   });
 
   test("a stop ends the Model call that waits: the Run ends with user stop, and the record keeps the call with its error and no cost", async () => {
@@ -298,13 +298,13 @@ describe.skipIf(!ready)("model bot", () => {
     expect(calls[0]).toMatchObject({ answer: null, decision: null, error: "the request failed: a person stopped the Run", usage: { cost: 0 } });
   });
 
-  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the stop at a whiteout are in the rules", async () => {
+  test("the Run ends with cost limit, with no error and with a Run record, when its cost is more than the cost limit; a starter of the Run and the Whiteout limit are in the rules", async () => {
     const harness = await Harness.open();
     const bot = modelBot({ costLimit: 2.5 * COST, starter: "CHARMANDER" }, () => answers(reply("goTo 8 6").content));
     expect(await harness.play(bot)).toMatchObject({ endReason: "cost limit" });
     expect(harness.record().result.endReason).toBe("cost limit");
     expect(modelEvents(harness)).toHaveLength(3);
-    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, the Run ends.");
+    expect(modelEvents(harness)[0].prompt.system).toContain("Choose CHARMANDER as your first Pokémon.\nIf all your Pokémon faint, you lose some money");
   });
 
   test("the character turn thinks, with the schema of the character, and the next calls do not; the record keeps the reasoning, and the next prompt has the character", async () => {

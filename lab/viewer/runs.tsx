@@ -1,7 +1,7 @@
 import { Play, Square } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, modelLabel, type ModelProvider, parseEvolutionPath, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, tokensFromMillions } from "../src/protocol";
+import { type BotInfo, type ClientMessage, DEFAULT_MODELS, DEFAULT_PROVIDER, DEFAULT_REASONING, DEFAULT_STARTER, DEFAULT_THINKING, DEFAULT_TOKEN_LIMIT, DEFAULT_WHITEOUT_LIMIT, extendProblem, hasNoReasoningOff, isPlanProvider, MILLION, MODEL_PROVIDERS, modelLabel, type ModelProvider, parseEvolutionPath, type ProviderStatus, REASONING, type ReasoningLevel, type RecordFacts, type RunSummary, type ShownRun, SPEND_WORDS, type Spend, type SpendUnit, spendText, STARTERS, timeLimitProblem, timeLimitValue, tokensFromMillions, whiteoutLimitProblem, whiteoutLimitValue } from "../src/protocol";
 import type { SpendLimit } from "../src/harness/record";
 import { Button, Checkbox, Field, Input } from "./components";
 import { Select } from "./components-layers";
@@ -145,6 +145,10 @@ function LimitField({ unit, value, onInput, placeholder, hint }: { unit: SpendUn
   );
 }
 
+function limitValue(text: string): number | null {
+  return text.trim() === "" ? null : Number(text);
+}
+
 function limitOption(unit: SpendUnit, text: string): SpendLimit {
   const given = text.trim();
   if (!given) return {};
@@ -182,7 +186,12 @@ function NewRunForm({ parent, parentBot, bots, providers, places, send, startFro
   const [thinking, setThinking] = useState<ReasoningLevel>(DEFAULT_THINKING);
   const [coach, setCoach] = useState("");
   const [starter, setStarter] = useState<(typeof STARTERS)[number]>(DEFAULT_STARTER);
-  const [stopAtWhiteout, setStopAtWhiteout] = useState(true);
+  const [whiteoutText, setWhiteoutText] = useState(String(DEFAULT_WHITEOUT_LIMIT));
+  const [timeText, setTimeText] = useState("");
+  const whiteoutLimit = limitValue(whiteoutText);
+  const timeLimit = limitValue(timeText);
+  const whiteoutProblem = whiteoutLimitProblem(whiteoutLimit);
+  const timeProblem = timeLimitProblem(timeLimit);
   const [countText, setCountText] = useState("1");
   const count = Number(countText);
   const countOk = Number.isInteger(count) && count >= 1 && count <= freePlaces;
@@ -195,7 +204,7 @@ function NewRunForm({ parent, parentBot, bots, providers, places, send, startFro
   const words = SPEND_WORDS[unit];
   const defaultLimit = plan ? DEFAULT_TOKEN_LIMIT : chosenInfo && "costLimit" in chosenInfo ? chosenInfo.costLimit : null;
   const limit = plan ? tokenLimit : costLimit;
-  const canStart = chosenBot !== "" && countOk && problem === null;
+  const canStart = chosenBot !== "" && countOk && problem === null && (!modelBot || (whiteoutProblem === null && timeProblem === null));
   const start = () => {
     if (!canStart) return;
     const options = modelBot
@@ -207,7 +216,8 @@ function NewRunForm({ parent, parentBot, bots, providers, places, send, startFro
           thinking: option(thinking, DEFAULT_THINKING),
           coach: coach.trim() ? { id: coach.trim() } : undefined,
           starter: option(starter, DEFAULT_STARTER),
-          stopAtWhiteout,
+          whiteoutLimit,
+          timeLimit,
         }
       : {};
     send({ type: "start-bot", name: chosenBot, model: options, count, ...(parent === undefined ? {} : { parent }) });
@@ -244,6 +254,12 @@ function NewRunForm({ parent, parentBot, bots, providers, places, send, startFro
             <Field label="Starter" hint="free: the character of the model chooses.">
               <Select options={STARTERS.map((name) => ({ value: name, label: name }))} value={starter} onChange={setStarter} />
             </Field>
+            <Field label="Whiteout limit" hint="The number of the whiteout that ends the Run. Empty: no limit, the Run continues after each whiteout." error={whiteoutProblem ?? undefined}>
+              <Input type="number" min="1" step="1" invalid={whiteoutProblem !== null} value={whiteoutText} placeholder="no limit" onInput={(event) => setWhiteoutText(event.currentTarget.value)} />
+            </Field>
+            <Field label="Time limit" hint="In hours of game time from frame 0, also through a parent. A battle at the limit plays to its end. Empty: no limit." error={timeProblem ?? undefined}>
+              <Input type="number" min="0.5" step="0.5" invalid={timeProblem !== null} value={timeText} placeholder="no limit" onInput={(event) => setTimeText(event.currentTarget.value)} />
+            </Field>
           </>
         )}
         <Field label="Count" hint={`Runs of the Bot to start: 1 to ${freePlaces}, the free places.`} error={countError(countOk, places)}>
@@ -256,11 +272,6 @@ function NewRunForm({ parent, parentBot, bots, providers, places, send, startFro
         )}
       </div>
       {keepSameRun}
-      {modelBot && (
-        <Checkbox on={stopAtWhiteout} onChange={setStopAtWhiteout}>
-          Stop at a whiteout: the Run ends when all the Pokémon of the party faint
-        </Checkbox>
-      )}
       <div class="flex items-center gap-2">
         <Button variant="primary" disabled={!canStart} onClick={start}>
           <Play size={14} />
@@ -299,7 +310,8 @@ function ExtendedRunForm({ facts, onStart, bots, providers, places, startFrom, k
               <LockedField label="Thinking" value={model.thinking} />
               {model.coach && <LockedField label="Coach" value={model.coach.id} hint="At the thinking level." />}
               <LockedField label="Starter" value={model.starter} />
-              <LockedField label="Stop at a whiteout" value={model.stopAtWhiteout ? "yes" : "no"} />
+              <LockedField label="Whiteout limit" value={whiteoutLimitValue(model.whiteoutLimit)} hint="It counts the whiteouts of all the parts." />
+              <LockedField label="Time limit" value={timeLimitValue(model.timeLimit)} hint="It counts the game time from frame 0." />
           </>
         )}
       </div>

@@ -1,4 +1,4 @@
-import type { EndReason } from "../src/harness/harness";
+import type { EndReason } from "../src/protocol";
 import { CLAUDE_MODELS, type SpendUnit, type StateEntry, TRACK_FIELD, TRACK_POINT } from "../src/protocol";
 import { decodeTrack, type RaceBattle, type RaceFile, type RaceRun } from "../src/race/file";
 import { byFrame, countUntil, FrameList, type StateMon, type TeamAt, teamTimeline } from "../src/state-track";

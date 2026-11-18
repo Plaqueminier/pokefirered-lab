@@ -1,9 +1,9 @@
-import { HeartPulse, Skull, Star } from "lucide-preact";
+import { HeartPulse, type LucideIcon, Skull, Star } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
-import { type GridMon, lineOf } from "../src/protocol";
-import { Pill } from "./components";
+import { type GridMon, lineOf, whiteoutKind } from "../src/protocol";
+import { Pill, type Tone } from "./components";
 import { MonIcon } from "./components-race";
-import type { GridCell } from "./grid-cells";
+import type { CellLimits, GridCell } from "./grid-cells";
 import { HpBar, Name, StatusPill } from "./pokemon";
 import { loadArt, type RaceArt } from "./race-art";
 
@@ -41,13 +41,26 @@ export function StarterName({ party }: { party: readonly GridMon[] }) {
   );
 }
 
-export function WhiteoutPill({ ends }: { ends: boolean }) {
+type WhiteoutLook = { icon: LucideIcon; title: string; text: string; tone: Tone | undefined };
+
+// A Bot with no model has no limits: the Harness never stops it at a whiteout.
+export function whiteoutLook(limits: CellLimits | null): WhiteoutLook {
+  const whiteouts = limits?.whiteouts ?? 0;
+  const form = whiteoutKind(limits?.whiteoutLimit ?? null);
+  if (form.kind === "none") return { icon: HeartPulse, title: "After a whiteout, the Run continues.", text: "no whiteout limit", tone: undefined };
+  if (form.kind === "first") return { icon: Skull, title: "The first whiteout ends the Run.", text: "whiteout = death", tone: "bad" };
+  const left = form.limit - whiteouts;
+  return { icon: Skull, title: "The Run ends when the whiteouts reach the limit.", text: `whiteouts ${whiteouts} of ${form.limit}`, tone: left <= 1 ? "bad" : whiteouts > 0 ? "warn" : undefined };
+}
+
+export function WhiteoutPill({ look }: { look: WhiteoutLook }) {
+  const { icon: Icon, title, text, tone } = look;
   return (
-    <span title={ends ? "A whiteout ends the Run." : "After a whiteout, the Run plays on."}>
-      <Pill tone={ends ? "bad" : undefined}>
+    <span title={title}>
+      <Pill tone={tone}>
         <span class="inline-flex items-center gap-1">
-          {ends ? <Skull size={12} /> : <HeartPulse size={12} />}
-          {ends ? "whiteout = death" : "whiteout = plays on"}
+          <Icon size={12} />
+          {text}
         </span>
       </Pill>
     </span>

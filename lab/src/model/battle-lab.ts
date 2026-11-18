@@ -1,7 +1,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Harness, type ReplayedState, type ReplayStop } from "../harness/harness";
-import { botAtFrame, type ModelEvent, type ModelSettings, RUNS_DIR, type RunEvent, readRunRecord } from "../harness/record";
+import { botAtFrame, currentSettings, type ModelEvent, type ModelSettings, RUNS_DIR, type RunEvent, readRunRecord } from "../harness/record";
 import { askedOf } from "./decision";
 import { type Answer, askAll, hashOf, type LabCall, LABS_DIR, type LabOptions, readResults, runOptions } from "./lab";
 import { BOT_VERSION, openingPrompt, type PromptInput } from "./opening";
@@ -52,19 +52,20 @@ const MOMENTS: readonly MomentDef[] = [
   clear("00079", 662570, 3),
 ];
 
-export type BattleMoment = MomentDef & { id: string; record: string; runBot: string; inRun: string; settings: ModelSettings; input: Omit<PromptInput, "events"> & { events: number } };
+export type BattleMoment = MomentDef & { id: string; record: string; runBot: string; inRun: string; settings: ModelSettings; input: Omit<PromptInput, "events" | "frame" | "whiteouts"> & Partial<Pick<PromptInput, "frame" | "whiteouts">> & { events: number } };
 
 type MomentsFile = { events: Record<string, RunEvent[]>; moments: BattleMoment[] };
 
 type Result = Answer & { id: string; kind: Kind; bot: string; repeat: number };
 
 function momentPrompt(moment: Pick<BattleMoment, "settings" | "input">, events: readonly RunEvent[]): ReturnType<typeof openingPrompt> {
-  const input = { ...moment.input, events: events.slice(0, moment.input.events) };
+  // A moments file from before the Whiteout limit has no frame and no whiteouts.
+  const input = { ...moment.input, frame: moment.input.frame ?? 0, whiteouts: moment.input.whiteouts ?? 0, events: events.slice(0, moment.input.events) };
   const { observation, noProgress } = input;
   const turn = turnKind(observation.waitingFor.kind, input.events, noProgress, observation.party.length);
   const asked = askedOf(observation, showsAtlas(turn));
   if (!asked) throw new Error(`the Bot does not know the Decision point ${observation.waitingFor.kind}`);
-  return openingPrompt(moment.settings, input, asked, turn);
+  return openingPrompt(currentSettings(moment.settings), input, asked, turn);
 }
 
 function withoutTexts(event: RunEvent): RunEvent {

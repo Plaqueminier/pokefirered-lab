@@ -22,7 +22,7 @@ export function BotsPage() {
     <Page
       lead="A Bot decides what to do, and acts only through the Harness."
       details={[
-        ["model", "plays past the first rival battle, to the cost limit or the Token limit, a plan limit, a user stop, a whiteout, an unknown screen or `badge-8`. At each Decision point, it asks an AI model for the action (a Model call), except when a walk continues after a wild battle or after a trigger with no text. The code reads the texts alone."],
+        ["model", "plays past the first rival battle, up to a limit: the cost limit or the Token limit, a plan limit, the Whiteout limit (3 by default) or the Time limit. A user stop, an unknown screen or `badge-8` also ends it. At each Decision point, it asks an AI model for the action (a Model call). A walk that continues after a wild battle or after a trigger with no text makes no call. The code reads the texts alone."],
         ["genetic", "plays with a Genome, with no AI model: at each Decision point, its code gives each action a score with the weights of the Genome, and plays the action with the best score. It starts from the command line (`bun run bot genetic --genome <Genome file>`), or from the form “Bots” as a continue of a Run record that holds a Genome: the form lists it only after “continue”. An Evolution plays it too (page “Evolution”). The page “Genome and criteria” tells how it chooses."],
         ["Model provider", "who answers the calls of a Run: `openrouter` (the default, it bills each call), or a Plan provider, `claude-code` or `codex`, which uses a subscription. The page “Model providers” tells how to use them."],
         ["starter", "the scripted bot is a tool for the tests of the Harness only: it is not in the list."],
@@ -30,7 +30,7 @@ export function BotsPage() {
       ]}
     >
       <div class={GRID3}>
-        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call), except when a walk continues after a wild battle or after a trigger with no text", "the code reads the texts alone", "plays to its limit, a user stop, a whiteout, an unknown screen or `badge-8`"]} />
+        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call), except when a walk continues after a wild battle or after a trigger with no text", "the code reads the texts alone", "plays to one of its limits (cost or tokens, the Whiteout limit, the Time limit), a user stop, an unknown screen or `badge-8`"]} />
         <DocCard icon={Dna} title="genetic" lines={["plays with a Genome: weights over criteria", "no AI model", "starts from the command line, or from the form “Bots” as a continue of a Run record with a Genome"]} />
         <DocCard icon={Cpu} title="starter (scripted)" lines={["a tool for the tests of the Harness only", "not in the list"]} />
       </div>
@@ -81,7 +81,7 @@ export function ProvidersPage() {
         ["Codex tools", "three tools stay in Codex. A call that uses a tool stops at once and counts as a failed request. The Bot asks again, and 3 errors in a row end the Run."],
         ["Grok tools", "a Grok call has no tools, one turn, and a permission mode that refuses a tool."],
         ["Grok models", "`grok-4.5`, `grok-4.6` and `grok-4.7` have the same price for each token (measured in 2026-11), so the default is `grok-4.7`. Grok has no smaller model. `grok-4.7-build-fast` is the same price multiplied by 2."],
-        ["Time limit", "a call with no answer ends with an error after 5 minutes (10 minutes on OpenRouter)."],
+        ["Wait for an answer", "a call with no answer ends with an error after 5 minutes (10 minutes on OpenRouter)."],
         ["User stop", "a user stop ends the process of the tool at once."],
         ["Codex version", "`bun install` in `lab/` gives Codex at a fixed version (0.166.0), and the Bot uses this one, not a global `codex`. Claude Code and Grok are the global `claude` and `grok` commands, so they can change when you update them."],
         ["Token limit", "you give it in millions of tokens, and the Run record keeps a number of tokens. It counts the prompt tokens (with the cached tokens) and the completion tokens of all the calls of the Run, also the Summary calls. The Run ends after the call that goes above the limit, so it can use one call more than the limit."],
@@ -269,20 +269,37 @@ export function PromptPage() {
         ["Two kinds of prompt", "The walk prompt is for each Decision point that is not in a battle. The Battle prompt is for each Decision point in a battle. These are a battle action, the move menu, the party menu of a battle and a choice in a battle. Each kind has its own system prompt. This prompt stays the same from call to call, so the provider caches it. The Coach turns are at a walk, so they use the walk prompt."],
         [
           "Battle prompt",
-          "Its system prompt has the intro, the long-term goal, the whiteout rule and the Coach rule. It also has what each battle decision shows and the battle rules. Then it has the answer (reason, action, note and say), the program rules that apply in a battle, and the advice for battles. It has no rule of the Atlas or of the Memory tree. The user prompt has the Milestones and the next one, the character, the money and the party with all the descriptions. Its Bag has the pockets that work in a battle (ITEMS, POKé BALLS, BERRY POUCH) with their descriptions. It also has the items of the other pockets that work in a battle, for example the POKé FLUTE of KEY ITEMS. Then it has the battle lines and what the game waits for. It shows the Mission and the Objective to read. It shows the Battles part of the Coach advice (with no facts since) and the battle lines of the Coach. It ends with the decisions from the one that started the battle (15 at most), the important events, and the actions with no `zoom`. It has no Memory tree, no Known world, no tries, no stuck counter and no loop warning.",
+          "Its system prompt has the intro, the long-term goal, the whiteout rule and the Coach rule. " +
+            "It also has what each battle decision shows and the battle rules. " +
+            "Then it has the answer (reason, action, note and say), the program rules that apply in a battle, and the advice for battles. " +
+            "It has no rule of the Atlas or of the Memory tree. " +
+            "The user prompt has the Milestones and the next one. With a Whiteout limit of 2 or more, the count of whiteouts follows them after the first whiteout. " +
+            "Then come the character, the money and the party with all the descriptions. " +
+            "Its Bag has the pockets that work in a battle (ITEMS, POKé BALLS, BERRY POUCH) with their descriptions. " +
+            "It also has the items of the other pockets that work in a battle, for example the POKé FLUTE of KEY ITEMS. " +
+            "Then it has the battle lines and what the game waits for. " +
+            "It shows the Mission and the Objective to read. " +
+            "It shows the Battles part of the Coach advice (with no facts since) and the battle lines of the Coach. " +
+            "It ends with the decisions from the one that started the battle (15 at most), the important events, and the actions with no `zoom`. " +
+            "It has no Memory tree, no Known world, no tries, no stuck counter and no loop warning.",
         ],
-        ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
+        ["Stop and wait", "a user stop ends a Model call at once. A Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After this wait, the Bot asks again, and 3 errors in a row end the Run."],
+        [
+          "Limits in the rules",
+          "the system prompt of the walk and of the battle gives the Whiteout limit: no limit, the first whiteout, or the number of the whiteout that ends the Run. Only the system prompt of the walk gives the Time limit.",
+        ],
         [
           "Walk prompt",
           "the parts that change little come first, so that the provider caches more of the prompt. " +
-            "First come the Milestones and the next one (a short text only), and the top nodes of the Memory tree. " +
+            "First come the Milestones and the next one (a short text only). With a Whiteout limit of 2 or more, the count of whiteouts follows them after the first whiteout. " +
+            "The top nodes of the Memory tree come next. " +
             "At a walk, the Known world comes next. Then come the Bag, the money and the party. " +
             "At a walk, one line gives the Pokémon in the boxes when there are some. " +
             "At a Reflection or Review turn, the items of the PC and the box Pokémon come in detail. At a Review turn, the counts of the game come too. " +
             "Then come the lines of the REPEL, the line of the Safari Zone and the line of the BICYCLE. " +
             "Then comes the part of the Decision point. At a walk, it is the list What is left on a floor, then the extract of the Atlas. " +
             "Then come what the game waits for, the Mission, the Objective, and the Coach advice in a Run with a Coach. " +
-            "Then come the stuck counter, the tries since the last progress, and the last decisions with their texts. " +
+            "Then come the game time and the Time limit, the stuck counter, the tries since the last progress, and the last decisions with their texts. " +
             "Last come the important events, the return line after a battle and the actions. " +
             "The rule of the first Pokémon stops when the party has a Pokémon.",
         ],

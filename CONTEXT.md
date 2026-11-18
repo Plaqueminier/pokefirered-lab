@@ -107,7 +107,7 @@ One request of a model bot to its AI model, or to its **Coach** for the turns th
 _Avoid_: prompt, turn, step
 
 **Battle prompt**:
-The prompt of a model bot at each **Decision point** in a battle. These are a battle action, the move menu, the party menu of a battle and a choice in a battle. Since bot version 48, it has its own system prompt. This prompt has only the rules of a battle, and no rule of the **Atlas** or of the **Memory tree**. Its user prompt has the Milestones, the character, the money and the party. Its Bag has the pockets that work in a battle, and the items of the other pockets that work in a battle. It shows the **Mission** and the **Objective** to read, and the Battles part of the **Coach advice**. It ends with the important events, the decisions from the one that started the battle, and the actions with no `zoom`. It has no **Memory tree**, no **Known world**, no tries and no **Stuck counter**. Its answer has a reason, an action, a note and a `say`. It has no **Mission** and no **Objective**. Each other **Decision point** gets the walk prompt, and so do the **Coach** turns.
+The prompt of a model bot at each **Decision point** in a battle. These are a battle action, the move menu, the party menu of a battle and a choice in a battle. Since bot version 48, it has its own system prompt. This prompt has only the rules of a battle, and no rule of the **Atlas** or of the **Memory tree**. Its user prompt has the Milestones, the count of whiteouts (see **Whiteout limit**), the character, the money and the party. Its Bag has the pockets that work in a battle, and the items of the other pockets that work in a battle. It shows the **Mission** and the **Objective** to read, and the Battles part of the **Coach advice**. It ends with the important events, the decisions from the one that started the battle, and the actions with no `zoom`. It has no **Memory tree**, no **Known world**, no tries and no **Stuck counter**. Its answer has a reason, an action, a note and a `say`. It has no **Mission** and no **Objective**. Each other **Decision point** gets the walk prompt, and so do the **Coach** turns.
 _Avoid_: fight prompt, combat prompt
 
 **Item estimate**:
@@ -178,6 +178,14 @@ _Avoid_: free provider, subscription mode
 **Token limit**:
 The number of tokens that a **Run** on a **Plan provider** can use: all the input tokens with the cached tokens, and the output tokens, of its own **Model calls** and **Summary calls**. The default is 1,000,000.
 _Avoid_: quota (the quota is the limit of the subscription, for all its uses)
+
+**Whiteout limit**:
+The number of whiteouts at which a **Run** of a model bot ends: 3 by default, or no limit. A person sets it at the start of the **Run**, and an **Extended Run** keeps it. The count has the whiteouts of all the parts of the **Run**, but not those of the parent of a **Continued Run**. With a limit of 2 or more, the prompts of the walk and of the battle count the whiteouts after the first one. Before bot version 51, the option "stop at a whiteout" was a Whiteout limit of 1, and no stop was no limit.
+_Avoid_: lives
+
+**Time limit**:
+The game time, in hours, at which a **Run** of a model bot ends: a multiple of 0.5, or no limit (the default). The game time counts from frame 0 of the **Run record**, also through the replay of a parent, at 59.7275 frames each second. A battle at the limit plays to its end, and the **Run** ends at the next walk, or at the start of another battle. So the **Milestone** of this battle counts, also when a script gives it after the battle. A person sets it at the start of the **Run**, and an **Extended Run** keeps it. The walk prompt shows the game time and the limit; the **Battle prompt** does not.
+_Avoid_: frame budget (the frame limit of the **Genetic bot** and the scripted bots), timeout (the wait for the answer of a **Model call**)
 
 **Knowledge level**:
 The set of game facts that the **Harness** shows to a **Bot** in a **Run**. The `player` level shows what a careful human player can know; the `full` level shows more: all the maps of the game and exact enemy stats.
@@ -342,11 +350,12 @@ A change in the game that the **Harness** reads from the game state and writes i
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
-A **Run** that starts at the end of a stopped **Run**, its parent. The **Harness** boots with the names of the parent, loads the **Checkpoint** of the parent **Run record** or replays its buttons, and keeps its events. So the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. In a battle, it also has the last turn and the turns against the foe. A replay must give the maps, the battles and the **Milestones** of the parent, or the **Harness** refuses to start. With a replay, the other **Game events** come from the replay, so a better read of the game replaces those of the parent. With a **Checkpoint**, they stay those of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones.
+A **Run** that starts at the end of a stopped **Run**, its parent. The **Harness** boots with the names of the parent, loads the **Checkpoint** of the parent **Run record** or replays its buttons, and keeps its events. So the **Bot** has the **Memory tree**, the **Mission** and the **Atlas** of the parent. In a battle, it also has the last turn and the turns against the foe. A replay must give the maps, the battles and the **Milestones** of the parent, or the **Harness** refuses to start. With a replay, the other **Game events** come from the replay, so a better read of the game replaces those of the parent. With a **Checkpoint**, they stay those of the parent. Its **Run record** has the buttons and the events of the parent, then its own. Its cost limit or its **Token limit** counts its own **Model calls** only, and its model and its **Model provider** can be other ones. Its **Whiteout limit** counts its own whiteouts only, and its **Time limit** counts the game time from frame 0 of the parent.
 _Avoid_: resumed run, restart, savestate
 
 **Extended Run**:
 A **Run** that continues from the end of its own **Run record**, for example after a `plan limit`, when the quota of the subscription is new. It stays the same **Run**: the same id, the same **Ghost**, the same character. The **Harness** loads the **Checkpoint** or replays the buttons, and keeps the events, as for a **Continued Run**. But a new **Run record** replaces the file under the same name, with no new parent. When the worker of the last part is still idle in the **Viewer**, the new part continues in this worker, with its **Harness**: no replay and no **Checkpoint**. A worker keeps the code that it loaded, so a change of a file of `lab/src` or `lab/bots` since its start needs a new worker. The header takes the Bot and the limit of the new part. Its `parts` keep the Bot, the **Run result** and the end of each earlier part. The model, the **Model provider** and the other settings of the model stay those of the **Run record**. The version of the Bot can be newer. Its cost limit or its **Token limit** counts from 0 at each new part. A **Run record** that another one names as its parent cannot extend. This is because the **Viewer** finds the start of a **Continued Run** from the end of its parent.
+The limit of a new part is its cost limit or its **Token limit**. Its **Whiteout limit** and its **Time limit** stay those of the start, and they count all the parts. So a **Run** that ended at `whiteout` or at `time limit` cannot extend.
 _Avoid_: resumed run, paused run, Continued Run (a **Continued Run** is a new **Run** with a new id)
 
 **Checkpoint**:
@@ -354,7 +363,20 @@ The state at the end of a **Run record**, in a file next to it: `<name>.json.che
 _Avoid_: savestate (a **Savestate** is the state of the emulator only), snapshot
 
 **Run result**:
-What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reason is `goal` (the goal **Milestone**, or the last **Milestone** for a model bot), `bot stopped`, `user stop` (a person stopped the **Run**), `cost limit` (the **Model calls** of the **Run** cost more than its cost limit), `token limit` (the **Run** used more tokens than its **Token limit**), `plan limit` (the **Plan provider** refused a call because the quota of the subscription is used; a **Continued Run** or an **Extended Run** can play on later), `frame budget` (the **Run** used all the frames that it can run), `no progress` (the **Stuck counter** reached N; N is an option of the **Harness** or of the **Bot**, with no default; the **Genetic bot** gives 200), `whiteout` (all the Pokémon of the party fainted, and the model bot has the option `stopAtWhiteout`, on by default) or `unknown screen` (the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them, or the **Genetic bot** pressed B for 3 screens in a row with no **Decision point** between them). The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
+What a **Run** gives at its end: the end reason, the frames, the **Milestones** and the number of **Raw inputs**. The end reasons are:
+- `goal`: the goal **Milestone**, or the last **Milestone** for a model bot.
+- `bot stopped`.
+- `user stop`: a person stopped the **Run**.
+- `cost limit`: the **Model calls** of the **Run** cost more than its cost limit.
+- `token limit`: the **Run** used more tokens than its **Token limit**.
+- `plan limit`: the **Plan provider** refused a call because the quota of the subscription is used. A **Continued Run** or an **Extended Run** can continue later.
+- `frame budget`: the **Run** used all the frames that it can run.
+- `time limit`: the game time reached the **Time limit**.
+- `no progress`: the **Stuck counter** reached N. N is an option of the **Harness** or of the **Bot**, with no default, and the **Genetic bot** gives 200.
+- `whiteout`: all the Pokémon of the party fainted, and this whiteout reached the **Whiteout limit**.
+- `unknown screen`: the model bot pressed B for 3 screens in a row that no action covers, with no **Model call** between them. Or the **Genetic bot** pressed B for 3 screens in a row with no **Decision point** between them.
+
+The result of `whiteout` and of `unknown screen` also keeps the last text of the game. A model bot has no frame budget and no limit of **Decision points** with no progress.
 _Avoid_: score, outcome
 
 **Held item**:
@@ -407,7 +429,7 @@ _Avoid_: slider, scrubber, Stats charts (the panel Stats has its own charts)
 - A **Bot** plays one **Run**. **Agents** write scripted **Bots**.
 - A **Bot** gets control only at a **Decision point** or after an **Interruption**, and sees the game through the **Knowledge level** of its **Run**.
 - A **Bot** uses **Macro-actions**, and **Raw inputs** only when no **Macro-action** fits.
-- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** or its **Bot** has a limit for it. The **Run** of a model bot also ends at its cost limit or its **Token limit**, at a `plan limit`, at a whiteout (an option, on by default) and at an unknown screen.
+- Each **Run** has one **Run record**. A **Run** ends when its **Bot** stops, a person stops it, or it reaches its goal. The **Run** of a scripted bot also ends when its frame budget is used. A **Run** also ends with `no progress` when the **Harness** or its **Bot** has a limit for it. The **Run** of a model bot also ends at its cost limit or its **Token limit**, or at a `plan limit`. It also ends at its **Whiteout limit**, at its **Time limit** and at an unknown screen.
 - A **Run** of a model bot has one AI model, and at most one **Coach** on the same **Model provider**. Only the **Coach** writes a **Coach advice**.
 - A **Continued Run** has one parent **Run record**, and its own **Run record** names the parent.
 - A **Checkpoint** belongs to one **Run record**: the end of each new part writes a new one.

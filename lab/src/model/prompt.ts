@@ -4,7 +4,7 @@ import type { NoProgress, Observation } from "../harness/harness";
 import { callTurns, isDecision, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
 import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, type Status, walkStatus } from "../party";
-import { badgeNeeded, modelEvents } from "../protocol";
+import { badgeNeeded, hoursText, modelEvents, timeLimitHours, whiteoutKind } from "../protocol";
 import type { TrainerNames } from "../save-file";
 import { battleLines, fights, itemEstimates } from "./battle-text";
 import { characterTurn, runCharacter } from "./character";
@@ -50,10 +50,10 @@ const PUSH_LINE = "- push <x> <y> <direction> [steps]: walk behind the boulder a
 const BICYCLE_FACTS = "Riding the BICYCLE takes 6 frames per cell, running takes 8. It costs no extra decision: your choice stays after a door.";
 const MAX_BOX_LINES = 12;
 
-const WHITEOUT_ENDS =
-  "If all your Pokémon faint, the Run ends. So before a difficult battle, train your team and heal your Pokémon. When a battle goes very badly, switch or `run`. But a Run that plays too safe also makes no progress: train up to a level that you choose, then continue.";
-const WHITEOUT_CONTINUES =
-  "If all your Pokémon faint, the Run continues: you lose some money (more with more badges and a higher level), your party is healed, and you are back at the last Pokémon Center that you entered, or your home. Then you continue from there.";
+const WHITEOUT_CARE = "So before a difficult battle, train your team and heal your Pokémon. When a battle goes very badly, switch or `run`. But a Run that plays too safe also makes no progress: train up to a level that you choose, then continue.";
+const WHITEOUT_COST = "you lose some money (more with more badges and a higher level), your party is healed, and you are back at the last Pokémon Center that you entered, or your home";
+const WHITEOUT_ENDS = `If all your Pokémon faint, the Run ends. ${WHITEOUT_CARE}`;
+const WHITEOUT_CONTINUES = `If all your Pokémon faint, the Run continues: ${WHITEOUT_COST}. Then you continue from there.`;
 
 function starterRule(starter: ModelSettings["starter"]): string {
   return starter === "free" ? "Take the first Pokémon that your character chose." : `Choose ${starter} as your first Pokémon.`;
@@ -89,13 +89,28 @@ const SHARED_EXPERIENCE =
   "- Each Pokémon that was in the battle against a foe, and did not faint, gets an equal part of the experience of this foe, also with no move. So to train a weak Pokémon, put it first with `swap`, then `switch` to a strong Pokémon at the first turn. Against a trainer, this counts for each of its Pokémon: the weak Pokémon gets a part only of the foes that it was in the battle against.";
 const BATTLE_COACH_RULE = "In a battle, you get only the Battles part of the last advice, and the lines of what your Coach wants in this battle.";
 
-function whiteoutRule(stopAtWhiteout: boolean): string {
-  return stopAtWhiteout ? WHITEOUT_ENDS : WHITEOUT_CONTINUES;
+function whiteoutRule(limit: number | null): string {
+  const form = whiteoutKind(limit);
+  if (form.kind === "none") return WHITEOUT_CONTINUES;
+  if (form.kind === "first") return WHITEOUT_ENDS;
+  return `If all your Pokémon faint, ${WHITEOUT_COST}. The Run ends at the ${ordinal(form.limit)} whiteout. ${WHITEOUT_CARE}`;
 }
 
-export function systemPrompt({ starter, stopAtWhiteout, coach }: Pick<ModelSettings, "starter" | "stopAtWhiteout" | "coach">, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
+function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+function timeRule(hours: number | null): string[] {
+  return hours === null ? [] : [`The Run ends after ${hours} hour${hours === 1 ? "" : "s"} of game time. The game is frozen while you think: only your actions use game time.`];
+}
+
+type Limits = Pick<ModelSettings, "whiteoutLimit" | "timeLimit">;
+
+export function systemPrompt({ starter, whiteoutLimit, timeLimit, coach }: Pick<ModelSettings, "starter" | "coach"> & Limits, hasPokemon: boolean, role: "player" | "coach" = "player"): string {
   const coachLine = role === "coach" ? [COACH_DUTY] : coach ? [COACH_RULE] : [];
-  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), whiteoutRule(stopAtWhiteout), ...coachLine].join("\n");
+  const rules = [...(hasPokemon ? [] : [starterRule(starter)]), whiteoutRule(whiteoutLimit), ...timeRule(timeLimit), ...coachLine].join("\n");
   const intro = role === "coach" ? COACH_INTRO : PLAYER_INTRO;
   const offers = hasPokemon ? "" : "- When the game offers you your first Pokémon, the program answers for you: YES to the Pokémon of your character, NO to another. Then try another offer.\n";
   return `${intro}
@@ -148,8 +163,8 @@ ${SHARED_EXPERIENCE}
 }
 
 // Only the settings of the Run feed this prompt, so that it stays the same from call to call and the cache holds.
-export function battleSystemPrompt({ stopAtWhiteout, coach }: Pick<ModelSettings, "stopAtWhiteout" | "coach">): string {
-  const rules = [whiteoutRule(stopAtWhiteout), ...(coach ? [`${COACH_RULE} ${BATTLE_COACH_RULE}`] : [])].join("\n");
+export function battleSystemPrompt({ whiteoutLimit, coach }: Pick<ModelSettings, "whiteoutLimit" | "coach">): string {
+  const rules = [whiteoutRule(whiteoutLimit), ...(coach ? [`${COACH_RULE} ${BATTLE_COACH_RULE}`] : [])].join("\n");
   return `${PLAYER_INTRO}
 
 Long-term goal: ${LONG_TERM_GOAL}
@@ -201,7 +216,9 @@ export function reviewRequestIn(user: string): string | null {
 
 export type TurnKind = "normal" | "character" | "reflection" | "review";
 
-export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[]; advice: string[] };
+type LimitState = Limits & { whiteouts: number; frame: number };
+
+export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[]; advice: string[]; limits: LimitState };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
 export function turnRequest(turn: TurnKind, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
@@ -237,7 +254,7 @@ export function userPrompt(observation: Observation, asked: Asked, events: reado
   return inBattle(asked) ? battlePrompt(observation, asked, events, state) : walkPrompt(observation, asked, events, state);
 }
 
-function walkPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory, advice }: PromptState): string {
+function walkPrompt(observation: Observation, asked: Asked, events: readonly RunEvent[], { noProgress, turn, happened, request, memory, advice, limits }: PromptState): string {
   const answers = answeredTurns(events);
   const battles = finishedBattles(answers);
   const calls = walkHistory(answers, battles, events);
@@ -248,6 +265,7 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
+    ...whiteoutLine(limits),
     ...characterLine(events),
     "",
     memoryText(memory),
@@ -267,6 +285,7 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
     missionLine(events),
     objectiveLine(events),
     ...advice,
+    ...gameTimeLine(limits),
     `Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, ${lastProgressKinds(asked)}): ${noProgress.stuck}.`,
     ...request,
     tried.length === 0 ? "Your tries since the last progress: none." : ["Your tries since the last progress:", ...tried].join("\n"),
@@ -283,11 +302,12 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
   ].join("\n");
 }
 
-function battlePrompt(observation: Observation, asked: BattleAsked, events: readonly RunEvent[], { happened, advice }: PromptState): string {
+function battlePrompt(observation: Observation, asked: BattleAsked, events: readonly RunEvent[], { happened, advice, limits }: PromptState): string {
   const calls = pastCalls(sinceBattleStart(answeredTurns(events)));
   return [
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
+    ...whiteoutLine(limits),
     ...characterLine(events),
     "",
     bagText(battleBag(observation.bag)),
@@ -385,6 +405,17 @@ export function missionLine(events: readonly RunEvent[]): string {
 function objectiveLine(events: readonly RunEvent[]): string {
   const objective = modelEvents(events).findLast((e) => e.decision?.objective)?.decision?.objective;
   return `Objective: ${objective || "none yet"}`;
+}
+
+function whiteoutLine({ whiteouts, whiteoutLimit }: LimitState): string[] {
+  const form = whiteoutKind(whiteoutLimit);
+  if (form.kind !== "counted" || whiteouts === 0) return [];
+  return [`Whiteouts: ${whiteouts} of ${form.limit}.${form.limit - whiteouts === 1 ? " One more whiteout ends the Run." : ""}`];
+}
+
+// Under the prefix that the provider caches: the game time changes at each decision.
+function gameTimeLine({ frame, timeLimit }: LimitState): string[] {
+  return timeLimit === null ? [] : [`Game time: ${hoursText(frame)} of ${timeLimitHours(timeLimit)}.`];
 }
 
 export function nextMilestone(reached: readonly Milestone[]): string | null {

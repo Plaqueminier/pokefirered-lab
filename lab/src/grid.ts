@@ -1,10 +1,10 @@
 import type { PoolReplay, RunPool } from "./harness/pool";
 import { runCharacter } from "./model/character";
-import { factsAt, limitOf, modelFacts, RecordPlayer, type RunRecord } from "./harness/record";
+import { factsAt, limitOf, modelFacts, RecordPlayer, type RunRecord, runWhiteouts } from "./harness/record";
 import { GBA_FPS, type GridCursor, type GridCursorControl, type GridMon, type GridReplay, type GridSpeed, spentIn } from "./protocol";
 import { partyOf } from "./state-track";
 
-type Cell = { name: string; replay: PoolReplay; frames: number; party: (frame: number) => GridMon[] | null };
+type Cell = { name: string; replay: PoolReplay; frames: number; runStart: number; party: (frame: number) => GridMon[] | null };
 
 export class GridPlay {
   readonly #cells = new Map<number, Cell>();
@@ -15,13 +15,13 @@ export class GridPlay {
 
   constructor(private readonly pool: RunPool) {}
 
-  add(cell: number, name: string, record: RunRecord): boolean {
+  add(cell: number, name: string, record: RunRecord, runStart: number): boolean {
     const old = this.#cells.get(cell);
     if (!old && this.pool.free === 0) return false;
     old?.replay.stop();
     const replay = this.pool.replay(record);
     replay.seek(Math.floor(this.#frame));
-    this.#cells.set(cell, { name, replay, frames: new RecordPlayer(record).frames, party: partyOf(record.state) });
+    this.#cells.set(cell, { name, replay, frames: new RecordPlayer(record).frames, runStart, party: partyOf(record.state) });
     return true;
   }
 
@@ -62,12 +62,13 @@ export class GridPlay {
   }
 
   status(): { cursor: GridCursor; replays: GridReplay[] } {
-    const replays = [...this.#cells].map(([cell, { name, replay, frames, party }]): GridReplay => {
+    const replays = [...this.#cells].map(([cell, { name, replay, frames, runStart, party }]): GridReplay => {
       const { header, result, events } = replay.record;
       const { frame } = replay.view;
       const { milestone, battle, totals } = factsAt(events, frame);
+      const whiteouts = runWhiteouts(events, runStart, frame);
       const unit = header.bot.model && limitOf(header.bot.model).unit;
-      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model ? modelFacts(header.bot.model) : null, frames, frame, endReason: result.endReason, error: replay.error, names: runCharacter(events)?.names ?? null, milestone, battle, spent: unit ? { unit, amount: spentIn(unit, totals) } : null, party: party(frame) };
+      return { id: replay.id, cell, name, bot: header.bot.name, model: header.bot.model ? modelFacts(header.bot.model) : null, frames, frame, endReason: result.endReason, error: replay.error, names: runCharacter(events)?.names ?? null, milestone, whiteouts, battle, spent: unit ? { unit, amount: spentIn(unit, totals) } : null, party: party(frame) };
     });
     return { cursor: { frame: Math.floor(this.#frame), paused: this.#paused, speed: this.#speed, end: this.#end }, replays };
   }

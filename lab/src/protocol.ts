@@ -4,7 +4,7 @@ import type { EvolutionRun } from "./genetic/evolve-process";
 import type { Sight } from "./harness/atlas";
 import type { InventoryAt } from "./inventory";
 import type { Status } from "./party";
-import type { EndReason, MacroAction, RawInput } from "./harness/harness";
+import type { MacroAction, RawInput } from "./harness/harness";
 import type { RunCall } from "./harness/pool";
 import type { Coach, Continuation, GameEvent, LightEvent, LightModelEvent, ModelEvent, ModelOptions, ModelSettings, SpendLimit } from "./harness/record";
 import type { TrainerNames } from "./save-file";
@@ -77,6 +77,47 @@ export const MILLION = 1_000_000;
 
 export const DEFAULT_TOKEN_LIMIT = tokensFromMillions(1);
 
+export const END_REASONS = ["goal", "bot stopped", "user stop", "cost limit", "token limit", "plan limit", "frame budget", "time limit", "no progress", "whiteout", "unknown screen"] as const;
+
+export type EndReason = (typeof END_REASONS)[number];
+
+export const DEFAULT_WHITEOUT_LIMIT = 3;
+
+export function whiteoutLimitProblem(limit: number | null): string | null {
+  return limit === null || (Number.isInteger(limit) && limit >= 1) ? null : "The whiteout limit is a whole number above 0.";
+}
+
+export function timeLimitProblem(hours: number | null): string | null {
+  return hours === null || (hours > 0 && Number.isInteger(hours * 2)) ? null : "The time limit is a number of hours above 0, a multiple of 0.5.";
+}
+
+/** The three forms of a Whiteout limit: no limit, the first whiteout ends the Run, or a count of whiteouts. */
+export type WhiteoutKind = { kind: "none" } | { kind: "first" } | { kind: "counted"; limit: number };
+
+export function whiteoutKind(limit: number | null): WhiteoutKind {
+  return limit === null ? { kind: "none" } : limit === 1 ? { kind: "first" } : { kind: "counted", limit };
+}
+
+export function timeLimitHours(hours: number): string {
+  return hoursText(timeLimitFrame(hours));
+}
+
+export function whiteoutLimitValue(limit: number | null): string {
+  return limit === null ? "no limit" : String(limit);
+}
+
+export function timeLimitValue(hours: number | null): string {
+  return hours === null ? "no limit" : timeLimitHours(hours);
+}
+
+export function whiteoutLimitText(limit: number | null): string {
+  return `whiteout limit: ${whiteoutLimitValue(limit)}`;
+}
+
+export function timeLimitText(hours: number | null): string {
+  return `time limit: ${timeLimitValue(hours)}`;
+}
+
 /** A person gives a Token limit in millions of tokens; the Harness and the Run record keep tokens. */
 export function tokensFromMillions(millions: number): number {
   return Math.round(millions * MILLION);
@@ -135,6 +176,16 @@ export const DEFAULT_STARTER: (typeof STARTERS)[number] = "free";
 
 export const GBA_FPS = 16777216 / 280896; // 59.7275
 
+export function timeLimitFrame(hours: number): number {
+  return Math.round(hours * 3600 * GBA_FPS);
+}
+
+export function hoursText(frames: number): string {
+  const minutes = Math.floor(Math.round(frames / GBA_FPS) / 60);
+  const [hours, rest] = [Math.floor(minutes / 60), minutes % 60];
+  return [...(hours > 0 ? [`${hours} h`] : []), ...(rest > 0 || hours === 0 ? [`${rest} min`] : [])].join(" ");
+}
+
 /** The Viewer shows the screen and the state of a Run at most at these rates. */
 export const SCREEN_INTERVAL_MS = 1000 / 60;
 export const STATE_INTERVAL_MS = 100;
@@ -166,7 +217,7 @@ type BotKind = "scripted" | "model" | "genetic";
 /** `name` is the module in `bots/`. */
 export type BotInfo = { name: string } & ({ kind: BotKind; version: string; goal: Milestone | null; costLimit: number | null } | { error: string });
 
-export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter" | "stopAtWhiteout"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
+export type ModelFacts = Pick<ModelSettings, "id" | "reasoning" | "thinking" | "starter" | "whiteoutLimit" | "timeLimit"> & { provider: ModelProvider; coach?: Coach; limit: Spend };
 
 export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string {
   return coach ? `${id} + coach ${coach.id}` : id;
@@ -175,14 +226,16 @@ export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string
 /** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
 export type RunFrom = { record: string; kind: "continued" | "extended" };
 
-export type RecordFacts = { bot: string; version: string; model: ModelFacts | null; continued: boolean };
+export type RecordFacts = { bot: string; version: string; model: ModelFacts | null; continued: boolean; endReason: EndReason | null };
+
+const LIMIT_ENDS: Partial<Record<EndReason, string>> = { whiteout: "The Run ended at its whiteout limit.", "time limit": "The Run ended at its time limit." };
 
 // A Continued Run finds its start from the end of its parent, so a parent must not grow.
 export function extendProblem(facts: RecordFacts | undefined, playing: boolean): string | null {
   if (!facts) return "This file has no header of a Run record.";
   if (facts.continued) return "Another Run record continues this one, and it needs this one as it is.";
   if (playing) return "A Run plays from this Run record now.";
-  return null;
+  return (facts.endReason && LIMIT_ENDS[facts.endReason]) ?? null;
 }
 
 export type ReplayModel = ModelFacts & { calls: number; spent: Spend; totalCalls: number; totalSpent: Spend };
@@ -219,6 +272,7 @@ export type RunSummary = {
   model: (ModelFacts & { spent: Spend; ownSpent: Spend }) | null;
   frame: number;
   milestone: Milestone | null;
+  whiteouts: number;
   battle: boolean;
   /** The call that the game waits for now. */
   calling: RunCall | null;
@@ -235,6 +289,7 @@ export type GridReplay = {
   frames: number;
   frame: number;
   milestone: Milestone | null;
+  whiteouts: number;
   spent: Spend | null;
   battle: boolean;
   endReason: EndReason;

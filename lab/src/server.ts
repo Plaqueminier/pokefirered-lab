@@ -17,7 +17,7 @@ import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { checkpointKey, removeCheckpoint, type Resume, writeCheckpoint } from "./harness/checkpoint";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd, type RunSpec } from "./harness/pool";
-import { type Continuation, continuationOf, extendedOptions, factsAt, Keyframes, limitOf, modelFacts, type ModelOptions, modelTotals, originDifferences, providerOf, readRunHeader, readRunRecord, recordFacts, RecordPlayer, replaceRecord, replayStart, type RunEvent, type RunRecord, RUNS_DIR, type SpendLimit, writeRecord } from "./harness/record";
+import { type Continuation, continuationOf, extendedOptions, factsAt, Keyframes, limitOf, modelFacts, type ModelOptions, modelTotals, originDifferences, providerOf, readRunHeader, readRunRecord, recordFacts, RecordPlayer, replaceRecord, replayStart, type RunEvent, type RunRecord, RUNS_DIR, runStartFrame, runWhiteouts, type SpendLimit, writeRecord } from "./harness/record";
 import { runCharacter } from "./model/character";
 import { providerProblem, providerStatuses } from "./model/providers";
 import {
@@ -426,6 +426,7 @@ function runSummary({ id, spec, continued, end, events, calling, stopAsked, view
     model: facts ? { ...facts, spent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, totals) }, ownSpent: { unit: facts.limit.unit, amount: spentIn(facts.limit.unit, own) } } : null,
     frame: view.frame,
     milestone,
+    whiteouts: runWhiteouts(events, spec.runStart ?? 0),
     battle,
     calling,
     record: writtenRecords.get(id) ?? null,
@@ -463,7 +464,9 @@ async function extendRun(name: string, limit: SpendLimit): Promise<string> {
   const record = await openRecord(name);
   if (typeof record === "string") return record;
   const playing = runsFrom(name).length > 0;
-  const problem = extendProblem((await recordFacts(await recordNames()))[name], playing);
+  const facts = (await recordFacts(await recordNames()))[name];
+  // A migrated record ends with its State track, so the list cannot always read its end reason: the whole record has it.
+  const problem = extendProblem(facts && { ...facts, endReason: record.result.endReason }, playing);
   if (problem) return `No Run: ${problem}`;
   const { bot } = record.header;
   return launch(bot.name, extendedOptions(bot.model, limit), 1, { from: { record: name, kind: "extended" }, record });
@@ -507,10 +510,11 @@ async function launch(name: string, given: ModelOptions, count: number, start: {
   const { model } = bot;
   const genome = bot.genome && start?.record.header.bot.genome;
   if (bot.genome && !genome) return "No Run: the Genetic bot plays the Genome of a Run record. Continue a Run record of the Genetic bot, or start an Evolution in the tab Evolutions.";
-  const spec: RunSpec = { bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}) };
+  const continued = start && continuationOf(start.record);
+  const runStart = start?.from.kind === "extended" ? await runStartFrame(start.record.header) : (continued?.frame ?? 0);
+  const spec: RunSpec = { bot: name, ...(model ? { model } : {}), ...(genome ? { genome } : {}), ...(start ? { from: start.from } : {}), runStart };
   const extended = start?.from.kind === "extended" ? { start, code: await newestCodeChange(), stamp: await fileStamp(start.from.record) } : null;
   // No await from here to extendIn: the idle limit cannot close the worker between the two.
-  const continued = start && continuationOf(start.record);
   const live = extended && liveRunFor(extended.start.record, extended.code, extended.stamp);
   const started = live && continued ? [pool.extendIn(live, spec, continued)] : pool.startAll(spec, count, continued);
   show(botRun(started[0]));
@@ -599,7 +603,7 @@ function promptsResponse(params: URLSearchParams): Response {
 async function addToGrid(cell: number, name: string): Promise<string | null> {
   const record = await openRecord(name);
   if (typeof record === "string") return record;
-  return grid.add(cell, name, record) ? null : `No replay of ${name}: ${placesText()}.`;
+  return grid.add(cell, name, record, await runStartFrame(record.header)) ? null : `No replay of ${name}: ${placesText()}.`;
 }
 
 async function handle(message: ClientMessage, ws: ServerWebSocket<unknown>): Promise<void> {

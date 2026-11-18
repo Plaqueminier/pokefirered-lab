@@ -21,10 +21,10 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("modelSettings", () => {
-  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, no reasoning, a medium thinking, the temperature of the model, a free starter and a stop at a whiteout", () => {
-    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, provider: "openrouter", costLimit: 0.5, reasoning: "off", thinking: "medium", temperature: null, starter: "free", stopAtWhiteout: true });
+  test("by default: the default model, the cost limit of LAB_COST_LIMIT or 0.50 $, no reasoning, a medium thinking, the temperature of the model, a free starter, a Whiteout limit of 3 and no Time limit", () => {
+    expect(modelSettings({}, {})).toEqual({ id: DEFAULT_MODEL, provider: "openrouter", costLimit: 0.5, reasoning: "off", thinking: "medium", temperature: null, starter: "free", whiteoutLimit: 3, timeLimit: null });
     expect(modelSettings({}, { LAB_COST_LIMIT: "0.2" }).costLimit).toBe(0.2);
-    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", provider: "openrouter", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", stopAtWhiteout: false });
+    expect(modelSettings({ id: "a/b", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", whiteoutLimit: null, timeLimit: null }, { LAB_COST_LIMIT: "0.2" })).toEqual({ id: "a/b", provider: "openrouter", costLimit: 1, reasoning: "low", thinking: "high", temperature: 0.3, starter: "CHARMANDER", whiteoutLimit: null, timeLimit: null });
   });
 
   test("it refuses a cost limit, a reasoning, a temperature or a starter that is not valid", () => {

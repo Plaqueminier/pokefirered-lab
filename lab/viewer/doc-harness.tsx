@@ -1,6 +1,6 @@
 import { Bike, ChevronRight, CircleHelp, Coins, Footprints, Hand, Layers, OctagonX, Play, Rabbit, Repeat, Skull, Timer, TriangleAlert, Trophy } from "lucide-preact";
 import type { Milestone } from "../src/game";
-import type { EndReason } from "../src/harness/harness";
+import type { EndReason } from "../src/protocol";
 import type { Outcome } from "../src/harness/menu-driver";
 import type { GameEvent } from "../src/harness/record";
 import { Code, type InfoTone, Pill, type Tone } from "./components";
@@ -270,13 +270,19 @@ const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: stri
     lines: ["no more frames, when a budget is given", "the scripted test bot: 30 000"],
     detail: "no more frames, when the Bot or the Run gives a budget (the scripted test bot: 30 000).",
   },
-  "no progress": { icon: Repeat, tone: "warn", lines: ["the stuck counter reaches N, when the Bot or the Run gives N", "the Genetic bot: 60"], detail: "the stuck counter reaches N, when the Bot or the Run gives N (the Genetic bot: 60)." },
+  "time limit": {
+    icon: Timer,
+    tone: "warn",
+    lines: ["the game time reaches the Time limit of a model bot", "after a battle at the limit: the next walk"],
+    detail: "the game time from frame 0 reaches the Time limit of a model bot. A battle at the limit plays to its end, and the Run ends at the next walk, or at the start of another battle. So its Milestone counts, also when a script gives it after the battle. A whiteout at the end of this battle also gives this reason.",
+  },
+  "no progress": { icon: Repeat, tone: "warn", lines: ["the stuck counter reaches N, when the Bot or the Run gives N", "the Genetic bot: 200"], detail: "the stuck counter reaches N, when the Bot or the Run gives N (the Genetic bot: 200)." },
   whiteout: {
     icon: Skull,
     tone: "bad",
-    lines: ["all the Pokémon of the party faint", "with “stop at a whiteout”"],
+    lines: ["the whiteout that reaches the Whiteout limit", "a model bot, 3 by default"],
     detail:
-      "all the Pokémon of the party faint, in or out of a battle (model bot with “stop at a whiteout”), after the action that reads the whiteout. The rules of the prompt tell the model that the Run ends, and also not to play too safe. The result keeps the last text of the game.",
+      "all the Pokémon of the party faint, in or out of a battle. This whiteout reaches the Whiteout limit of a model bot (3 by default). The Run ends after the action that reads the whiteout. An Extended Run counts the whiteouts of all its parts. The rules of the prompt tell the model the limit, and also not to play too safe. The result keeps the last text of the game.",
   },
   "unknown screen": {
     icon: CircleHelp,
@@ -324,7 +330,15 @@ export function RecordPage() {
     <Page
       lead="A Run of a Bot writes a Run record to `lab/runs/` at its end, and from its origin, its keys alone replay the Run."
       details={[
-        ["Fields", "format version, origin (ROM, seed, save, names), Bot (with its Model provider, its Coach if it has one, and its cost limit or Token limit; a record with no provider played on `openrouter`; the Genome of a Genetic bot), the Fitness of a new best of an Evolution, the Genome id of a Genome of an Evolution, keys at each frame, events, track, State track and result."],
+        [
+          "Fields",
+          "format version, origin (ROM, seed, save, names) and Bot. " +
+            "The Bot has its Model provider, its Coach if it has one, its cost limit or Token limit, its Whiteout limit and its Time limit. " +
+            "A record with no provider played on `openrouter`, and a Genetic bot has its Genome. " +
+            "A Continued Run also has its parent and the first frame of its Run. " +
+            "Then come the Fitness of a new best of an Evolution and the Genome id of a Genome of an Evolution. " +
+            "Last come the keys at each frame, the events, the track, the State track and the result.",
+        ],
         ["Track", "the place of the player at each change of cell, map or facing: 6 numbers (frame, map group, map number, x, y, facing), apart from the events. The Race tab draws it."],
         ["State track", "the team and the battle at each change, apart from the events: the species, nickname, level, max HP and moves of the team; the HP and status of the team; the two Pokémon of a battle with the name of the trainer. The Harness compares raw bytes at each frame and decodes only on a change. The Race tab shows it."],
         [
@@ -348,8 +362,11 @@ export function RecordPage() {
           "Keep the same Run",
           "the checkbox of the form “Bots” after “continue”: an Extended Run continues with the model, the Coach and the Model provider of the record, and the Bot version of now. " +
             "It keeps the id, and its new record replaces the file under the same name, so it has no new parent. " +
-            "The header lists each earlier part with its Bot, its result and its end. The limit counts from 0. " +
+            "The header lists each earlier part with its Bot, its result and its end. " +
+            "The cost limit or the Token limit counts from 0. " +
+            "The Whiteout limit and the Time limit stay those of the start, and they count all the parts. " +
             "The checkbox is disabled when another record names this one as its parent, or when a Run plays from it. " +
+            "It is also disabled after the end reason `whiteout` or `time limit`. " +
             "The new part continues in the worker of the last part when this worker is still idle. Then it has no replay and no Checkpoint. " +
             "A file of `lab/src` or `lab/bots` that changed since the start of the worker needs a new worker, which loads the Checkpoint.",
         ],
