@@ -9,7 +9,7 @@ function map(name: string, rows: string[], more: Partial<RouteMap> = {}): RouteM
   const width = rows[0].length;
   const height = rows.length;
   const blocks = Array.from({ length: width * height }, () => LAND_BLOCK);
-  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, blocks, warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], ...more };
+  return { name, kinds: rows.join(""), x0: 0, y0: 0, width, height, mapWidth: width, mapHeight: height, blocks, warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], stepFrames: 16, ...more };
 }
 
 describe("a route on a map that is dark for the model", () => {
@@ -131,6 +131,26 @@ describe("a route with FLY", () => {
   test("a near walk costs less than a flight", () => {
     const linked = map("Town", ["....."], { flyDestinations, connections: [{ direction: "east", offset: 0, map: "Far" }] });
     expect(findRoute({ map: "Town", x: 4, y: 0 }, { map: "Far", x: 1, y: 0 }, world(linked, far))?.some((leg) => "fly" in leg)).toBe(false);
+  });
+
+  describe("the frames of a step decide between a walk and a flight", () => {
+    const center = { ...destination, name: "Road", area: "Road", map: "Road", x: 100, y: 0 };
+    const road = (kind: string, stepFrames: number) => map("Road", [kind.repeat(101)], { flyDestinations: [center], stepFrames });
+    const flies = (m: RouteMap, steps: number) => findRoute({ map: "Road", x: 100 - steps, y: 0 }, { map: "Road", x: 100, y: 0 }, world(m))?.some((leg) => "fly" in leg);
+
+    test("a walk of 60 steps flies on foot, and walks with the Running Shoes or on the BICYCLE", () => {
+      expect(flies(road(".", 16), 60)).toBe(true);
+      expect(flies(road(".", 8), 60)).toBe(false);
+      expect(flies(road(".", 6), 60)).toBe(false);
+    });
+
+    test("a walk of 100 steps flies also with the Running Shoes", () => {
+      expect(flies(road(".", 8), 100)).toBe(true);
+    });
+
+    test("a step on the water takes the frames of Running, also for a player on foot", () => {
+      expect(flies(road("≈", 16), 60)).toBe(false);
+    });
   });
 });
 

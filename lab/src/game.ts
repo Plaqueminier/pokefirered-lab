@@ -193,6 +193,10 @@ export type MapGrid = {
   kinds: string;
   outside: boolean;
   cave: boolean;
+  /** The header allows Running (IsRunningDisallowed). */
+  allowsRunning: boolean;
+  /** The header allows the BICYCLE. */
+  allowsBiking: boolean;
   /** Raw grid value per cell: metatile (bits 0-9), collision (10-11), elevation (12-15). */
   blocks: number[];
   /** Metatile behavior id per cell; names in behaviorNames. */
@@ -1162,6 +1166,8 @@ export class Game {
       mapHeight: layout.field("height").int(),
       outside: this.mapKind(group, num) === "outdoor",
       cave: header.field("cave").int() !== 0,
+      allowsRunning: header.field("allowRunning").int() !== 0,
+      allowsBiking: header.field("bikingAllowed").int() !== 0,
       kinds,
       blocks,
       behaviors,

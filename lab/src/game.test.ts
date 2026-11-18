@@ -24,6 +24,22 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(START_SAVE))("the view of a
     }
   });
 
+  test("the grid of a map tells if its header allows Running and the BICYCLE; the escape bit before the Running bit does not count", async () => {
+    const run = await Run.open();
+    try {
+      const allows = (name: string) => {
+        const grid = run.game.mapView(name)?.grid;
+        if (!grid) throw new Error(`no ${name}`);
+        return { running: grid.allowsRunning, biking: grid.allowsBiking };
+      };
+      expect(allows("PalletTown")).toEqual({ running: true, biking: true });
+      expect(allows("PokemonMansion_1F")).toEqual({ running: true, biking: false });
+      expect(allows("PokemonTower_1F")).toEqual({ running: false, biking: false });
+    } finally {
+      run.core.close();
+    }
+  });
+
   test("water at the elevation of the shore (3) is open: the player walks on it with no SURF", async () => {
     const run = await Run.open();
     try {

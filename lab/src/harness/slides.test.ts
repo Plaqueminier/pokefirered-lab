@@ -80,7 +80,7 @@ describe("the Parts of a map with spin tiles", () => {
 
   test("the route onto a spin tile ends with the step from the cell next to it that the search chooses", () => {
     const rows = ["#####", "#...#", "#.#→#", "#...#", "#####"];
-    const map = { name: "Maze", ...cells(rows), height: rows.length, blocks: Array.from(rows.join(""), () => 0), warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [] };
+    const map = { name: "Maze", ...cells(rows), height: rows.length, blocks: Array.from(rows.join(""), () => 0), warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], stepFrames: 16 };
     const maps = (name: string) => (name === "Maze" ? fake<RouteMap>(map) : null);
     const tile = { map: "Maze", x: 3, y: 2 };
     expect(routeOntoSpin({ map: "Maze", x: 1, y: 1 }, tile, withOpenTile(maps, tile))).toEqual({ from: { map: "Maze", x: 3, y: 1 }, direction: "south" });

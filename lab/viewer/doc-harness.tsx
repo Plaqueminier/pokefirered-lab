@@ -42,7 +42,7 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
       "It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. " +
       "When a Pokémon can remove a cut tree or a rock but the player does not have the badge, the reason names the badge. " +
       "When the party can use SURF, it crosses water too. On the shore, it faces the water, presses A and answers YES. The step to the land ends SURF. It never pushes a boulder: a `goTo` past one names `push`, or badge 4 when it is missing. " +
-      "When a Pokémon of the party knows FLY and the player has badge 3, it flies when the way is shorter. It flies from a town or a route, never from the Safari Zone. " +
+      "When a Pokémon of the party knows FLY and the player has badge 3, it flies when the flight takes fewer frames than the walk. A flight takes 700 frames. A step takes 6 frames on the BICYCLE, and 8 with the Running Shoes on a map that allows Running. It takes 8 frames on the water too, and 16 frames in each other case. It flies from a town or a route, never from the Safari Zone. " +
       "It flies to a place of the fly map that the player entered, in the region of the player. This can be on the map of the player. It opens the party menu, chooses FLY, moves the cursor of the fly map to the place and presses A. " +
       "The player arrives in front of the Pokémon Center, and the walk continues from there. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. " +
       "A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. " +
@@ -385,7 +385,7 @@ export function RecordPage() {
 export function SpeedPage() {
   return (
     <Page
-      lead="A walk moves at the best speed that the game and the choice of the Bot allow. The Run shows it in its frames only."
+      lead="A walk moves at the best speed that the game and the choice of the Bot allow. The Run shows it in its frames. A route counts these frames to choose between a walk and a flight. On the water, a step takes 8 frames, also with no Running Shoes."
       details={[
         ["Running", "when the player has the Running Shoes (`FLAG_SYS_B_DASH`), each step holds B with the direction. The Bot does not choose it. The game itself stops the run on a map that does not allow it, for example a house or a gym, and slows it on rock stairs. On a walk, B has no other use, and the Harness stops at the first frame of an Interruption, so B does not close a text."],
         ["The choice to ride", "`use BICYCLE` changes the choice of the Bot. The choice stays until the next `use BICYCLE`, also in a Continued Run and in an Extended Run. Before each leg of a walk, the Harness puts the player in the state of this choice, when the map allows the BICYCLE, the player is not on the Cycling Road and the player does not surf."],

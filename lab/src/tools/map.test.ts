@@ -19,6 +19,8 @@ const grid: MapGrid = {
   kinds: rows.join(""),
   outside: false,
   cave: true,
+  allowsRunning: true,
+  allowsBiking: true,
   blocks: rows.join("").split("").map((_, i) => (i === 7 ? 3 << ELEVATION_SHIFT : 0x0c00)),
   behaviors: [],
   behaviorNames: {},

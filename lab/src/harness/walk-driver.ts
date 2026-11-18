@@ -1,14 +1,16 @@
 import { BICYCLE } from "../bag";
 import { DIRECTION_STEP, type Direction } from "../cells";
-import type { Game } from "../game";
+import type { Game, MapGrid } from "../game";
 import { Keys } from "../protocol";
 import type { ActionEntry, Interruption } from "./harness";
 import type { ItemDriver } from "./item-driver";
 import { type Input, type MenuDriver, type Outcome, tap } from "./menu-driver";
-import type { Cell, WalkLeg } from "./path";
+import { type Cell, RUN_STEP_FRAMES, type WalkLeg } from "./path";
 import { at } from "./route-reasons";
 
 const STEP_FRAME_LIMIT = 60;
+const WALK_STEP_FRAMES = 16;
+const RIDE_STEP_FRAMES = 6;
 const SETTLE_FRAME_LIMIT = 600;
 const SLIDE_START_FRAMES = 4;
 const DIRECTION_KEYS: Record<Direction, number> = { south: Keys.Down, north: Keys.Up, west: Keys.Left, east: Keys.Right };
@@ -36,6 +38,12 @@ export class WalkDriver {
 
   get rideChosen(): boolean {
     return this.chosen;
+  }
+
+  /** The frames of a step on land of this map, with the Ride choice and the Running Shoes, as `stepKeys` and `matchRide` play it. */
+  stepFramesOn(grid: Pick<MapGrid, "allowsRunning" | "allowsBiking">): number {
+    if (this.chosen && grid.allowsBiking) return RIDE_STEP_FRAMES;
+    return this.game.hasRunningShoes() && grid.allowsRunning ? RUN_STEP_FRAMES : WALK_STEP_FRAMES;
   }
 
   chooseRide(on?: number): Outcome {

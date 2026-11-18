@@ -1075,7 +1075,8 @@ export class Harness {
           return null;
         }
         const { kinds, usable, closed } = this.fieldMovesOn(view.grid, view.actors);
-        const map = { ...view.grid, kinds, people: view.actors.people, obstacles: closed, removable: usable, flyDestinations: view.grid.outside && !isSafariZone(name) ? destinations : [] };
+        const flyDestinations = view.grid.outside && !isSafariZone(name) ? destinations : [];
+        const map = { ...view.grid, kinds, people: view.actors.people, obstacles: closed, removable: usable, flyDestinations, stepFrames: this.#walk.stepFramesOn(view.grid) };
         const sight = this.#atlas.darkSight(view.grid);
         maps.set(name, sight ? onlySeen(map, sight) : map);
       }

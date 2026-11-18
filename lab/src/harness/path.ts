@@ -14,6 +14,7 @@ export type RouteMap = Pick<MapGrid, "name" | "kinds" | "x0" | "y0" | "width" | 
   obstacles: Obstacle[];
   removable: Cell[];
   flyDestinations: readonly FlyDestination[];
+  stepFrames: number;
 };
 
 type Move = { direction: Direction; kind: "walk" | "jump" | "push" | "remove" | "surf" };
@@ -32,14 +33,16 @@ export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidt
 
 const WALKABLE = new Set<string>([KIND.open, KIND.grass, KIND.surf, STOP, SWITCH, ...Object.values(WALL)]);
 const WATER_KINDS = new Set<string>([KIND.water, KIND.surf]);
-const WARP_COST = 4;
+export const RUN_STEP_FRAMES = 8;
+// The game moves a player who surfs at the speed of Running (PlayerWalkFast).
+const WATER_STEP_FRAMES = RUN_STEP_FRAMES;
 // Measured frames.
-const STEP_FRAMES = 16;
 const CUT_FRAMES = 545;
 const SURF_FRAMES = 452;
 const FLY_FRAMES = 700;
-const MOVE_COST: Record<Move["kind"], number> = { walk: 1, jump: 2, push: 1, remove: Math.round(CUT_FRAMES / STEP_FRAMES), surf: Math.round(SURF_FRAMES / STEP_FRAMES) };
-const FLY_COST = Math.round(FLY_FRAMES / STEP_FRAMES);
+// Not measured: the costs of bot version 49, which counted a warp as 4 steps of 16 frames and a jump as 2.
+const WARP_FRAMES = 64;
+const JUMP_FRAMES = 32;
 export const MAX_ROUTE_MAPS = 32;
 
 type Step = { move: Move } | { fly: FlyDestination };
@@ -104,7 +107,10 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
   if (!load(from.map) || !target || !(to.exit || free(target, to) || removableAt(target, to))) return null;
 
   const id = (p: Place) => `${p.map}:${p.x},${p.y}`;
-  const estimate = (p: Place) => (p.map === to.map ? Math.abs(p.x - to.x) + Math.abs(p.y - to.y) : 0);
+  // A flight, or a warp to the same map (the pads of a gym), can cost less than the steps that it saves.
+  const selfWarp = target.warps.some((w) => w.to === target.name);
+  const fastestStep = Math.min(target.stepFrames, WATER_STEP_FRAMES);
+  const estimate = (p: Place) => (p.map !== to.map || selfWarp ? 0 : Math.min(FLY_FRAMES, fastestStep * (Math.abs(p.x - to.x) + Math.abs(p.y - to.y))));
   const cost = new Map<string, number>([[id(from), 0]]);
   const cameFrom = new Map<string, Link>();
   const open = new Queue<Place>();
@@ -134,47 +140,48 @@ type MapLoad = (name: string, byFlight?: boolean) => RouteMap | null;
 function* edges(place: Place, load: MapLoad, flies: boolean): Generator<Edge> {
   const map = load(place.map)!;
   for (const destination of flies ? map.flyDestinations : []) {
-    if (load(destination.map, true)) yield { to: { map: destination.map, x: destination.x, y: destination.y }, fly: destination, cost: FLY_COST, leaves: true };
+    if (load(destination.map, true)) yield { to: { map: destination.map, x: destination.x, y: destination.y }, fly: destination, cost: FLY_FRAMES, leaves: true };
   }
   const onWater = isSurf(map, place);
+  const stepFrames = onWater ? WATER_STEP_FRAMES : map.stepFrames;
   for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
     const walk: Move = { direction, kind: "walk" };
     const press = map.warps.find((w) => w.how === "press" && w.from.x === place.x && w.from.y === place.y && w.direction === direction);
     if (press) {
       const arrival = arrivalOf(press, load);
-      if (arrival) yield { to: arrival, move: { direction, kind: "push" }, cost: MOVE_COST.push + WARP_COST, leaves: true };
+      if (arrival) yield { to: arrival, move: { direction, kind: "push" }, cost: stepFrames + WARP_FRAMES, leaves: true };
       continue;
     }
     const next = { map: place.map, x: place.x + dx, y: place.y + dy };
     if (!inside(map, next)) {
       const across = acrossConnection(map, next, direction, load);
       const kind = across && stepKind(map, place, load(across.map)!, across);
-      if (across && kind) yield { to: across, move: { direction, kind }, cost: MOVE_COST[kind], leaves: true };
+      if (across && kind) yield { to: across, move: { direction, kind }, cost: kind === "surf" ? SURF_FRAMES : stepFrames, leaves: true };
       continue;
     }
     if (wallBetween(map, place, direction)) continue;
     if (kindAt(map, next) === LEDGE[direction]) {
       const landing = { map: place.map, x: next.x + dx, y: next.y + dy };
-      if (!onWater && inside(map, landing) && free(map, landing) && !isSurf(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: MOVE_COST.jump, leaves: false };
+      if (!onWater && inside(map, landing) && free(map, landing) && !isSurf(map, landing)) yield { to: landing, move: { direction, kind: "jump" }, cost: JUMP_FRAMES, leaves: false };
       continue;
     }
     if (removableAt(map, next)) {
-      if (!onWater) yield { to: next, move: { direction, kind: "remove" }, cost: MOVE_COST.remove, leaves: false };
+      if (!onWater) yield { to: next, move: { direction, kind: "remove" }, cost: CUT_FRAMES, leaves: false };
       continue;
     }
     if (!free(map, next)) continue;
     const kind = stepKind(map, place, map, next);
     if (kind !== "walk") {
-      if (kind) yield { to: next, move: { direction, kind }, cost: MOVE_COST[kind], leaves: false };
+      if (kind) yield { to: next, move: { direction, kind }, cost: kind === "surf" ? SURF_FRAMES : stepFrames, leaves: false };
       continue;
     }
     const step = map.warps.find((w) => w.how === "step" && w.x === next.x && w.y === next.y);
     if (step) {
       const arrival = arrivalOf(step, load);
-      if (arrival) yield { to: arrival, move: walk, cost: MOVE_COST.walk + WARP_COST, leaves: true };
+      if (arrival) yield { to: arrival, move: walk, cost: stepFrames + WARP_FRAMES, leaves: true };
       continue;
     }
-    yield { to: next, move: walk, cost: MOVE_COST.walk, leaves: false };
+    yield { to: next, move: walk, cost: stepFrames, leaves: false };
   }
 }
 

@@ -88,7 +88,7 @@ describe.skipIf(!ready)("goTo", () => {
   test("the floors of Mt Moon have thin walls: a walk cannot cross the wall of B2F, and the route from its ladder of B1F to the far ladder stays open", async () => {
     const run = await Run.open();
     const grid = run.game.mapView("MtMoon_B2F")?.grid;
-    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [], removable: [], flyDestinations: [] } : null);
+    const floor = (name: string) => (grid && name === grid.name ? { ...grid, people: [], obstacles: [], removable: [], flyDestinations: [], stepFrames: 16 } : null);
     expect(findRoute({ map: "MtMoon_B2F", x: 31, y: 11 }, { map: "MtMoon_B2F", x: 31, y: 17 }, floor)).toBeNull();
     expect(findRoute({ map: "MtMoon_B2F", x: 25, y: 22 }, { map: "MtMoon_B2F", x: 5, y: 11 }, floor)).not.toBeNull();
   });

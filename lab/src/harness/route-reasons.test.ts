@@ -41,7 +41,7 @@ describe("a goTo to another elevation", () => {
 });
 
 describe("the cells that a route of the map data needs, and that a map script closed before the last step", () => {
-  const floor = (name: string, kinds: string): RouteMap => ({ name, kinds, x0: 0, y0: 0, width: 3, height: 1, mapWidth: 3, mapHeight: 1, blocks: [0, 0, 0], warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [] });
+  const floor = (name: string, kinds: string): RouteMap => ({ name, kinds, x0: 0, y0: 0, width: 3, height: 1, mapWidth: 3, mapHeight: 1, blocks: [0, 0, 0], warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], stepFrames: 16 });
   const lastSteps: MapSource = (name) => floor(name, name === "SilphCo_3F" ? ".#." : "...");
   const rom: MapSource = (name) => floor(name, "...");
 

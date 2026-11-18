@@ -422,7 +422,8 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("SURF, on real
     expect(users[0]).toContain("w water: a walk crosses it with SURF");
     expect(users[0]).not.toContain("You are on the water");
     expect(overworld(harness)).toMatchObject({ map: { name: "Route21_North" }, player: { x: 12, y: 3 }, surfing: false });
-    expect(surfEvents(harness)).toEqual([{ type: "surf", frame: expect.any(Number), map: "PalletTown", x: 6, y: 19, species: "SQUIRTLE" }]);
+    // A step on the water is as fast as Running, so the walk starts SURF at once, on the cell of the player.
+    expect(surfEvents(harness)).toEqual([{ type: "surf", frame: expect.any(Number), map: "PalletTown", x: 6, y: 17, species: "SQUIRTLE" }]);
     expect(users).toHaveLength(4);
     harness.close();
   });

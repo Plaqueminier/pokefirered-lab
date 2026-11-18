@@ -23,6 +23,8 @@ function room(rows: string[]): MapGrid {
     kinds: [...cells].map((c) => (/\d/.test(c) ? "." : "#")).join(""),
     outside: false,
     cave: false,
+    allowsRunning: true,
+    allowsBiking: true,
     blocks: [...cells].map((c) => (/\d/.test(c) ? Number(c) : c === "C" ? 3 : 0) << ELEVATION_SHIFT),
     behaviors: [...cells].map((c) => (c === "C" ? COUNTER : 0)),
     behaviorNames: { 0: "MB_NORMAL", [COUNTER]: "MB_COUNTER" },
