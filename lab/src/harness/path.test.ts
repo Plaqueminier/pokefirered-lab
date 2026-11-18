@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Direction, ELEVATION_SHIFT } from "../cells";
-import { type Cell, destinationOf, findRoute, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, whyNoRoute, type Leg, type MapSource, type RouteMap, type WalkLeg } from "./path";
+import { elevationBlocks } from "./atlas";
+import { type Cell, destinationOf, findRoute, hasElevationEdges, headingAlong, nextStepAlong, nextStraightStep, onlySeen, reached, startsSurf, stepFrom, whyNoRoute, type Leg, type MapSource, type RouteMap, type WalkLeg } from "./path";
 
 const LAND_BLOCK = 3 << ELEVATION_SHIFT;
 
@@ -301,6 +302,39 @@ describe("findRoute on one map", () => {
     const route = path(HOUSE_2F, { x: 6, y: 6 }, { x: 10, y: 2 });
     expect(route).toHaveLength(8);
     expect(walk({ x: 6, y: 6 }, route!)).toEqual({ x: 10, y: 2 });
+  });
+});
+
+describe("findRoute with elevations", () => {
+  const elevated = (rows: string[], elevations: string[]) => {
+    const m = map("Raised", rows);
+    return { ...m, blocks: elevationBlocks(elevations.join("")) };
+  };
+
+  test("a step between two elevations is impossible, and a cell at elevation 0 joins them", () => {
+    const area = elevated(["...", "..."], ["333", "044"]);
+    expect(path(area, { x: 2, y: 1 }, { x: 2, y: 0 })).toEqual(["west", "west", "north", "east", "east"]);
+    expect(path(area, { x: 2, y: 0 }, { x: 2, y: 1 })).toEqual(["west", "west", "south", "east", "east"]);
+    expect(path(elevated(["...", "..."], ["333", "033"]), { x: 2, y: 1 }, { x: 2, y: 0 })).toEqual(["north"]);
+  });
+
+  test("a step between land and water joins only from land at the elevation of the shore, and water joins water", () => {
+    const coast = elevated(["..≈≈"], ["3411"]);
+    expect(stepFrom(coast, { x: 1, y: 0 }, "east")).toBeNull();
+    expect(stepFrom(coast, { x: 2, y: 0 }, "east")).toEqual({ x: 3, y: 0 });
+    expect(stepFrom(elevated(["..≈"], ["331"]), { x: 1, y: 0 }, "east")).toEqual({ x: 2, y: 0 });
+  });
+
+  test("SURF does not start onto water at elevation 0: the game refuses it, as on the east edge of Route 14", () => {
+    expect(startsSurf(elevated(["..≈"], ["331"]), { x: 1, y: 0 }, { x: 2, y: 0 })).toBe(true);
+    expect(startsSurf(elevated(["..≈"], ["330"]), { x: 1, y: 0 }, { x: 2, y: 0 })).toBe(false);
+  });
+
+  test("a warp cell at another elevation, as the escalator of a Pokémon Center, makes no step between two elevations", () => {
+    const center = elevated(["...."], ["3344"]);
+    const escalator = (x: number) => ({ x, y: 0, to: "Upstairs", warpId: 0, how: "step" as const });
+    expect(hasElevationEdges(center)).toBe(true);
+    expect(hasElevationEdges({ ...center, warps: [escalator(2), escalator(3)] })).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import { KIND } from "../cells";
 import { destinationNow, type FieldMove, type Obstacle } from "../game";
-import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, personName, seenIn } from "./atlas";
-import { allCells, type BlockOf, type Cell, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
+import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, elevationSplit, personName, seenIn } from "./atlas";
+import { allCells, type BlockOf, type Cell, type Destination, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson, walkable } from "./path";
 import { partAt, partNear, slidesLeaving } from "./slides";
 
 export type Remedies = { move: (move: FieldMove) => string; obstacle: (obstacle: Obstacle) => string };
@@ -27,7 +27,7 @@ export function noRouteReason(here: Place, destination: Destination, asked: Plac
   if (kind === KIND.water) return `(${asked.x}, ${asked.y}) of ${asked.map} is water. ${remedies.move("SURF")}`;
   if (kind === KIND.blocked) return `(${asked.x}, ${asked.y}) is a blocked cell of ${asked.map}: nobody can stand there. Read its row and its column in the grid again, then choose an open cell`;
   if (map?.dark) return `no way to ${at(asked)} on the cells that you saw: on a dark map, you walk only on these`;
-  const parts = map && here.map === asked.map ? noFootWayReason(map, here, asked) : null;
+  const parts = map && here.map === asked.map ? (noFootWayReason(map, here, asked) ?? elevationReason(map, here, asked)) : null;
   if (parts) return parts;
   const elevator = elevatorReason(here, asked, maps);
   if (elevator) return elevator;
@@ -60,4 +60,47 @@ export function noFootWayReason(map: AtlasMap, here: Cell, asked: Cell): string 
   const cells = allCells(view).filter((c) => partAt(map, c) === own);
   const leaves = slidesLeaving(view, cells, seenIn(map), map.slides, () => false).length > 0;
   return leaves ? `(${asked.x}, ${asked.y}) is in Part ${to}, and you are in Part ${own}: no way on foot. Only a slide leaves Part ${own}: goTo one of its spin tiles` : null;
+}
+
+/** The reason of a goTo with no route to `asked`, when `asked` is at another elevation than `here` (elevationSplit). It comes after the route searched the maps that the player knows. */
+export function elevationReason(map: AtlasMap, here: Cell, asked: Cell): string | null {
+  if (!elevationSplit(map, here)?.(asked)) return null;
+  return `(${asked.x}, ${asked.y}) is on another level of ${map.name} than you, and no stairs that you saw join the two levels. A step from one level to the next is possible only on stairs, and no route that you know reaches it now: explore other exits first`;
+}
+
+/** The cells of the maps of `route` that the map data has open, and that a map script closed before the last step of the player on these maps. */
+export function closedOnRouteMaps(route: readonly Leg[], lastSteps: MapSource, rom: MapSource): string[] {
+  return [...new Set(route.map((leg) => leg.map))].flatMap((name) => {
+    const now = lastSteps(name);
+    const data = rom(name);
+    if (!now || !data) return [];
+    return allCells(data).filter((c) => walkable(data, c) && !walkable(now, c)).map((c) => at({ map: name, ...c }));
+  });
+}
+
+/** Stops a walk that arrives on another map at a cell where an earlier leg of the same walk arrived. */
+export class LoopGuard {
+  readonly #arrivals = new Set<string>();
+  readonly #closed = new Set<string>();
+  #lastMap: string | null = null;
+
+  /** The reason to stop when the walk arrives again at `here`. */
+  arrive(here: Place): string | null {
+    const arrived = this.#lastMap !== null && here.map !== this.#lastMap;
+    this.#lastMap = here.map;
+    if (!arrived) return null;
+    if (this.#arrivals.has(at(here))) return loopReason(here, [...this.#closed]);
+    this.#arrivals.add(at(here));
+    return null;
+  }
+
+  /** The walk takes a route on the cells of the ROM: the reason names the cells that it can need. */
+  romRoute(route: readonly Leg[], lastSteps: MapSource, rom: MapSource): void {
+    for (const cell of closedOnRouteMaps(route, lastSteps, rom)) this.#closed.add(cell);
+  }
+}
+
+function loopReason(here: Place, closed: readonly string[]): string {
+  const cells = closed.length > 0 ? `; on the maps of the route, the map data has ${closed.join(", ")} open, but a map script closed them before your last step there` : "";
+  return `the walk arrives again at ${at(here)}: the way to the target through the other maps is not open${cells}`;
 }

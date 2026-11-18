@@ -1,6 +1,6 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, LEDGE, WALL } from "../cells";
 import { type Atlas, type AtlasMap, type AtlasWarp, atlasCells, fitsScreen, seenIn } from "../harness/atlas";
-import { allCells, type Cell, cellKey, inside, kindAt, type MapCells, walkable, walkGroups, wallBetween } from "../harness/path";
+import { allCells, type Cell, cellKey, inside, joinCells, kindAt, type MapCells, neighbours, stepFrom, walkable, walkGroups } from "../harness/path";
 import { partNear, type Slide, slidesLeaving } from "../harness/slides";
 
 export type Part = {
@@ -45,15 +45,12 @@ function partOf(map: AtlasMap, view: MapCells, from: Cell, blocked: Blocked): Pa
   };
   for (const [i, cell] of cells.entries()) {
     if (i > 0 && isStepExit(map, cell)) continue;
-    for (const [direction, [dx, dy]] of DIRECTION_STEPS) {
-      const next = { x: cell.x + dx, y: cell.y + dy };
-      if (!seen(next) || wallBetween(view, cell, direction)) continue;
-      const landing = { x: next.x + dx, y: next.y + dy };
-      if (kindAt(view, next) === LEDGE[direction] && seen(landing) && walkable(view, landing)) add(landing);
-      else if (walkable(view, next)) add(next);
+    for (const { direction, ...next } of neighbours(cell)) {
+      const to = stepFrom(view, cell, direction);
+      if (to && seen(next) && seen(to) && walkable(view, to)) add(to);
     }
   }
-  const touches = (c: Cell) => keys.has(cellKey(c)) || (!walkable(view, c) && Object.values(DIRECTION_STEP).some(([dx, dy]) => keys.has(cellKey({ x: c.x + dx, y: c.y + dy }))));
+  const touches = (c: Cell) => joinCells(view, c).some((n) => keys.has(cellKey(n)));
   const slides = slidesLeaving(view, cells, seen, map.slides, blocked);
   return { map, from, cells, keys, exits: map.warps.filter(touches), slides, touches, view };
 }

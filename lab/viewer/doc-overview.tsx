@@ -67,7 +67,18 @@ export function PrinciplePage() {
         ["Knowledge level", "`player`: what a careful player knows · `full`: also the exact HP and stats of the enemy, and all the maps in the Atlas."],
         [
           "Atlas",
-          "what the Run knows of the world: the maps visited, the cells seen on the screen (15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level; on the map of the player, the cells of the game now, and on another map, the cells of the ROM), the exits taken with their destination and arrival cell (a flight with FLY is not an exit) (an Elevator exit has one for each floor that the player reached by it or came from; at the `full` level, each map with a warp to the Elevator that the player can take), the exits seen, with the kind of place that a player sees for an exit of an outdoor map or an entrance from inside, the things checked, the people seen (at the cell where the player last saw them) and their texts, the person of the last talk, the slides taken with a goTo (from the spin tile to the real end), the numbers of the Parts of a map where the player saw a spin tile, the edges blocked by water while the party cannot use SURF, and the fixed obstacles seen that still close a way. At the `full` level: all the maps, but only the fixed obstacles seen.",
+          "what the Run knows of the world. It has the maps visited and the cells seen on the screen: 15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level. " +
+            "On the map of the player, the cells are the cells of the game now. On another map, they are the cells of that map at the last step of the player on it, after its map scripts. " +
+            "The ROM has the Card Key doors of Silph Co. open, and the map scripts close them. So the cells of the ROM stay only for a map with no step of the player on it. " +
+            "The route of a goTo uses the same cells. The exits of another map stay the exits of the ROM: the game sets the destination of an Elevator exit again at each entry. " +
+            "The Atlas has the exits taken, with their destination and arrival cell. A flight with FLY is not an exit. " +
+            "An Elevator exit has one destination for each floor that the player reached by it or came from. At the `full` level, it has one for each map with a warp to the Elevator that the player can take. " +
+            "The Atlas has the exits seen. For an exit of an outdoor map or an entrance from inside, it has the kind of place that a player sees. " +
+            "It has the things checked, the people seen and their texts, and the person of the last talk. A person is at the cell where the player last saw it. " +
+            "It has the slides taken with a goTo, from the spin tile to the real end. It has the numbers of the Parts of a map where the player saw a spin tile. " +
+            "It has the edges blocked by water while the party cannot use SURF, and the fixed obstacles seen that still close a way. " +
+            "On a map where two elevations of land touch, it has the elevation of each seen cell. " +
+            "At the `full` level, it has all the maps, but only the fixed obstacles seen.",
         ],
       ]}
     >
@@ -77,7 +88,7 @@ export function PrinciplePage() {
         <DocCard icon={Cpu} title="Harness" lines={["plays the actions of the Bot in the game", "decides nothing, except the use of FLASH, the field moves of a walk, the speed of a walk and an evolution that B cannot stop"]} />
         <DocCard icon={Hand} title="Decision point" lines={["the game waits for an input", "walk, text, choice, battle action…"]} />
         <DocCard icon={Eye} title="Knowledge level" lines={["`player` what a careful player knows", "`full` also the exact HP and stats of the enemy, and all the maps"]} />
-        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water with no SURF, fixed obstacles"]} />
+        <DocCard icon={MapIcon} title="Atlas" lines={["what the Run knows of the world", "maps visited, cells seen (15 × 10, or 3 × 3 in the dark at the `player` level), exits, things to check, people and their texts", "slides taken, edges blocked by water with no SURF, fixed obstacles", "on another map, its cells at the last step of the player on it; the route of a goTo uses them too", "on a map where two elevations of land touch, the elevation of each seen cell"]} />
       </div>
     </Page>
   );

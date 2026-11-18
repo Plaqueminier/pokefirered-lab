@@ -1,9 +1,11 @@
 import type { BagItem } from "../bag";
-import { struggles } from "../battle";
+import { type SafariBattle, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, poisonDamage, reviveFacts, type UseFacts, useFacts } from "../battle-facts";
 import type { BattleState } from "../harness/harness";
 import { isDamageMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { monPlace, moveText, statsText } from "./party-text";
+
+const GHOST_LINE = "The game cannot identify this GHOST, because the Bag has no SILPH SCOPE. Your Pokémon are too scared to attack it, a ball does not catch it, and run always works. Use run, and get the SILPH SCOPE first.";
 
 const MULTIPLIERS: Record<number, string> = { 0.25: "¼", 0.5: "½" };
 
@@ -91,6 +93,7 @@ function rangeText(min: number, max: number, unit = ""): string {
 }
 
 export function battleLines(battle: BattleState, party: PartyMon[]): string[] {
+  if (battle.safari) return safariBattleLines(battle, battle.safari, party);
   const { player, enemy, lastTurn, foeTurns, double } = battle;
   const used = foeTurns.flatMap((turn) => turn.moves.filter((m) => m.user === turn.player.before.name).map((m) => `${m.move} (${[...m.results, `its HP ${turn.foe.before.hp} → ${turn.foe.after.hp}`].join(", ")})`));
   return [
@@ -100,10 +103,22 @@ export function battleLines(battle: BattleState, party: PartyMon[]): string[] {
     ...(double?.ally ? [`Your other Pokémon in the battle, ${double.ally.nickname}: level ${double.ally.level}, HP ${double.ally.hp}/${double.ally.maxHp}, status ${double.ally.status}.`] : []),
     foeLine(enemy, double?.otherFoe ? "Foe 1" : "Foe"),
     ...(double?.otherFoe ? [foeLine(double.otherFoe.enemy, "Foe 2")] : []),
-    ...(battle.kind === "wild" ? [ownedLine(enemy.species, party.filter((mon) => mon.species === enemy.species).length, battle.inPc)] : []),
+    ...(battle.ghost ? [GHOST_LINE] : ownedLines(battle, party)),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
     ...(fewDamagePp(player.moves) ? ["Your damage moves have few PP: use the other moves that have an effect, or switch."] : []),
+  ];
+}
+
+// The game sets the Pokémon of the player to zeros in a Safari battle (battle_main.c), so the lines show only the foe.
+function safariBattleLines(battle: BattleState, { balls, fleePercent }: SafariBattle, party: PartyMon[]): string[] {
+  const { enemy } = battle;
+  return [
+    foeLine(enemy, "Foe"),
+    ...ownedLines(battle, party),
+    `This is a battle of the Safari Zone: your Pokémon do not fight, and you have ${balls} SAFARI BALL${balls === 1 ? "" : "s"}.`,
+    `The foe can flee at each turn: now a chance of ${fleePercent}%.`,
+    "BALL throws a SAFARI BALL. BAIT: the foe flees less for 2 to 6 turns, and a ball catches it less easily. ROCK: a ball catches it more easily, and the foe flees more for 2 to 6 turns. RUN leaves the battle.",
   ];
 }
 
@@ -132,8 +147,12 @@ function fewDamagePp(moves: PartyMove[]): boolean {
   return damage.length > 0 && sum((move) => move.pp) * 4 <= sum((move) => move.maxPp) && moves.some((move) => move.pp > 0);
 }
 
-function ownedLine(species: string, inParty: number, inPc: number): string {
-  return inParty + inPc === 0 ? `You own no ${species}.` : `You own ${inParty + inPc} ${species}: ${inParty} in the party, ${inPc} in the PC.`;
+function ownedLines(battle: BattleState, party: PartyMon[]): string[] {
+  if (battle.kind !== "wild") return [];
+  const { species } = battle.enemy;
+  const inParty = party.filter((mon) => mon.species === species).length;
+  const owned = inParty + battle.inPc;
+  return [owned === 0 ? `You own no ${species}.` : `You own ${owned} ${species}: ${inParty} in the party, ${battle.inPc} in the PC.`];
 }
 
 function turnLine({ moves, player, foe }: BattleTurn): string {

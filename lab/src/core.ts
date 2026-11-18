@@ -133,6 +133,11 @@ export class Core implements WritableBus {
     this.patch16(even, address === even ? (high << 8) | value : (value << 8) | low);
   }
 
+  patch32(address: number, value: number): void {
+    this.patch16(address, value & 0xffff);
+    this.patch16(address + 2, value >>> 16);
+  }
+
   /** The battery save (flash) as it is now. */
   saveData(): Uint8Array {
     const size = Number(this.f.lab_savedata_size(this.handle));

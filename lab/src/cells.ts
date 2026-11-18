@@ -8,6 +8,8 @@ export const SWITCH = "s";
 export const WALL: Record<Direction, string> = { north: "-", south: "_", west: "[", east: "]" };
 /** The elevation of a cell is in bits 12-15 of its grid value. */
 export const ELEVATION_SHIFT = 12;
+/** The elevation of land where SURF starts and ends (CanStopSurfing). */
+export const SHORE_ELEVATION = 3;
 export const DIRECTION_STEP: Record<Direction, [number, number]> = { north: [0, -1], south: [0, 1], west: [-1, 0], east: [1, 0] };
 export const DIRECTION_STEPS = Object.entries(DIRECTION_STEP) as [Direction, [number, number]][];
 export const OPPOSITE: Record<Direction, Direction> = { north: "south", south: "north", west: "east", east: "west" };

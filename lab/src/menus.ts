@@ -26,6 +26,7 @@ const GRID_MULTICHOICE_ID_OFFSET = 3;
 const SCRIPT_CONTEXT_WAITING = 1;
 export const SCRIPT_CONTEXT_SHUTDOWN = 2;
 const START_MENU_INPUT_STEP = 1;
+const SCRIPT_LIST_TASK = 14;
 // NAMING_SCREEN_* of the game. The two Pokémon templates (2 and 3) are not here: they name a Pokémon by its species.
 const NAMING_SUBJECTS = new Map([
   [0, "the name of the player"],
@@ -114,6 +115,18 @@ export function multichoiceGrid(mem: Memory, decode: Decode): GridChoice | null 
   const id = mem.u8(mem.global("sGlobalScriptContext").field("scriptPtr").pointer() - GRID_MULTICHOICE_ID_OFFSET);
   const menu = mem.global("sMenu");
   return { options: multichoiceOptions(mem, id, decode), cursor: menu.field("cursorPos").int(), columns: menu.field("columns").int() };
+}
+
+// Task_ListMenuHandleInput keeps the list task in data[14], and the data of that task holds struct ListMenu:
+// the template, then cursorPos (the scroll) and itemsAbove (the row).
+export function scriptListMenu(mem: Memory, decode: Decode): Choice | null {
+  const task = activeTask(mem, "Task_ListMenuHandleInput");
+  if (!task || mem.global("gPaletteFade").field("active").int()) return null;
+  const template = mem.global("sFieldSpecialsListMenuTemplate");
+  const items = template.field("items");
+  const options = Array.from({ length: template.field("totalItems").int() }, (_, i) => menuText(mem, items.at(i).field("label").pointer(), decode));
+  const list = mem.global("gTasks").at(task.field("data").at(SCRIPT_LIST_TASK).int()).field("data").addr + template.size;
+  return { options, cursor: mem.u16(list) + mem.u16(list + 2) };
 }
 
 function multichoiceOptions(mem: Memory, id: number, decode: Decode): string[] {

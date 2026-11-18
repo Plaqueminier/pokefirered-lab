@@ -217,6 +217,23 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
   } as Observation;
 }
 
+describe("a GHOST that the game does not identify", () => {
+  const ghost = () => {
+    const observation = wildPidgey({ party: 1 });
+    if (observation.mode !== "battle") throw new Error("no battle");
+    observation.battle = { ...observation.battle, enemy: { ...observation.battle.enemy, species: "GHOST", types: [] }, ghost: true };
+    return observation;
+  };
+
+  test("the prompt tells that only run helps without the SILPH SCOPE, and gives no count of the species", () => {
+    const observation = ghost();
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).toContain("Foe GHOST (): level 3");
+    expect(prompt).toContain("The game cannot identify this GHOST, because the Bag has no SILPH SCOPE. Your Pokémon are too scared to attack it, a ball does not catch it, and run always works.");
+    expect(prompt).not.toContain("You own");
+  });
+});
+
 describe("a double battle", () => {
   const twoFoes = () => {
     const observation = wildPidgey({ party: 3 });
@@ -645,6 +662,29 @@ describe("a REPEL", () => {
   });
 });
 
+describe("the Safari Zone", () => {
+  test("a walk tells the steps and the SAFARI BALLs left", () => {
+    const walk = { ...route1(22, []), safari: { steps: 412, balls: 27 } } as Observation;
+    expect(userPrompt(walk, askedOf(walk, false)!, [], NO_TURN)).toContain("Safari Zone: 412 steps and 27 SAFARI BALLs left. At 0 steps or 0 balls, the game takes you back to the gate.");
+    const outside = route1(22, []);
+    expect(userPrompt(outside, askedOf(outside, false)!, [], NO_TURN)).not.toContain("Safari Zone:");
+  });
+
+  test("a battle offers BALL, BAIT, ROCK and RUN, with the balls left and the chance that the foe flees", () => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("no battle");
+    observation.waitingFor = { kind: "choice", options: ["BALL", "BAIT", "ROCK", "RUN"], cursor: 0, columns: 2 };
+    const zeros = { ...observation.battle.player, species: "", nickname: "          ", types: [], level: 0, hp: 0, maxHp: 0, moves: [] };
+    observation.battle = { ...observation.battle, player: zeros, safari: { balls: 1, fleePercent: 45 } };
+    const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+    expect(prompt).not.toContain("Your           :");
+    expect(prompt).toContain("Foe PIDGEY (NORMAL, FLYING): level 3");
+    expect(prompt).toContain("- choose BALL\n- choose BAIT\n- choose ROCK\n- choose RUN");
+    expect(prompt).toContain("This is a battle of the Safari Zone: your Pokémon do not fight, and you have 1 SAFARI BALL.");
+    expect(prompt).toContain("The foe can flee at each turn: now a chance of 45%.");
+  });
+});
+
 describe("SURF", () => {
   test("a walk on the water tells it, because the sign of the player hides the cell", () => {
     const surfing = { ...route1(22, []), surfing: true } as Observation;
@@ -880,6 +920,7 @@ describe("the Coach advice", () => {
       expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.battle = { ...o.battle, inPc: 1 } as typeof o.battle)), { catchNew: true, train: [] })).toEqual([]);
       expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.bag = o.bag.filter((pocket) => pocket.pocket !== "POKé BALLS"))), { catchNew: true, train: [] })).toEqual([]);
       expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.battle = { ...o.battle, kind: "trainer" } as typeof o.battle)), { catchNew: true, train: [] })).toEqual([]);
+      expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.battle = { ...o.battle, ghost: true })), { catchNew: true, train: [] })).toEqual([]);
       expect(lines(battleWith([mon("SQUIRTLE", 6)], (o) => (o.waitingFor = { kind: "battleMove" } as typeof o.waitingFor)), { catchNew: true, train: [] })).toEqual([]);
       expect(lines(observation, { team: "Catch a PIDGEY." })).toEqual([]);
     });
@@ -893,6 +934,7 @@ describe("the Coach advice", () => {
       expect(lines(battleWith([mon("SQUIRTLE", 6), mon("LITERKA", 12)]), { catchNew: false, train })).toEqual([]);
       expect(lines(battleWith([mon("SQUIRTLE", 6), mon("LITERKA", 5, 0)]), { catchNew: false, train })).toEqual([]);
       expect(lines(battleWith(party, (o) => (o.battle = { ...o.battle, player: { ...o.battle.player, nickname: "LITERKA" } })), { catchNew: false, train })).toEqual([]);
+      expect(lines(battleWith(party, (o) => (o.battle = { ...o.battle, ghost: true })), { catchNew: false, train })).toEqual([]);
       const switched = { moves: [], player: { before: { name: "LITERKA", hp: "20/20" }, after: { name: "SQUIRTLE", hp: "20/22" } }, foe: { before: { name: "PIDGEY", hp: "100%" }, after: { name: "PIDGEY", hp: "90%" } } };
       expect(lines(battleWith(party, (o) => (o.battle = { ...o.battle, foeTurns: [switched] })), { catchNew: false, train })).toEqual([]);
     });

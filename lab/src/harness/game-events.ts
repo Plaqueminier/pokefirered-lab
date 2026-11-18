@@ -81,7 +81,9 @@ export class StateWatch {
       return events;
     }
     const partyChanged = !same(keys.party, seen.keys.party);
-    if (partyChanged || keys.money !== seen.keys.money || !same(keys.items, seen.keys.items) || !same(keys.flags, seen.keys.flags)) {
+    const keyed = keys.money !== seen.keys.money || !same(keys.items, seen.keys.items);
+    if (keyed && this.#reads.reencrypting()) return events;
+    if (partyChanged || keyed || !same(keys.flags, seen.keys.flags)) {
       const now = this.#read(keys, seen);
       if (!now) return events;
       events.push(...this.#changes(seen, now, { inBattle, whitingOut }));

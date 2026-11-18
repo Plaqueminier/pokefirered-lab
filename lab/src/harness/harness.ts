@@ -4,9 +4,9 @@ import { isAbsolute, join } from "node:path";
 import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, sellableItems, type Stone, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
 import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, OPPOSITE, SWITCH, withSurf } from "../cells";
+import { DIRECTION_STEP, type Direction, KIND, OPPOSITE, SWITCH, withSurf } from "../cells";
 import type { FlyDestination } from "../fly-destinations";
-import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type WaitingFor, walkRemoves } from "../game";
+import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, type MapScriptCells, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type SafariZone, type WaitingFor, walkRemoves } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { type BotInfo, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } from "../protocol";
@@ -17,8 +17,8 @@ import type { Genome } from "../genetic/genome";
 import { isStateEvent, withoutFormat } from "./game-events";
 import { ItemDriver } from "./item-driver";
 import { MenuDriver, type Outcome, type Texts } from "./menu-driver";
-import { type Cell, type Destination, destinationOf, findRoute, headingAlong, kindAt, type MapSource, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
-import { at, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
+import { type Cell, type Destination, destinationOf, findRoute, headingAlong, kindAt, type MapSource, neighbours, nextStepAlong, nextStraightStep, onlySeen, type Place, reached, type RouteMap, startsSurf, whyNoRoute } from "./path";
+import { at, LoopGuard, noRouteReason, outsideReason, stayingReason } from "./route-reasons";
 import { afterAction, RunEnd, RunLimits } from "./run-limits";
 import { routeOntoSpin, spinDirection, withOpenTile } from "./slides";
 import {
@@ -68,7 +68,7 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; double?: { ally: Battle["player"] | null; otherFoe: { enemy: EnemyMon; fights: (FightFacts | null)[] } | null; reach: MoveReach[] }; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
+export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; double?: { ally: Battle["player"] | null; otherFoe: { enemy: EnemyMon; fights: (FightFacts | null)[] } | null; reach: MoveReach[] }; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & Pick<Battle, "ghost" | "safari"> & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -81,7 +81,7 @@ type FlyTarget = Pick<FlyDestination, "name" | "area" | "map" | "x" | "y">;
 export type FlyUse = { usable: boolean; destinations: FlyTarget[] };
 
 export type Observation = ObservationBase &
-  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; fly: FlyUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
+  ({ mode: "overworld"; map: GameState["map"]; mapKind: MapKind; player: PlayerPosition; grid: MapGrid; people: Person[]; boxes: BoxMon[]; pcItems: PcItem[]; repelActive: boolean; safari?: SafariZone; riding: boolean; rideChosen: boolean; surfing: boolean; strength: StrengthUse; fly: FlyUse; teachables: Teachable[]; stones: Stone[] } | { mode: "battle"; battle: BattleState } | { mode: "naming" } | { mode: "menu" });
 
 export type EndReason = "goal" | "bot stopped" | "user stop" | "cost limit" | "token limit" | "plan limit" | "frame budget" | "no progress" | "whiteout" | "unknown screen";
 
@@ -464,8 +464,9 @@ export class Harness {
     if (battle) return { ...base, mode: "battle", battle: this.battleState(battle) };
     if (base.waitingFor.kind === "learnMove") return { ...base, mode: "menu" };
     const { player, grid, actors } = this.overworld();
+    const safari = game.safariZone();
     const people = actors.people.map(({ localId, x, y, graphics, loaded, stays, trainer }): Person => ({ localId, x, y, graphics, loaded, stays, ...(trainer && !trainer.defeated ? { unbeatenTrainer: true } : {}) }));
-    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), strength: this.strengthUse(grid, actors), fly: this.flyUse(grid.name), teachables: game.teachables(), stones: game.stones() };
+    return { ...base, mode: "overworld", map: game.map(), mapKind: game.mapKindHere(), player, grid, people, boxes: game.boxMons(), pcItems: game.pcItems(), repelActive: game.repelActive(), ...(safari ? { safari } : {}), riding: game.riding(), rideChosen: this.#walk.rideChosen, surfing: game.surfing(), strength: this.strengthUse(grid, actors), fly: this.flyUse(grid.name), teachables: game.teachables(), stones: game.stones() };
   }
 
   availableActions(): AvailableAction[] {
@@ -585,13 +586,20 @@ export class Harness {
     if (outside) return { status: "impossible", reason: outside };
     let tries = 0;
     let stuckAt: Place | null = null;
+    const loop = new LoopGuard();
     for (let legs = 0; legs < MAX_LEGS; legs++) {
       const here = this.#run.game.playerPlace();
       if (reached(destination, here)) return { status: "done" };
+      const again = loop.arrive(here);
+      if (again) return { status: "impossible", reason: again };
       const changed = this.#walk.matchRide();
       if (changed.status !== "done") return changed;
       const maps = this.routeMaps();
-      const route = findRoute(here, destination, maps);
+      // A map script can read a flag that changed on another map (the switch of Pokémon Mansion): then the ROM cells can be right.
+      const lastStepRoute = findRoute(here, destination, maps);
+      const rom = this.romMaps();
+      const route = lastStepRoute ?? findRoute(here, destination, rom);
+      if (!lastStepRoute && route) loop.romRoute(route, maps, rom);
       const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
       if (failed) return failed;
       const leg = route?.[0];
@@ -996,7 +1004,7 @@ export class Harness {
   }
 
   private battleState(battle: Battle): BattleState {
-    const { kind, player, enemy, double } = battle;
+    const { kind, player, enemy, double, ghost, safari } = battle;
     const game = this.#run.game;
     const view = (foe: Battle["enemy"]) => enemyView(foe, this.#battles.movesSeen(foe.partyIndex).map((move) => game.moveName(move)), this.#knowledge === "full");
     const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), game.milestones(), this.#battles.battleTexts());
@@ -1004,7 +1012,8 @@ export class Harness {
       ...(kind === "wild" ? { kind, inPc: game.pcCount(enemy.species) } : { kind }),
       player,
       enemy: view(enemy),
-      fights: facts(enemy),
+      ...(ghost ? { fights: player.moves.map(() => null), ghost } : { fights: facts(enemy) }),
+      ...(safari ? { safari } : {}),
       ...(double ? { double: { ally: double.ally, otherFoe: double.otherFoe && { enemy: view(double.otherFoe), fights: facts(double.otherFoe) }, reach: double.reach } } : {}),
       lastTurn: this.#battles.lastTurn(),
       // The text of a double battle does not tell the foe of a move.
@@ -1045,12 +1054,22 @@ export class Harness {
     return { usable: this.#run.game.usableFieldMoves().has(move), missingBadge: this.#run.game.missingBadge(move) };
   }
 
+  /** The maps of a route: another map has the cells of the last step of the player on it. */
   private routeMaps(): MapSource {
+    return this.mapsWith((name) => this.#atlas.lastStepCells(name));
+  }
+
+  /** The maps of a route, with the cells of the ROM for each map other than the map of the player. */
+  private romMaps(): MapSource {
+    return this.mapsWith(() => null);
+  }
+
+  private mapsWith(lastStepCells: (name: string) => MapScriptCells | null): MapSource {
     const maps = new Map<string, RouteMap | null>();
     const destinations = this.flyDestinations();
     return (name) => {
       if (!maps.has(name)) {
-        const view = this.#run.game.mapView(name);
+        const view = this.#run.game.mapView(name, lastStepCells(name));
         if (!view) {
           maps.set(name, null);
           return null;
@@ -1101,6 +1120,3 @@ export class Harness {
   }
 }
 
-function neighbours(cell: { x: number; y: number }): { direction: Direction; x: number; y: number }[] {
-  return DIRECTION_STEPS.map(([direction, [dx, dy]]) => ({ direction, x: cell.x + dx, y: cell.y + dy }));
-}

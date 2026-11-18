@@ -1,7 +1,7 @@
 // FireRed-specific reads: what the Viewer and the Harness see. The addresses and the C layouts come
 // from the debug info; the byte layouts of script data and of text come from the decomp sources.
 import { join } from "node:path";
-import { DIRECTION_STEP, type Direction, KIND, LEDGE, SPIN, STOP, SWITCH, WALL } from "./cells";
+import { DIRECTION_STEP, type Direction, ELEVATION_SHIFT, KIND, LEDGE, SHORE_ELEVATION, SPIN, STOP, SWITCH, WALL } from "./cells";
 import { type BagMenu, type BagPlace, type BagPocket, bagMenu, bagQuantity, type BerryPouchMenu, berryPouchMenu, findInBag, itemSceneRuns, readBag, readStones, readTeachables, type Stone, type Teachable, tmCaseItemMenu, tmCaseRow } from "./bag";
 import {
   arenaWaitsForA,
@@ -22,6 +22,7 @@ import {
   levelUpBoxWaits,
   type PrintedMove,
   readBattle,
+  safariMenu,
 } from "./battle";
 import { readTypeChart, type TypeChart } from "./battle-facts";
 import { type FlyData, type FlyDestination, flyData } from "./fly-destinations";
@@ -29,7 +30,7 @@ import { REPO_DIR, readMapJsons, readSectionNames } from "./map-data";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, FLAG_SYS_USE_STRENGTH, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
-import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, startMenu, type WordScreen, wordScreen } from "./menus";
+import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, scriptListMenu, startMenu, type WordScreen, wordScreen } from "./menus";
 import { type BoxMon, nameAt, newMove, type PartyMon, type PartyMove, readBoxMons, readParty } from "./party";
 import { currentBox, itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, pokemonPcCursor, storageScreen, type StorageScreen, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
@@ -43,6 +44,7 @@ const NUM_METATILES_IN_PRIMARY = 640;
 const MAP_DYNAMIC = 0x7f;
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_SYS_POKEMON_GET = 0x828;
+const FLAG_SYS_SAFARI_MODE = 0x800;
 // IsNationalPokedexEnabled (event_data.c).
 const FLAG_SYS_NATIONAL_DEX = 0x840;
 const VAR_NATIONAL_DEX = 0x404e;
@@ -152,6 +154,8 @@ type WarpHow = { how: "step"; from?: { x: number; y: number } } | { how: "press"
 /** `dynamic`: the warp aims at MAP_DYNAMIC, the floor chosen at the panel of an Elevator; "known" when `to` is that floor. */
 export type WarpExit = { x: number; y: number; to: string; warpId: number; dynamic?: "unknown" | "known" } & WarpHow;
 
+export type SafariZone = { steps: number; balls: number };
+
 export type MapKind = "outdoor" | "underground" | "indoor";
 
 export type Warp = WarpExit & { group: number; num: number; behavior: string; toKind: MapKind };
@@ -163,6 +167,13 @@ export function destinationNow(warp: Pick<WarpExit, "to" | "dynamic">): string |
 export type GameInterruption = "trigger" | "trainer" | "script" | "battle";
 
 export type ConnectionSide = Direction | "dive" | "emerge";
+
+/** The part of a grid that the map scripts can change: the cells, with the border of the map of the player. */
+export type MapScriptCells = Pick<MapGrid, "x0" | "y0" | "width" | "height" | "kinds" | "blocks" | "behaviors" | "behaviorNames">;
+
+export function mapScriptCells({ x0, y0, width, height, kinds, blocks, behaviors, behaviorNames }: MapGrid): MapScriptCells {
+  return { x0, y0, width, height, kinds, blocks, behaviors, behaviorNames };
+}
 
 export type MapGrid = {
   /** "group.num": changes when the map changes. */
@@ -202,7 +213,9 @@ const OBSTACLES: Record<string, Pick<Obstacle, "name" | "move">> = {
 };
 
 // SURF starts on the terrain water of a metatile, not on its behavior (IsPlayerFacingSurfableFishableWater).
-function surfableKind(attrs: number, behavior: number): string {
+// Water at the elevation of the shore is land for the game: the player walks on it, and SURF does not start on it (Route 14).
+function surfableKind(attrs: number, behavior: number, elevation: number): string {
+  if (elevation === SHORE_ELEVATION) return KIND.open;
   return ((attrs >> TERRAIN_SHIFT) & TERRAIN_MASK) === TILE_TERRAIN_WATER && !MB_STRONG_WATER.has(behavior) ? KIND.water : KIND.blocked;
 }
 
@@ -418,7 +431,7 @@ export class Game {
     if (shop) return { kind: "shopMenu", items: shop.items, screen: "menu" };
     if (itemStorageCursor(this.mem) !== null) return { kind: "itemPc", items: this.pcItems() };
     if (pokemonPcCursor(this.mem) !== null) return { kind: "pokemonPc" };
-    const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? pcMenu(this.mem, this.decode, (id) => this.flag(id)) ?? multichoice(this.mem, this.decode);
+    const menu = this.prompts.choice() ?? playerPcMenu(this.mem, this.decode) ?? pcMenu(this.mem, this.decode, (id) => this.flag(id)) ?? multichoice(this.mem, this.decode) ?? scriptListMenu(this.mem, this.decode);
     if (menu) return { kind: "choice", ...menu, columns: 1 };
     const grid = multichoiceGrid(this.mem, this.decode);
     if (grid) return { kind: "choice", ...grid };
@@ -477,7 +490,10 @@ export class Game {
     if (learnMove) return learnMove;
     const yesNo = battleYesNoCursor(this.mem);
     if (yesNo !== null) return { kind: "choice", options: this.prompts.yesNo(), cursor: yesNo, columns: 1 };
-    return { kind: battleMenu(this.mem) ?? "busy" };
+    const menu = battleMenu(this.mem);
+    const safari = safariMenu(this.mem, menu);
+    if (safari) return { kind: "choice", ...safari };
+    return { kind: menu ?? "busy" };
   }
 
   private learnMoveWait(): WaitingFor | null {
@@ -891,7 +907,7 @@ export class Game {
     return null;
   }
 
-  mapView(name: string): { grid: MapGrid; actors: MapActors } | null {
+  mapView(name: string, lastStepCells: MapScriptCells | null = null): { grid: MapGrid; actors: MapActors } | null {
     const id = this.mapId(name);
     if (!id) return null;
     const here = this.location();
@@ -902,8 +918,9 @@ export class Game {
         return { grid: this.withObstacles(grid, actors.obstacles), actors };
       }
     }
-    const grid = this.gridOf(id.group, id.num);
-    if (!grid) return null;
+    const rom = this.gridOf(id.group, id.num);
+    if (!rom) return null;
+    const grid = lastStepCells ? { ...rom, ...lastStepCells } : rom;
     const actors = this.actorsOf(grid);
     return { grid: this.withObstacles(grid, actors.obstacles), actors };
   }
@@ -1107,7 +1124,7 @@ export class Game {
         : MB_SPIN[behavior] ? MB_SPIN[behavior]
         : behavior === MB_STOP_SPINNING ? STOP
         : behavior === MB_STRENGTH_BUTTON ? SWITCH
-        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? surfableKind(attrs ?? 0, behavior)
+        : behavior < surfable.length && surfable.at(behavior).int() & 1 ? surfableKind(attrs ?? 0, behavior, block >> ELEVATION_SHIFT)
         : behavior === MB_TALL_GRASS ? KIND.grass
         : KIND.open);
     }
@@ -1179,6 +1196,11 @@ export class Game {
         weather: e.field("script").pointer() === 0,
       })),
     };
+  }
+
+  safariZone(): SafariZone | null {
+    if (!this.flag(FLAG_SYS_SAFARI_MODE)) return null;
+    return { steps: this.mem.global("gSafariZoneStepCounter").int(), balls: this.mem.global("gNumSafariBalls").int() };
   }
 
   repelActive(): boolean {

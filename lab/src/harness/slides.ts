@@ -1,6 +1,6 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, KIND, SPIN, STOP } from "../cells";
 import type { AtlasMap, AtlasSlide } from "./atlas";
-import { type Cell, cellKey, findRoute, inside, kindAt, type MapCells, type MapSource, type Place, walkable, walkGroups, wallBetween } from "./path";
+import { type Cell, cellKey, findRoute, inside, kindAt, type MapCells, type MapSource, neighbours, type Place, walkable, walkGroups, wallBetween } from "./path";
 
 const SPIN_DIRECTIONS = new Map(Object.entries(SPIN).map(([direction, sign]) => [sign, direction as Direction]));
 
@@ -52,7 +52,7 @@ export function partAt({ parts, width, height }: Pick<AtlasMap, "parts" | "width
 
 /** For a cell out of the Parts, as a spin tile or a sign, the Part of its first open neighbour: north, south, west, east. */
 export function partNear(map: Pick<AtlasMap, "parts" | "width" | "height">, cell: Cell): number | null {
-  const number = [cell, ...DIRECTION_STEPS.map(([, [dx, dy]]) => ({ x: cell.x + dx, y: cell.y + dy }))].map((c) => partAt(map, c)).find((n) => n > 0);
+  const number = [cell, ...neighbours(cell)].map((c) => partAt(map, c)).find((n) => n > 0);
   return number ?? null;
 }
 

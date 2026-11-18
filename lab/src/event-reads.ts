@@ -1,3 +1,4 @@
+import { isUnidentifiedGhost, UNIDENTIFIED_GHOST } from "./battle";
 import type { Game } from "./game";
 import { bitAt, type Memory } from "./memory";
 import { nameAt, PARTY_SIZE, readWatchedParty, SPECIES_NONE, statusOf, type WatchedMon } from "./party";
@@ -19,8 +20,11 @@ const BATTLE_TYPE_TRAINER = 1 << 3;
 const SIDES = { player: { battler: 0, party: "gPlayerParty" }, foe: { battler: 1, party: "gEnemyParty" } } as const;
 // BATTLE_TYPE_OLD_MAN_TUTORIAL and BATTLE_TYPE_POKEDUDE.
 const TUTORIAL_BATTLES = (1 << 9) | (1 << 16);
+// struct MemBlock (malloc.c).
+const MEM_BLOCK = { flag: 0, magic: 2, next: 12 };
+const MALLOC_SYSTEM_ID = 0xa3a3;
 
-// A map load moves the save blocks, and a frame can end in the middle of the copy.
+// A map load and a battle start move the save blocks, and a frame can end in the middle of the copy.
 export type EventKeys = { blocks: string; money: number; party: Uint8Array; items: Uint8Array; flags: Uint8Array };
 
 export function isTemporaryFlag(flag: number): boolean {
@@ -61,6 +65,14 @@ export class EventReads {
     };
   }
 
+  // MoveSaveBlocks_ResetHeap writes the new key after it re-encrypts the Bag and the money with it.
+  // InitHeap comes before the re-encryption and the first Alloc after the write. The overworld and a battle always
+  // hold allocations, so an empty heap marks that window.
+  reencrypting(): boolean {
+    const heap = this.mem.global("gHeap").addr;
+    return this.mem.u16(heap + MEM_BLOCK.flag) === 0 && this.mem.u16(heap + MEM_BLOCK.magic) === MALLOC_SYSTEM_ID && this.mem.u32(heap + MEM_BLOCK.next) === heap;
+  }
+
   playerParty(): WatchedMon[] | null {
     return readWatchedParty(this.mem, this.decode, "gPlayerParty", Math.min(this.mem.global("gPlayerPartyCount").int(), PARTY_SIZE));
   }
@@ -88,6 +100,7 @@ export class EventReads {
   }
 
   battleFoe(): string | null {
+    if (isUnidentifiedGhost(this.mem)) return UNIDENTIFIED_GHOST;
     return this.battleOpponent() ?? this.enemyParty()?.[0]?.species ?? null;
   }
 

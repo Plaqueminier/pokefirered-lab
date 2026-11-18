@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { MapGrid, MapKind, Warp } from "../game";
+import { ELEVATION_SHIFT } from "../cells";
+import { type MapGrid, type MapKind, mapScriptCells, type Warp } from "../game";
 import { type AtlasGame, AtlasWatch, type ExitPlace, mapNamed, placeFromInside, placeFromOutside } from "./atlas";
 import { fake } from "./fakes";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
@@ -34,6 +35,74 @@ function walk(grids: MapGrid[], places: [string, number][], knowledge: Knowledge
   for (at = 0; at < places.length; at++) watch.onFrame();
   return watch.atlas();
 }
+
+describe("the cells of a map at the last step of the player on it", () => {
+  test("they are the cells of the game at the last step on the map, after its map scripts, and not the cells of the ROM", () => {
+    const rom = grid("SilphCo_9F", 1, []);
+    const closedDoor = { ...rom, kinds: ".#." };
+    const state = { x: 0, grid: closedDoor };
+    const game = {
+      ...QUIET,
+      mode: () => "overworld",
+      battleUnderway: () => false,
+      flyLanding: () => false,
+      player: () => ({ x: state.x, y: 0 }),
+      map: () => rom,
+      gridOf: () => rom,
+      usableFieldMoves: () => new Set(),
+      grid: () => state.grid,
+      obstaclesOf: () => [],
+      mapView: () => ({ grid: rom, actors: { people: [], obstacles: [] } }),
+    };
+    const watch = new AtlasWatch(fake<AtlasGame>(game), "player");
+    expect(watch.lastStepCells("SilphCo_9F")).toBeNull();
+    watch.onFrame();
+    expect(watch.lastStepCells("SilphCo_9F")).toEqual(mapScriptCells(closedDoor));
+    const opened = { ...rom, kinds: "..." };
+    state.grid = opened;
+    state.x = 1;
+    watch.onFrame();
+    expect(watch.clone().lastStepCells("SilphCo_9F")).toEqual(mapScriptCells(opened));
+  });
+
+  test("the Atlas shows them for another map, and the cells of the game for the map of the player", () => {
+    const floor9 = grid("SilphCo_9F", 1, []);
+    const floor5 = grid("SilphCo_5F", 2, []);
+    const state = { map: floor9, grid: { ...floor9, kinds: ".#." } as MapGrid };
+    const game = {
+      ...QUIET,
+      mode: () => "overworld",
+      battleUnderway: () => false,
+      flyLanding: () => false,
+      player: () => ({ x: 0, y: 0 }),
+      map: () => state.map,
+      gridOf: (_group: number, num: number) => [floor9, floor5].find((g) => g.num === num) ?? null,
+      usableFieldMoves: () => new Set(),
+      grid: () => state.grid,
+      obstaclesOf: () => [],
+      mapView: (name: string) => ({ grid: name === floor9.name ? floor9 : floor5, actors: { people: [], obstacles: [] } }),
+    };
+    const watch = new AtlasWatch(fake<AtlasGame>(game), "player");
+    watch.onFrame();
+    expect(mapNamed(watch.atlas(), "SilphCo_9F").cells).toBe(".#.");
+    Object.assign(state, { map: floor5, grid: floor5 });
+    watch.onFrame();
+    expect(mapNamed(watch.atlas(), "SilphCo_9F").cells).toBe(".#.");
+    expect(mapNamed(watch.atlas(), "SilphCo_5F").cells).toBe("...");
+  });
+});
+
+describe("the elevations of a map", () => {
+  const raised = (elevations: number[]): MapGrid => ({ ...grid("Cliff", 1, []), blocks: elevations.map((elevation) => elevation << ELEVATION_SHIFT) });
+
+  test("a map with a step between two elevations of land keeps the elevation of each seen cell", () => {
+    expect(mapNamed(walk([raised([3, 4, 4])], [["Cliff", 0]]), "Cliff").elevations).toBe("344");
+  });
+
+  test("a map where each step joins its two cells keeps no elevations", () => {
+    expect(mapNamed(walk([raised([3, 0, 4])], [["Cliff", 0]]), "Cliff").elevations).toBeUndefined();
+  });
+});
 
 describe("what the people said", () => {
   const room = grid("Cave", 1, []);

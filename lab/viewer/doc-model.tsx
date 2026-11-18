@@ -166,7 +166,16 @@ const PROMPT_PARTS = [
   ["Rules", "the goal, the rules, a short generic Guide; in a battle, the rules of a battle only"],
   ["Milestones", "the ones reached, and the next one: a short text, with a name and a place for most of them"],
   ["Memory tree", "the top nodes; `zoom` opens a node; not in a battle"],
-  ["Bag, money, party", "as the Summary screen and the Bag show them, with the description of each held item and, since bot version 48, the move of each TM and HM in the TM CASE (`TM05 ROAR ×1`); at a walk, the Pokémon in the boxes when there are some, and one line when a REPEL is active; on an underground map with a REPEL in the Bag and none active, what a REPEL does; after the text that a REPEL stopped, one line when the Bag has another; with a BICYCLE in the Bag, its frames for each cell, and whether the player rides or walks"],
+  [
+    "Bag, money, party",
+    "as the Summary screen and the Bag show them, with the description of each held item. " +
+      "Since bot version 48, the Bag also shows the move of each TM and HM in the TM CASE (`TM05 ROAR ×1`). " +
+      "At a walk, the prompt shows the Pokémon in the boxes when there are some, and one line when a REPEL is active. " +
+      "On an underground map with a REPEL in the Bag and none active, it tells what a REPEL does. " +
+      "After the text that a REPEL stopped, it has one line when the Bag has another. " +
+      "In the Safari Zone, one line gives the steps and the SAFARI BALLs left. " +
+      "With a BICYCLE in the Bag, it gives the frames of the BICYCLE for each cell, and whether the player rides or walks.",
+  ],
   ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
   ["Mission", "the story step, kept until it is reached; a battle does not change it"],
@@ -198,8 +207,30 @@ const ANSWER = [
 
 // A copy of the actions of the model bot at each screen: change it with them.
 const SCREENS = [
-  { title: "🚶 Walk", adds: ["Known world: one line for each town, city or route visited", "on a floor of a cave, a forest or a large building, What is left: the unseen places and the exits not taken, from the game", "the map as a grid: `?` an unseen cell that an open cell leads to, a blank any other unseen cell, `-` `_` `[` `]` a thin wall, `t` `r` `b` `w` an obstacle or water whose HM is in the Bag or whose move a Pokémon knows, a cut tree or a rock that the party can remove is an open cell, `w` with “a walk crosses it with SURF” in the legend when the party can use SURF, `b` with “push(x, y, direction) moves it” when the party can use STRENGTH, `s` a switch when the Bag has HM04 or a Pokémon knows STRENGTH, a letter is a target", "when the party can use STRENGTH and the map has a boulder that the player saw: one line for `push`, and while a boulder of the map is not on its first cell, one line that tells how to return it there", "on a map where the player saw a spin tile: `→` `←` `↑` `↓` a spin tile, `o` a stop tile, a rule line under the legend, the block Parts of this map, and one more `goTo` line", "with a TM or an HM in the Bag: one line for `teach`, and one line when its Field move can help on this map (for HM02, on each map)", "with an item in the Bag that has an effect when a Pokémon holds it: one line for `give`, and with a Pokémon that holds an item: one line for `take`", "on a map that is dark for the model: one line for the dark, and `go` to unseen cells continues in the same direction, then along a wall"], actions: ["go", "goTo", "push", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"] },
-  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES", "in a battle: the Battle prompt, with no `zoom`"], actions: ["choose", "zoom"] },
+  {
+    title: "🚶 Walk",
+    adds: [
+      "Known world: one line for each town, city or route visited",
+      "on a floor of a cave, a forest or a large building, What is left: the unseen places and the exits not taken, from the game",
+      "the map as a grid: `?` an unseen cell that an open cell leads to, a blank any other unseen cell, a letter a target",
+      "`-` `_` `[` `]` a thin wall",
+      "`t` `r` `b` `w` an obstacle or water whose HM is in the Bag or whose move a Pokémon knows",
+      "a cut tree or a rock that the party can remove is an open cell",
+      "`w` with “a walk crosses it with SURF” in the legend when the party can use SURF",
+      "`b` with “push(x, y, direction) moves it” when the party can use STRENGTH",
+      "`s` a switch when the Bag has HM04 or a Pokémon knows STRENGTH",
+      "on a map where two elevations of land touch: `:` the elevation with fewer cells, `=` stairs between two elevations",
+      "when the party can use STRENGTH and the map has a boulder that the player saw: one line for `push`",
+      "while a boulder of the map is not on its first cell: one line that tells how to return it there",
+      "on a map where the player saw a spin tile: `→` `←` `↑` `↓` a spin tile, `o` a stop tile, and a rule line under the legend",
+      "on that map: the block Parts of this map, and one more `goTo` line",
+      "with a TM or an HM in the Bag: one line for `teach`, and one line when its Field move can help on this map (for HM02, on each map)",
+      "with an item in the Bag that has an effect when a Pokémon holds it: one line for `give`, and with a Pokémon that holds an item: one line for `take`",
+      "on a map that is dark for the model: one line for the dark, and `go` to unseen cells continues in the same direction, then along a wall",
+    ],
+    actions: ["go", "goTo", "push", "swap", "use", "teach", "give", "take", "viewAtlas", "zoom", "press"],
+  },
+  { title: "❓ Choice", adds: ["the question and the options: “Choose YES or NO.”", "for a nickname: no Model call, the program answers YES", "a list menu, for example the floors of the Silph Co elevator", "in a battle: the Battle prompt, with no `zoom`", "in the Safari Zone, the battle action menu: BALL, BAIT, ROCK and RUN"], actions: ["choose", "zoom"] },
   { title: "⚔️ Battle action", adds: ["the Battle prompt", "your Pokémon and the foe: types, status, states", "each fight: effect, STAB, damage % and hits to KO"], actions: ["fight", "switch", "run", "use"] },
   { title: "🎯 Move menu", adds: ["the Battle prompt", "the 4 moves, with the same facts as at a battle action", "`press` works here, not at a battle action"], actions: ["fight", "press"] },
   { title: "🔁 Party menu", adds: ["the Battle prompt", "the Pokémon that can go into the battle, with their places", "for example after a faint"], actions: ["send", "press"] },
@@ -243,21 +274,73 @@ export function PromptPage() {
         ["Stop and time limit", "a user stop ends a Model call at once, and a Model call with no answer after 10 minutes (5 minutes on a Plan provider) ends with an error. Its event then has the error and no cost: OpenRouter gives the cost with the answer only, so the cost limit does not count this call. After the time limit, the Bot asks again, and 3 errors in a row end the Run."],
         [
           "Walk prompt",
-          "the parts that change little come first, so that the provider caches more of the prompt: the Milestones and the next one (a short text only), the top nodes of the Memory tree, at a walk the Known world, the Bag, the money, the party, at a walk one line of the Pokémon in the boxes when there are some (at a Reflection or Review turn, the items of the PC and the box Pokémon in detail, and at a Review turn the counts of the game), the lines of the REPEL and the line of the BICYCLE, and the part of the Decision point (at a walk, the list What is left on a floor, then the extract of the Atlas). Then what the game waits for, the Mission, the Objective, the Coach advice in a Run with a Coach, the stuck counter, the tries since the last progress, the last decisions with their texts, the important events, the return line after a battle and the actions. The rule of the first Pokémon stops when the party has a Pokémon.",
+          "the parts that change little come first, so that the provider caches more of the prompt. " +
+            "First come the Milestones and the next one (a short text only), and the top nodes of the Memory tree. " +
+            "At a walk, the Known world comes next. Then come the Bag, the money and the party. " +
+            "At a walk, one line gives the Pokémon in the boxes when there are some. " +
+            "At a Reflection or Review turn, the items of the PC and the box Pokémon come in detail. At a Review turn, the counts of the game come too. " +
+            "Then come the lines of the REPEL, the line of the Safari Zone and the line of the BICYCLE. " +
+            "Then comes the part of the Decision point. At a walk, it is the list What is left on a floor, then the extract of the Atlas. " +
+            "Then come what the game waits for, the Mission, the Objective, and the Coach advice in a Run with a Coach. " +
+            "Then come the stuck counter, the tries since the last progress, and the last decisions with their texts. " +
+            "Last come the important events, the return line after a battle and the actions. " +
+            "The rule of the first Pokémon stops when the party has a Pokémon.",
         ],
         [
           "Return to the walk",
-          "in the last decisions of a walk prompt, each finished battle is one line. So the walk decisions before the battle stay in the 15 last decisions. The line gives the foe: the name of the trainer, or the species of the wild Pokémon. The start of a battle in the Run record keeps it since bot version 48. It gives the number of decisions and the result (won, lost, ran, caught, or the foe fled). It names the Pokémon of the party that fainted, and the cell and the map of the walk that the battle stopped. It ends with the Objective from before the battle. The first walk prompt after a battle shows the same line before the actions. So the model continues its plan, or changes it, for example to heal. The next walks do not show it.",
+          "in the last decisions of a walk prompt, each finished battle is one line. So the walk decisions before the battle stay in the 15 last decisions. " +
+            "The line gives the foe: the name of the trainer, or the species of the wild Pokémon. Since bot version 49, a GHOST that the game does not identify is GHOST. " +
+            "The start of a battle in the Run record keeps the foe since bot version 48. The line also gives the number of decisions and the result (won, lost, ran, caught, or the foe fled). " +
+            "It names the Pokémon of the party that fainted, and the cell and the map of the walk that the battle stopped. It ends with the Objective from before the battle. " +
+            "The first walk prompt after a battle shows the same line before the actions. So the model continues its plan, or changes it, for example to heal. The next walks do not show it.",
         ],
         [
           "Known world",
           "one line for each town, city or route that the player visited (the map type of the ROM), first visit first. The code makes it from the Atlas: the edges seen (with the destination, “not visited” or blocked), the passages through a gate, a forest or a cave to another outdoor map, the buildings entered, the exits not taken with their cells, the number of groups of open cells next to unseen cells (a blank cell does not count) and the fixed obstacles whose HM is in the Bag or whose move a Pokémon knows and that the party cannot remove yet.",
         ],
         ["What is left", "on a map with no edges that does not fit on the screen (a floor of a cave, a forest, a large building), just before the map: one line, when something is left there, for the part of the player, with its nearest unseen place and its letter, for the other parts of the map, for each floor that the exits reach, and for the unseen places of a map with no seen way yet. Each line gives the unseen places (a slide with an unknown end counts as one) and the exits not taken. With no line, one line says that nothing is left and tells the model to take an exit to another map. A last line gives the current map and the map that the player crossed to and from most, from 6 crossings. The program counts from the game, and the title says that this list is right when the Memory tree disagrees."],
-        ["Walk", "an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: `?` is an unseen cell that an open cell leads to, a blank is any other unseen cell, a letter is a target (`go B`)."],
+        ["Walk", "an extract of the Atlas: the current map and the texts of its people in full, 1 500 characters for the other maps. The map is a grid of all its rows: `?` is an unseen cell that an open cell leads to, a blank is any other unseen cell, a letter is a target (`go B`). On a map where two elevations of land touch, `:` is the elevation with fewer cells, and `=` the stairs between two elevations."],
         [
           "Targets",
-          "in groups (leads, exits, unseen cells, people, objects and things to check, the 8 nearest far maps, and By FLY: each place that a walk can fly to, except the one on the map of the player, with its cell and no distance), each with its distance and direction (a wide exit, with neighbour cells that lead to the same map, is one target; on a map with no edges that does not fit on the screen, the exits, the unseen cells and the people follow the order of their cells so that a letter changes less often, and on the other maps they follow the distance; the leads follow the number of exits, and the far maps the distance), and the marks talked (with the last text of the person), read or taken. An ITEM BALL says that it is a free item that `go` takes, except the starter balls in the Lab of Professor Oak. A PC is “a PC at (x, y)”: the code reads it from the metatiles of the map (`MB_PC`), because it is not a bg event, and `go` interacts with it from any side. The other things to check are “something you can check at (x, y)”. An exit seen from a town, a city or a route shows the kind of place that a player sees: a Pokémon Center, a Poké Mart, a department store, a Gym, a house, a gate building, a cave entrance, a harbor, a path to another map, or a building for the others. The code reads it from the map where the exit leads, but the name of this map shows only after the player took the exit. From inside, only an entrance shows a place: the outside or a cave entrance. An exit that the player took shows its arrival cell when this cell is known. The exit of an Elevator is one target: “an Elevator, to the floor chosen at the panel”, with the floor where it leads now, read from the game, and the floors known with their arrival cells. It is also one exit in the lines of the other maps and in the full Atlas, and a lead never goes through it, because only a walk from inside it reaches the floor chosen now. An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. A target in another part of the map shows the number of exits to it, not a direction: this count follows the exits that the player took, also through an outdoor map. With no known exits to it, it keeps its direction and says “no seen way there yet”. On a map with spin tiles, the count also has the slides (“1 exit or slide away”), and a target or a lead in another part gives its Part number. The block Parts of this map lists the Part of the player and the Parts that slides reach from it, with numbers that the Atlas keeps while the player sees more cells (a new Part takes the next number, and two Parts that join keep the lower one): the cells and the box of each Part, the marks “(you)” and “(visited)”, and each spin tile next to the Part with the end of its slide and its Part, “taken” for a slide that the player took, or an unknown end when the way goes through an unseen cell. The block never gives a chain of slides to a target. The unseen cells of the part of the player show one target for each group of touching open cells next to unseen cells, at the nearest cell of the group. On a map that is dark for the model, each direction of a group has one target, at the cell nearest to the player. The leads are at most 4: the nearest unseen cells, exits not taken and spin tiles with an unknown end of their slide, in other parts and cave or building maps, and `go` walks to them across the maps. The unseen cells of a room that fits on the screen are no lead. A ? stands only where an open cell that the player saw leads to an unseen cell. Every other unseen cell is blank, so a wall that no open cell leads to adds no sign to the map. The column numbers come again every 10 rows, and the legend lists only the signs of the map. A fixed obstacle and water are # with no text while the Bag has no HM and no Pokémon knows the move; then they are t (cut tree), r (rock), b (boulder) or w (water), and the obstacle has its text. A cut tree or a rock that the party can remove is an open cell. When the party can use SURF, water is a cell where the player walks, in the Parts and for the ? cells too. The legend then says “w water: a walk crosses it with SURF”. Under the map, a line says when the player saw all the cells of the map, or all the cells of its part and no slide of its part has an unknown end: the player then takes an exit or a lead. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
+          "in groups: leads, exits, unseen cells, people, objects and things to check, and the ones in other parts with no seen way there. Then the 8 nearest far maps, and By FLY. " +
+            "By FLY gives each place that a walk can fly to, with its cell and no distance. The place on the map of the player is not in it. " +
+            "Each target has its distance and direction. A wide exit, with neighbour cells that lead to the same map, is one target. " +
+            "On a map larger than the screen and with no edges, exits, unseen cells and people follow the order of their cells. Then a letter changes less often. " +
+            "On the other maps, they follow the distance. The leads follow the number of exits, and the far maps the distance. " +
+            "The marks are talked (with the last text of the person), read or taken. " +
+            "An ITEM BALL says that it is a free item that `go` takes, except the starter balls in the Lab of Professor Oak. " +
+            "A PC is “a PC at (x, y)”. The code reads it from the metatiles of the map (`MB_PC`), because it is not a bg event. `go` interacts with it from any side. " +
+            "The other things to check are “something you can check at (x, y)”. " +
+            "An exit seen from a town, a city or a route shows the kind of place that a player sees. " +
+            "The kinds are a Pokémon Center, a Poké Mart, a department store, a Gym, a house, a gate building, a cave entrance or a harbor. Another exit is a path to another map, or a building. " +
+            "The code reads it from the map where the exit leads, but the name of this map shows only after the player took the exit. " +
+            "From inside, only an entrance shows a place: the outside or a cave entrance. " +
+            "An exit that the player took shows its arrival cell when this cell is known. " +
+            "The exit of an Elevator is one target: “an Elevator, to the floor chosen at the panel”. It has the floor where it leads now, read from the game, and the floors known with their arrival cells. " +
+            "It is also one exit in the lines of the other maps and in the full Atlas. A lead never goes through it, because only a walk from inside it reaches the floor chosen now. " +
+            "An exit to a cave or a building also shows what is beyond it: unseen cells, an exit not taken, or nothing new. " +
+            "A target in another part of the map shows the number of exits to it, not a direction. This count follows the exits that the player took, also through an outdoor map. " +
+            "With no known exits to it, a target keeps its direction and says “no seen way there yet”. " +
+            "When the elevation rule removes the only seen way, it says “on another level, with no stairs that you saw to it”. " +
+            "A person or a thing to check with no known exits to it goes under its own heading, after the people of the part. " +
+            "On a map with spin tiles, the count also has the slides (“1 exit or slide away”). A target or a lead in another part gives its Part number. " +
+            "The block Parts of this map lists the Part of the player and the Parts that slides reach from it. " +
+            "The Atlas keeps their numbers while the player sees more cells. A new Part takes the next number, and two Parts that join keep the lower one. " +
+            "For each Part, the block gives its cells and its box, the marks “(you)” and “(visited)”, and each spin tile next to the Part. " +
+            "A spin tile has the end of its slide and its Part, and “taken” for a slide that the player took. The end is unknown when the way goes through an unseen cell. " +
+            "The block never gives a chain of slides to a target. " +
+            "The unseen cells of the part of the player show one target for each group of touching open cells next to unseen cells. The target is at the nearest cell of the group. " +
+            "On a map that is dark for the model, each direction of a group has one target, at the cell nearest to the player. " +
+            "The leads are at most 4: the nearest unseen cells, exits not taken and spin tiles with an unknown end of their slide. " +
+            "They are in other parts and cave or building maps, and `go` walks to them across the maps. The unseen cells of a room that fits on the screen are no lead. " +
+            "A ? stands only where an open cell that the player saw leads to an unseen cell. Every other unseen cell is blank, so a wall that no open cell leads to adds no sign to the map. " +
+            "The column numbers come again every 10 rows, and the legend lists only the signs of the map. " +
+            "A fixed obstacle and water are # with no text while the Bag has no HM and no Pokémon knows the move. " +
+            "Then they are t (cut tree), r (rock), b (boulder) or w (water), and the obstacle has its text. A cut tree or a rock that the party can remove is an open cell. " +
+            "When the party can use SURF, water is a cell where the player walks, in the Parts and for the ? cells too. The legend then says “w water: a walk crosses it with SURF”. " +
+            "Under the map, a line says when the player saw all the cells of the map. It also says so for all the cells of its part, when no slide of its part has an unknown end. " +
+            "The player then takes an exit or a lead. A trainer that the player did not beat yet has the mark “a trainer that you did not beat yet: a talk starts a battle”. " +
+            "The extract also lists the edges to other maps. When a person moves during a `go`, the code finds the person and walks again (2 times at most).",
         ],
         [
           "Guide",
@@ -268,7 +351,25 @@ export function PromptPage() {
           "Choice",
           "one line with the question and the options, for example `The game asks: \"Do you want to give a nickname to this BULBASAUR?\" Choose YES or NO.` At the question of a nickname, and at a Poké Ball of Professor Oak, the program answers with no Model call. A `zoom` or a `viewAtlas` does not hide the question. The actions are `choose <option>` and `zoom`, and only `choose <option>` in a battle. At the menu of the PC of a Pokémon Center, one more line tells that the PC with the name of the player has ITEM STORAGE, and that the first option (SOMEONE'S PC or BILL'S PC) opens the boxes, which keep the Pokémon.",
         ],
-        ["Battle: own", "in a wild battle, one line after the foe tells how many Pokémon of its species the player owns, in the party and in the PC: `You own 2 PIDGEY: 1 in the party, 1 in the PC.` or `You own no PIDGEY.`"],
+        [
+          "Battle: own",
+          "in a wild battle, one line after the foe counts the Pokémon of its species that the player owns. It counts the party and the PC: `You own 2 PIDGEY: 1 in the party, 1 in the PC.` or `You own no PIDGEY.` A GHOST that the game does not identify has no such line.",
+        ],
+        [
+          "Battle: GHOST",
+          "since bot version 49, the prompt names the foe GHOST when the game does not identify it: the Bag has no SILPH SCOPE. Its line has no types and no moves seen, and the fights have no facts. " +
+            "The last turn names it GHOST too. One line says: `The game cannot identify this GHOST, because the Bag has no SILPH SCOPE. Your Pokémon are too scared to attack it, a ball does not catch it, and run always works. Use run, and get the SILPH SCOPE first.` " +
+            "At the battle menu, the program adds no line of the Coach advice for it: no catch line and no train line. " +
+            "After the battle, the line of the walk prompt says `Battle against GHOST`, because the battle start in the Run record names the foe GHOST. " +
+            "Before, the prompt showed the real species, for example GASTLY or MAROWAK.",
+        ],
+        [
+          "Safari Zone",
+          "since bot version 49, a walk in the Safari Zone has one line after the lines of the REPEL: `Safari Zone: 412 steps and 27 SAFARI BALLs left. At 0 steps or 0 balls, the game takes you back to the gate.` " +
+            "In a battle there, the battle action menu is a choice: `choose BALL`, `choose BAIT`, `choose ROCK` and `choose RUN`. " +
+            "The game sets the Pokémon of the player to zeros in a Safari battle. So the Battle prompt there has no line of your Pokémon, no last turn and no move lines. " +
+            "It has the foe line, the line of the species owned, and three Safari lines: the SAFARI BALLs left, the chance that the foe flees now, and what each option does.",
+        ],
         [
           "Battle: damage",
           "each `fight` shows its effect on the foe (×2, ×½, ×0), STAB and the damage estimate: the formula of the game with no critical hit and no held item, random factor 85% to 100%, in percent of the foe HP and in hits to KO. No estimate for a move with no power. A move with fixed damage (SEISMIC TOSS, DRAGON RAGE…) shows its effect only. Held items and weather are not in it, and abilities only as the page tells in “Battle: abilities”.",
@@ -339,8 +440,28 @@ export function PromptPage() {
         ["Impossible action", "the same conversation continues with the reason of the Harness and the exits of the map (3 times at most). For an answer that the Bot cannot read, the reason gives the form of the action and one example."],
         ["Word screen", "when the Harness left the word screen of a profile, the last decisions add one line: the program left it, a profile gives nothing in the game, and the model must choose NO when a person asks for its profile."],
         ["Blocked edge", "an edge with water between the two maps, while the party cannot use SURF. The extract and the full Atlas say “you cannot go there now” with the reason, the edge is not a target, and a `goTo` past it gives the reason too. When a Pokémon of the party knows SURF, the reason of the `goTo` names badge 5. A `goTo` past an edge cell that leads to a blocked cell of the next map is impossible too: it tells to cross at another cell."],
-        ["Part", "the cells of a map that the player can walk to from one cell, on the cells that it saw, with no other map and no spin tile on the way. A slide goes from a Part to another Part of the same map, in one direction only, and the leads and the counts of exits also count the slides. The code makes the parts from the Atlas only. The line of a map one exit away gives, for each part where its exits arrive, the exits of that part. The walk of the leads, of the “beyond it” marks and of these lines stops at an outdoor map, except the map of the player; only the count of exits to a target crosses outdoor maps."],
+        [
+          "Part",
+          "the cells of a map that the player can walk to from one cell, on the cells that it saw. The way crosses no other map and no spin tile. " +
+            "Since bot version 49, it crosses no step that the elevation rule refuses either. " +
+            "A slide goes from a Part to another Part of the same map, in one direction only. The leads and the counts of exits also count the slides. " +
+            "The code makes the parts from the Atlas only. The line of a map one exit away gives, for each part where its exits arrive, the exits of that part. " +
+            "The walk of the leads, of the “beyond it” marks and of these lines stops at an outdoor map, except the map of the player; only the count of exits to a target crosses outdoor maps.",
+        ],
         ["Thin wall", "an open cell with a wall on one side (`-` north, `_` south, `[` west, `]` east in the grid): no step across that side, in both directions. It can make two parts on one floor, as on B2F of Mt Moon."],
+        [
+          "Elevation",
+          "each cell has an elevation from 0 to 15, as in the game. A route never steps on land between two cells of different elevations, except when one of them has elevation 0. No layout of FireRed has a cell at elevation 15. " +
+            "Since bot version 49, the cell from where `go` talks to a person also follows the game: an A press reaches the person only when the two cells have the same elevation, or when one of them has elevation 0. " +
+            "So `go` never chooses a cell where the A press does not reach the person. An example is the cell north of the seated Chairman of the Pokémon Fan Club. " +
+            "On 13 maps of FireRed, two elevations of land touch with no wall between them, for example in the Safari Zone and Seafoam Islands. " +
+            "On these maps, the Atlas keeps the elevation of each seen cell. A part does not cross a step that the elevation rule refuses, and stairs (elevation 0) join the two elevations. " +
+            "The grid shows the elevation with fewer cells as `:` and the stairs between two elevations as `=`, with their legend. The prompt calls the cells at one elevation a “level”. " +
+            "A person or a thing to check with no seen way there goes under its own heading, after the people of the part: “Seen in other parts of this map, with no seen way there yet: explore to find a way first.” " +
+            "When the elevation rule removes the only seen way, its label says “on another level, with no stairs that you saw to it”. A `goTo` to such a cell gets the same reason. " +
+            "The map lab has 8 moments on 3 such maps. With no elevation, Haiku went to a cell that the player cannot reach in 28 of 40 answers. " +
+            "With the code of version 49, Haiku did so in 0 of 40 answers. gpt-6-luna did so in 2 of 40 answers, and in 27 of 40 with no elevation.",
+        ],
         ["Object", "a graphic of the map that is not a person: a fossil, an item ball, a clipboard, SNORLAX. Its target says “an object that you can interact with”, also when it closes no way; a free ITEM BALL says that `go` takes it. A rule of the prompt tells the model to interact with people, objects and things to check, that an object can be a thing to take, and to come back later when nothing changes."],
         ["Thing to check", "a sign event of the map: the target says “something you can check”, because the same event is a sign, a poster, a trash can, a statue, a door of Silph Co or an elevator panel."],
         ["In your way", "a person or an object whose movement type does not leave its cell, and whose cell closes a way: it joins two groups of seen cells, or it leads to unseen cells that no other seen cell touches. Its target says “in your way”, an unseen target on its cell says “past the …”, and the target, the reason of `blocked` and the rule of the prompt say that the way is closed on the cells that the player saw, and tell the model to interact with it or to look for another way. It comes first among the people of its part. A person behind a counter closes nothing. The rule works for each map, with no facts about the map."],
@@ -389,8 +510,9 @@ export function PromptPage() {
       <div class={GRID3}>
         <DocCard title="📘 Guide in the rules" lines={["check the signs and other things, talk to the people", "write guesses in the notes, and check them", "keep the POTIONS; make a balanced team", "run from a wild battle that goes badly", "compare the levels before a trainer"]} />
         <DocCard title="🌊 Water" lines={["a Pokémon that knows SURF and badge 5: water is an open cell, and the walk starts SURF on the shore", "before that, an edge with water is not a target, and a `goTo` past it is impossible, with the reason", "on the water, the prompt says so"]} />
-        <DocCard title="🧩 Part" lines={["the cells that the player can walk to on one map", "another part shows the number of exits (or slides) to it, or “no seen way there yet”", "the leads keep the unseen cells of the other parts"]} />
+        <DocCard title="🧩 Part" lines={["the cells that the player can walk to on one map, at one elevation or across stairs", "another part shows the number of exits (or slides) to it, or “no seen way there yet”", "the leads keep the unseen cells of the other parts"]} />
         <DocCard title="🧱 Thin wall" lines={["`-` `_` `[` `]`: a wall on the north, south, west or east side of an open cell", "no step across it, in both directions"]} />
+        <DocCard title="⛰️ Elevation" lines={["`:` the elevation with fewer cells, `=` stairs between two elevations", "no step between two elevations, except on stairs", "a person or a thing to check at another elevation, with no stairs seen, goes under its own heading"]} />
         <DocCard title="🔦 Dark map" lines={["3 × 3 cells seen until FLASH", "a Pokémon that knows FLASH and badge 1: the program uses the move, with no Model call", "no FLASH: `goTo` on seen cells only, `go` continues in the same direction, then along a wall, a new cell seen is progress"]} />
         <DocCard title="🪨 Fixed obstacle" lines={["a cut tree, a rock, a boulder: not people", "a `goTo` that only it stops is impossible at once, with the move", "a cut tree or a rock that the party can remove is an open cell: the walk uses the move", "a boulder moves only with push"]} />
       </div>
@@ -426,7 +548,21 @@ export function ProgressPage() {
         ["Thinking", "the Character, Reflection and Review turns use the thinking level of the Run; the other Model calls use the reasoning level of the Run. In a Run with a Coach, all the calls of the Coach use the thinking level, also the summaries and the move to forget, and the player uses only the reasoning level. After an empty answer, when the reasoning took all the tokens, the next calls of the same turn use the reasoning level. The panel “Model” shows the text of the reasoning in a block."],
         [
           "Coach",
-          "an option of the Run (`--coach <model id>`, or the Coach field of the form): a second model on the same provider. It plays the Character, Reflection and Review turns, the Summary calls and the choice of a move to forget, at the thinking level of the Run; the model of the Run plays the other decisions. After an empty answer, the next calls of the same turn use the reasoning level of the Run. A Coach with the model of the Run is no Coach. Its calls get their own rules: it is the Coach of a smaller model that follows its advice to the letter but does not plan the team, the shopping or the way. At its Character, Reflection and Review turns, it writes an `advice` in 4 parts: `team` (the most important: Pokémon to catch, to train and to switch with the PC, and the Pokémon that gets a RARE CANDY, an evolution stone or an item to hold), `shopping`, `progress` and `battles` (also when to use an item). Each later prompt shows the last text of each part, for example “- Team (review turn, 3 decisions ago): …”, then what happened since, for example “- 3 decisions ago: you healed at a Pokémon Center.”, and the player treats a step that these facts show as done as done. The advice also has `catchNew` and `train` (at most 3 Pokémon, each with a level to reach), which each turn of the Coach writes again. At the battle menu, the program then adds “Your Coach wants a new species for the team, and this PIDGEY is one.” in a wild battle against a species that the party and the PC do not have, with a Poké Ball in the Bag, and “Your Coach wants LITERKA trained up to level 12…” while this Pokémon is under its level, can fight and did not fight this foe yet: each Pokémon that fights a foe gets a part of its experience. The panel “Model” shows the advice in force on each call, under the note, with “Catch advice” and “Train advice”. Its calls count toward the one limit of the Run, and its plan limit ends the Run. The labels of a Run name both models: `claude-haiku-5-5 + coach claude-opus-5-5`.",
+          "an option of the Run (`--coach <model id>`, or the Coach field of the form): a second model on the same provider. " +
+            "It plays the Character, Reflection and Review turns, the Summary calls and the choice of a move to forget. It plays them at the thinking level of the Run; the model of the Run plays the other decisions. " +
+            "After an empty answer, the next calls of the same turn use the reasoning level of the Run. A Coach with the model of the Run is no Coach. " +
+            "Its calls get their own rules: it is the Coach of a smaller model that follows its advice to the letter. This smaller model does not plan the team, the shopping or the way. " +
+            "At its Character, Reflection and Review turns, it writes an `advice` in 4 parts. `team` is the most important part: Pokémon to catch, to train and to switch with the PC. " +
+            "It also names the Pokémon that gets a RARE CANDY, an evolution stone or an item to hold. The other parts are `shopping`, `progress` and `battles` (also when to use an item). " +
+            "Each later prompt shows the last text of each part, for example “- Team (review turn, 3 decisions ago): …”, then what happened since, for example “- 3 decisions ago: you healed at a Pokémon Center.”, and the player treats a step that these facts show as done as done. " +
+            "The advice also has `catchNew` and `train` (at most 3 Pokémon, each with a level to reach). Each turn of the Coach writes them again. " +
+            "At the battle menu, the program can then add a catch line and a train line. The catch line is “Your Coach wants a new species for the team, and this PIDGEY is one.” " +
+            "It comes in a wild battle against a species that the party and the PC do not have, with a Poké Ball in the Bag. " +
+            "The train line is “Your Coach wants LITERKA trained up to level 12…” " +
+            "It comes while this Pokémon is under its level, can fight and did not fight this foe yet: each Pokémon that fights a foe gets a part of its experience. " +
+            "Since bot version 49, there is no catch line and no train line against a GHOST that the game does not identify. " +
+            "The panel “Model” shows the advice in force on each call, under the note, with “Catch advice” and “Train advice”. " +
+            "Its calls count toward the one limit of the Run, and its plan limit ends the Run. The labels of a Run name both models: `claude-haiku-5-5 + coach claude-opus-5-5`.",
         ],
         ["Run record", "each Model call has `stuck`, `character`, `reflection`, `review`, `reasoning` (the text of the reasoning) and `removed` (the sentences that a Review turn removed, with their nodes). In a Run with a Coach, `model` names the Coach on its calls and on the Summary calls, and the decision of a Coach turn has `advice`, with `catchNew` and `train` since bot version 42. Since bot version 43, a decision has `say` only when the model wrote a line, and the decision of the Character turn has `voice`. The panel “Model” shows `reflection` and `review` as flags, `stuck` as a chip of the shown call, and `removed` in a “Removed” line under the note."],
       ]}

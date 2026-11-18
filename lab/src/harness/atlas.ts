@@ -1,8 +1,8 @@
-import { DIRECTION_STEP, type Direction, KIND, withSurf } from "../cells";
-import { type Game, type MapActors, type MapGrid, type Obstacle, type Warp, walkRemoves } from "../game";
+import { DIRECTION_STEP, type Direction, ELEVATION_SHIFT, KIND, withSurf } from "../cells";
+import { type Game, type MapActors, type MapGrid, type MapScriptCells, mapScriptCells, type Obstacle, type Warp, walkRemoves } from "../game";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 import { hasSpinTiles, numberParts, spinDirection } from "./slides";
-import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, inside, kindAt, type MapCells, type Place, walkable } from "./path";
+import { type BlockOf, type Cell, cellKey, edgeBlock, type EdgeBlock, edgeCells, elevationAt, hasElevationEdges, inside, joinCells, kindAt, type MapCells, type Place, walkable, walkGroups } from "./path";
 
 type Area = { left: number; right: number; up: number; down: number };
 
@@ -56,6 +56,8 @@ export type AtlasMap = {
   dark?: { missingBadge: number | null };
   slides: AtlasSlide[];
   parts: number[];
+  /** Only on a map with a step between two cells of land that the elevation rule refuses (hasElevationEdges): the elevation of each cell as a hex digit, 0 for an unseen cell. */
+  elevations?: string;
 };
 
 export function personName({ graphics, rival }: AtlasPerson): string {
@@ -78,8 +80,32 @@ export function seenIn(map: AtlasMap): (cell: Cell) => boolean {
   return (c) => inside({ mapWidth: map.width, mapHeight: map.height }, c) && cellAt(map, c) !== UNSEEN;
 }
 
-export function atlasCells(map: Pick<AtlasMap, "cells" | "width" | "height">): MapCells {
-  return { kinds: map.cells, x0: 0, y0: 0, width: map.width, mapWidth: map.width, mapHeight: map.height };
+/** Blocks with only the elevation bits, from the hex digits of `AtlasMap.elevations`. */
+export function elevationBlocks(elevations: string): number[] {
+  return Array.from(elevations, (digit) => Number.parseInt(digit, 16) << ELEVATION_SHIFT);
+}
+
+export function atlasCells(map: Pick<AtlasMap, "cells" | "width" | "height" | "elevations">): MapCells {
+  const blocks = map.elevations && elevationBlocks(map.elevations);
+  return { kinds: map.cells, x0: 0, y0: 0, width: map.width, mapWidth: map.width, mapHeight: map.height, ...(blocks ? { blocks } : {}) };
+}
+
+/**
+ * On a map with elevations: a test of a seen cell at another elevation than `here`, with no stairs that the player saw
+ * between the two. A walk reaches the cell through its joinCells.
+ */
+export function elevationSplit(map: AtlasMap, here: Cell): ((cell: Cell) => boolean) | null {
+  if (!map.elevations) return null;
+  const seen = seenIn(map);
+  const view = atlasCells(map);
+  const { blocks: _, ...flat } = view;
+  const groupsOf = (cells: MapCells) => walkGroups(cells, (c) => seen(c) && walkable(cells, c)).groups;
+  const joins = (groups: Map<string, number>, cell: Cell) => {
+    const own = groups.get(cellKey(here));
+    return own !== undefined && joinCells(view, cell).some((c) => groups.get(cellKey(c)) === own);
+  };
+  const [apart, together] = [groupsOf(view), groupsOf(flat)];
+  return (cell) => seen(cell) && !joins(apart, cell) && joins(together, cell);
 }
 
 export function fitsScreen({ width, height }: Pick<AtlasMap, "width" | "height">): boolean {
@@ -114,6 +140,9 @@ type Visit = {
   parts: number[];
   people: Map<number, AtlasPerson>;
   obstacles: Set<number>;
+  lastStepCells: MapScriptCells | null;
+  /** The map has a step between two cells of land that the elevation rule refuses (hasElevationEdges). A map script changes the metatile of a cell and keeps its elevation, so the ROM grid tells it. */
+  hasElevations: boolean;
 };
 
 type FieldUses = { on: (grid: MapGrid) => { cells: MapCells; obstacles: Obstacle[] }; closed: (obstacle: Obstacle) => boolean; surf: boolean };
@@ -125,6 +154,7 @@ type Talk = { person: AtlasPerson; text: string | null; index: number | null };
 export class AtlasWatch {
   readonly #visits = new Map<string, Visit>();
   readonly #grids = new Map<string, MapGrid | null>();
+  readonly #elevations = new Map<string, boolean>();
   readonly #blocks = new Map<string, EdgeBlock | null>();
   #place: Place | null = null;
   #lastAction: ActionEntry | null = null;
@@ -158,6 +188,7 @@ export class AtlasWatch {
       });
     }
     for (const [key, grid] of this.#grids) copy.#grids.set(key, grid);
+    for (const [key, has] of this.#elevations) copy.#elevations.set(key, has);
     for (const [key, block] of this.#blocks) copy.#blocks.set(key, block);
     copy.#place = this.#place;
     copy.#lastAction = this.#lastAction;
@@ -184,6 +215,8 @@ export class AtlasWatch {
     if (last?.map === map.name && last.x === player.x && last.y === player.y && inDarkness === this.#inDarkness) return;
     const here = { map: map.name, x: player.x, y: player.y };
     this.#place = here;
+    const live = game.grid();
+    if (live) visit.lastStepCells = mapScriptCells(live);
     this.#inDarkness = inDarkness;
     this.see(visit, here);
     this.seeActors(visit, here);
@@ -232,6 +265,10 @@ export class AtlasWatch {
     return this.#inDarkness;
   }
 
+  lastStepCells(map: string): MapScriptCells | null {
+    return this.#visits.get(map)?.lastStepCells ?? null;
+  }
+
   peopleSeen(map: string): number {
     return this.#visits.get(map)?.people.size ?? 0;
   }
@@ -259,7 +296,7 @@ export class AtlasWatch {
     };
     const maps = grids.map((grid) => {
       const floors = grid.warps.some((w) => w.dynamic) ? floorsOf(grid.name) : new Map<string, Cell>();
-      return atlasMap(fullVisit(grid, this.#visits.get(grid.name), (w) => this.arrivalOf(w), floors), blocked, uses, undefined);
+      return atlasMap(fullVisit(grid, this.#visits.get(grid.name), (w) => this.arrivalOf(w), floors, this.hasElevations(grid)), blocked, uses, undefined);
     });
     return { maps, lastTalk };
   }
@@ -286,14 +323,15 @@ export class AtlasWatch {
     return this.isDark(grid) ? DARK_AREA : SCREEN;
   }
 
-  // A map load returns each obstacle to its cell of the ROM. The scripts of a map can read flags that change on another map, so only the map of the player has live cells.
+  // A map load returns each obstacle to its cell of the ROM. The ROM has the doors of Silph Co. open, and their map scripts
+  // close them at each load: so another map has the cells of the last step of the player on it.
   private fieldUsesNow(): FieldUses {
     const usable = this.game.usableFieldMoves();
     const grid = this.game.grid();
     const actors = grid && this.game.actors(grid);
     const live = grid && actors ? { cells: grid, obstacles: actors.obstacles } : null;
     return {
-      on: (map) => (live && map.name === live.cells.name ? live : { cells: map, obstacles: this.game.obstaclesOf(map) }),
+      on: (map) => (live && map.name === live.cells.name ? live : { cells: { ...map, ...this.lastStepCells(map.name) }, obstacles: this.game.obstaclesOf(map) }),
       closed: (o) => !walkRemoves(o, usable),
       surf: usable.has("SURF"),
     };
@@ -355,12 +393,17 @@ export class AtlasWatch {
     return this.#grids.get(name)!;
   }
 
+  private hasElevations(grid: MapGrid): boolean {
+    if (!this.#elevations.has(grid.name)) this.#elevations.set(grid.name, hasElevationEdges(grid));
+    return this.#elevations.get(grid.name) ?? false;
+  }
+
   private visit(name: string, group: number, num: number): Visit | null {
     const known = this.#visits.get(name);
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Set<number>() };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Set<number>(), lastStepCells: null, hasElevations: this.hasElevations(grid) };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -507,7 +550,7 @@ function seenEdges(visit: Visit): Edge[] {
 }
 
 function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMap["dark"]): AtlasMap {
-  const { grid, seen, entry, edgesTaken, signTexts, slidesTaken, people, obstacles } = visit;
+  const { grid, entry, edgesTaken, signTexts, slidesTaken, people, obstacles } = visit;
   const isSeen = seenOn(visit);
   const now = uses.on(grid);
   const closing = now.obstacles.filter(uses.closed);
@@ -518,7 +561,7 @@ function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMa
     name: grid.name,
     width: grid.mapWidth,
     height: grid.mapHeight,
-    cells: Array.from(seen, (s, i) => (s ? kindOf({ x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) }) : UNSEEN)).join(""),
+    cells: seenString(visit, kindOf, UNSEEN),
     warps: seenWarps(visit),
     edges: seenEdges(visit).map(({ direction: side }) => {
       const block = blocked(grid.name, side);
@@ -533,12 +576,17 @@ function atlasMap(visit: Visit, blocked: BlockOf, uses: FieldUses, dark: AtlasMa
     stepExits: grid.warps.flatMap((w) => (w.how === "step" && isSeen(w) ? [{ x: w.x, y: w.y }] : [])),
     slides: [...slidesTaken.values()],
     parts: [...visit.parts],
+    ...(visit.hasElevations ? { elevations: seenString(visit, (cell) => elevationAt(now.cells, cell).toString(16), "0") } : {}),
     ...(dark ? { dark } : {}),
   };
 }
 
+function seenString({ seen, grid }: Pick<Visit, "seen" | "grid">, signOf: (cell: Cell) => string, unseen: string): string {
+  return Array.from(seen, (s, i) => (s ? signOf({ x: i % grid.mapWidth, y: Math.floor(i / grid.mapWidth) }) : unseen)).join("");
+}
+
 /** At the full level, the player knows a map as if it saw all its cells and took all its exits. */
-function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null, floors: Map<string, Cell>): Visit {
+function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Warp) => Cell | null, floors: Map<string, Cell>, hasElevations: boolean): Visit {
   const full: Visit = {
     grid,
     seen: new Uint8Array(grid.mapWidth * grid.mapHeight).fill(1),
@@ -551,6 +599,8 @@ function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Wa
     parts: visit?.parts ?? [],
     people: visit?.people ?? new Map(),
     obstacles: visit?.obstacles ?? new Set(),
+    lastStepCells: visit?.lastStepCells ?? null,
+    hasElevations,
   };
   return { ...full, parts: partsOf(full) };
 }

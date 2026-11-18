@@ -22,7 +22,34 @@ type MacroScreen = (typeof MACRO_SCREENS)[number]["id"];
 
 // Exactly one entry for each Macro-action of the Harness (doc.test.ts).
 export const MACRO_DOC: { form: string; when: string; effect: string; cards: Partial<Record<MacroScreen, string>> }[] = [
-  { form: "goTo(x, y, map?)", when: "walk", effect: "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. A blocked cell that the player saw gets its own reason, not “no route”. A water cell gets one too, while the party cannot use SURF. When only a person or an object that does not move closes all the ways, it returns `blocked` at once and names it, if the player saw it; for a person who walks, it waits and tries again. It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. A cut tree or a rock that a Pokémon can remove with a badge that the player does not have gives a reason that names the badge. When the party can use SURF, it crosses water too. On the shore, it faces the water, presses A and answers YES. The step to the land ends SURF. It never pushes a boulder: a `goTo` past one names `push`, or badge 4 when it is missing. When a Pokémon of the party knows FLY and the player has badge 3, it flies when the way is shorter: from a town or a route (never from the Safari Zone), to a place of the fly map that the player entered, in the region of the player, also on the map of the player. It opens the party menu, chooses FLY, moves the cursor of the fly map to the place and presses A. The player arrives in front of the Pokémon Center, and the walk continues from there. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. A goTo to a cell of another Part with no way on foot names the two Parts and says that only a slide leaves the Part of the player. The walk runs when the player has the Running Shoes and the map allows it, and it rides when the Bot chose the BICYCLE (page “Running and the BICYCLE”).", cards: { walk: "go to a cell, also on another map; at an exit, take it" } },
+  {
+    form: "goTo(x, y, map?)",
+    when: "walk",
+    effect:
+      "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. " +
+      "On another map, the route first uses the cells of that map at the last step of the player on it, after the map scripts. On a map with no step of the player on it, it uses the cells of the ROM. " +
+      "When the cells of the last step give no route, the route uses the cells of the ROM. The reason: a map script can read a flag that changed on another map. " +
+      "An example is the switch of Pokémon Mansion, which changes the barriers of all its floors. Then the cells of the last step are old. The Atlas still shows the cells of the last step. " +
+      "The exits of another map stay the exits of the ROM, because the game sets the destination of an Elevator exit again at each entry. " +
+      "A step on land between two cells of different elevations is impossible, as in the game. A step from or to a cell at elevation 0 is possible. No layout of FireRed has a cell at elevation 15. " +
+      "Water at elevation 3, the elevation of the shore, is an open cell: the player walks on it with no SURF, as on the east edge of Route 14. " +
+      "A target at another elevation of the same map, with no stairs that the player saw, gets its own reason: “(x, y) is on another level of <map> than you”. " +
+      "When a leg arrives on another map at a cell where an earlier leg of the same walk arrived, the result is `impossible`: the way through the other maps is not open. " +
+      "So a route on the cells of the ROM that goes in a loop stops with “the walk arrives again at …”. " +
+      "The route of the ROM can go through cells that a map script closed before the last step of the player there. An example is a Card Key door of Silph Co. Then the reason names them. " +
+      "A blocked cell that the player saw gets its own reason, not “no route”. A water cell gets one too, while the party cannot use SURF. " +
+      "When only a person or an object that does not move closes all the ways, it returns `blocked` at once. It names the person or the object, if the player saw it; for a person who walks, it waits and tries again. " +
+      "It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. " +
+      "When a Pokémon can remove a cut tree or a rock but the player does not have the badge, the reason names the badge. " +
+      "When the party can use SURF, it crosses water too. On the shore, it faces the water, presses A and answers YES. The step to the land ends SURF. It never pushes a boulder: a `goTo` past one names `push`, or badge 4 when it is missing. " +
+      "When a Pokémon of the party knows FLY and the player has badge 3, it flies when the way is shorter. It flies from a town or a route, never from the Safari Zone. " +
+      "It flies to a place of the fly map that the player entered, in the region of the player. This can be on the map of the player. It opens the party menu, chooses FLY, moves the cursor of the fly map to the place and presses A. " +
+      "The player arrives in front of the Pokémon Center, and the walk continues from there. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. " +
+      "A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. " +
+      "A goTo to a cell of another Part with no way on foot names the two Parts. It says that only a slide leaves the Part of the player. " +
+      "The walk runs when the player has the Running Shoes and the map allows it. It rides when the Bot chose the BICYCLE (page “Running and the BICYCLE”).",
+    cards: { walk: "go to a cell, also on another map; at an exit, take it" },
+  },
   { form: "walkOn(x, y, direction)", when: "walk", effect: "Goes to a seen cell, then continues in one direction while the map is dark for the model. When a wall closes that direction, it goes along the wall to the side that the walk to the seen cell took, while that side of the wall has unseen cells near it. When the seen cell is straight in that direction from the start, it does not go along a wall. It stops at a wall in front, before an exit, before a ledge, at a new person and at a battle. Only the code of a Bot asks for it: the model writes `go` to an unseen cells target.", cards: { walk: "in the dark, continue in one direction" } },
   {
     form: "push(x, y, direction, steps?)",
@@ -41,9 +68,12 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
   },
   {
     form: "choose(option)",
-    when: "yes/no, nickname after a catch, script menu, grid menu of the school blackboard, menus of the PC",
-    effect: "Moves the cursor to the option and presses A. SOMEONE'S PC or BILL'S PC opens the Pokémon PC.",
-    cards: { choice: "yes/no, a script menu, the menus of the PC" },
+    when: "yes/no, nickname after a catch, script menu, list menu, grid menu of the school blackboard, menus of the PC, Safari battle",
+    effect:
+      "Moves the cursor to the option and presses A. SOMEONE'S PC or BILL'S PC opens the Pokémon PC. " +
+      "The list menu is the special ListMenu of the game: the floors of the Silph Co elevator (11F to 1F, and EXIT), and the badge guide in a house of Cerulean City. " +
+      "In a battle of the Safari Zone, the battle action menu is a choice: BALL, BAIT, ROCK and RUN, in 2 columns.",
+    cards: { choice: "yes/no, a script or list menu, the menus of the PC, the Safari battle menu" },
   },
   { form: "fight(move, foe?)", when: "battle", effect: "Uses the move 0 to 3, and gives the messages of the turn. With no PP in all the moves, selects FIGHT: the game uses STRUGGLE. Under an ENCORE, FIGHT plays the encored move, and another move is impossible. In a double battle, it is the choice for one Pokémon: the choice for the first Pokémon gives no messages, and the game then waits for the action of the second one. `foe` is 1 or 2, and it is impossible with one foe to choose. With no foe, a move that hits one foe hits foe 1.", cards: { battle: "use the move 0 to 3; no PP: STRUGGLE" } },
   { form: "switch(slot)", when: "battle", effect: "Sends another Pokémon of the party into the battle.", cards: { battle: "send another Pokémon" } },
@@ -146,6 +176,19 @@ export function MacroPage() {
         [
           "Battle facts",
           "the player's Pokémon, and the enemy as the player sees it, with its types. Both have `states`: the volatile states that a text of the game tells (seeded, confused, infatuated…). The Pokémon of the player also has the abilities of its species and its toxic counter. In a wild battle: `inPc`, the number of Pokémon of the enemy species in the boxes of the PC (the party is in `party`). For each move: its effect on the enemy (type chart of the game), STAB and the damage estimate in percent of the enemy HP and in hits to KO. A move can also have its chance to hit now (`hitChance`, only when the stages of accuracy and evasion change it). It can have a flag for 2 turns or a recharge turn (`turns`). It can have the ability of the enemy that stops it (`abilityBlock`, from the abilities of its species). The facts also have the last turn and the turns against the current enemy.",
+        ],
+        [
+          "Unknown GHOST",
+          "a GHOST that the game does not identify, because the Bag has no SILPH SCOPE. The battle has `ghost: true`, and the enemy has the species GHOST, no types and no moves seen. " +
+            "The enemy keeps its level, its HP, its status and its states. At the `full` Knowledge level, it also has its exact HP and stats, as each enemy has. " +
+            "The facts of each move are null, because they tell the type of the enemy. The last turn names the enemy GHOST. " +
+            "The battle start in the Run record also names the foe GHOST. So the Viewer and the line after the battle show GHOST, not the species. " +
+            "In a wild battle, `inPc` counts the species GHOST in the PC, so it is 0.",
+        ],
+        [
+          "Safari Zone",
+          "at a walk in the Safari Zone, `observe()` also has `safari`: the steps and the SAFARI BALLs left. " +
+            "A battle there has `safari` too: the SAFARI BALLs left and the chance in percent that the foe flees at its next turn (`fleePercent`). Its battle action menu is a choice (see `choose`).",
         ],
         ["`availableActions()`", "the Macro-actions accepted now."],
       ]}

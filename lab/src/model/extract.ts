@@ -1,7 +1,7 @@
 import { DIRECTION_STEPS, type Direction, KIND, LEDGE, SPIN, STOP, SWITCH, WALL } from "../cells";
 import type { FieldMove, Obstacle } from "../game";
 import { type Atlas, type AtlasEdge, type AtlasMap, type AtlasPerson, atlasCells, cellAt, isInnerMap, mapNamed, seenIn, UNSEEN, personName } from "../harness/atlas";
-import { allCells, type Cell, cellKey, inside, kindAt, type MapCells } from "../harness/path";
+import { allCells, type Cell, cellKey, elevationAt, elevationLand, inside, kindAt, type MapCells, neighbours } from "../harness/path";
 import type { StrengthUse } from "../harness/harness";
 import type { Slide } from "../harness/slides";
 import { fieldMoveRemedy, obstacleRemedy } from "../protocol";
@@ -12,6 +12,9 @@ export const OTHER_MAPS_BUDGET = 1500;
 export const MAX_FAR_MAPS = 8;
 export const FULL_ATLAS_BUDGET = 100_000;
 const LONG_MARK = "*";
+const OTHER_ELEVATION = ":";
+const STAIRS = "=";
+const PLAIN_KINDS = new Set<string>([KIND.open, KIND.grass]);
 const BLANK = " ";
 const PLAYER_SIGN = "@";
 const RULER_EVERY = 10;
@@ -40,6 +43,8 @@ const LEGEND: [signs: string, text: string][] = [
   [STOP, `${STOP} a stop tile`],
   [SWITCH, `${SWITCH} a switch: a boulder on it opens a way`],
   [LONG_MARK, `${LONG_MARK} a target after Z`],
+  [OTHER_ELEVATION, `${OTHER_ELEVATION} open ground on another level than the ${KIND.open} cells: a step between the two levels is possible only on stairs (${STAIRS})`],
+  [STAIRS, `${STAIRS} stairs between two levels`],
 ];
 const SURF_TEXT = `${FIELD_MOVES.SURF.sign} water: a walk crosses it with SURF`;
 const PUSH_TEXT = `${FIELD_MOVES.STRENGTH.sign} a boulder: push(x, y, direction) moves it`;
@@ -171,14 +176,34 @@ function cellSigns(map: AtlasMap, view: MapCells, hasMove: HasMove): (c: Cell) =
   const seen = seenIn(map);
   const explorable = explorableCells(map);
   const obstacles = new Map(map.obstacles.map((o) => [cellKey(o), FIELD_MOVES[o.move].sign]));
+  const elevations = elevationMarks(map, view);
   return (c) => {
     if (!seen(c)) return explorable.has(cellKey(c)) ? UNSEEN : BLANK;
     const kind = kindAt(view, c);
     if (kind === KIND.surf || (kind === KIND.water && hasMove("SURF"))) return FIELD_MOVES.SURF.sign;
     if (kind === KIND.water) return KIND.blocked;
     if (kind === SWITCH && !hasMove("STRENGTH")) return KIND.open;
-    return obstacles.get(cellKey(c)) ?? kind;
+    return obstacles.get(cellKey(c)) ?? elevations.get(cellKey(c)) ?? kind;
   };
+}
+
+// The elevation with the most seen cells keeps the open sign. A map of FireRed has two elevations of land at most, and stairs at 0.
+function elevationMarks(map: AtlasMap, view: MapCells): Map<string, string> {
+  const marks = new Map<string, string>();
+  if (!map.elevations) return marks;
+  const seen = seenIn(map);
+  const isLand = elevationLand(view, map.warps);
+  const land = (c: Cell) => seen(c) && isLand(c);
+  const cells = allCells(view).filter(land);
+  const byElevation = Map.groupBy(cells.filter((c) => elevationAt(view, c) !== 0), (c) => elevationAt(view, c));
+  const base = [...byElevation].toSorted((a, b) => b[1].length - a[1].length)[0]?.[0];
+  for (const c of cells.filter((c) => PLAIN_KINDS.has(kindAt(view, c)))) {
+    const elevation = elevationAt(view, c);
+    const around = new Set(neighbours(c).filter(land).map((n) => elevationAt(view, n)).filter((e) => e !== 0));
+    if (elevation !== 0 && elevation !== base) marks.set(cellKey(c), OTHER_ELEVATION);
+    else if (elevation === 0 && around.size > 1) marks.set(cellKey(c), STAIRS);
+  }
+  return marks;
 }
 
 function legendFor(maps: AtlasMap[], strength: StrengthUse): [signs: string, text: string][] {
@@ -200,7 +225,7 @@ function seenLines(here: AtlasMap, targets: Target[], parts: Parts): string[] {
 
 function extractLines(view: string[], neighbours: string[], targets: Target[], outside: string | null): string[] {
   const groups = TARGET_GROUPS.flatMap((group) => {
-    const lines = targetLines(targets, (t) => group.kinds.includes(t.kind));
+    const lines = targetLines(targets, group.holds);
     const shown = lines.length > 0 ? [group.title, ...lines] : group.empty ? [`${group.title} ${group.empty}`] : [];
     return group === EXITS_GROUP && outside ? [...shown, outside] : shown;
   });

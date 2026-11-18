@@ -1,9 +1,9 @@
 import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, OPPOSITE, SPIN } from "../cells";
 import { destinationNow, type MapGrid } from "../game";
-import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, atlasCells, blockedText, isInnerMap, personName, seenIn } from "../harness/atlas";
+import { type ExitPlace, type AtlasEdge, type AtlasMap, type AtlasPerson, type AtlasSign, type AtlasWarp, atlasCells, blockedText, elevationSplit, isInnerMap, personName, seenIn } from "../harness/atlas";
 import type { Observation } from "../harness/harness";
 import { fieldMoveRemedy } from "../protocol";
-import { type Cell, cellKey, edgeCells, free, inside, walkable } from "../harness/path";
+import { type Cell, cellKey, edgeCells, elevationAt, elevationsJoin, free, inside, walkable } from "../harness/path";
 import { type Beyond, closedCells, type Lead, type Parts, unseenPlaces } from "./parts";
 
 const ITEM_BALL = "ITEM_BALL";
@@ -12,7 +12,7 @@ const STARTERS_MAP = "PalletTown_ProfessorOaksLab";
 
 export type Overworld = Extract<Observation, { mode: "overworld" }>;
 
-export type Target = { label: string } & (
+export type Target = { label: string; noWay?: true } & (
   | { kind: "exit"; name: string; cell: Cell; to: string | null; warp: AtlasWarp }
   | { kind: "frontier"; cell: Cell; direction: Direction }
   | { kind: "person"; cell: Cell; localId: number }
@@ -39,7 +39,7 @@ export function peopleInTheWay({ grid, people }: Overworld, here: AtlasMap, part
 function isBehindCounter(grid: MapGrid, { own }: Parts, person: Cell): boolean {
   return DIRECTION_STEPS.some(([, step]) => {
     const from = talkFrom(grid, person, step);
-    return from.across && own.keys.has(cellKey(from.cell));
+    return from.across && own.keys.has(cellKey(from.cell)) && reaches(grid, from.cell, person);
   });
 }
 
@@ -48,21 +48,29 @@ function pastThe(inWay: InTheWay, cell: Cell): string {
   return name ? `, past the ${name} on this cell` : "";
 }
 
-type TargetGroup = { title: string; kinds: Target["kind"][]; empty?: string };
+type TargetGroup = { title: string; holds: (target: Target) => boolean; empty?: string };
 
-export const EXITS_GROUP: TargetGroup = { title: "Exits of this map:", kinds: ["exit", "edge"], empty: "none seen yet." };
+const ofKind =
+  (...kinds: Target["kind"][]) =>
+  (target: Target) =>
+    kinds.includes(target.kind);
+
+const isCheck = ofKind("person", "sign");
+
+export const EXITS_GROUP: TargetGroup = { title: "Exits of this map:", holds: ofKind("exit", "edge"), empty: "none seen yet." };
 
 export const TARGET_GROUPS: TargetGroup[] = [
-  { title: "Leads, what you did not explore in other parts and maps:", kinds: ["lead"] },
+  { title: "Leads, what you did not explore in other parts and maps:", holds: ofKind("lead") },
   EXITS_GROUP,
-  { title: "Unseen cells:", kinds: ["frontier"] },
-  { title: "People, objects and things to check:", kinds: ["person", "sign"] },
-  { title: "Far maps:", kinds: ["map"] },
-  { title: "By FLY:", kinds: ["fly"] },
+  { title: "Unseen cells:", holds: ofKind("frontier") },
+  { title: "People, objects and things to check:", holds: (t) => isCheck(t) && !t.noWay },
+  { title: "Seen in other parts of this map, with no seen way there yet: explore to find a way first.", holds: (t) => isCheck(t) && t.noWay === true },
+  { title: "Far maps:", holds: ofKind("map") },
+  { title: "By FLY:", holds: ofKind("fly") },
 ];
 
-function targetGroup({ kind }: Target): number {
-  return TARGET_GROUPS.findIndex((group) => group.kinds.includes(kind));
+function targetGroup(target: Target): number {
+  return TARGET_GROUPS.findIndex((group) => group.holds(target));
 }
 
 export const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -177,20 +185,26 @@ export function localTargets(overworld: Overworld, here: AtlasMap, parts: Parts,
   const { grid, player, people } = overworld;
   const seen = seenIn(here);
   const { own } = parts;
-  const elsewhere = (cells: Cell[], direction: string) => {
-    const exits = parts.exitsTo(cells);
+  const view = atlasCells(here);
+  const split = elevationSplit(here, player);
+  const elsewhere = (cells: Cell[], direction: string, exits: number) => {
     const part = cells.map((c) => parts.partName(c)).find((name) => name !== null);
+    if (exits === Number.POSITIVE_INFINITY && split && cells.some(split)) return `${direction}, on another level, with no stairs that you saw to it`;
     if (exits === Number.POSITIVE_INFINITY) return `${direction}${part ? `, in ${part}` : ""}, no seen way there yet`;
     return `in ${part ?? "another part of this map"}, ${away(exits, hopsOf(parts))}`;
   };
-  const where = (cell: Cell, inPart: boolean) => (inPart ? whereFrom(player, cell) : elsewhere([cell], whereFrom(player, cell)));
   const present = new Map(people.map((p) => [p.localId, p]));
-  const located = (cell: Cell, inPart: boolean, target: (where: string) => LocalTarget): Located => ({ inPart, inWay: false, target: target(where(cell, inPart)) });
+  const located = (cell: Cell, inPart: boolean, target: (where: string) => LocalTarget): Located => {
+    const exits = inPart ? 0 : parts.exitsTo([cell]);
+    const shown = target(inPart ? whereFrom(player, cell) : elsewhere([cell], whereFrom(player, cell), exits));
+    const noWay = exits === Number.POSITIVE_INFINITY && isCheck(shown);
+    return { inPart, inWay: false, target: noWay ? { ...shown, noWay } : shown };
+  };
   const edge = (e: AtlasEdge): Located => {
-    const cells = edgeCells(atlasCells(here), e.side).filter((c) => seen(c) && walkable(atlasCells(here), c));
+    const cells = edgeCells(view, e.side).filter((c) => seen(c) && walkable(view, c));
     const inPart = cells.some(own.touches);
     const direction = `${edgeSteps(here, player, e.side)} ${e.side}`;
-    return { inPart, inWay: false, target: edgeTarget(e, inPart ? direction : elsewhere(cells, direction)) };
+    return { inPart, inWay: false, target: edgeTarget(e, inPart ? direction : elsewhere(cells, direction, parts.exitsTo(cells))) };
   };
   const person = (p: AtlasPerson): Located => {
     const counter = isBehindCounter(grid, parts, p);
@@ -305,7 +319,7 @@ export function edgeSteps(map: AtlasMap, { x, y }: Cell, side: Direction): numbe
 
 type Approached = { kind: "exit" | "frontier" | "person"; cell: Cell } | { kind: "edge"; side: Direction } | { kind: "sign"; cell: Cell; facing: Direction | "any" };
 
-export function approaches(target: Approached, { grid, player, people }: Overworld): Cell[] {
+export function approaches(target: Approached, { grid, player, people }: Pick<Overworld, "grid" | "player" | "people">): Cell[] {
   const isFree = (c: Cell) => free({ ...grid, people }, c);
   const nearest = (cells: Cell[]) => cells.filter(isFree).toSorted((a, b) => distance(a, player) - distance(b, player));
   switch (target.kind) {
@@ -324,7 +338,7 @@ export function approaches(target: Approached, { grid, player, people }: Overwor
       const facing = target.kind === "sign" ? target.facing : "any";
       const sides = DIRECTION_STEPS.filter(([direction]) => facing === "any" || direction === OPPOSITE[facing]);
       const { x, y } = target.cell;
-      const cells = nearest(sides.map(([, step]) => (target.kind === "person" ? talkFrom(grid, target.cell, step).cell : { x: x + step[0], y: y + step[1] })));
+      const cells = nearest(sides.flatMap(([, step]) => (target.kind === "person" ? talkCells(grid, target.cell, step) : [{ x: x + step[0], y: y + step[1] }])));
       return cells.length > 0 ? cells : [target.cell];
     }
   }
@@ -332,19 +346,25 @@ export function approaches(target: Approached, { grid, player, people }: Overwor
 
 /** The cell to interact with from `from`: the target next to it, or the counter between them (the game lets the player talk across a counter). */
 export function interactCell(target: { kind: Target["kind"]; cell: Cell }, grid: MapGrid, from: Cell): Cell | null {
-  if (nextTo(from, target.cell)) return target.cell;
-  if (target.kind !== "person") return null;
+  if (target.kind !== "person") return nextTo(from, target.cell) ? target.cell : null;
   const { x, y } = target.cell;
-  const [, step] = DIRECTION_STEPS.find(([, step]) => {
-    const side = talkFrom(grid, target.cell, step);
-    return side.across && side.cell.x === from.x && side.cell.y === from.y;
-  }) ?? [];
-  return step ? { x: x + step[0], y: y + step[1] } : null;
+  const side = DIRECTION_STEPS.map(([, step]) => ({ step, ...talkFrom(grid, target.cell, step) })).find(({ cell }) => cell.x === from.x && cell.y === from.y);
+  if (!side || !reaches(grid, from, target.cell)) return null;
+  return side.across ? { x: x + side.step[0], y: y + side.step[1] } : target.cell;
 }
 
 function talkFrom(grid: MapGrid, { x, y }: Cell, [dx, dy]: [number, number]): { cell: Cell; across: boolean } {
   const across = isCounter(grid, { x: x + dx, y: y + dy });
   return { cell: across ? { x: x + 2 * dx, y: y + 2 * dy } : { x: x + dx, y: y + dy }, across };
+}
+
+function talkCells(grid: MapGrid, person: Cell, step: [number, number]): Cell[] {
+  const { cell } = talkFrom(grid, person, step);
+  return reaches(grid, cell, person) ? [cell] : [];
+}
+
+function reaches(grid: MapGrid, from: Cell, person: Cell): boolean {
+  return elevationsJoin(elevationAt(grid, from), elevationAt(grid, person));
 }
 
 function isCounter(grid: MapGrid, c: Cell): boolean {

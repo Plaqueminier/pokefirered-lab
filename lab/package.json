@@ -10,6 +10,7 @@
     "evolve": "bun run src/genetic/evolve.ts",
     "learn-lab": "bun run src/model/learn-lab.ts",
     "battle-lab": "bun run src/model/battle-lab.ts",
+    "map-lab": "bun run src/model/map-lab.ts",
     "shot": "bun run src/tools/shot.ts",
     "map": "bun run src/tools/map.ts",
     "typecheck": "tsc --noEmit",

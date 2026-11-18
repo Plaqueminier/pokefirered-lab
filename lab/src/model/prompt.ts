@@ -256,7 +256,7 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
     bagText(observation.bag),
     `Money: ${observation.money}`,
     partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText, observation.mode === "battle" ? AS_IS : walkStatus),
-    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...bicycleLines(asked.overworld, observation.bag), ...surfLines(asked.overworld), ...(asked.overworld.strength.moved ? [BOULDERS_MOVED] : [])] : []),
+    ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...safariLines(asked.overworld), ...bicycleLines(asked.overworld, observation.bag), ...surfLines(asked.overworld), ...(asked.overworld.strength.moved ? [BOULDERS_MOVED] : [])] : []),
     "",
     ...(asked.kind === "walk" ? leftBlock(asked.view.left, asked.overworld.map.name, events) : []),
     ...context(asked),
@@ -406,6 +406,10 @@ function bicycleLines({ riding, rideChosen }: Overworld, bag: BagPocket[]): stri
   if (!bag.some(({ items }) => items.some((item) => item.name === BICYCLE))) return [];
   const state = rideChosen ? "You chose to ride: you walk only where the game does not allow the BICYCLE. Use BICYCLE to walk again." : riding ? "You did not choose to ride: the next walk leaves the BICYCLE where the game allows it. Use BICYCLE to keep it." : "You walk. Use BICYCLE to ride.";
   return [`${BICYCLE_FACTS} ${state}`];
+}
+
+function safariLines({ safari }: Overworld): string[] {
+  return safari ? [`Safari Zone: ${safari.steps} steps and ${safari.balls} SAFARI BALLs left. At 0 steps or 0 balls, the game takes you back to the gate.`] : [];
 }
 
 function surfLines({ surfing }: Overworld): string[] {

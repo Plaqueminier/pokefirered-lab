@@ -64,8 +64,7 @@ function patchMon(run: Run, slot: number, { species, held, level, hp, pp, moves,
   const secure = box.field("secure").addr;
   for (let at = 0; at < SUBSTRUCTS_SIZE; at += 4) {
     const word = (substructs.getUint32(at, true) ^ key) >>> 0;
-    run.core.patch16(secure + at, word & 0xffff);
-    run.core.patch16(secure + at + 2, word >>> 16);
+    run.core.patch32(secure + at, word);
   }
   run.core.patch16(box.field("checksum").addr, sum & 0xffff);
   if (level !== undefined) run.core.patch8(mon.field("level").addr, level);

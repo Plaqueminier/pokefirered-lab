@@ -9,7 +9,7 @@ import { type AnswerFormat, DECISION_FORMAT } from "./openrouter";
 import { battleSystemPrompt, systemPrompt, type TurnKind, turnRequest, userPrompt } from "./prompt";
 
 /** The version of the model bot. A change of what the bot sends to the model needs a new version, here and in the README. */
-export const BOT_VERSION = "48";
+export const BOT_VERSION = "49";
 
 const TURN_FORMATS: Record<TurnKind, AnswerFormat> = {
   normal: DECISION_FORMAT,

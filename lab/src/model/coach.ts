@@ -110,7 +110,7 @@ export function coachWants(events: readonly RunEvent[]): Wants | null {
 /** At the battle menu, the lines that tell the player what the Coach wants, when the facts of the battle agree. */
 export function wantLines(events: readonly RunEvent[], asked: Asked, bag: readonly BagPocket[]): string[] {
   const wants = coachWants(events);
-  if (!wants || asked.kind !== "battleAction") return [];
+  if (!wants || asked.kind !== "battleAction" || asked.battle.ghost) return [];
   const { battle, party } = asked;
   const species = battle.enemy.species;
   const hasBall = bag.some((pocket) => pocket.pocket === "POKé BALLS" && pocket.items.some((item) => item.quantity > 0));

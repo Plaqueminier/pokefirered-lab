@@ -24,7 +24,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 ## Run a Bot
 
-The lab has two **Bots**: the model bot (`bots/model.ts`, version 48, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself when a Pokémon of the party knows the move and the player has its badge. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the way is shorter, with badge 3 and a Pokémon of the party that knows FLY. At each **Decision point** in a battle, the model bot sends the **Battle prompt**. It has a system prompt and a prompt about the battle only, with no **Memory tree** and no **Atlas**.
+The lab has two **Bots**: the model bot (`bots/model.ts`, version 49, no goal) and the **Genetic bot** (see "Run the Genetic bot"). The model bot asks an AI model for each decision, through its **Model provider** (ADR 0003, ADR 0005, ADR 0007). At the `player` **Knowledge level**, it sees 3 x 3 cells on a **Dark map** until a Pokémon of its party can use FLASH: the program then uses the move, with no **Model call**. A walk also uses CUT, ROCK SMASH and SURF by itself, when a Pokémon of the party knows the move. The player must also have the badge of the move. The model bot pushes a boulder with the action `push`, and the program starts STRENGTH for it. A walk to a far map also flies with FLY when the way is shorter. This needs badge 3 and a Pokémon of the party that knows FLY. At each **Decision point** in a battle, the model bot sends the **Battle prompt**. It has a system prompt and a prompt about the battle only, with no **Memory tree** and no **Atlas**.
 
 1. Prepare the provider:
    - `openrouter` (the default): put a key with a credit limit in `lab/.env`: `OPENROUTER_API_KEY=sk-or-...`. Git ignores this file. OpenRouter bills each call.
@@ -114,12 +114,30 @@ bun run battle-lab report
 
 `report.md` has bot versions 46 and 48 on `claude-code:haiku@low` and `claude-code:sonnet@low`, 3 repeats for each moment. Version 46 is the code before the Battle prompt, and version 48 the code of the Battle prompt. The lab history gives the numbers (step 49). `moments-v46.json` keeps the snapshots of version 46, from before the extraction of version 48. To measure version 46 again, use them with the code of the battle lab before version 48 (commit `330e4a5eb`). `results-before-v48.jsonl` keeps the results from before the merge with FLY, when the code of the Battle prompt had the label 47.
 
+## Test the elevations of a map
+
+`bun run map-lab` asks models where they walk on a map where two elevations of land touch. The files go to `evals/map/`, which Git ignores.
+
+```
+bun run map-lab extract
+bun run map-lab show <moment> <old | now>
+bun run map-lab run --models <provider>:<id>[@<reasoning>],... [--only <regex>] [--repeats <n>] [--cost-limit <dollars>] [--concurrency <n>]
+bun run map-lab report
+```
+
+- The **Run records** have no walk on the maps where the land at one elevation has no stairs to the other. So `extract` does not replay a Run. It loads `saves/test-party.sav`, warps the player to each cell of `src/model/map-lab.ts`, and keeps what `observe()` returns. These moments have no **Mission** and no **Memory tree**.
+- `old` is the snapshot with no elevation, as the Parts of version 48 saw it. `now` is the prompt of the current code.
+- `report` counts the answers of each variant and model in four groups. An answer goes to a cell where the player can walk, to a cell where the player cannot walk, or to another map. The last group is an answer that the Bot cannot read. The real grid of the moment, with its elevations, decides.
+
+`report-ab.md` has the first A/B of version 49, with the variants that the code does not have now (step 103 of the lab history). Its score also accepted a cell next to the target, so its counts of bad answers are low.
+
 ## Test another prompt
 
-To test a new prompt of the model bot, for example a walk with SURF, extend the two labs. Use the parts that they share:
+To test a new prompt of the model bot, for example a walk with SURF, extend the labs. Use the parts that they share:
 
 - `src/model/lab.ts` has the client of each provider (`askAll`), the options of `run` (`runOptions`), the results file (`readResults`) and the key of a prompt (`hashOf`). `askAll` makes only the calls that the results file does not have, and it stops at the cost limit.
 - `battle-lab.ts` takes its moments from the **Run records**. A moment is a Run id and the frame of a **Model call**. `extract` replays the record to that frame, and the current code of the Bot builds the prompt from the snapshot. This works at each **Decision point**, not only in a battle. For a walk prompt, make `<name>-lab.ts` next to it, and export from `battle-lab.ts` the functions that you need (`extractRun`, `momentPrompt`, `scoreOf`). Do not copy them.
+- `map-lab.ts` makes its moments with no **Run record**: it warps the player from a test save. Use it only when no **Run record** has the state that you want to test ("Test the elevations of a map").
 
 Take the moments from a real **Run** that is at the state that you want to test. A save that you make for the test often has a bad state, for example a party with 1 HP or no **Mission**. Before you pay for calls, read the prompt with `show <moment>`: it costs nothing. Then start with `--repeats 1 --cost-limit 0.2`.
 

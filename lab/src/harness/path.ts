@@ -1,4 +1,4 @@
-import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, ELEVATION_SHIFT, KIND, LEDGE, OPPOSITE, STOP, SWITCH, WALL } from "../cells";
+import { DIRECTION_STEP, DIRECTION_STEPS, type Direction, ELEVATION_SHIFT, KIND, LEDGE, OPPOSITE, SHORE_ELEVATION, STOP, SWITCH, WALL } from "../cells";
 import type { FlyDestination } from "../fly-destinations";
 import type { MapGrid, Obstacle, WarpExit } from "../game";
 
@@ -24,16 +24,20 @@ export type Leg = WalkLeg | { map: string; fly: FlyDestination };
 
 export type MapSource = (name: string) => RouteMap | null;
 
-export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight">;
+/**
+ * With `blocks`, a step follows the elevation rule. A grid of the game always has them. `atlasCells` gives them only on a
+ * map that keeps its elevations, with the elevation bits only, so on other maps a part of the Atlas reads no elevation.
+ */
+export type MapCells = Pick<RouteMap, "kinds" | "x0" | "y0" | "width" | "mapWidth" | "mapHeight"> & { blocks?: readonly number[] };
 
 const WALKABLE = new Set<string>([KIND.open, KIND.grass, KIND.surf, STOP, SWITCH, ...Object.values(WALL)]);
+const WATER_KINDS = new Set<string>([KIND.water, KIND.surf]);
 const WARP_COST = 4;
 // Measured frames.
 const STEP_FRAMES = 16;
 const CUT_FRAMES = 545;
 const SURF_FRAMES = 452;
 const FLY_FRAMES = 700;
-const SHORE_ELEVATION = 3;
 const MOVE_COST: Record<Move["kind"], number> = { walk: 1, jump: 2, push: 1, remove: Math.round(CUT_FRAMES / STEP_FRAMES), surf: Math.round(SURF_FRAMES / STEP_FRAMES) };
 const FLY_COST = Math.round(FLY_FRAMES / STEP_FRAMES);
 export const MAX_ROUTE_MAPS = 32;
@@ -192,19 +196,60 @@ function isSurf(map: MapCells, cell: Cell): boolean {
   return kindAt(map, cell) === KIND.surf;
 }
 
-function isShore(map: RouteMap, cell: Cell): boolean {
-  return map.blocks[cellIndex(map, cell)] >> ELEVATION_SHIFT === SHORE_ELEVATION;
+function isWater(map: MapCells, cell: Cell): boolean {
+  return WATER_KINDS.has(kindAt(map, cell));
 }
 
 export function startsSurf(map: RouteMap, from: Cell, to: Cell): boolean {
   return inside(map, to) && free(map, to) && stepKind(map, from, map, to) === "surf";
 }
 
+// IsElevationMismatchAt for a step, ObjectEventDoesElevationMatch for a talk. No layout of FireRed has a cell at 15,
+// the elevation where an object keeps its old elevation.
+export function elevationsJoin(a: number, b: number): boolean {
+  return a === 0 || b === 0 || a === b;
+}
+
+export function elevationAt(map: Omit<MapCells, "kinds">, cell: Cell): number {
+  return inside(map, cell) && map.blocks ? map.blocks[cellIndex(map, cell)] >> ELEVATION_SHIFT : 0;
+}
+
+export function neighbours(cell: Cell): (Cell & { direction: Direction })[] {
+  return DIRECTION_STEPS.map(([direction, [dx, dy]]) => ({ direction, x: cell.x + dx, y: cell.y + dy }));
+}
+
+/**
+ * How the game takes a step between two cells, by their elevations and their water (IsElevationMismatchAt,
+ * IsPlayerFacingSurfableFishableWater, CanStopSurfing). SURF starts and stops only between land at SHORE_ELEVATION
+ * and water at an elevation that does not join it. A step from water to water is free.
+ */
+function elevationStep(from: number, fromWater: boolean, to: number, toWater: boolean): "walk" | "surf" | null {
+  if (fromWater && toWater) return "walk";
+  if (fromWater === toWater) return elevationsJoin(from, to) ? "walk" : null;
+  if ((fromWater ? to : from) !== SHORE_ELEVATION || elevationsJoin(from, to)) return null;
+  return fromWater ? "walk" : "surf";
+}
+
+/** A cell of land for the elevations of a map. A warp cell does not count: the escalator of a Pokémon Center is at another elevation. */
+export function elevationLand(map: MapCells, warps: readonly Cell[]): (cell: Cell) => boolean {
+  const keys = new Set(warps.map(cellKey));
+  return (c) => walkable(map, c) && !isWater(map, c) && !keys.has(cellKey(c));
+}
+
+/** A step between two cells of land that the elevation rule refuses. */
+export function hasElevationEdges(map: MapCells & Pick<RouteMap, "warps">): boolean {
+  const land = elevationLand(map, map.warps);
+  const refused = (c: Cell, n: Cell & { direction: Direction }) => land(n) && !wallBetween(map, c, n.direction) && !elevationsJoin(elevationAt(map, c), elevationAt(map, n));
+  return allCells(map).some((c) => land(c) && neighbours(c).some((n) => (n.direction === "east" || n.direction === "south") && refused(c, n)));
+}
+
+/** The cells through which a walk reaches `cell`: the cell when it is open, else also the cells next to it, as for a door or a sign. */
+export function joinCells(map: MapCells, cell: Cell): Cell[] {
+  return walkable(map, cell) ? [cell] : [cell, ...neighbours(cell)];
+}
+
 function stepKind(map: RouteMap, from: Cell, next: RouteMap, to: Cell): "walk" | "surf" | null {
-  const onWater = isSurf(map, from);
-  if (onWater === isSurf(next, to)) return "walk";
-  if (!(onWater ? isShore(next, to) : isShore(map, from))) return null;
-  return onWater ? "walk" : "surf";
+  return elevationStep(elevationAt(map, from), isWater(map, from), elevationAt(next, to), isWater(next, to));
 }
 
 function removableAt(map: RouteMap, { x, y }: Cell): boolean {
@@ -338,12 +383,17 @@ export function wallBetween(map: MapCells, from: Cell, direction: Direction): bo
   return kindAt(map, from) === WALL[direction] || kindAt(map, { x: from.x + dx, y: from.y + dy }) === WALL[OPPOSITE[direction]];
 }
 
-/** Where a step in `direction` goes: null across a thin wall, and past a ledge when the next cell is a ledge in this direction. */
-function stepFrom(map: MapCells, cell: Cell, direction: Direction): Cell | null {
+/**
+ * Where a step in `direction` goes: null across a thin wall, past a ledge when the next cell is a ledge in this direction
+ * (the jump does not read the elevation), and null when the elevation rule refuses it, on a map with its blocks.
+ */
+export function stepFrom(map: MapCells, cell: Cell, direction: Direction): Cell | null {
   if (wallBetween(map, cell, direction)) return null;
   const [dx, dy] = DIRECTION_STEP[direction];
   const next = { x: cell.x + dx, y: cell.y + dy };
-  return kindAt(map, next) === LEDGE[direction] ? { x: next.x + dx, y: next.y + dy } : next;
+  if (kindAt(map, next) === LEDGE[direction]) return { x: next.x + dx, y: next.y + dy };
+  const refused = map.blocks && inside(map, next) && !elevationStep(elevationAt(map, cell), isWater(map, cell), elevationAt(map, next), isWater(map, next));
+  return refused ? null : next;
 }
 
 export function allCells({ mapWidth, mapHeight }: Pick<MapCells, "mapWidth" | "mapHeight">): Cell[] {

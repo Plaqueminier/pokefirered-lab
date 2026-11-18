@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { MapGrid } from "../game";
-import { type AtlasMap, atlasCells, atlasWarps } from "../harness/atlas";
+import { type AtlasMap, atlasCells, atlasWarps, elevationBlocks } from "../harness/atlas";
 import { walkable } from "../harness/path";
 import { hasSpinTiles, numberParts } from "../harness/slides";
 import type { Person } from "../harness/harness";
@@ -32,6 +32,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
   const kinds = current.cells.replaceAll("?", ".");
   const size = current.width * current.height;
   const grid = { name: current.name, x0: 0, y0: 0, width: current.width, height: current.height, mapWidth: current.width, mapHeight: current.height, kinds, behaviors: Array(size).fill(0), behaviorNames: { 0: "MB_NORMAL" }, connections: [], signs: [] } as unknown as MapGrid;
+  const raised = current.elevations ? { ...grid, blocks: elevationBlocks(current.elevations) } : grid;
   return {
     mode: "overworld",
     waitingFor: { kind: "walk" },
@@ -49,7 +50,7 @@ function overworld(current: AtlasMap, others: AtlasMap[], player = { x: 1, y: 2 
     map: { group: 0, num: 0, name: current.name },
     mapKind: "outdoor",
     player: { ...player, facing: "north" },
-    grid,
+    grid: raised,
     people,
     atlas: { maps: [current, ...others], lastTalk: null },
   };
@@ -161,6 +162,33 @@ describe("the unseen cells of a map that is dark for the model", () => {
   test("the target keeps the direction of its unseen cells", () => {
     const { targets } = atlasExtract(overworld(room(true), [], { x: 4, y: 2 }));
     expect(targets.filter((target) => target.kind === "frontier")).toContainEqual(expect.objectContaining({ cell: { x: 7, y: 2 }, direction: "east" }));
+  });
+});
+
+describe("the elevations of a map", () => {
+  const man = { localId: 1, graphics: "MAN", x: 7, y: 1, loaded: true, stays: false };
+  const cliff = (row: string): AtlasMap => ({ ...LAB, name: "Cliff", width: 10, height: 3, cells: "##########" + "#........#" + "##########", elevations: "0000000000" + row + "0000000000", warps: [], entry: null, people: [{ ...man, texts: [] }] });
+  const label = (map: AtlasMap) => atlasExtract(overworld(map, [], { x: 2, y: 1 }, [man])).lines.find((line) => line.includes("MAN at (7, 1)"));
+
+  test("a step between two elevations is no step: the cells past it are in another part of the map", () => {
+    expect(label(cliff("0333344440"))).toEndWith("MAN at (7, 1), 5 east, on another level, with no stairs that you saw to it");
+  });
+
+  test("a person with no seen way there has a group of its own, after the people of the part, and its label names the other elevation", () => {
+    const { lines } = atlasExtract(overworld(cliff("0333344440"), [], { x: 2, y: 1 }, [man]));
+    const title = lines.indexOf("Seen in other parts of this map, with no seen way there yet: explore to find a way first.");
+    expect(title).toBeGreaterThan(-1);
+    expect(lines[title + 1]).toEndWith("MAN at (7, 1), 5 east, on another level, with no stairs that you saw to it");
+  });
+
+  test("the grid shows the elevation with fewer cells with : and the stairs between two elevations with =, with their legend", () => {
+    const { lines } = atlasExtract(overworld(cliff("0333304440"), [], { x: 2, y: 1 }, [man]));
+    expect(lines).toContainEqual(expect.stringContaining("#.@..=:A:#"));
+    expect(lines.find((line) => line.startsWith("Legend:"))).toContain(": open ground on another level than the . cells: a step between the two levels is possible only on stairs (=); = stairs between two levels");
+  });
+
+  test("stairs, at elevation 0, join the two elevations in one part", () => {
+    expect(label(cliff("0333304440"))).toEndWith("MAN at (7, 1), 5 east");
   });
 });
 

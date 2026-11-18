@@ -1,11 +1,20 @@
 import { battleTurn, type BattleTurn, hpPercent, TOXIC_COUNTER_MAX } from "./battle-facts";
-import type { Memory } from "./memory";
+import type { Memory, Ref } from "./memory";
+import type { GridChoice } from "./menus";
 import { MOVE_NONE, nameAt, PARTY_SIZE, type PartyMon, readMoves, readStats, speciesAbilities, speciesTypes, STAGE_NAMES, type StageName, type Stats, statusOf } from "./party";
 import { activeTask, type Decode } from "./prompts";
 import { functionName } from "./symbols";
 
 const BATTLE_TYPE_DOUBLE = 1 << 0;
 const BATTLE_TYPE_TRAINER = 1 << 3;
+const BATTLE_TYPE_SAFARI = 1 << 7;
+const BATTLE_TYPE_GHOST_UNVEILED = 1 << 13;
+const BATTLE_TYPE_GHOST = 1 << 15;
+export const UNIDENTIFIED_GHOST = "GHOST";
+const SAFARI_OPTIONS = ["BALL", "BAIT", "ROCK", "RUN"];
+const SAFARI_COLUMNS = 2;
+const SAFARI_FLEE_PERCENT = 5;
+const SAFARI_MAX_FLEE_RATE = 20;
 const PLAYER_BATTLER = 0;
 const PLAYER_PARTNER_BATTLER = 2;
 const ENEMY_BATTLER = 1;
@@ -108,7 +117,9 @@ type BattlerMon = BattleMon & { partyIndex: number };
 export type MoveReach = "one" | "both" | "all" | "game" | "none";
 
 /** `player` is the Pokémon that the player chooses for now. In a double battle, `enemy` is the first foe that can fight, `otherFoe` is the second one while both can fight, and `reach` has one entry for each move of `player`. */
-export type Battle = { kind: "trainer" | "wild"; player: BattlerMon; enemy: BattlerMon; double?: { ally: BattlerMon | null; otherFoe: BattlerMon | null; reach: MoveReach[] } };
+export type Battle = { kind: "trainer" | "wild"; player: BattlerMon; enemy: BattlerMon; double?: { ally: BattlerMon | null; otherFoe: BattlerMon | null; reach: MoveReach[] }; ghost?: true; safari?: SafariBattle };
+
+export type SafariBattle = { balls: number; fleePercent: number };
 
 export type EnemyMon = {
   species: string;
@@ -123,13 +134,46 @@ export type EnemyMon = {
 };
 
 export function readBattle(mem: Memory, decode: Decode): Battle {
-  const kind = mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_TRAINER ? "trainer" : "wild";
+  const flags = mem.global("gBattleTypeFlags").int();
+  const kind = flags & BATTLE_TYPE_TRAINER ? "trainer" : "wild";
   const mon = (battler: number): BattlerMon => ({ ...battleMon(mem, battler, decode), partyIndex: battlerPartyIndex(mem, battler) });
-  if (!isDouble(mem)) return { kind, player: mon(PLAYER_BATTLER), enemy: mon(ENEMY_BATTLER) };
+  if (!isDouble(mem)) {
+    const safari = flags & BATTLE_TYPE_SAFARI ? { safari: safariBattle(mem) } : {};
+    const enemy = mon(ENEMY_BATTLER);
+    // The game shows the name GHOST and the level, and no species, type or move.
+    if (ghostWithoutScope(flags)) return { kind, player: mon(PLAYER_BATTLER), enemy: { ...enemy, species: UNIDENTIFIED_GHOST, types: [], abilities: [] }, ghost: true, ...safari };
+    return { kind, player: mon(PLAYER_BATTLER), enemy, ...safari };
+  }
   const chooser = choosingBattler(mem);
   const ally = chooser === PLAYER_BATTLER ? PLAYER_PARTNER_BATTLER : PLAYER_BATTLER;
   const [foe = ENEMY_BATTLER, otherFoe] = ENEMY_BATTLERS.filter((battler) => canFight(mem, battler));
   return { kind, player: mon(chooser), enemy: mon(foe), double: { ally: canFight(mem, ally) ? mon(ally) : null, otherFoe: otherFoe === undefined ? null : mon(otherFoe), reach: moveReaches(mem, chooser) } };
+}
+
+export function isUnidentifiedGhost(mem: Memory): boolean {
+  return ghostWithoutScope(mem.global("gBattleTypeFlags").int());
+}
+
+// IS_BATTLE_TYPE_GHOST_WITHOUT_SCOPE (include/constants/battle.h).
+function ghostWithoutScope(flags: number): boolean {
+  return (flags & BATTLE_TYPE_GHOST) !== 0 && (flags & BATTLE_TYPE_GHOST_UNVEILED) === 0;
+}
+
+function safariBattle(mem: Memory): SafariBattle {
+  return { balls: mem.global("gNumSafariBalls").int(), fleePercent: safariFleeRate(mem.global("gBattleStruct").deref()) * SAFARI_FLEE_PERCENT };
+}
+
+// Cmd_if_random_safari_flee (battle_ai_script_commands.c).
+function safariFleeRate(battle: Ref): number {
+  const rate = battle.field("safariEscapeFactor").int();
+  if (battle.field("safariRockThrowCounter").int()) return Math.min(rate * 2, SAFARI_MAX_FLEE_RATE);
+  if (battle.field("safariBaitThrowCounter").int()) return Math.max(Math.floor(rate / 4), 1);
+  return rate;
+}
+
+export function safariMenu(mem: Memory, menu: BattleMenu | null): GridChoice | null {
+  if (!(mem.global("gBattleTypeFlags").int() & BATTLE_TYPE_SAFARI) || menu !== "battleAction") return null;
+  return { options: SAFARI_OPTIONS, cursor: battleCursor(mem, menu), columns: SAFARI_COLUMNS };
 }
 
 function moveReaches(mem: Memory, battler: number): MoveReach[] {
@@ -173,6 +217,7 @@ export function enemyView(enemy: BattleMon, movesSeen: string[], exact: boolean)
   const seen = { species, types, level, hpPercent: hpPercent(hp, maxHp), status, states, statStages, movesSeen };
   return exact ? { ...seen, exact: { hp, maxHp, stats } } : seen;
 }
+
 
 /** With no PP in all its moves, a Pokémon uses STRUGGLE when FIGHT is chosen (AreAllMovesUnusable in src/battle_util.c). */
 export function struggles(mon: Pick<BattleMon, "moves">): boolean {
