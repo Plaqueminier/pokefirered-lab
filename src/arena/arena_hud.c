@@ -15,15 +15,27 @@
 #define TEAM_MARGIN 4
 #define TEAM_GAP 3
 #define ICON_W 16
+// Each icon palette has the outline color at index 15.
+#define ICON_OUTLINE 15
+#define ICON_TILES (ICON_W / 8)
+#define ICON_SOURCE_TILES (2 * ICON_TILES)
 #define MAX_ICON_PITCH 18
-#define MIN_ICON_PITCH 12
-#define BUTTONS_W 70
+#define MIN_ICON_PITCH 11
+#define BUTTON_BAG_W 24
+#define BUTTON_AUTO_W 31
+#define BUTTON_RUN_W 24
+#define BUTTON_GAP 2
+#define BUTTONS_W (BUTTON_BAG_W + BUTTON_AUTO_W + BUTTON_RUN_W + 2 * BUTTON_GAP)
 #define BOX_W 100
 #define BOX_H 23
 #define BOX_Y 3
 #define STATUS_Y 28
 #define BANNER_Y 30
-#define BAR_W 40
+#define BAR_X 19
+#define BAR_W 28
+#define NAME_GAP 4
+#define TEXT_LEFT 4
+#define TEXT_RIGHT (BOX_W - 4)
 #define BADGE_Y (ARENA_TEAM_Y + 1)
 #define BADGE_MAX_W 112
 #define BADGE_H 14
@@ -57,8 +69,7 @@ static const struct OamData sOamIcon =
 };
 
 static const u8 *const sButtonTexts[] = {sText_Bag, sText_Auto, sText_Run};
-static const u8 sButtonX[] = {0, 22, 50};
-static const u8 sButtonW[] = {20, 26, 20};
+static const u8 sButtonW[] = {BUTTON_BAG_W, BUTTON_AUTO_W, BUTTON_RUN_W};
 
 static const u8 sBallColors[] = {UI_BLACK, UI_BLACK, UI_RED, UI_WHITE};
 
@@ -157,33 +168,43 @@ static void DrawHp(u8 side, bool32 full)
     ConvertIntToDecimalStringN(text, mon->hp, STR_CONV_MODE_LEFT_ALIGN, 3);
     StringAppend(text, sText_Slash);
     ConvertIntToDecimalStringN(text + StringLength(text), mon->maxHp, STR_CONV_MODE_LEFT_ALIGN, 3);
-    full |= mon->hp != mon->hpShown || x + 96 - (s32)Arena_TextWidth(text, ARENA_FONT_SMALL) <= x + 16 + BAR_W;
+    full |= mon->hp != mon->hpShown || !Arena_TextFits(text, ARENA_FONT_SMALL, TEXT_RIGHT - BAR_X - BAR_W - 1);
     if (full)
-        ArenaCanvas_Fill(&gArenaTopCanvas, x + 15, BOX_Y + 11, BOX_W - 18, 9, UI_BOX);
-    DrawHpBar(side, x + 16, BOX_Y + 14);
+        ArenaCanvas_Fill(&gArenaTopCanvas, x + BAR_X - 1, BOX_Y + 11, BOX_W - BAR_X - 2, 9, UI_BOX);
+    DrawHpBar(side, x + BAR_X, BOX_Y + 14);
     if (side == B_SIDE_OPPONENT)
-        DrawEstimateOnBar(x + 16, BOX_Y + 14);
+        DrawEstimateOnBar(x + BAR_X, BOX_Y + 14);
     if (full)
-        ArenaCanvas_Text(&gArenaTopCanvas, x + 96, BOX_Y + 12, text, ARENA_FONT_SMALL, UI_WHITE, 0, ARENA_ALIGN_RIGHT);
+        ArenaCanvas_Text(&gArenaTopCanvas, x + TEXT_RIGHT, BOX_Y + 12, text, ARENA_FONT_SMALL, UI_WHITE, 0, ARENA_ALIGN_RIGHT);
     mon->hpShown = mon->hp;
+}
+
+static s32 NameRoom(const u8 *levelText)
+{
+    return TEXT_RIGHT - TEXT_LEFT - NAME_GAP - Arena_TextWidth(levelText, ARENA_FONT_SMALL);
 }
 
 static void DrawInfoBox(u8 side)
 {
     struct ArenaMon *mon = &gArenaScreen.mons[side];
     s32 x = sBoxX[side];
-    u8 text[16];
+    u8 level = GetMonData(Arena_PartyOf(side), MON_DATA_LEVEL);
+    u8 name[16];
+    u8 levelText[8];
 
     ArenaCanvas_Fill(&gArenaTopCanvas, x, 0, BOX_W, BOX_Y + BOX_H + 1, 0);
     if (!mon->shown)
         return;
     ArenaCanvas_Box(&gArenaTopCanvas, x, BOX_Y, BOX_W, BOX_H, UI_BOX, UI_GOLD);
-    GetMonData(Arena_PartyOf(side), MON_DATA_NICKNAME, text);
-    StringGet_Nickname(text);
-    ArenaCanvas_Text(&gArenaTopCanvas, x + 4, BOX_Y + 3, text, ARENA_FONT_SMALL, UI_WHITE, UI_SHADOW, ARENA_ALIGN_LEFT);
-    ConvertIntToDecimalStringN(StringCopy(text, sText_Lv), GetMonData(Arena_PartyOf(side), MON_DATA_LEVEL), STR_CONV_MODE_LEFT_ALIGN, 3);
-    ArenaCanvas_Text(&gArenaTopCanvas, x + 96, BOX_Y + 3, text, ARENA_FONT_SMALL, UI_GOLD, 0, ARENA_ALIGN_RIGHT);
-    ArenaCanvas_Text(&gArenaTopCanvas, x + 4, BOX_Y + 12, sText_Hp, ARENA_FONT_SMALL, UI_ORANGE, 0, ARENA_ALIGN_LEFT);
+    GetMonData(Arena_PartyOf(side), MON_DATA_NICKNAME, name);
+    StringGet_Nickname(name);
+    ConvertIntToDecimalStringN(StringCopy(levelText, sText_Lv), level, STR_CONV_MODE_LEFT_ALIGN, 3);
+    if (!Arena_TextFits(name, ARENA_FONT_SMALL, NameRoom(levelText)))
+        ConvertIntToDecimalStringN(levelText, level, STR_CONV_MODE_LEFT_ALIGN, 3);
+    Arena_FitText(name, ARENA_FONT_SMALL, NameRoom(levelText));
+    ArenaCanvas_Text(&gArenaTopCanvas, x + TEXT_LEFT, BOX_Y + 3, name, ARENA_FONT_SMALL, UI_WHITE, UI_SHADOW, ARENA_ALIGN_LEFT);
+    ArenaCanvas_Text(&gArenaTopCanvas, x + TEXT_RIGHT, BOX_Y + 3, levelText, ARENA_FONT_SMALL, UI_GOLD, 0, ARENA_ALIGN_RIGHT);
+    ArenaCanvas_Text(&gArenaTopCanvas, x + TEXT_LEFT, BOX_Y + 12, sText_Hp, ARENA_FONT_SMALL, UI_ORANGE, 0, ARENA_ALIGN_LEFT);
     DrawHp(side, TRUE);
 }
 
@@ -415,7 +436,7 @@ static void GetBadgeBox(struct BadgeBox *box, u8 *text)
     Arena_FormatAutoMode(StringCopy(text, sText_AutoBadge));
     box->w = min(BADGE_MAX_W, MiddleRight() - MiddleLeft());
     box->x = MiddleBoxX(box->w);
-    box->twoLines = (s32)Arena_TextWidth(text, ARENA_FONT_SMALL) + BADGE_PAD > box->w;
+    box->twoLines = !Arena_TextFits(text, ARENA_FONT_SMALL, box->w - BADGE_PAD);
     box->y = box->twoLines ? BADGE_TALL_Y : BADGE_Y;
     box->h = box->twoLines ? BADGE_TALL_H : BADGE_H;
 }
@@ -463,9 +484,10 @@ static void DrawButtons(void)
     {
         bool8 selected = gArenaScreen.panel.kind == ARENA_PANEL_CARDS && gArenaScreen.panel.cursor == ARENA_CURSOR_BAG + i;
 
-        ArenaCanvas_Box(&gArenaBottomCanvas, x + sButtonX[i], ARENA_TEAM_Y + 2, sButtonW[i], 13, selected ? UI_BAR_BG : UI_BOX, selected ? UI_WHITE : UI_GREY);
-        ArenaCanvas_Text(&gArenaBottomCanvas, x + sButtonX[i] + sButtonW[i] / 2, ARENA_TEAM_Y + 5, sButtonTexts[i], ARENA_FONT_SMALL,
+        ArenaCanvas_Box(&gArenaBottomCanvas, x, ARENA_TEAM_Y + 2, sButtonW[i], 13, selected ? UI_BAR_BG : UI_BOX, selected ? UI_WHITE : UI_GREY);
+        ArenaCanvas_Text(&gArenaBottomCanvas, x + sButtonW[i] / 2, ARENA_TEAM_Y + 5, sButtonTexts[i], ARENA_FONT_SMALL,
                          selected ? UI_WHITE : UI_GREY, 0, ARENA_ALIGN_CENTER);
+        x += sButtonW[i] + BUTTON_GAP;
     }
 }
 
@@ -526,28 +548,71 @@ void ArenaHud_LoadIconPalettes(void)
     }
 }
 
+static u32 PixelOffset4bpp(s32 x, s32 y, s32 tilesAcross)
+{
+    return ((y / 8) * tilesAcross + x / 8) * TILE_SIZE_4BPP + (y % 8) * 4 + (x % 8) / 2;
+}
+
+static u8 IconPixel(const u8 *icon, s32 x, s32 y)
+{
+    u8 byte = icon[PixelOffset4bpp(x, y, ICON_SOURCE_TILES)];
+
+    return x & 1 ? byte >> 4 : byte & 0xF;
+}
+
+static u8 BlockColor(const u8 *icon, s32 x, s32 y)
+{
+    u8 colors[4];
+    u8 best = 0;
+    s32 i, j, count, bestCount = 0;
+
+    for (i = 0; i < 4; i++)
+        colors[i] = IconPixel(icon, x * 2 + (i & 1), y * 2 + (i >> 1));
+    for (i = 0; i < 4; i++)
+    {
+        if (colors[i] == 0)
+            continue;
+        for (j = 0, count = 0; j < 4; j++)
+            count += colors[j] == colors[i];
+        if (count > bestCount || (count == bestCount && best == ICON_OUTLINE))
+        {
+            best = colors[i];
+            bestCount = count;
+        }
+    }
+    return best;
+}
+
+static bool32 IsShapeEdge(u8 colors[ICON_W][ICON_W], s32 x, s32 y)
+{
+    if (x == 0 || y == 0 || x == ICON_W - 1 || y == ICON_W - 1)
+        return TRUE;
+    return colors[y][x - 1] == 0 || colors[y][x + 1] == 0 || colors[y - 1][x] == 0 || colors[y + 1][x] == 0;
+}
+
 static void LoadMiniIcon(u8 side, u8 slot, u16 species, u32 personality)
 {
     const u8 *icon = GetMonIconPtr(species, personality, FALSE);
     u8 tiles[4 * TILE_SIZE_4BPP];
+    u8 colors[ICON_W][ICON_W];
     struct SpriteSheet sheet = {tiles, sizeof(tiles), ARENA_TAG_ICON(side, slot)};
-    s32 x, y, i;
+    s32 x, y;
 
-    memset(tiles, 0, sizeof(tiles));
-    for (y = 0; y < 16; y++)
+    for (y = 0; y < ICON_W; y++)
     {
-        for (x = 0; x < 16; x++)
+        for (x = 0; x < ICON_W; x++)
+            colors[y][x] = BlockColor(icon, x, y);
+    }
+    memset(tiles, 0, sizeof(tiles));
+    for (y = 0; y < ICON_W; y++)
+    {
+        for (x = 0; x < ICON_W; x++)
         {
-            u8 color = 0;
+            u8 color = colors[y][x];
 
-            for (i = 0; i < 4 && color == 0; i++)
-            {
-                s32 sx = x * 2 + (i & 1), sy = y * 2 + (i >> 1);
-                u8 byte = icon[((sy / 8) * 4 + sx / 8) * TILE_SIZE_4BPP + (sy % 8) * 4 + (sx % 8) / 2];
-
-                color = sx & 1 ? byte >> 4 : byte & 0xF;
-            }
-            tiles[((y / 8) * 2 + x / 8) * TILE_SIZE_4BPP + (y % 8) * 4 + (x % 8) / 2] |= x & 1 ? color << 4 : color;
+            if (color != 0 && IsShapeEdge(colors, x, y))
+                color = ICON_OUTLINE;
+            tiles[PixelOffset4bpp(x, y, ICON_TILES)] |= x & 1 ? color << 4 : color;
         }
     }
     FreeSpriteTilesByTag(ARENA_TAG_ICON(side, slot));

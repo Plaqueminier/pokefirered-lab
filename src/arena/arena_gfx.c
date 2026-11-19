@@ -3,7 +3,9 @@
 #include "string_util.h"
 #include "characters.h"
 
-// The font is Jersey 10, under the SIL Open Font License (graphics/arena/OFL.txt).
+// The big font is Jersey 10, under the SIL Open Font License (graphics/arena/OFL.txt).
+// The small font has the shapes of Jersey 10 at a smaller size. Its glyphs are text in graphics/arena/font_small.txt:
+// `bun run arena-font` in lab/ writes its PNG and sFontSmallWidths.
 // Each width includes the space after the glyph.
 static const u8 sFontBigGlyphs[] = INCBIN_U8("graphics/arena/font_big.1bpp");
 static const u8 sFontSmallGlyphs[] = INCBIN_U8("graphics/arena/font_small.1bpp");
@@ -30,22 +32,22 @@ static const u8 sFontBigWidths[256] =
 
 static const u8 sFontSmallWidths[256] =
 {
-     3,  6,  6,  6,  6,  5,  5,  5,  5,  2,  0,  3,  3,  6,  6,  6,
-     8,  6,  6,  6,  6,  6,  6,  6,  0,  6,  6,  6,  6,  6,  2,  0,
-     3,  3,  6,  6,  6,  8,  6,  6,  6,  6,  6,  6,  0,  8,  5,  0,
-     0,  0,  0,  0,  0,  5,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+     3,  7,  7,  7,  7,  6,  6,  6,  6,  4,  0,  5,  5,  7,  7,  7,
+     8,  7,  7,  7,  7,  7,  7,  7,  0,  7,  7,  7,  7,  7,  4,  0,
+     5,  5,  7,  7,  7,  9,  7,  7,  7,  7,  5,  5,  0,  7,  7,  0,
+     0,  0,  0,  0,  0,  6,  4,  0,  0,  0,  0,  0,  0,  0,  0,  0,
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-     0,  5,  2,  0,  0,  0,  0,  0,  0,  0,  2,  8,  4,  4,  0,  0,
-     0,  0,  0,  0,  0,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  2,
+     0,  7,  3,  0,  0,  0,  0,  0,  0,  0,  4,  7,  4,  4,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  4,
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-     0,  0,  0,  0,  0,  6,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  5,  5,  0,  0,  0,  0,  0,  0,  0,  0,  0,
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-     0,  5,  4,  6,  6,  6,  5,  6,  5,  6,  6,  2,  5,  2,  5,  2,
-     6,  4,  4,  2,  2,  0,  0,  6,  2,  6,  4,  6,  6,  6,  6,  5,
-     5,  6,  6,  2,  5,  5,  4,  7,  7,  6,  6,  6,  6,  6,  5,  6,
-     6,  7,  6,  6,  6,  6,  6,  6,  6,  6,  4,  6,  6,  2,  3,  5,
-     2,  8,  6,  6,  6,  6,  5,  5,  4,  6,  6,  8,  6,  5,  6,  5,
-     2,  6,  6,  6,  6,  6,  6,  0,  0,  0,  0,  0,  0,  0,  0,  6,
+     0,  7,  4,  7,  7,  7,  7,  7,  6,  7,  7,  3,  7,  3,  5,  3,
+     9,  6,  6,  3,  3,  0,  0,  7,  4,  6,  5,  7,  7,  7,  7,  6,
+     6,  7,  7,  3,  6,  7,  6,  8,  7,  7,  7,  7,  7,  7,  7,  7,
+     7,  9,  7,  7,  7,  7,  7,  7,  7,  7,  6,  7,  7,  3,  4,  7,
+     3,  9,  7,  7,  7,  7,  6,  7,  5,  7,  7,  9,  7,  7,  7,  6,
+     3,  7,  7,  7,  7,  7,  7,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 };
 
 struct ArenaFont
@@ -227,9 +229,9 @@ static bool32 IsTextChar(u8 c)
     return c != EXT_CTRL_CODE_BEGIN && c != PLACEHOLDER_BEGIN && c < CHAR_PROMPT_SCROLL;
 }
 
-u32 Arena_TextWidth(const u8 *str, u8 font)
+s32 Arena_TextWidth(const u8 *str, u8 font)
 {
-    u32 width = 0;
+    s32 width = 0;
 
     while (!Arena_IsLineEnd(*str))
     {
@@ -238,6 +240,37 @@ u32 Arena_TextWidth(const u8 *str, u8 font)
         str = Arena_SkipControlCode(str);
     }
     return width;
+}
+
+bool32 Arena_TextFits(const u8 *str, u8 font, s32 width)
+{
+    return Arena_TextWidth(str, font) <= width;
+}
+
+const u8 *Arena_FirstFit(const u8 *const *texts, u32 count, u8 font, s32 width)
+{
+    u32 i;
+
+    for (i = 0; i < count && texts[i] != NULL; i++)
+    {
+        if (Arena_TextFits(texts[i], font, width))
+            return texts[i];
+    }
+    return NULL;
+}
+
+// A width includes the space after the last glyph, so the ink is 1 pixel narrower.
+s32 Arena_CenterLeft(s32 center, s32 width)
+{
+    return center - (width - 1) / 2;
+}
+
+void Arena_FitText(u8 *str, u8 font, s32 width)
+{
+    u32 length = StringLength(str);
+
+    while (length > 1 && !Arena_TextFits(str, font, width))
+        str[--length] = EOS;
 }
 
 #define SPREAD(b) (((b) & 1) * 0xF + ((b) >> 1 & 1) * 0xF0 + ((b) >> 2 & 1) * 0xF00 + ((b) >> 3 & 1) * 0xF000 \
@@ -369,11 +402,11 @@ const u8 *ArenaCanvas_TextLine(const struct ArenaCanvas *canvas, s32 x, s32 y, c
 
 void ArenaCanvas_Text(const struct ArenaCanvas *canvas, s32 x, s32 y, const u8 *str, u8 font, u8 color, u8 shadow, u8 align)
 {
-    u32 width = Arena_TextWidth(str, font);
+    s32 width = Arena_TextWidth(str, font);
 
     if (align == ARENA_ALIGN_RIGHT)
         x -= width;
     else if (align == ARENA_ALIGN_CENTER)
-        x -= width / 2;
+        x = Arena_CenterLeft(x, width);
     ArenaCanvas_TextLine(canvas, x, y, str, font, color, shadow);
 }

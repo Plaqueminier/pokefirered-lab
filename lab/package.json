@@ -13,6 +13,7 @@
     "map-lab": "bun run src/model/map-lab.ts",
     "shot": "bun run src/tools/shot.ts",
     "map": "bun run src/tools/map.ts",
+    "arena-font": "bun run src/tools/arena-font.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings",
     "knip": "knip",

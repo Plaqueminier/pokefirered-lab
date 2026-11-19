@@ -117,6 +117,14 @@ void ArenaRecord_OnFaint(u8 battler)
 #define END_TILES 600
 #define CARD_Y 26
 #define CARD_H 124
+#define ROW_PAD 3
+#define ROW_GAP 2
+#define CARD_TEXT_PAD 2
+#define CARD_MAX_W 74
+#define HEADER_X 6
+#define HEADER_GAP 4
+#define MONEY_RIGHT (DISPLAY_WIDTH - 6)
+#define COIN_SPACE 10
 #define GAINS_TWO_COLUMNS_W 64
 #define GAINS_ROWS 3
 #define SPARKLE_EVERY 3
@@ -197,28 +205,70 @@ static const u8 sText_Ko[] = _("K.O.");
 static const u8 sText_Lv[] = _("Lv");
 static const u8 sText_LvArrow[] = _("▶");
 static const u8 sText_PlusExp[] = _(" EXP");
+static const u8 sText_Thousands[] = _("K");
 static const u8 sText_PressA[] = _("PRESS A");
 static const u8 sText_Plus[] = _("+");
 static const u8 sText_Minus[] = _("-");
 static const u8 sText_Yen[] = _("¥");
 
 static const u8 sText_KoRow[] = _("KO");
-static const u8 sText_DmgRow[] = _("DMG");
-static const u8 sText_TakenRow[] = _("TAKEN");
-static const u8 sText_TakenShort[] = _("TKN");
-static const u8 sText_MovesRow[] = _("MOVES");
-static const u8 sText_MovesShort[] = _("MV");
-static const u8 sText_MissesRow[] = _("MISSES");
-static const u8 sText_MissesShort[] = _("MISS");
-static const u8 sText_StatHp[] = _("HP");
-static const u8 sText_StatAtk[] = _("ATK");
-static const u8 sText_StatDef[] = _("DEF");
-static const u8 sText_StatSpe[] = _("SPE");
-static const u8 sText_StatSpa[] = _("SPA");
-static const u8 sText_StatSpd[] = _("SPD");
+static const u8 sText_Dmg[] = _("DMG");
+static const u8 sText_Dm[] = _("DM");
+static const u8 sText_Taken[] = _("TAKEN");
+static const u8 sText_Tkn[] = _("TKN");
+static const u8 sText_Tk[] = _("TK");
+static const u8 sText_Moves[] = _("MOVES");
+static const u8 sText_Mv[] = _("MV");
+static const u8 sText_Misses[] = _("MISSES");
+static const u8 sText_Miss[] = _("MISS");
+static const u8 sText_Ms[] = _("MS");
+static const u8 sText_Hp[] = _("HP");
+static const u8 sText_Atk[] = _("ATK");
+static const u8 sText_At[] = _("AT");
+static const u8 sText_Def[] = _("DEF");
+static const u8 sText_Df[] = _("DF");
+static const u8 sText_Spe[] = _("SPE");
+static const u8 sText_Sp[] = _("SP");
+static const u8 sText_Spa[] = _("SPA");
+static const u8 sText_Sa[] = _("SA");
+static const u8 sText_Spd[] = _("SPD");
+static const u8 sText_Sd[] = _("SD");
+
+// The labels of a row, from the longest to the shortest. A row shows the first label that fits.
+struct RowLabels
+{
+    const u8 *names[3];
+};
+
+enum
+{
+    RECORD_KO,
+    RECORD_DMG,
+    RECORD_TAKEN,
+    RECORD_MOVES,
+    RECORD_MISSES,
+    RECORD_COUNT,
+};
+
+static const struct RowLabels sRecordLabels[RECORD_COUNT] =
+{
+    [RECORD_KO] = {{sText_KoRow}},
+    [RECORD_DMG] = {{sText_Dmg, sText_Dm}},
+    [RECORD_TAKEN] = {{sText_Taken, sText_Tkn, sText_Tk}},
+    [RECORD_MOVES] = {{sText_Moves, sText_Mv}},
+    [RECORD_MISSES] = {{sText_Misses, sText_Miss, sText_Ms}},
+};
 
 // The same order as MON_DATA_MAX_HP and the stats after it.
-static const u8 *const sStatNames[NUM_STATS] = {sText_StatHp, sText_StatAtk, sText_StatDef, sText_StatSpe, sText_StatSpa, sText_StatSpd};
+static const struct RowLabels sStatLabels[NUM_STATS] =
+{
+    {{sText_Hp}},
+    {{sText_Atk, sText_At}},
+    {{sText_Def, sText_Df}},
+    {{sText_Spe, sText_Sp}},
+    {{sText_Spa, sText_Sa}},
+    {{sText_Spd, sText_Sd}},
+};
 
 static const u8 sCoin[7][8] = {".ooooo.", "oyyyyyo", "oyhyyyo", "oyyyyyo", "oyyyyyo", "oyyyyyo", ".ooooo."};
 static const u8 sCrown[5][8] = {"y..y..y", "yy.y.yy", "yyyyyyy", "yryyyby", "ooooooo"};
@@ -269,6 +319,7 @@ struct EndScreen
     bool8 promptShown;
     s32 money;
     s32 shownMoney;
+    s32 moneyLeft;
 };
 
 // The Harness reads this name (lab/src/battle.ts).
@@ -276,7 +327,7 @@ static EWRAM_DATA struct EndScreen *sEndScreen = NULL;
 
 static s32 CardWidth(void)
 {
-    return min(72, (232 - (sEndScreen->count - 1) * 4) / sEndScreen->count);
+    return min(CARD_MAX_W, (232 - (sEndScreen->count - 1) * 4) / sEndScreen->count);
 }
 
 static s32 CardX(u32 i)
@@ -315,75 +366,108 @@ static void DrawExpBar(struct EndCard *card, s32 x, s32 y, s32 w, u32 progress25
         ArenaCanvas_Fill(&sEndCanvas, x + 5 + startX, y, 1, 4, END_WHITE);
 }
 
-static void FitText(u8 *text, s32 width)
+static const u8 *RowLabel(const struct RowLabels *labels, s32 w, const u8 *value)
 {
-    u32 length = StringLength(text);
-
-    while (length > 1 && (s32)Arena_TextWidth(text, ARENA_FONT_SMALL) > width)
-        text[--length] = EOS;
+    return Arena_FirstFit(labels->names, ARRAY_COUNT(labels->names), ARENA_FONT_SMALL,
+                          w - 2 * ROW_PAD - ROW_GAP - Arena_TextWidth(value, ARENA_FONT_SMALL));
 }
 
-static void DrawRow(s32 x, s32 y, s32 w, const u8 *label, s32 value, u8 color, bool8 plus)
+// When no label fits, the "+" goes first: the gold color of a gain already shows it.
+static void DrawRow(s32 x, s32 y, s32 w, const struct RowLabels *labels, s32 value, u8 color, bool8 plus)
 {
     u8 text[8];
-    u8 *end = text;
+    const u8 *number = text + StringLength(sText_Plus);
+    const u8 *shown = plus ? text : number;
+    const u8 *label;
 
-    if (plus)
-        end = StringCopy(text, sText_Plus);
-    ConvertIntToDecimalStringN(end, value, STR_CONV_MODE_LEFT_ALIGN, 5);
-    ArenaCanvas_Text(&sEndCanvas, x + 4, y, label, ARENA_FONT_SMALL, END_GREY, 0, ARENA_ALIGN_LEFT);
-    ArenaCanvas_Text(&sEndCanvas, x + w - 4, y, text, ARENA_FONT_SMALL, color, 0, ARENA_ALIGN_RIGHT);
+    ConvertIntToDecimalStringN(StringCopy(text, sText_Plus), value, STR_CONV_MODE_LEFT_ALIGN, 5);
+    label = RowLabel(labels, w, shown);
+    if (label == NULL)
+    {
+        shown = number;
+        label = RowLabel(labels, w, shown);
+    }
+    if (label != NULL)
+        ArenaCanvas_Text(&sEndCanvas, x + ROW_PAD, y, label, ARENA_FONT_SMALL, END_GREY, 0, ARENA_ALIGN_LEFT);
+    ArenaCanvas_Text(&sEndCanvas, x + w - ROW_PAD, y, shown, ARENA_FONT_SMALL, color, 0, ARENA_ALIGN_RIGHT);
 }
 
 static void DrawCardFace(u32 i)
 {
     struct EndCard *card = &sEndScreen->cards[i];
     struct Pokemon *mon = &gPlayerParty[card->partyIndex];
+    const struct ArenaMonRecord *record = card->record;
     s32 w = CardWidth(), x = CardX(i), y = CARD_Y;
-    bool8 leveled = card->levelEnd > card->record->levelStart;
+    s32 textW = w - 2 * CARD_TEXT_PAD;
+    s32 values[RECORD_COUNT] =
+    {
+        [RECORD_KO] = record->knockOuts,
+        [RECORD_DMG] = record->damageDealt,
+        [RECORD_TAKEN] = record->damageTaken,
+        [RECORD_MOVES] = record->movesUsed,
+        [RECORD_MISSES] = record->misses,
+    };
+    bool8 leveled = card->levelEnd > record->levelStart;
     u8 text[24];
+    const u8 *levels[3];
+    const u8 *shown;
     u8 *end;
+    u32 row;
 
     ArenaCanvas_Box(&sEndCanvas, x, y, w, CARD_H, END_CARD, END_BORDER);
     ArenaCanvas_Fill(&sEndCanvas, x + 1, y + 1, w - 2, 11, END_TYPE);
     GetMonData(mon, MON_DATA_NICKNAME, text);
     StringGet_Nickname(text);
-    FitText(text, w - 4);
+    Arena_FitText(text, ARENA_FONT_SMALL, textW);
     ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 3, text, ARENA_FONT_SMALL, END_WHITE, END_SHADOW, ARENA_ALIGN_CENTER);
     if (i == sEndScreen->mvp)
         ArenaCanvas_PixMap(&sEndCanvas, x + w - 9, y - 3, sCrown, ARRAY_COUNT(sCrown), sPixLegend, sPixColors);
     if (card->fainted)
         ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 30, sText_Ko, ARENA_FONT_SMALL, END_RED, END_SHADOW, ARENA_ALIGN_CENTER);
-    end = StringCopy(text, sText_Lv);
-    end = ConvertIntToDecimalStringN(end, card->record->levelStart, STR_CONV_MODE_LEFT_ALIGN, 3);
+    // "Lv45▶46", then "45▶46", then "46": each text is the end of the one before it.
+    levels[0] = text;
+    levels[1] = end = StringCopy(text, sText_Lv);
+    levels[2] = levels[1];
+    end = ConvertIntToDecimalStringN(end, record->levelStart, STR_CONV_MODE_LEFT_ALIGN, 3);
     if (leveled)
     {
-        end = StringCopy(end, sText_LvArrow);
+        levels[2] = end = StringCopy(end, sText_LvArrow);
         ConvertIntToDecimalStringN(end, card->levelEnd, STR_CONV_MODE_LEFT_ALIGN, 3);
     }
-    ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 55, text, ARENA_FONT_SMALL, leveled ? END_GOLD : END_LIGHT, 0, ARENA_ALIGN_CENTER);
+    shown = Arena_FirstFit(levels, ARRAY_COUNT(levels), ARENA_FONT_SMALL, textW);
+    if (shown == NULL)
+        shown = levels[2];
+    ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 55, shown, ARENA_FONT_SMALL, leveled ? END_GOLD : END_LIGHT, 0, ARENA_ALIGN_CENTER);
     ArenaCanvas_Fill(&sEndCanvas, x + 4, y + 81, w - 8, 1, END_BORDER);
-    DrawRow(x, y + 84, w, sText_KoRow, card->record->knockOuts, END_WHITE, FALSE);
-    DrawRow(x, y + 92, w, sText_DmgRow, card->record->damageDealt, END_WHITE, FALSE);
-    DrawRow(x, y + 100, w, w < 50 ? sText_TakenShort : sText_TakenRow, card->record->damageTaken, END_WHITE, FALSE);
-    DrawRow(x, y + 108, w, w < 50 ? sText_MovesShort : sText_MovesRow, card->record->movesUsed, END_WHITE, FALSE);
-    DrawRow(x, y + 116, w, w < 50 ? sText_MissesShort : sText_MissesRow, card->record->misses, END_WHITE, FALSE);
+    for (row = 0; row < RECORD_COUNT; row++)
+        DrawRow(x, y + 84 + 8 * row, w, &sRecordLabels[row], values[row], END_WHITE, FALSE);
 }
 
+// DrawCardExp never cuts a number. It removes " EXP", then the "+", then it shows thousands ("20K").
 static void DrawCardExp(u32 i, u32 progress)
 {
     struct EndCard *card = &sEndScreen->cards[i];
     s32 w = CardWidth(), x = CardX(i), y = CARD_Y;
-    u8 text[24];
-    u8 *end;
+    u32 gain = (card->expEnd - card->record->expStart) * progress / 256;
+    u8 withExp[16];
+    u8 withPlus[10];
+    u8 thousands[8];
+    const u8 *texts[4];
+    const u8 *shown;
 
     DrawExpBar(card, x, y + 65, w, progress);
-    end = StringCopy(text, sText_Plus);
-    end = ConvertIntToDecimalStringN(end, (card->expEnd - card->record->expStart) * progress / 256, STR_CONV_MODE_LEFT_ALIGN, 6);
-    StringCopy(end, sText_PlusExp);
-    FitText(text, w - 2);
+    ConvertIntToDecimalStringN(StringCopy(withPlus, sText_Plus), gain, STR_CONV_MODE_LEFT_ALIGN, 6);
+    StringCopy(StringCopy(withExp, withPlus), sText_PlusExp);
+    StringCopy(ConvertIntToDecimalStringN(thousands, gain / 1000, STR_CONV_MODE_LEFT_ALIGN, 3), sText_Thousands);
+    texts[0] = withExp;
+    texts[1] = withPlus;
+    texts[2] = withPlus + StringLength(sText_Plus);
+    texts[3] = thousands;
+    shown = Arena_FirstFit(texts, ARRAY_COUNT(texts), ARENA_FONT_SMALL, w - 2 * CARD_TEXT_PAD);
+    if (shown == NULL)
+        shown = thousands;
     ArenaCanvas_Fill(&sEndCanvas, x + 1, y + 70, w - 2, 10, END_CARD);
-    ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 71, text, ARENA_FONT_SMALL, card->expEnd > card->record->expStart ? END_GREEN : END_GREY, 0, ARENA_ALIGN_CENTER);
+    ArenaCanvas_Text(&sEndCanvas, x + w / 2, y + 71, shown, ARENA_FONT_SMALL, card->expEnd > card->record->expStart ? END_GREEN : END_GREY, 0, ARENA_ALIGN_CENTER);
 }
 
 static void DrawCardGains(u32 i)
@@ -406,7 +490,7 @@ static void DrawCardGains(u32 i)
 
         if (gain <= 0)
             continue;
-        DrawRow(x + column * (w - columnW), top + 8 * row, columnW, sStatNames[stat], gain, END_GOLD, TRUE);
+        DrawRow(x + column * (w - columnW), top + 8 * row, columnW, &sStatLabels[stat], gain, END_GOLD, TRUE);
         shown++;
     }
 }
@@ -486,17 +570,13 @@ static void DrawHeader(void)
 {
     const u8 *title = Title();
     u8 text[48];
+    u8 tail[24];
     u8 *end;
     u32 seconds = (u16)(gMain.vblankCounter2 - gArenaBattle.record.frameStart) / 60;
     u32 turns;
 
-    ArenaCanvas_Text(&sEndCanvas, 6, 4, title, ARENA_FONT_BIG, title == sText_Defeat ? END_RED : END_GOLD, END_SHADOW, ARENA_ALIGN_LEFT);
-    end = StringCopy(text, sText_Vs);
-    if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-        end = StringCopy(end, gTrainers[gTrainerBattleOpponent_A].trainerName);
-    else
-        end = StringCopy(end, gSpeciesNames[GetMonData(&gEnemyParty[0], MON_DATA_SPECIES)]);
-    end = StringCopy(end, sText_Dot);
+    ArenaCanvas_Text(&sEndCanvas, HEADER_X, 4, title, ARENA_FONT_BIG, title == sText_Defeat ? END_RED : END_GOLD, END_SHADOW, ARENA_ALIGN_LEFT);
+    end = StringCopy(tail, sText_Dot);
     // The engine counts only the finished turns, and the battle ended in the next turn.
     turns = gBattleResults.battleTurnCounter + 1;
     end = ConvertIntToDecimalStringN(end, turns, STR_CONV_MODE_LEFT_ALIGN, 3);
@@ -504,21 +584,47 @@ static void DrawHeader(void)
     end = ConvertIntToDecimalStringN(end, seconds / 60, STR_CONV_MODE_LEFT_ALIGN, 2);
     end = StringCopy(end, sText_Colon);
     ConvertIntToDecimalStringN(end, seconds % 60, STR_CONV_MODE_LEADING_ZEROS, 2);
-    ArenaCanvas_Text(&sEndCanvas, 6, 16, text, ARENA_FONT_SMALL, END_GREY, 0, ARENA_ALIGN_LEFT);
+    end = StringCopy(text, sText_Vs);
+    if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+        StringCopy(end, gTrainers[gTrainerBattleOpponent_A].trainerName);
+    else
+        StringCopy(end, gSpeciesNames[GetMonData(&gEnemyParty[0], MON_DATA_SPECIES)]);
+    // Only the name of the opponent becomes shorter: the numbers stay whole.
+    Arena_FitText(text, ARENA_FONT_SMALL, sEndScreen->moneyLeft - HEADER_X - HEADER_GAP - Arena_TextWidth(tail, ARENA_FONT_SMALL));
+    StringAppend(text, tail);
+    ArenaCanvas_Text(&sEndCanvas, HEADER_X, 16, text, ARENA_FONT_SMALL, END_GREY, 0, ARENA_ALIGN_LEFT);
+}
+
+// The left edge of the money while it counts to `money`: each digit can be as wide as the widest digit.
+static s32 MoneyLeft(s32 money)
+{
+    u8 digit[2] = {CHAR_0, EOS};
+    s32 digitW = 0, digits = 0;
+    u32 rest = abs(money);
+    s32 signW = max(Arena_TextWidth(sText_Plus, ARENA_FONT_BIG), Arena_TextWidth(sText_Minus, ARENA_FONT_BIG));
+
+    for (; digit[0] <= CHAR_9; digit[0]++)
+        digitW = max(digitW, Arena_TextWidth(digit, ARENA_FONT_BIG));
+    do
+    {
+        digits++;
+        rest /= 10;
+    } while (rest != 0);
+    return MONEY_RIGHT - signW - Arena_TextWidth(sText_Yen, ARENA_FONT_BIG) - digits * digitW - COIN_SPACE;
 }
 
 static void DrawMoney(s32 money)
 {
     u8 text[16];
     u8 *end = StringCopy(text, money < 0 ? sText_Minus : sText_Plus);
-    s32 width;
+    s32 coinX;
 
     end = StringCopy(end, sText_Yen);
     ConvertIntToDecimalStringN(end, abs(money), STR_CONV_MODE_LEFT_ALIGN, 7);
-    width = Arena_TextWidth(text, ARENA_FONT_BIG);
-    ArenaCanvas_Fill(&sEndCanvas, 130, 0, DISPLAY_WIDTH - 130, CARD_Y - 4, END_BG);
-    ArenaCanvas_PixMap(&sEndCanvas, DISPLAY_WIDTH - 6 - width - 10, 7, sCoin, ARRAY_COUNT(sCoin), sPixLegend, sPixColors);
-    ArenaCanvas_Text(&sEndCanvas, DISPLAY_WIDTH - 6, 4, text, ARENA_FONT_BIG, money < 0 ? END_RED : END_GOLD, END_SHADOW, ARENA_ALIGN_RIGHT);
+    coinX = MONEY_RIGHT - Arena_TextWidth(text, ARENA_FONT_BIG) - COIN_SPACE;
+    ArenaCanvas_Fill(&sEndCanvas, sEndScreen->moneyLeft, 0, DISPLAY_WIDTH - sEndScreen->moneyLeft, CARD_Y - 4, END_BG);
+    ArenaCanvas_PixMap(&sEndCanvas, coinX, 7, sCoin, ARRAY_COUNT(sCoin), sPixLegend, sPixColors);
+    ArenaCanvas_Text(&sEndCanvas, MONEY_RIGHT, 4, text, ARENA_FONT_BIG, money < 0 ? END_RED : END_GOLD, END_SHADOW, ARENA_ALIGN_RIGHT);
 }
 
 static u16 AllShownTime(void)
@@ -645,6 +751,7 @@ static void InitCards(void)
         sEndScreen->count++;
     }
     sEndScreen->money = (s32)GetMoney(&gSaveBlock1Ptr->money) - (s32)gArenaBattle.record.moneyStart;
+    sEndScreen->moneyLeft = MoneyLeft(sEndScreen->money);
 }
 
 static void LoadTypeBands(void)

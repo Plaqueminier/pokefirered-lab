@@ -124,9 +124,7 @@ static void DrawMessage(void)
     y = 137 - lines * 6;
     for (i = 0; i < lines && *line != EOS; i++, y += 12)
     {
-        u32 width = Arena_TextWidth(line, ARENA_FONT_SMALL);
-
-        next = ArenaCanvas_TextLine(&gArenaBottomCanvas, (DISPLAY_WIDTH - width) / 2, y, line, ARENA_FONT_SMALL, CARDS_WHITE, 0);
+        next = ArenaCanvas_TextLine(&gArenaBottomCanvas, Arena_CenterLeft(DISPLAY_WIDTH / 2, Arena_TextWidth(line, ARENA_FONT_SMALL)), y, line, ARENA_FONT_SMALL, CARDS_WHITE, 0);
         line = *next == EOS ? next : next + 1;
     }
     if (gArenaScreen.panel.waitsForA && (gArenaScreen.time / 16) % 2)

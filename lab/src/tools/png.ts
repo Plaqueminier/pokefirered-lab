@@ -1,11 +1,14 @@
-// RGBA images to PNG files, with no image library: the lab has none, and the machine has no PIL or ImageMagick.
+// No image library: the lab has none, and this machine has no PIL or ImageMagick.
 import { deflateSync } from "node:zlib";
 
 export type Image = { width: number; height: number; rgba: Uint8Array };
 
 const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const COLOR_TYPE_RGBA = 6;
-const BIT_DEPTH = 8;
+const COLOR_TYPE_PALETTE = 3;
+const BIT_DEPTH_8 = 8;
+const BIT_DEPTH_1 = 1;
+const WHITE_BLACK_PALETTE = [0xff, 0xff, 0xff, 0, 0, 0];
 const FILTER_NONE = 0;
 const SHEET_GAP = 2;
 const SHEET_BACKGROUND = [0x40, 0x40, 0x40, 0xff];
@@ -27,19 +30,33 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-export function encodePng({ width, height, rgba }: Image): Uint8Array {
+function pngFile(width: number, height: number, bitDepth: number, colorType: number, raw: Uint8Array, palette?: Uint8Array): Uint8Array {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
   view.setUint32(4, height);
-  header.set([BIT_DEPTH, COLOR_TYPE_RGBA, 0, 0, 0], 8);
+  header.set([bitDepth, colorType, 0, 0, 0], 8);
+  const chunks = [chunk("IHDR", header), ...(palette ? [chunk("PLTE", palette)] : []), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))];
+  return Buffer.concat([Uint8Array.from(SIGNATURE), ...chunks]);
+}
+
+export function encodePng({ width, height, rgba }: Image): Uint8Array {
   const row = width * 4;
   const raw = new Uint8Array((row + 1) * height);
   for (let y = 0; y < height; y++) {
     raw[y * (row + 1)] = FILTER_NONE;
     raw.set(rgba.subarray(y * row, (y + 1) * row), y * (row + 1) + 1);
   }
-  return Buffer.concat([Uint8Array.from(SIGNATURE), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))]);
+  return pngFile(width, height, BIT_DEPTH_8, COLOR_TYPE_RGBA, raw);
+}
+
+/** Color 0 is white and color 1 is black: gbagfx reads the PNG as a 1bpp image. */
+export function encodeBitPng(width: number, height: number, bits: Uint8Array): Uint8Array {
+  const row = Math.ceil(width / 8);
+  const raw = new Uint8Array((row + 1) * height);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) if (bits[y * width + x]) raw[y * (row + 1) + 1 + (x >> 3)] |= 0x80 >> (x & 7);
+  return pngFile(width, height, BIT_DEPTH_1, COLOR_TYPE_PALETTE, raw, Uint8Array.from(WHITE_BLACK_PALETTE));
 }
 
 /** Each pixel becomes `factor` x `factor` pixels. */

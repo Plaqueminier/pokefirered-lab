@@ -498,7 +498,11 @@ void ArenaCanvas_PixMap(const struct ArenaCanvas *canvas, s32 x, s32 y, const u8
 const u8 *Arena_SkipControlCode(const u8 *str);
 const u8 *ArenaCanvas_TextLine(const struct ArenaCanvas *canvas, s32 x, s32 y, const u8 *str, u8 font, u8 color, u8 shadow);
 void ArenaCanvas_Text(const struct ArenaCanvas *canvas, s32 x, s32 y, const u8 *str, u8 font, u8 color, u8 shadow, u8 align);
-u32 Arena_TextWidth(const u8 *str, u8 font);
+s32 Arena_TextWidth(const u8 *str, u8 font);
+s32 Arena_CenterLeft(s32 center, s32 width);
+const u8 *Arena_FirstFit(const u8 *const *texts, u32 count, u8 font, s32 width);
+bool32 Arena_TextFits(const u8 *str, u8 font, s32 width);
+void Arena_FitText(u8 *str, u8 font, s32 width);
 
 // arena_stadium.c
 void ArenaStadium_LoadPalettes(u32 seed);

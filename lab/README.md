@@ -162,6 +162,12 @@ bun run shot [--keys "<frame>:<button>[+<button>][/<frames held>] ..."] [--frame
 - `--sheet` also writes `sheet.png`: all the screens in one image, `--columns` across (4 by default), each with its frame number at its top left corner.
 - `--scale 2` makes each pixel 2 x 2 pixels. `--save` is `saves/start.sav` by default. `--rom pokefirered_modern_lab_arena` boots the Arena build.
 
+## Draw the small font of the Arena
+
+The glyphs of the small font of the **Arena** are text in `graphics/arena/font_small.txt`. The first lines of the file give its format. After a change to a glyph, run `bun run arena-font`. It writes `graphics/arena/font_small.png` and the widths of the glyphs in `src/arena/arena_gfx.c`. Then build the ROM again. A test fails when the PNG or the widths do not agree with the text file.
+
+The big font is Jersey 10 at its own size, in `graphics/arena/font_big.png`. No command makes it.
+
 ## Print a map
 
 `bun run map` prints a map of the game as text. The legend is in the output. It gives:
@@ -201,7 +207,10 @@ The Arena tests need the ROM from `make lab ARENA=1` at the repo root (`pokefire
 - `src/model/`: the parts of the model bot (request, prompt, answer).
 - `src/genetic/`: the parts of the **Genetic bot** (the **Genome**, the actions of a walk and their criteria), the **Fitness** of a **Run record**, and the **Evolution** with its command, which the Viewer can also start.
 - `src/race/`: the file of a **Race**, the command that makes it, and the world of the Race tab, read from the ROM (the maps, the sprites of the Ghosts and the icons of the Pokémon).
-- `src/tools/`: the commands for the work on the lab: `shot` (screenshots of the game, and a PNG writer with no library) and `map` (a map as text).
+- `src/tools/`: the commands for the work on the lab and the ROM:
+  - `shot`: screenshots of the game, and a PNG writer with no library.
+  - `map`: a map as text.
+  - `arena-font`: the small font of the **Arena**.
 - `src/server.ts` and `viewer/`: the Viewer.
 - `src/checks/`: `bun run rules`.
 - `bots/`: the **Bots**.
