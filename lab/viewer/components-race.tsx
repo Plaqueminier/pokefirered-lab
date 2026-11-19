@@ -1,7 +1,9 @@
-import { Bot, Skull } from "lucide-preact";
+import { Bot } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { botVersion, dotOf, type RaceKiller, shortModelId } from "../src/race/file";
 import { Pill, rowButton } from "./components";
+import type { OtherEnd } from "./race-deaths";
+import { RESULT_LOOK, type ResultLook } from "./race-marks";
 import { Name } from "./pokemon";
 
 const ICON_SIZES = { sm: "size-6", lg: "size-10" } as const;
@@ -85,14 +87,15 @@ type IconOf = (species: string) => string | null;
 
 type DeadMon = { species: string; nickname: string; level: number };
 
+export type GraveCause = { kind: "whiteout"; endedRun: boolean; killer: RaceKiller | null } | { kind: "end"; result: OtherEnd };
+
 /** `face`: the sprite of the Ghost. `lead`: the starter of the Run, or its evolution. */
-export type DeathFacts = {
+export type GraveFacts = {
   face: ComponentChildren;
   icon: IconOf;
   run: string;
-  endedRun: boolean;
+  cause: GraveCause;
   lead: DeadMon | undefined;
-  killer: RaceKiller | null;
   epitaph: string;
   team: readonly DeadMon[];
   model: string;
@@ -106,12 +109,25 @@ function foeName({ trainer, species }: RaceKiller): string {
   return trainer ? `${trainer}'s ${species}` : `a wild ${species}`;
 }
 
-function WhiteoutPill({ endedRun }: { endedRun: boolean }) {
+export function causeLook(cause: GraveCause): ResultLook & { label: string } {
+  if (cause.kind === "end") return { ...RESULT_LOOK[cause.result], label: cause.result };
+  return { ...RESULT_LOOK.whiteout, label: cause.endedRun ? "whiteout" : "whiteout, played on" };
+}
+
+function causeLine(cause: GraveCause): string | null {
+  if (cause.kind === "end") return cause.result;
+  const { killer } = cause;
+  if (!killer) return null;
+  return killer.poison ? `poison, after ${foeName(killer)}` : foeName(killer);
+}
+
+function CausePill({ cause }: { cause: GraveCause }) {
+  const { icon: Icon, tone, label } = causeLook(cause);
   return (
-    <Pill tone="bad">
+    <Pill tone={tone}>
       <span class="inline-flex items-center gap-1">
-        <Skull size={12} />
-        {endedRun ? "whiteout" : "whiteout, played on"}
+        <Icon size={12} />
+        {label}
       </span>
     </Pill>
   );
@@ -152,7 +168,7 @@ function LastWords({ text, size = "sm", typed = 1 }: { text: string; size?: "sm"
   );
 }
 
-export function DeathCard({ death }: { death: DeathFacts }) {
+export function DeathCard({ death }: { death: GraveFacts }) {
   const { lead, icon } = death;
   return (
     <div class="flex w-[320px] flex-col gap-2">
@@ -160,7 +176,7 @@ export function DeathCard({ death }: { death: DeathFacts }) {
         {death.face}
         <span class="font-mono text-sm font-semibold">{death.run}</span>
         <span class="ml-auto">
-          <WhiteoutPill endedRun={death.endedRun} />
+          <CausePill cause={death.cause} />
         </span>
       </div>
       {lead && (
@@ -169,7 +185,7 @@ export function DeathCard({ death }: { death: DeathFacts }) {
           <Name mon={lead} />
         </div>
       )}
-      <KillerLine killer={death.killer} icon={icon} />
+      {death.cause.kind === "whiteout" && <KillerLine killer={death.cause.killer} icon={icon} />}
       <LastWords text={death.epitaph} />
       <div class="flex flex-wrap gap-1">
         {death.team.map((mon, i) => (
@@ -186,7 +202,7 @@ export function DeathCard({ death }: { death: DeathFacts }) {
 }
 
 /** `onFocus` and `onLeave`: the pointer or the keyboard focus comes to the row, or goes from it. */
-export function DeathRow({ death, focused, onFocus, onLeave }: { death: DeathFacts; focused: boolean; onFocus: () => void; onLeave: () => void }) {
+export function DeathRow({ death, focused, onFocus, onLeave }: { death: GraveFacts; focused: boolean; onFocus: () => void; onLeave: () => void }) {
   const { lead } = death;
   return (
     <button type="button" aria-pressed={focused} onPointerEnter={onFocus} onFocus={onFocus} onPointerLeave={onLeave} onBlur={onLeave} class={`w-full !flex-col !items-stretch gap-0.5 py-1.5 ${rowButton(focused)}`}>
@@ -201,8 +217,8 @@ export function DeathRow({ death, focused, onFocus, onLeave }: { death: DeathFac
   );
 }
 
-export function Epitaph({ death, typed }: { death: DeathFacts; typed?: number }) {
-  const { lead, killer, icon } = death;
+export function Epitaph({ death, typed }: { death: GraveFacts; typed?: number }) {
+  const { lead, cause, icon } = death;
   const src = lead && icon(lead.species);
   return (
     <div class="flex w-[640px] max-w-full flex-col gap-3 text-fg [text-shadow:0_2px_8px_rgb(0_0_0/0.9)]">
@@ -212,8 +228,7 @@ export function Epitaph({ death, typed }: { death: DeathFacts; typed?: number })
         <div class="flex min-w-0 flex-col gap-2">
           <span class="truncate text-[56px] leading-none font-semibold">{lead?.nickname ?? death.run}</span>
           <span class="text-xl text-muted">
-            {lead && `${lead.species} Lv. ${lead.level}`}
-            {killer && ` · ${killer.poison ? `poison, after ${foeName(killer)}` : foeName(killer)}`}
+            {[lead && `${lead.species} Lv. ${lead.level}`, causeLine(cause)].filter(Boolean).join(" · ")}
           </span>
         </div>
       </div>

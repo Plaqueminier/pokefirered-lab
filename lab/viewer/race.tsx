@@ -115,7 +115,7 @@ function RacePanel({ view, tab, onTab, graveyard, onTour }: RacePanelProps) {
         items={[
           { id: "leaderboard", label: "Leaderboard" },
           { id: "interiors", label: `Interiors in play · ${interiors.length}` },
-          ...(graveyard ? [{ id: "deaths" as const, label: `Deaths · ${view.graveyard.visible(view.frame).length}` }] : []),
+          ...(graveyard ? [{ id: "deaths" as const, label: `Deaths · ${view.graveyard.deathsAt(view.frame).length}` }] : []),
         ]}
         value={tab}
         onChange={onTab}
@@ -171,10 +171,11 @@ function RaceChoice({ names, name, onName }: RaceChoiceProps) {
   );
 }
 
-function IconTip({ tip, pressed, onClick, children }: { tip: string; pressed?: boolean; onClick: () => void; children: ComponentChildren }) {
+/** `label`: the button name, which the video scripts select by exact match. */
+function IconTip({ tip, label = tip, pressed, onClick, children }: { tip: string; label?: string; pressed?: boolean; onClick: () => void; children: ComponentChildren }) {
   return (
     <Tooltip text={tip}>
-      <Button size="icon" aria-label={tip} pressed={pressed} onClick={onClick}>
+      <Button size="icon" aria-label={label} pressed={pressed} onClick={onClick}>
         {children}
       </Button>
     </Tooltip>
@@ -222,7 +223,7 @@ function Bar({ view, names, name, onName, panel, onPanel, graveyard, onGraveyard
       <IconTip tip={view.showMarks ? "Hide the icons on the map" : "Show the icons on the map"} pressed={view.showMarks} onClick={() => (view.showMarks = !view.showMarks)}>
         {view.showMarks ? <Eye size={15} /> : <EyeOff size={15} />}
       </IconTip>
-      <IconTip tip={graveyard ? "Leave the graveyard" : "Show the graveyard: a tombstone at each whiteout"} pressed={graveyard} onClick={onGraveyard}>
+      <IconTip tip={graveyard ? "Leave the graveyard" : "Show the graveyard: a tombstone at each whiteout, and an end stone at each other end with “All ends”"} label={graveyard ? "Leave the graveyard" : "Show the graveyard: a tombstone at each whiteout"} pressed={graveyard} onClick={onGraveyard}>
         <Skull size={15} />
       </IconTip>
       <IconTip tip={panel ? "Close the panel" : "Open the panel"} pressed={panel} onClick={onPanel}>

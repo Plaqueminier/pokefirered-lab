@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button, Card, Slider } from "./components";
-import { type DeathFacts, DeathCard, DeathRow, Epitaph, StarterRow } from "./components-race";
+import { type GraveFacts, DeathCard, DeathRow, Epitaph, StarterRow } from "./components-race";
 import { fitCanvas } from "./race-art";
 import { type GraveLook, GraveMarks } from "./race-grave-marks";
 import { RaceMarks, raceTheme } from "./race-marks";
@@ -8,16 +8,17 @@ import { FRAME_WIDTH, SHEET_HEIGHT } from "./race-sprite";
 
 const DEMO_ICON = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect x="2" y="2" width="4" height="4" fill="#6aa"/></svg>')}`;
 const FACE = <span class="block h-6 w-4 rounded-sm bg-raised" />;
+const BROCK_ONIX = { poison: false, trainer: "LEADER BROCK", species: "ONIX", level: 14 };
+const POISON_WEEDLE = { poison: true, trainer: null, species: "WEEDLE", level: 4 };
 const FALL_LOOP_MS = 2600;
 const MARK_MODES = ["cemetery", "memorial", "tour"] as const;
 
-const TRAINER_DEATH: DeathFacts = {
+const TRAINER_DEATH: GraveFacts = {
   face: FACE,
   icon: () => DEMO_ICON,
   run: "00072",
-  endedRun: true,
+  cause: { kind: "whiteout", endedRun: true, killer: BROCK_ONIX },
   lead: { species: "CHARMANDER", nickname: "EMBER", level: 11 },
-  killer: { poison: false, trainer: "LEADER BROCK", species: "ONIX", level: 14 },
   epitaph: "A Potion cannot revive it.",
   team: [
     { species: "CHARMANDER", nickname: "EMBER", level: 11 },
@@ -29,26 +30,28 @@ const TRAINER_DEATH: DeathFacts = {
   time: "0:41:07",
 };
 
-const POISON_DEATH: DeathFacts = {
+const POISON_DEATH: GraveFacts = {
   ...TRAINER_DEATH,
   run: "00015",
-  endedRun: false,
+  cause: { kind: "whiteout", endedRun: false, killer: POISON_WEEDLE },
   lead: { species: "SQUIRTLE", nickname: "SQUIRTLE", level: 7 },
-  killer: { poison: true, trainer: null, species: "WEEDLE", level: 4 },
   epitaph: "Field poison does not faint a Pokémon.",
   team: [{ species: "SQUIRTLE", nickname: "SQUIRTLE", level: 7 }],
   model: "claude-haiku-5-5",
   place: "Viridian Forest",
 };
 
-const SILENT_DEATH: DeathFacts = { ...TRAINER_DEATH, run: "00003", lead: undefined, killer: null, epitaph: "", team: [], model: "gpt-6.1-terra", place: "Route 1" };
+const SILENT_DEATH: GraveFacts = { ...TRAINER_DEATH, run: "00003", lead: undefined, cause: { kind: "whiteout", endedRun: true, killer: null }, epitaph: "", team: [], model: "gpt-6.1-terra", place: "Route 1" };
 
-const DEATHS = [TRAINER_DEATH, POISON_DEATH, SILENT_DEATH];
+const END_STONE: GraveFacts = { ...TRAINER_DEATH, run: "00041", cause: { kind: "end", result: "cost limit" }, epitaph: "", model: "grok-5-fast", place: "Mt. Moon · 1F", time: "1:12:30" };
+
+const WHITEOUTS = [TRAINER_DEATH, POISON_DEATH, SILENT_DEATH];
+const GRAVES = [...WHITEOUTS, END_STONE];
 
 export function DeathCardDemo() {
   return (
     <div class="flex flex-wrap items-start gap-4">
-      {DEATHS.map((death) => (
+      {GRAVES.map((death) => (
         <Card key={death.run} glass size="sm">
           <DeathCard death={death} />
         </Card>
@@ -61,7 +64,7 @@ export function DeathRowDemo() {
   const [focused, setFocused] = useState<string | null>(TRAINER_DEATH.run);
   return (
     <div class="flex w-[440px] max-w-full flex-col gap-1">
-      {DEATHS.map((death) => (
+      {WHITEOUTS.map((death) => (
         <DeathRow key={death.run} death={death} focused={focused === death.run} onFocus={() => setFocused(death.run)} onLeave={() => setFocused(null)} />
       ))}
     </div>
@@ -75,7 +78,7 @@ export function EpitaphDemo() {
       <div class="w-[320px] max-w-full">
         <Slider value={Math.round(typed * 100)} max={100} step={1} label="Typed" format={(value) => `${value} %`} live onSeek={(value) => setTyped(value / 100)} />
       </div>
-      {DEATHS.map((death) => (
+      {GRAVES.map((death) => (
         <div key={death.run} class="overflow-hidden rounded-ctl bg-black p-6">
           <Epitaph death={death} typed={typed} />
         </div>
@@ -105,15 +108,16 @@ function demoCanvas(width: number, height: number, color: string, inset: number)
   return canvas;
 }
 
-const DEMO_STONES = [
-  { x: 50, starter: "BULBASAUR", killer: TRAINER_DEATH.killer },
-  { x: 110, starter: "SQUIRTLE", killer: POISON_DEATH.killer },
-  { x: 170, starter: "CHARMANDER", killer: TRAINER_DEATH.killer },
-  { x: 230, starter: null, killer: null },
-  { x: 370, starter: "CHARMANDER", killer: TRAINER_DEATH.killer },
-] as const;
-/** The Tour of the demo is at its third stone: the two before it stand, the two after it are faint. */
-const TOUR_INDEX = 2;
+const DEMO_GRAVES: GraveLook[] = [
+  { kind: "whiteout", x: 50, y: 0, s: 52, order: 0, starter: "BULBASAUR", killer: BROCK_ONIX },
+  { kind: "whiteout", x: 110, y: 0, s: 52, order: 1, starter: "SQUIRTLE", killer: POISON_WEEDLE },
+  { kind: "whiteout", x: 170, y: 0, s: 52, order: 2, starter: "CHARMANDER", killer: BROCK_ONIX },
+  { kind: "whiteout", x: 230, y: 0, s: 52, order: 3, starter: null, killer: null },
+  { kind: "end", x: 290, y: 0, s: 52, order: 4, starter: "SQUIRTLE", result: "cost limit" },
+  { kind: "end", x: 350, y: 0, s: 52, order: 5, starter: "BULBASAUR", result: "user stop" },
+  { kind: "whiteout", x: 410, y: 0, s: 52, order: 6, starter: "CHARMANDER", killer: BROCK_ONIX },
+];
+const TOUR_INDEX = DEMO_GRAVES.findIndex((grave) => grave.kind === "end");
 
 export function GraveMarksDemo() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -130,11 +134,8 @@ export function GraveMarksDemo() {
       const fitted = fitCanvas(element);
       if (fitted) {
         const { ctx, width, height } = fitted;
-        const graves: GraveLook[] = [
-          ...DEMO_STONES.map(({ x, starter, killer }, order): GraveLook => ({ kind: "stone", x, y: height - 24, s: 52, death: { starter, killer, order } })),
-          { kind: "end", result: "cost limit", x: 300, y: height - 24, s: 26 },
-        ];
-        const falling = graves[DEMO_STONES.length - 1];
+        const graves = DEMO_GRAVES.map((grave): GraveLook => ({ ...grave, y: height - 24 }));
+        const falling = graves.at(-1);
         ctx.fillStyle = theme.typeColor("GRASS");
         ctx.fillRect(0, 0, width, height);
         const t = (now - start) % FALL_LOOP_MS;

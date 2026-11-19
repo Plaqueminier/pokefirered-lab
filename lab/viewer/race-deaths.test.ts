@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { RACE_VERSION, type RaceFile, type RaceRun, type RaceWhiteout } from "../src/race/file";
-import { leadOf, raceDeaths, starterOf, starterStats } from "./race-deaths";
+import { isDeath, isEnd, leadOf, raceGraves, starterOf, starterStats } from "./race-deaths";
 
 const SQUIRTLE = { species: "SQUIRTLE", nickname: "BOB", level: 5, maxHp: 20, moves: ["TACKLE"] };
 
@@ -26,6 +26,9 @@ function run(number: number, whiteouts: RaceWhiteout[], result: RaceRun["end"]["
 
 const killer = { poison: false, trainer: null, species: "PIDGEY", level: 3 };
 
+const deathsOf = (race: RaceFile) => raceGraves(race).filter(isDeath);
+const endsOf = (race: RaceFile) => raceGraves(race).filter(isEnd);
+
 test("the deaths of a Race are its whiteouts in the order of the Runs; only the last whiteout of a Run that a whiteout ended ended its Run", () => {
   const race: RaceFile = {
     version: RACE_VERSION,
@@ -35,12 +38,31 @@ test("the deaths of a Race are its whiteouts in the order of the Runs; only the 
       run(9, [{ frame: 10, killer, lastWords: [] }], "user stop"),
     ],
   };
-  expect(raceDeaths(race).map(({ id, run, number, frame, endedRun, starter }) => ({ id, run, number, frame, endedRun, starter }))).toEqual([
+  expect(deathsOf(race).map(({ id, run, number, frame, endedRun, starter }) => ({ id, run, number, frame, endedRun, starter }))).toEqual([
     { id: "3:20", run: 1, number: 3, frame: 20, endedRun: false, starter: "SQUIRTLE" },
     { id: "3:80", run: 1, number: 3, frame: 80, endedRun: true, starter: "SQUIRTLE" },
     { id: "7:50", run: 0, number: 7, frame: 50, endedRun: true, starter: "SQUIRTLE" },
     { id: "9:10", run: 2, number: 9, frame: 10, endedRun: false, starter: "SQUIRTLE" },
   ]);
+});
+
+test("a Run that does not end with a whiteout gets an end stone at its end; a whiteout before it does not change that", () => {
+  const race: RaceFile = {
+    version: RACE_VERSION,
+    runs: [run(7, [], "cost limit"), run(3, [{ frame: 50, killer, lastWords: [] }], "whiteout"), run(9, [{ frame: 10, killer, lastWords: [] }], "user stop")],
+  };
+  expect(endsOf(race)).toEqual([
+    { kind: "end", id: "end:7", run: 0, number: 7, frame: 1000, result: "cost limit", starter: "SQUIRTLE" },
+    { kind: "end", id: "end:9", run: 2, number: 9, frame: 1000, result: "user stop", starter: "SQUIRTLE" },
+  ]);
+});
+
+test("the graves of a Race are its whiteouts and its end stones in the order of the Runs, then of the time", () => {
+  const race: RaceFile = {
+    version: RACE_VERSION,
+    runs: [run(9, [{ frame: 10, killer, lastWords: [] }], "user stop"), run(7, [], "cost limit"), run(3, [{ frame: 50, killer, lastWords: [] }], "bot stopped")],
+  };
+  expect(raceGraves(race).map((grave) => grave.id)).toEqual(["3:50", "end:3", "end:7", "9:10", "end:9"]);
 });
 
 test("the lead of a team is the starter of its Run, also when it evolved, else the first Pokémon", () => {
@@ -73,5 +95,5 @@ test("the epitaph of a death is the last line that the model said, else the firs
   const said = run(1, [{ frame: 5, killer, lastWords: [{ reason: "Old. Text.", say: "Not this one" }, { reason: "Heal now. Then go.", say: "Bob, hold on!" }] }], "whiteout");
   const reasoned = run(2, [{ frame: 5, killer, lastWords: [{ reason: "Old.", say: "Not this one" }, { reason: "A Potion cannot revive it! So I stop." }] }], "whiteout");
   const silent = run(3, [{ frame: 5, killer, lastWords: [] }], "whiteout");
-  expect(raceDeaths({ version: RACE_VERSION, runs: [said, reasoned, silent] }).map((death) => death.epitaph)).toEqual(["Bob, hold on!", "A Potion cannot revive it!", ""]);
+  expect(deathsOf({ version: RACE_VERSION, runs: [said, reasoned, silent] }).map((death) => death.epitaph)).toEqual(["Bob, hold on!", "A Potion cannot revive it!", ""]);
 });

@@ -1,11 +1,11 @@
 import { Clapperboard, Skull } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { runIdText } from "../src/protocol";
-import { Button, Card, LABEL, Pill, StatTile, Tabs } from "./components";
-import { type DeathFacts, DeathCard, DeathRow, Epitaph, StarterRow } from "./components-race";
+import { Button, Card, LABEL, Pill, StatTile, Tabs, toneText } from "./components";
+import { causeLook, type GraveFacts, DeathCard, DeathRow, Epitaph, StarterRow } from "./components-race";
 import { useRefresh, useStore } from "./cursor";
-import { GhostCard, GhostFace } from "./race-cards";
-import { leadOf, type RaceDeath } from "./race-deaths";
+import { GhostFace } from "./race-cards";
+import { isEnd, leadOf, type OtherEnd, type RaceGrave } from "./race-deaths";
 import type { Grave, GraveMode } from "./race-graveyard";
 import { RESULT_LOOK } from "./race-marks";
 import type { RaceView } from "./race-view";
@@ -18,27 +18,26 @@ const TYPE_FROM_MS = 1300;
 const TYPE_MS = 1600;
 const TYPE_REFRESH_MS = 40;
 
-function deathFacts(view: RaceView, death: RaceDeath): DeathFacts {
-  const ghost = view.graveyard.ghostOf(death);
+function graveFacts(view: RaceView, grave: RaceGrave): GraveFacts {
+  const ghost = view.graveyard.ghostOf(grave);
   return {
-    face: <GhostFace view={view} number={death.number} size="h-6 w-4" />,
+    face: <GhostFace view={view} number={grave.number} size="h-6 w-4" />,
     icon: (species) => view.art.iconUrl(species),
-    run: runIdText(death.number),
-    endedRun: death.endedRun,
-    lead: leadOf(ghost.team, death.starter),
-    killer: death.killer,
-    epitaph: death.epitaph,
+    run: runIdText(grave.number),
+    cause: grave,
+    lead: leadOf(ghost.team, grave.starter),
+    epitaph: grave.kind === "whiteout" ? grave.epitaph : "",
     team: ghost.team,
     model: ghost.model,
     coach: ghost.coach,
     character: ghost.character,
-    place: view.graveyard.placeOf(death),
-    time: raceTime(death.frame),
+    place: view.graveyard.placeOf(grave),
+    time: raceTime(grave.frame),
   };
 }
 
 export function GraveCard({ view, grave }: { view: RaceView; grave: Grave }) {
-  return grave.kind === "stone" ? <DeathCard death={deathFacts(view, grave.death)} /> : <GhostCard view={view} ghost={grave.ghost} />;
+  return <DeathCard death={graveFacts(view, grave)} />;
 }
 
 function GraveCounter({ view }: { view: RaceView }) {
@@ -46,19 +45,19 @@ function GraveCounter({ view }: { view: RaceView }) {
   return (
     <div class="pointer-events-none absolute top-3 left-3 w-[190px]">
       <Card glass size="sm">
-        <StatTile size="md" label="Whiteouts" value={view.graveyard.visible(view.frame).length} icon={Skull} tone="bad" total={view.graveyard.deaths.length} />
+        <StatTile size="md" label="Whiteouts" value={view.graveyard.deathsAt(view.frame).length} icon={Skull} tone="bad" total={view.graveyard.deaths.length} />
       </Card>
     </div>
   );
 }
 
-function StoppedRuns({ view }: { view: RaceView }) {
-  const counts = new Map<keyof typeof RESULT_LOOK, number>();
-  for (const { result } of view.moment.ghosts) if (result && result !== "whiteout") counts.set(result, (counts.get(result) ?? 0) + 1);
+function OtherEnds({ view }: { view: RaceView }) {
+  const counts = new Map<OtherEnd, number>();
+  for (const { result } of view.graveyard.gravesAt(view.frame).filter(isEnd)) counts.set(result, (counts.get(result) ?? 0) + 1);
   if (counts.size === 0) return null;
   return (
     <section class="flex flex-col gap-1">
-      <span class={LABEL}>Stopped with no whiteout</span>
+      <span class={LABEL}>Other ends</span>
       <div class="flex flex-wrap gap-1.5">
         {[...counts].map(([result, count]) => {
           const { icon: Icon, tone } = RESULT_LOOK[result];
@@ -81,7 +80,7 @@ export function DeathsPanel({ view, onTour }: { view: RaceView; onTour: () => vo
   const { graveyard } = view;
   const filter = useStore(graveyard.filter);
   const focus = useStore(graveyard.focus);
-  const deaths = graveyard.visible(view.frame);
+  const deaths = graveyard.deathsAt(view.frame);
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
       <div class="flex items-center justify-between gap-2">
@@ -94,7 +93,7 @@ export function DeathsPanel({ view, onTour }: { view: RaceView; onTour: () => vo
           value={filter}
           onChange={(next) => graveyard.filter.set(next)}
         />
-        <Button disabled={graveyard.deaths.length === 0} onClick={onTour}>
+        <Button disabled={graveyard.graves.length === 0} onClick={onTour}>
           <Clapperboard size={15} />
           Tour
         </Button>
@@ -113,11 +112,11 @@ export function DeathsPanel({ view, onTour }: { view: RaceView; onTour: () => vo
             <Pill tone="bad">{list.length}</Pill>
           </div>
           {list.map((death) => (
-            <DeathRow key={death.id} death={deathFacts(view, death)} focused={focus === death.id} onFocus={() => graveyard.setFocus(death.id)} onLeave={() => graveyard.setFocus(null)} />
+            <DeathRow key={death.id} death={graveFacts(view, death)} focused={focus === death.id} onFocus={() => graveyard.setFocus(death.id)} onLeave={() => graveyard.setFocus(null)} />
           ))}
         </section>
       ))}
-      {filter === "all" && <StoppedRuns view={view} />}
+      {filter === "all" && <OtherEnds view={view} />}
     </div>
   );
 }
@@ -153,19 +152,21 @@ function Tour({ view, onLeave }: { view: RaceView; onLeave: () => void }) {
     return () => clearTimeout(id);
   }, [graveyard, index, paused]);
 
-  const current = graveyard.deaths[index];
+  const current = graveyard.graves[index];
   if (!current) return null;
+  const facts = graveFacts(view, current);
+  const { icon: Icon, tone } = causeLook(facts.cause);
   return (
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
       <div class="absolute inset-x-0 top-0 h-[9%] bg-black" />
       <div class="absolute inset-x-0 bottom-0 h-[9%] bg-black" />
       <div class="absolute top-[11%] right-6 flex items-center gap-3 text-fg">
-        <Skull size={44} class="text-bad" />
+        <Icon size={44} class={toneText(tone)} />
         <span class="text-[64px] leading-none font-semibold tabular-nums">{index + 1}</span>
-        <span class="text-lg text-muted">/ {graveyard.deaths.length}</span>
+        <span class="text-lg text-muted">/ {graveyard.graves.length}</span>
       </div>
       <div key={current.id} class="absolute bottom-[12%] left-8">
-        <Epitaph death={deathFacts(view, current)} typed={(performance.now() - since - TYPE_FROM_MS) / TYPE_MS} />
+        <Epitaph death={facts} typed={(performance.now() - since - TYPE_FROM_MS) / TYPE_MS} />
       </div>
       <span class="absolute bottom-[2.5%] left-1/2 -translate-x-1/2 text-xs text-faint">N next · P previous · Space {paused ? "play" : "pause"} · Esc leave</span>
     </div>

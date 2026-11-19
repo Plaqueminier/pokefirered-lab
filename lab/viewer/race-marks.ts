@@ -5,7 +5,9 @@ import { TILE } from "../src/race/file";
 import { type Tone, typeToken } from "./components";
 import type { Dot } from "../src/race/file";
 
-export const RESULT_LOOK: Record<EndReason, { icon: LucideIcon; tone: Tone | undefined }> = {
+export type ResultLook = { icon: LucideIcon; tone: Tone | undefined };
+
+export const RESULT_LOOK: Record<EndReason, ResultLook> = {
   goal: { icon: Flag, tone: "ok" },
   "user stop": { icon: Square, tone: undefined },
   "bot stopped": { icon: Square, tone: undefined },

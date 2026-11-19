@@ -833,7 +833,7 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "DeathCard",
-    rule: "A whiteout of a Race, in the PointerCard of its tombstone: the sprite and the Run id, a red Pill (“whiteout”, or “whiteout, played on” when the Run went on), the starter of the Run, the killer, the last words of the model, the team, the model, the character, the place and the game time. The killer is the icon of the foe with its level, or a PSN Pill (as the status of a Pokémon) for a poison out of battle, after the foe of the battle before. With no foe, the line says so; with no words, the line goes away.",
+    rule: "A whiteout or an end stone of a Race, in the PointerCard of its tombstone. Its header has the sprite, the Run id and a Pill. The Pill is red for a whiteout (“whiteout”, or “whiteout, played on” when the Run continued), else it shows the end reason. Below are the starter of the Run, the killer and the last words of the model. The foot has the team, the model, the character, the place and the game time. The killer is the icon of the foe with its level. For a poison out of battle, it is a PSN Pill (as the status of a Pokémon), after the foe of the battle before. With no foe, the line says so; an end stone has no killer line. With no words, the card does not show the line.",
     demo: () => <DeathCardDemo />,
   },
   {
@@ -851,13 +851,13 @@ const ENTRIES: Entry[] = [
   {
     category: "data",
     title: "Epitaph",
-    rule: "The big card of the Tour of the whiteouts, for a video, over a dark picture: “Here lies”, the icon and the name of the starter in 56 px, its species, level and killer, the last words in 28 px that the Tour types, then the model, the place and the game time. The text has a dark shadow, so that it stays clear on the map.",
+    rule: "The big card of the Tour of the graves, for a video, over a dark picture. It starts with “Here lies”, then the icon and the name of the starter in 56 px. Below are its species, level and killer. An end stone shows its end reason in place of the killer. Then come the last words in 28 px that the Tour types, and the model, the place and the game time. The text has a dark shadow, so that it stays clear on the map.",
     demo: () => <EpitaphDemo />,
   },
   {
     category: "data",
     title: "Graveyard marks",
-    rule: "The canvas of the graveyard of a Race, in the colors of the theme. A tombstone has a base in the type color of the starter of its Run (muted with no starter), and the killer at its top right: the icon of the foe in a disc, or a small PSN tag with a line, so that it stays clear on the map. A whiteout drops its stone: the Ghost rises, the stone falls and bounces in a dust, then the killer shows. The end of a Run with no whiteout is the icon of its result in a disc. Memorial: a grey map, a red heat and a label for each place that kills, the stones in the starter color, an accent ring under the stone of the selected row. Tour: a night with a vignette, and a candle at each stone; a stone that the Tour did not show yet is faint, with no killer.",
+    rule: "The canvas of the graveyard of a Race, in the colors of the theme. A tombstone has a base in the type color of the starter of its Run (muted with no starter). A whiteout has its killer at its top right. The killer is the icon of the foe in a disc, or a small PSN tag with a line, so that it stays clear on the map. A whiteout drops its stone: the Ghost rises, the stone falls and bounces in a dust, then the killer shows. A Run that did not end with a whiteout gets an end stone: a dark stone in the muted color, with the icon of its end reason in a dark disc. An end stone falls in a dust, with no Ghost and no killer. Memorial: a grey map, a red heat and a label for each place that kills, an accent ring under the stone of the selected row. The stones of the whiteouts take the starter color. Tour: a night with a vignette, and a candle at each stone; a stone that the Tour did not show yet is faint, with no killer. The demo has two end stones, and its Tour is at the first one.",
     demo: () => <GraveMarksDemo />,
   },
   {

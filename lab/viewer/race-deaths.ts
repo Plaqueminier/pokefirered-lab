@@ -1,10 +1,26 @@
-import { lineOf, STARTER_SPECIES, type StarterSpecies, type TeamMon } from "../src/protocol";
+import { type EndReason, lineOf, STARTER_SPECIES, type StarterSpecies, type TeamMon } from "../src/protocol";
 import type { RaceFile, RaceRun, RaceWhiteout, RaceWords } from "../src/race/file";
 
 export const STARTER_TYPE: Record<StarterSpecies, string> = { BULBASAUR: "GRASS", SQUIRTLE: "WATER", CHARMANDER: "FIRE" };
 
-/** `run`: the index of the Run in the Race, not its Run id. `order`: the index of the death in the order of the Runs, as the Tour shows them. */
-export type RaceDeath = RaceWhiteout & { id: string; run: number; number: number; order: number; starter: StarterSpecies | null; endedRun: boolean; epitaph: string };
+/** `run`: the index of the Run in the Race, not its Run id. */
+type GraveBase = { id: string; run: number; number: number; frame: number; starter: StarterSpecies | null };
+
+export type RaceDeath = GraveBase & RaceWhiteout & { kind: "whiteout"; endedRun: boolean; epitaph: string };
+
+export type OtherEnd = Exclude<EndReason, "whiteout">;
+
+type RaceEnd = GraveBase & { kind: "end"; result: OtherEnd };
+
+export type RaceGrave = RaceDeath | RaceEnd;
+
+export function isDeath<G extends RaceGrave>(grave: G): grave is Extract<G, { kind: "whiteout" }> {
+  return grave.kind === "whiteout";
+}
+
+export function isEnd<G extends RaceGrave>(grave: G): grave is Extract<G, { kind: "end" }> {
+  return grave.kind === "end";
+}
 
 export function starterOf(run: Pick<RaceRun, "state">): StarterSpecies | null {
   const first = run.state.find((entry) => entry.kind === "team" && entry.team.length > 0);
@@ -39,13 +55,15 @@ export function starterStats(starters: readonly (StarterSpecies | null)[], ghost
   });
 }
 
-export function raceDeaths(race: RaceFile, starters = race.runs.map(starterOf)): RaceDeath[] {
-  const deaths = race.runs.flatMap((run, index) => {
+export function raceGraves(race: RaceFile, starters = race.runs.map(starterOf)): RaceGrave[] {
+  const graves = race.runs.flatMap((run, index): RaceGrave[] => {
     const starter = starters[index];
     const last = run.whiteouts.at(-1);
-    return run.whiteouts.map(
-      (whiteout): Omit<RaceDeath, "order"> => ({
+    const { frame, result } = run.end;
+    const deaths = run.whiteouts.map(
+      (whiteout): RaceDeath => ({
         ...whiteout,
+        kind: "whiteout",
         id: `${run.number}:${whiteout.frame}`,
         run: index,
         number: run.number,
@@ -54,6 +72,7 @@ export function raceDeaths(race: RaceFile, starters = race.runs.map(starterOf)):
         epitaph: epitaphOf(whiteout.lastWords),
       }),
     );
+    return result === "whiteout" ? deaths : [...deaths, { kind: "end", id: `end:${run.number}`, run: index, number: run.number, frame, result, starter }];
   });
-  return deaths.sort((a, b) => a.number - b.number || a.frame - b.frame).map((death, order) => ({ ...death, order }));
+  return graves.sort((a, b) => a.number - b.number || a.frame - b.frame);
 }

@@ -295,7 +295,7 @@ export function RacePage() {
           <DocCard
             icon={Skull}
             title="Graveyard"
-            lines={["the skull button: a tombstone drops at each whiteout, with its killer and the last words of the model", "the Deaths tab of the panel: the map turns grey, with the places that kill; “All ends” adds the Runs that stopped", "Tour: the whiteouts one by one, for a video; N, P, Space, Esc"]}
+            lines={["the skull button: a tombstone drops at each whiteout, with its killer and the last words of the model", "the Deaths tab of the panel: the map turns grey, with the places that kill; “All ends” adds a dark end stone at the end of each Run that did not end with a whiteout", "Tour: the whiteouts one by one, and the end stones with “All ends”, for a video; N, P, Space, Esc"]}
           />
         </div>
       </Block>

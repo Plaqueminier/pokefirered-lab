@@ -210,7 +210,7 @@ export class RaceView {
       this.#doorHits = this.moment.doors.flatMap((door) => this.#drawDoor(frame, door));
       this.#drawNames(frame, [...labels, ...gyms, ...this.#doorHits.map((hit) => hit.box)]);
     }
-    this.graveyard.draw(ctx, graves, { frame: this.frame, moment: this.moment, width, height, now: performance.now() });
+    this.graveyard.draw(ctx, graves, { frame: this.frame, width, height, now: performance.now() });
   }
 
   #outdoorItems(width: number, height: number): Item[] {

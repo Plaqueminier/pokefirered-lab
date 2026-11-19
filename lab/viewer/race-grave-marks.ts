@@ -1,17 +1,13 @@
-import type { EndReason } from "../src/protocol";
 import type { StarterSpecies } from "../src/protocol";
 import type { RaceKiller } from "../src/race/file";
-import { STARTER_TYPE } from "./race-deaths";
+import { type OtherEnd, STARTER_TYPE } from "./race-deaths";
 import type { RaceMarks, RaceTheme } from "./race-marks";
 import { FRAME_WIDTH, SHEET_HEIGHT } from "./race-sprite";
 
 /** `x` and `y`: the middle of the base, in pixels on the screen. */
 export type GraveSpot = { x: number; y: number; s: number };
 
-type Stone = { starter: StarterSpecies | null; killer: RaceKiller | null };
-
-/** `order`: the place of the whiteout in the Tour. */
-export type GraveLook = GraveSpot & ({ kind: "stone"; death: Stone & { order: number } } | { kind: "end"; result: EndReason });
+export type GraveLook = GraveSpot & { order: number; starter: StarterSpecies | null } & ({ kind: "whiteout"; killer: RaceKiller | null } | { kind: "end"; result: OtherEnd });
 
 /** A place that kills, for the memorial: `top` is above its highest stone. */
 export type PlaceMark = { name: string; count: number; x: number; y: number; top: number; s: number };
@@ -23,7 +19,6 @@ const FALL_MS = [450, 800] as const;
 const BOUNCE_MS = [800, 1000] as const;
 const DUST_MS = [800, 1400] as const;
 const KILLER_MS = 950;
-const END_FADE_MS = 400;
 const DUST_GRAINS = 12;
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -53,9 +48,11 @@ export class GraveMarks {
     this.#tagFont = `700 10px ${theme.font}`;
   }
 
-  #stone(ctx: CanvasRenderingContext2D, { x, y, s }: GraveSpot, starter: StarterSpecies | null, tinted: boolean, alpha = 1): void {
+  #stone(ctx: CanvasRenderingContext2D, grave: GraveLook, tinted: boolean, alpha = 1): void {
+    const { x, y, s, starter } = grave;
     const { bg, fg, muted, faint } = this.#theme;
     const color = starter ? this.#theme.typeColor(STARTER_TYPE[starter]) : muted;
+    const [top, middle] = grave.kind === "end" ? [muted, faint] : tinted ? [color, faint] : [fg, muted];
     const w = s * 0.6;
     const height = s * 0.82;
     ctx.save();
@@ -71,22 +68,15 @@ export class GraveMarks {
     body.lineTo(x + w / 2, y);
     body.closePath();
     const gradient = ctx.createLinearGradient(x - w / 2, y - height, x + w / 2, y);
-    gradient.addColorStop(0, tinted ? color : fg);
-    gradient.addColorStop(0.55, tinted ? faint : muted);
+    gradient.addColorStop(0, top);
+    gradient.addColorStop(0.55, middle);
     gradient.addColorStop(1, faint);
     ctx.fillStyle = gradient;
     ctx.fill(body);
     ctx.lineWidth = Math.max(1.5, s / 16);
     ctx.strokeStyle = bg;
     ctx.stroke(body);
-    ctx.strokeStyle = tinted ? withAlpha(fg, 0.6) : withAlpha(bg, 0.7);
-    ctx.lineWidth = Math.max(1.5, s / 14);
-    ctx.beginPath();
-    ctx.moveTo(x, y - height * 0.78);
-    ctx.lineTo(x, y - height * 0.3);
-    ctx.moveTo(x - w * 0.24, y - height * 0.6);
-    ctx.lineTo(x + w * 0.24, y - height * 0.6);
-    ctx.stroke();
+    this.#emblem(ctx, grave, w, height, tinted);
     ctx.fillStyle = color;
     ctx.strokeStyle = bg;
     ctx.lineWidth = Math.max(1, s / 22);
@@ -97,9 +87,30 @@ export class GraveMarks {
     ctx.restore();
   }
 
+  #emblem(ctx: CanvasRenderingContext2D, grave: GraveLook, w: number, height: number, tinted: boolean): void {
+    const { x, y, s } = grave;
+    if (grave.kind === "end") {
+      const r = w * 0.3;
+      const cy = y - height * 0.58;
+      this.#marks.disc(ctx, x, cy, r, null);
+      ctx.drawImage(this.#marks.resultIcon(grave.result), x - r * 0.7, cy - r * 0.7, r * 1.4, r * 1.4);
+      return;
+    }
+    const { fg, bg } = this.#theme;
+    ctx.strokeStyle = tinted ? withAlpha(fg, 0.6) : withAlpha(bg, 0.7);
+    ctx.lineWidth = Math.max(1.5, s / 14);
+    ctx.beginPath();
+    ctx.moveTo(x, y - height * 0.78);
+    ctx.lineTo(x, y - height * 0.3);
+    ctx.moveTo(x - w * 0.24, y - height * 0.6);
+    ctx.lineTo(x + w * 0.24, y - height * 0.6);
+    ctx.stroke();
+  }
+
   /** The PSN of a poison out of battle: a small tag with a line, so that it stays clear on the map. */
-  #killer(ctx: CanvasRenderingContext2D, killer: RaceKiller | null, { x, y, s }: GraveSpot): void {
-    if (!killer) return;
+  #killer(ctx: CanvasRenderingContext2D, grave: GraveLook): void {
+    if (grave.kind !== "whiteout" || !grave.killer) return;
+    const { killer, x, y, s } = grave;
     const cx = x + s * 0.32;
     const cy = y - s * 0.82;
     const r = s * 0.22;
@@ -126,15 +137,6 @@ export class GraveMarks {
       ctx.imageSmoothingEnabled = false;
       if (image) ctx.drawImage(image, cx - r * 1.05, cy - r * 1.15, r * 2.1, r * 2.1);
     }
-    ctx.restore();
-  }
-
-  #end(ctx: CanvasRenderingContext2D, result: EndReason, { x, y, s }: GraveSpot, t: number): void {
-    const r = s * 0.5;
-    ctx.save();
-    ctx.globalAlpha = 0.85 * stepOf(t, [0, END_FADE_MS]);
-    this.#marks.disc(ctx, x, y - r, r, this.#theme.line);
-    ctx.drawImage(this.#marks.resultIcon(result), x - r * 0.62, y - r * 1.62, r * 1.24, r * 1.24);
     ctx.restore();
   }
 
@@ -170,16 +172,15 @@ export class GraveMarks {
     ctx.restore();
   }
 
-  /** `t`: the ms after the whiteout; Infinity: the stone stands. */
-  #fall(ctx: CanvasRenderingContext2D, spot: GraveSpot, stone: Stone, sheet: CanvasImageSource, t: number): void {
-    this.#spirit(ctx, sheet, spot, stepOf(t, SPIRIT_MS));
+  #fall(ctx: CanvasRenderingContext2D, grave: GraveLook, sheet: CanvasImageSource, t: number): void {
+    if (grave.kind === "whiteout") this.#spirit(ctx, sheet, grave, stepOf(t, SPIRIT_MS));
     const fall = stepOf(t, FALL_MS);
     if (fall <= 0) return;
-    const bounce = t > BOUNCE_MS[0] && t < BOUNCE_MS[1] ? Math.sin(stepOf(t, BOUNCE_MS) * Math.PI) * spot.s * 0.08 : 0;
-    const lifted = { ...spot, y: spot.y - (1 - fall ** 2) * spot.s * 4 - bounce };
-    this.#stone(ctx, lifted, stone.starter, false, Math.min(1, fall * 2));
-    this.#dust(ctx, spot, stepOf(t, DUST_MS));
-    if (t > KILLER_MS) this.#killer(ctx, stone.killer, lifted);
+    const bounce = t > BOUNCE_MS[0] && t < BOUNCE_MS[1] ? Math.sin(stepOf(t, BOUNCE_MS) * Math.PI) * grave.s * 0.08 : 0;
+    const lifted = { ...grave, y: grave.y - (1 - fall ** 2) * grave.s * 4 - bounce };
+    this.#stone(ctx, lifted, false, Math.min(1, fall * 2));
+    this.#dust(ctx, grave, stepOf(t, DUST_MS));
+    if (t > KILLER_MS) this.#killer(ctx, lifted);
   }
 
   #grey(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -228,42 +229,33 @@ export class GraveMarks {
 
   /** `ageOf`: the ms since the mark showed; Infinity for a mark that stands. */
   cemetery<G extends GraveLook>(ctx: CanvasRenderingContext2D, graves: readonly G[], ageOf: (grave: G) => number, sheetOf: (grave: G) => CanvasImageSource): void {
-    for (const grave of graves) {
-      if (grave.kind === "stone") this.#fall(ctx, grave, grave.death, sheetOf(grave), ageOf(grave));
-      else this.#end(ctx, grave.result, grave, ageOf(grave));
-    }
+    for (const grave of graves) this.#fall(ctx, grave, sheetOf(grave), ageOf(grave));
   }
 
   memorial(ctx: CanvasRenderingContext2D, graves: readonly GraveLook[], places: readonly PlaceMark[], focused: GraveLook | undefined, width: number, height: number): void {
     this.#grey(ctx, width, height);
     for (const place of places) this.#heat(ctx, place.x, place.y, place.s * (1.4 + place.count * 0.4), place.count);
     for (const grave of graves) {
-      if (grave.kind === "end") {
-        this.#end(ctx, grave.result, grave, Number.POSITIVE_INFINITY);
-        continue;
-      }
-      this.#stone(ctx, grave, grave.death.starter, true);
-      this.#killer(ctx, grave.death.killer, grave);
+      this.#stone(ctx, grave, true);
+      this.#killer(ctx, grave);
       if (grave === focused) this.#ring(ctx, grave);
     }
     for (const place of places) this.#placeLabel(ctx, place.x, place.top, `${place.count} · ${place.name}`);
   }
 
-  /** The whiteout at `index` falls; the ones before it stand with their killer, the ones after it are faint. */
   tour<G extends GraveLook>(ctx: CanvasRenderingContext2D, graves: readonly G[], { index, since, now }: TourAt, sheetOf: (grave: G) => CanvasImageSource, width: number, height: number): void {
     this.#night(ctx, width, height);
     for (const grave of graves) {
-      if (grave.kind !== "stone") continue;
-      const { order } = grave.death;
+      const { order } = grave;
       if (order === index) {
         this.#candle(ctx, grave, now, order, 1.4);
-        this.#fall(ctx, grave, grave.death, sheetOf(grave), now - since);
+        this.#fall(ctx, grave, sheetOf(grave), now - since);
         continue;
       }
       const seen = order < index;
       this.#candle(ctx, grave, now, order, seen ? 0.7 : 0.35);
-      this.#stone(ctx, grave, grave.death.starter, false, seen ? 0.95 : 0.45);
-      if (seen) this.#killer(ctx, grave.death.killer, grave);
+      this.#stone(ctx, grave, false, seen ? 0.95 : 0.45);
+      if (seen) this.#killer(ctx, grave);
     }
   }
 
