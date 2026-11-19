@@ -108,6 +108,8 @@ _Avoid_: prompt, turn, step
 
 **Battle prompt**:
 The prompt of a model bot at each **Decision point** in a battle. These are a battle action, the move menu, the party menu of a battle and a choice in a battle. Since bot version 48, it has its own system prompt. This prompt has only the rules of a battle, and no rule of the **Atlas** or of the **Memory tree**. Its user prompt has the Milestones, the count of whiteouts (see **Whiteout limit**), the character, the money and the party. Its Bag has the pockets that work in a battle, and the items of the other pockets that work in a battle. It shows the **Mission** and the **Objective** to read, and the Battles part of the **Coach advice**. It ends with the important events, the decisions from the one that started the battle, and the actions with no `zoom`. It has no **Memory tree**, no **Known world**, no tries and no **Stuck counter**. Its answer has a reason, an action, a note and a `say`. It has no **Mission** and no **Objective**. Each other **Decision point** gets the walk prompt, and so do the **Coach** turns.
+Since bot version 52, the line of the Pokémon of the player gives its speed now. The rules are the rules of the game for the order of a turn: the stat stage, the badge boost and the paralysis. At the `full` **Knowledge level**, it also tells who moves first when both moves have priority 0.
+On a map whose name starts with `PokemonLeague_`, this prompt and the walk prompt have the League line: a whiteout makes the player battle the Elite Four again, from the first member.
 _Avoid_: fight prompt, combat prompt
 
 **Item estimate**:
@@ -152,7 +154,18 @@ _Avoid_: stuck message, reflection call
 
 **Review turn**:
 A **Model call** of a model bot at the first walk with a **Model call** after 20 decisions since its last **Review turn** or **Reflection turn**, also with progress. A decision is a **Model call** after which the program played an action. Its prompt adds the full **Atlas** and a short check: the way to the next **Milestone**, the facts against the **Mission**, the guesses from the things checked and the people, and the exits left to explore. The AI model writes the result in its **Mission**, its **Objective** and a note, and it can give the numbers of at most 5 sentences of the top nodes of its **Memory tree** to remove them. It is not a separate request. When a **Reflection turn** and a **Review turn** are both due at the same decision, only the **Reflection turn** shows.
+A **Check map** also gives a **Review turn**: the first walk with a **Model call** after each entry into it, also after a Pokémon Center.
+On a **Check map**, the check also asks if the team is ready for the Gym Leader or the Pokémon League. If not, it asks what to buy or to train first.
 _Avoid_: review call, check turn
+
+**Check map**:
+A map before a hard series of battles: each map whose name ends with `_Gym`, and IndigoPlateau_PokemonCenter_1F. At IndigoPlateau_PokemonCenter_1F, the **Review turn** also tells that several battles follow with no Pokémon Center between them. No prompt gives a level of a Gym Leader, of the Elite Four or of the Champion.
+On a **Check map**, the **Team line** also gives the levels of the trainers beaten in this Gym, or on Victory Road. It skips each trainer whose name starts with "LEADER ", "ELITE FOUR " or "CHAMPION ".
+_Avoid_: gym map, league map
+
+**Team line**:
+A line of each walk prompt of a model bot, after the money. It gives the levels of the party. It also counts the items of the Bag that restore HP, and the items that cure a status. On a **Check map**, it also gives the lowest and the highest level of the Pokémon of the trainers that the player beat there.
+_Avoid_: team check (a **Review turn** on a **Check map** does the check), team summary
 
 **Summary call**:
 One request of a model bot to its AI model, or to its **Coach** when the **Run** has one, that writes the summary of two nodes of its **Memory tree**. It gives no action, and it runs at the same **Decision point** as the **Model call** that added the note. Its cost and its tokens count in the cost and the tokens of the **Run**.
@@ -203,7 +216,7 @@ It knows each person that the player saw, at the cell where the player last saw 
 It knows each **Fixed obstacle** that the player saw. On the map of the player, the obstacle is at its cell now; on the other maps, at its first cell.
 An edge with water has its reason in the **Atlas** while the party cannot use SURF.
 It also knows if each map is outdoor: the map type of the ROM is a town, a city or a route. It also knows if each map is dark for the model (see **Dark map**).
-On the map of the player, the cells are the cells of the game now, also the cells that a map script changed. On another map, they are the cells of that map at the last step of the player on it, after its map scripts. The reason: the ROM has the Card Key doors of Silph Co. open, and the map scripts close them. The cells of the ROM stay only for a map with no step of the player on it. The route of a `goTo` uses the same cells first. A limit: the cells of the last step can be old when a map script reads a flag that changed on another map. An example is the switch of Pokémon Mansion. So when these cells give no route, the route of a `goTo` uses the cells of the ROM.
+On the map of the player, the cells are the cells of the game now, also the cells that a map script changed. On another map, they are the cells of that map at the last step of the player on it, after its map scripts. The reason: the ROM has the Card Key doors of Silph Co. open, and the map scripts close them. The cells of the ROM stay only for a map with no step of the player on it. The route of a `goTo` uses the same cells. Some map scripts read a flag or a var that the scripts of another map change. A fixed table names them: the switch flag of the 4 floors of Pokémon Mansion, and the vars of the floor switches of Victory Road. The script of Route 23 resets these vars at each entry. For these maps, the Atlas keeps the cells of the last step for each set of values. Such a map has the cells of the last step with the values now. With no such step, it has the cells of the ROM.
 The exits of another map stay the exits of the ROM, because the game sets the destination of an **Elevator** exit again at each entry. The reason of an edge with water also comes from the cells of the ROM.
 At the `player` **Knowledge level**, the **Atlas** grows only with what the player saw in the **Run**. At the `full` level, it has all the maps of the game, but it lists only the **Fixed obstacles** that the player saw.
 The **Atlas** keeps a **Fixed obstacle** that it saw while the obstacle closes a way. An obstacle that the party can remove does not close a way. So a removed one returns to the **Atlas** when the player leaves the map, but only if the party cannot remove it now.
@@ -241,6 +254,10 @@ A cell that ends the **Slide** of a **Spin tile**. Its metatile behaviour is `MB
 **Slide**:
 The forced walk of the player from a **Spin tile** to the cell where it stops. It goes from one **Part** to another **Part** of the same map, in one direction only. Before the player takes it, the code can tell its end from the cells that the player saw, or it cannot when the way crosses an unseen cell. After the player takes it with a `goTo`, the **Atlas** keeps its real end.
 _Avoid_: spin, glide, push
+
+**Same-map pad**:
+A teleport pad that leads to another cell of its own map: a warp of the kind "step" whose destination is its map. SilphCo_3F, SilphCo_8F and SaffronCity_Gym (30 pads) have them. A route to another cell takes them on its way. A `goTo` to a **Same-map pad** takes it: the route ends with a step onto the pad, also when the player stands on it. The walk ends at the arrival cell of the pad, and the result names this cell.
+_Avoid_: teleporter, plain warp (a warp to another map)
 
 **Running**:
 The walk of a player with the Running Shoes: 8 frames for each cell, not 16. A **Bot** does not choose it: the **Harness** holds B on each step. The game does not run on a map that does not allow it, for example a house or a gym.
@@ -288,6 +305,7 @@ _Avoid_: lift
 
 **In your way**:
 What the prompt says of a person or an **Object** whose movement type does not leave its cell and whose cell closes a way, on the cells that the player saw.
+After the player talked to the person, the reason of `blocked` tells that the person does not leave after a talk. It tells the player to explore other places, and to return later. It names no event of the story.
 _Avoid_: blocker
 
 **Map part**:
@@ -334,7 +352,7 @@ The first Pokémon of a **Run**, the one that the player chooses in the lab of P
 _Avoid_: first Pokémon, lead (a **Lead** is a target of a walk)
 
 **Milestone**:
-A story step that the **Harness** reads from the game flags, for example "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it.
+A story step that the **Harness** reads from the game flags. Examples are "has a Pokémon", "the first rival battle is over", "has the Pokédex" or a badge. It is one kind of progress of a **Run** (see **Stuck counter**). The **Milestones** have an order, the order of the story. After `badge-8` come `victory-road`, `indigo-plateau`, `elite-four-1` to `elite-four-4` and `champion` (the Hall of Fame). The **Milestones** of a **Run** are the **Milestones** of its flags and of its **Run record**. A whiteout clears the flags of the Elite Four, but their **Milestones** stay. The event of a **Milestone** comes only once. A scripted bot has a goal: one **Milestone** that ends its **Run**. A model bot has no goal: the code gives it the next **Milestone**, the first one in the order that it did not reach, and its **Run** continues after it. With no goal, a **Run** ends at the last **Milestone**, `champion`. A **Run record** of an older version keeps its **Run result**: a `goal` at `badge-8` stays.
 _Avoid_: flag (a flag is one bit of the save), achievement
 
 **Chapter**:
@@ -346,7 +364,8 @@ The file that keeps one **Run**: the version of its format, its build, seed, **S
 _Avoid_: log, replay (a replay is what you watch from a run record), movie
 
 **Game event**:
-A change in the game that the **Harness** reads from the game state and writes in the **Run record**: a new map, a battle start or end, a **Milestone**, a heal, a purchase, an item found or received, a catch, a faint, a level (with a new move or an evolution), a change of money, a trainer beaten, a **Fixed obstacle** removed, a use of FLASH, a start of SURF, a start of STRENGTH, a flight with FLY, a whiteout. Each one has typed fields (species, item, count, money before and after, the source of a heal, the side of a faint, the trainer, the foe of a battle, map), not only a text, so stats can count them over many **Runs**. The **Viewer** shows them; the prompt of the model bot does not use the new kinds yet.
+A change in the game that the **Harness** reads from the game state and writes in the **Run record**. Some kinds are a new map, a battle start or end, a **Milestone**, a heal, a purchase and an item found or received. Others are a catch, a faint, a level (with a new move or an evolution), a change of money and a trainer beaten. The last kinds are a **Fixed obstacle** removed, a use of FLASH, a start of SURF or of STRENGTH, a flight and a whiteout. Each one has typed fields, not only a text, so stats can count them over many **Runs**. Some fields are the species, the item, the count, and the money before and after. Others are the source of a heal, the side of a faint, the trainer, the foe of a battle and the map. The **Viewer** shows them. The prompts of the model bot use some of them. The line after a battle reads the faints, the catch, the trainer beaten and the whiteout. A **Review turn** counts the catches and the whiteouts. The **Coach advice** tells what happened since.
+Since bot version 52, the event of a trainer beaten also has the levels of the Pokémon of the trainer. The **Team line** of a **Check map** reads them.
 _Avoid_: log line, fact (a fact is a line of the prompt)
 
 **Continued Run**:
@@ -355,7 +374,7 @@ _Avoid_: resumed run, restart, savestate
 
 **Extended Run**:
 A **Run** that continues from the end of its own **Run record**, for example after a `plan limit`, when the quota of the subscription is new. It stays the same **Run**: the same id, the same **Ghost**, the same character. The **Harness** loads the **Checkpoint** or replays the buttons, and keeps the events, as for a **Continued Run**. But a new **Run record** replaces the file under the same name, with no new parent. When the worker of the last part is still idle in the **Viewer**, the new part continues in this worker, with its **Harness**: no replay and no **Checkpoint**. A worker keeps the code that it loaded, so a change of a file of `lab/src` or `lab/bots` since its start needs a new worker. The header takes the Bot and the limit of the new part. Its `parts` keep the Bot, the **Run result** and the end of each earlier part. The model, the **Model provider** and the other settings of the model stay those of the **Run record**. The version of the Bot can be newer. Its cost limit or its **Token limit** counts from 0 at each new part. A **Run record** that another one names as its parent cannot extend. This is because the **Viewer** finds the start of a **Continued Run** from the end of its parent.
-The limit of a new part is its cost limit or its **Token limit**. Its **Whiteout limit** and its **Time limit** stay those of the start, and they count all the parts. So a **Run** that ended at `whiteout` or at `time limit` cannot extend.
+The limit of a new part is its cost limit or its **Token limit**. Its **Whiteout limit** and its **Time limit** stay those of the start, and they count all the parts. So a **Run** that ended at `whiteout` or at `time limit` cannot extend. The goal of a new part is the last **Milestone**, `champion`. So a **Run** that ended with `goal` at an older goal can extend, for example at `badge-8` before bot version 52. A **Run** that ended with `goal` at `champion` cannot extend.
 _Avoid_: resumed run, paused run, Continued Run (a **Continued Run** is a new **Run** with a new id)
 
 **Checkpoint**:

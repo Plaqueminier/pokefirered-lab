@@ -1,3 +1,4 @@
+import { LAST_MILESTONE } from "../game";
 import { InventoryHistory, type InventorySnapshot } from "../inventory";
 import { Run } from "../run";
 import { SCREEN_INTERVAL_MS, STATE_INTERVAL_MS } from "../protocol";
@@ -88,6 +89,7 @@ async function start({ bot: name, model, genome, from, ...options }: RunSpec): P
   const harness = await Harness.open(
     {
       ...options,
+      ...(from?.kind === "extended" ? { goal: LAST_MILESTONE } : {}),
       parent,
       checkpoint: read,
       stopAsked: () => Atomics.load(stop.flag, 0) === 1,

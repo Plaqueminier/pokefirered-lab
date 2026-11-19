@@ -17,7 +17,7 @@ import { RACE_SUFFIX, RACES_DIR, raceNames } from "./race/make";
 import { buildWorld } from "./race/world";
 import { checkpointKey, removeCheckpoint, type Resume, writeCheckpoint } from "./harness/checkpoint";
 import { MAX_RUNS, type PoolRun, type ReplayView, RunPool, type RunEnd, type RunSpec } from "./harness/pool";
-import { type Continuation, continuationOf, extendedOptions, factsAt, Keyframes, limitOf, modelFacts, type ModelOptions, modelTotals, originDifferences, providerOf, readRunHeader, readRunRecord, recordFacts, RecordPlayer, replaceRecord, replayStart, type RunEvent, type RunRecord, RUNS_DIR, runStartFrame, runWhiteouts, type SpendLimit, writeRecord } from "./harness/record";
+import { type Continuation, continuationOf, extendedOptions, factsAt, Keyframes, limitOf, modelFacts, type ModelOptions, modelTotals, originDifferences, providerOf, readRunHeader, readRunRecord, recordFacts, RecordPlayer, replaceRecord, replayStart, resultEnd, type RunEvent, type RunRecord, RUNS_DIR, runStartFrame, runWhiteouts, type SpendLimit, writeRecord } from "./harness/record";
 import { runCharacter } from "./model/character";
 import { providerProblem, providerStatuses } from "./model/providers";
 import {
@@ -465,8 +465,8 @@ async function extendRun(name: string, limit: SpendLimit): Promise<string> {
   if (typeof record === "string") return record;
   const playing = runsFrom(name).length > 0;
   const facts = (await recordFacts(await recordNames()))[name];
-  // A migrated record ends with its State track, so the list cannot always read its end reason: the whole record has it.
-  const problem = extendProblem(facts && { ...facts, endReason: record.result.endReason }, playing);
+  // A migrated record ends with its State track, so the list cannot always read its end: the whole record has it.
+  const problem = extendProblem(facts && { ...facts, ...resultEnd(record.result) }, playing);
   if (problem) return `No Run: ${problem}`;
   const { bot } = record.header;
   return launch(bot.name, extendedOptions(bot.model, limit), 1, { from: { record: name, kind: "extended" }, record });

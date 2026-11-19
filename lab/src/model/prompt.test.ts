@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type Battle, enemyView } from "../battle";
-import { battleTurn, fightFacts } from "../battle-facts";
+import { battleSpeed, battleTurn, fightFacts, speedFacts } from "../battle-facts";
 import type { AtlasPerson } from "../harness/atlas";
 import type { ActionEntry, Observation } from "../harness/harness";
 import type { BoxMon, PartyMove } from "../party";
@@ -11,7 +11,7 @@ import { importantEvents } from "./important-events";
 import { adviceLine, coachRole, coachWants, MAX_ADVICE_PART, MAX_TRAINED, readAdvice, wantLines, withAdvice } from "./coach";
 import { type CoachAdvice, GBA_FPS } from "../protocol";
 import { MAX_TRIES, tries } from "./history";
-import { battleSystemPrompt, missionLine, nextMilestone, systemPrompt, turnKind, turnRequest, userPrompt } from "./prompt";
+import { battleSystemPrompt, missionLine, nextMilestone, reviewRequestIn, systemPrompt, turnKind, turnRequest, userPrompt } from "./prompt";
 
 const BALLS = "Those are POKé BALLS. They contain POKéMON!";
 
@@ -125,6 +125,11 @@ describe("the tries since the last progress", () => {
     expect(tries(events, 0)).toEqual(["- goTo(3, 1) ×1: done, you stepped on the spin tile and slid to (6, 1)"]);
   });
 
+  test("a goTo to a Same-map pad tells the cell where the pad led", () => {
+    const events = [call("goTo 18 20"), played({ name: "goTo", x: 18, y: 20 }, { status: "done", padTo: { x: 28, y: 23 }, frames: 120 })];
+    expect(tries(events, 0)).toEqual(["- goTo(18, 20) ×1: done, you stepped on the pad and it led you to (28, 23)"]);
+  });
+
   test(`past ${MAX_TRIES} different tries, it keeps the last ones`, () => {
     const events = Array.from({ length: MAX_TRIES + 5 }, (_, i) => [call(`goTo ${i} 0`), played({ name: "goTo", x: i, y: 0 }, { status: "blocked", reason: "a person", frames: 60 })]).flat();
     const lines = tries(events, 0);
@@ -187,6 +192,14 @@ describe("the next Milestone", () => {
       "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
     );
   });
+
+  test("after badge-8, the Milestones of the Pokémon League come in the order of the story, up to the Champion", () => {
+    const badges = ["has-pokemon", "first-rival-battle", "pokedex", "badge-1", "badge-2", "badge-3", "badge-4", "badge-5", "badge-6", "badge-7", "badge-8"] as const;
+    expect(nextMilestone(badges)).toBe("Enter Victory Road, at the end of Route 23.");
+    expect(nextMilestone([...badges, "victory-road", "indigo-plateau"])).toBe("Beat Lorelei, the first member of the Elite Four, at the Indigo Plateau.");
+    expect(nextMilestone([...badges, "victory-road", "indigo-plateau", "elite-four-1", "elite-four-2", "elite-four-3", "elite-four-4"])).toBe("Beat the Champion of the Pokémon League, at the Indigo Plateau.");
+    expect(nextMilestone([...badges, "victory-road", "indigo-plateau", "elite-four-1", "elite-four-2", "elite-four-3", "elite-four-4", "champion"])).toBeNull();
+  });
 });
 
 function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
@@ -211,6 +224,7 @@ function wildPidgey({ party = 0, pc = 0 } = {}): Observation {
       enemy: { species: "PIDGEY", types: ["NORMAL", "FLYING"], level: 3, hpPercent: 100, status: "none", states: [], statStages: stages, movesSeen: [] },
       inPc: pc,
       fights: [],
+      speed: { player: speedFacts({ stats, statStages: stages, status: "none" }, false), foes: null },
       lastTurn: null,
       foeTurns: [],
     },
@@ -403,7 +417,7 @@ describe("the battle facts", () => {
       bag: [],
       milestones: [],
       atlas: { maps: [], lastTalk: null },
-      battle: { kind: "trainer", player: squirtle, enemy: enemyView(bulbasaur, [], false), fights: fightFacts(now, chart, [], []), lastTurn: turn, foeTurns: [turn] },
+      battle: { kind: "trainer", player: squirtle, enemy: enemyView(bulbasaur, [], false), fights: fightFacts(now, chart, [], []), speed: { player: speedFacts(squirtle, false), foes: null }, lastTurn: turn, foeTurns: [turn] },
     } as unknown as Observation;
     const prompt = userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
     expect(prompt).toContain(
@@ -558,6 +572,66 @@ describe("the battle facts", () => {
   });
 });
 
+describe("the speed now", () => {
+  const battleWith = (player: Partial<Battle["player"]>, { badge = false, foes = null as Partial<Battle["player"]>[] | null } = {}) => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    const mon = { ...observation.battle.player, ...player };
+    const foe = (changes: Partial<Battle["player"]>) => speedFacts({ ...observation.battle.player, ...changes }, false).now;
+    observation.battle = { ...observation.battle, player: mon, speed: { player: speedFacts(mon, badge), foes: foes?.map(foe) ?? null } };
+    return observation;
+  };
+  const prompt = (observation: Observation) => userPrompt(observation, askedOf(observation, false)!, [], NO_TURN);
+  const stats = (speed: number) => ({ attack: 10, defense: 10, speed, spAttack: 10, spDefense: 10 });
+
+  test("with paralysis, the stats line gives the speed now, with the rule of the order of a turn", () => {
+    expect(prompt(battleWith({ status: "paralysis", stats: stats(101) }))).toContain("Stats: attack 10, defense 10, speed 101, special attack 10, special defense 10. Speed 25 now: 101 × ¼ for paralysis. Stat stages: none.");
+  });
+
+  test("the line names the stage of the speed and the badge boost, and each step rounds down", () => {
+    const stages = (speed: number) => ({ attack: 0, defense: 0, speed, spAttack: 0, spDefense: 0, accuracy: 0, evasion: 0 });
+    expect(prompt(battleWith({ stats: stats(101), statStages: stages(1) }, { badge: true }))).toContain("Speed 166 now: 101 × 1.5 for the stage +1, × 1.1 for the Thunder Badge. Stat stages: speed +1.");
+    expect(prompt(battleWith({ stats: stats(101), statStages: stages(-1) }))).toContain("Speed 67 now: 101 × 2/3 for the stage -1.");
+    expect(prompt(battleWith({ status: "paralysis", stats: stats(101), statStages: stages(-2) }))).toContain("Speed 12 now: 101 × ½ for the stage -2, × ¼ for paralysis.");
+  });
+
+  test("with no change of the speed, the stats line is as before", () => {
+    const text = prompt(battleWith({ stats: stats(101) }));
+    expect(text).toContain("Stats: attack 10, defense 10, speed 101, special attack 10, special defense 10. Stat stages: none.");
+    expect(text).not.toContain("Speed 101 now");
+  });
+
+  test("at the full Knowledge level only, the prompt tells who moves first with moves of priority 0, and the last turn still tells who moved first", () => {
+    const paralyzed = { status: "paralysis" as const, stats: stats(101) };
+    expect(prompt(battleWith(paralyzed, { foes: [{ stats: stats(60) }] }))).toContain("Moves seen: none.\nWhen both moves have priority 0: The foe moves first (your speed 25, its speed 60).");
+    expect(prompt(battleWith(paralyzed, { foes: [{ stats: stats(20) }] }))).toContain("When both moves have priority 0: You move first (your speed 25, its speed 20).");
+    expect(prompt(battleWith(paralyzed, { foes: [{ stats: stats(25) }] }))).toContain("When both moves have priority 0: The order is random (speed 25 on both sides).");
+    expect(prompt(battleWith(paralyzed))).not.toContain("priority 0");
+    const lastTurn = battleWith(paralyzed, { foes: [{ stats: stats(60) }] });
+    if (lastTurn.mode !== "battle") throw new Error("not a battle");
+    const side = (name: string, before: string, after: string) => ({ before: { name, hp: before }, after: { name, hp: after } });
+    lastTurn.battle.lastTurn = { moves: [{ user: "PIDGEY", move: "TACKLE", results: [] }, { user: "SQUIRTLE", move: "BUBBLE", results: [] }], player: side("SQUIRTLE", "22/22", "20/22"), foe: side("PIDGEY", "100%", "80%") };
+    expect(prompt(lastTurn)).toContain("Last turn: PIDGEY moved first.");
+  });
+
+  test("the badge boost is for the player with the Thunder Badge, and the speed of the foes is for the full Knowledge level", () => {
+    const observation = wildPidgey();
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    const { player } = observation.battle;
+    const battle: Battle = { kind: "wild", player: { ...player, stats: stats(100) }, enemy: { ...player, stats: stats(60) }, double: { ally: null, otherFoe: { ...player, stats: stats(20) }, reach: [] } };
+    expect(battleSpeed(battle, ["badge-2"], false)).toMatchObject({ player: { badge: false, now: 100 }, foes: null });
+    expect(battleSpeed(battle, ["badge-3"], true)).toMatchObject({ player: { badge: true, now: 110 }, foes: [60, 20] });
+  });
+
+  test("in a double battle, the order is for each foe", () => {
+    const observation = battleWith({ stats: stats(30) }, { foes: [{ stats: stats(60) }, { stats: stats(20) }] });
+    if (observation.mode !== "battle") throw new Error("not a battle");
+    observation.battle.double = { ally: null, otherFoe: { enemy: { ...observation.battle.enemy, species: "NINETALES" }, fights: [] }, reach: [] };
+    expect(prompt(observation)).toContain("Foe 2 NINETALES (NORMAL, FLYING)");
+    expect(prompt(observation)).toContain("When both moves have priority 0, against foe 1: The foe moves first (your speed 30, its speed 60). Against foe 2: You move first (your speed 30, its speed 20).");
+  });
+});
+
 describe("the battle prompt", () => {
   test("in a battle, the prompt is about the battle: no Memory tree, no tries, no zoom, the battle pockets of the Bag with the key item that works, and the decisions since the one that started the battle; the answer writes no Mission and no Objective, and the next walk keeps those from before", () => {
     const walk = call("go A", "Earn the Boulder Badge");
@@ -614,6 +688,25 @@ describe("the battle prompt", () => {
     expect(prompt.split("\n").filter((line) => line.includes("LEADER BROCK"))).toHaveLength(2);
     const later = userPrompt(route1(22, []), askedOf(route1(22, []), false)!, [...events, call("goTo 2 2"), played({ name: "goTo", x: 2, y: 2 }, { status: "done", frames: 10 })], NO_TURN);
     expect(later).not.toContain("Back to the walk");
+  });
+});
+
+describe("the Pokémon League", () => {
+  const LEAGUE_LINE = "In the Pokémon League, a whiteout makes you battle the Elite Four again, from the first member.";
+  const at = (map: string): RunEvent[] => [{ type: "map", frame: 0, map }];
+  const walk = (map: string) => userPrompt(route1(22, []), askedOf(route1(22, []), false)!, at(map), NO_TURN);
+  const battle = (map: string) => userPrompt(wildPidgey({ party: 1 }), askedOf(wildPidgey({ party: 1 }), false)!, at(map), NO_TURN);
+
+  test("on a map of the Pokémon League, the walk prompt and the battle prompt tell what a whiteout does there", () => {
+    expect(walk("PokemonLeague_LoreleisRoom")).toContain(LEAGUE_LINE);
+    expect(battle("PokemonLeague_AgathasRoom")).toContain(LEAGUE_LINE);
+  });
+
+  test("on another map, also at the Indigo Plateau, the prompts do not tell it", () => {
+    for (const map of ["IndigoPlateau_PokemonCenter_1F", "VictoryRoad_3F", "Route1"]) {
+      expect(walk(map)).not.toContain(LEAGUE_LINE);
+      expect(battle(map)).not.toContain(LEAGUE_LINE);
+    }
   });
 });
 
@@ -1136,7 +1229,7 @@ describe("the rules and the character turn", () => {
 
     const observation = route1(22, []);
     const asked = askedOf(observation, false)!;
-    const turn = userPrompt(observation, asked, [], { ...NO_TURN, turn: "character", request: turnRequest("character", "free", null) });
+    const turn = userPrompt(observation, asked, [], { ...NO_TURN, turn: "character", request: turnRequest("character", "free", null, []) });
     expect(turn).toContain("Character turn:");
     expect(turn).toContain('Write in "character"');
     expect(userPrompt(observation, asked, [invented], NO_TURN)).toContain("Your character: A loud fan of fire. Your first Pokémon: CHARMANDER.");
@@ -1335,7 +1428,7 @@ describe("the stuck counter and the reflection turn", () => {
     expect(systemPrompt(SYSTEM, true)).toContain("After 20 Decision points with no progress, and after each 20 more, you get a reflection turn at the next walk");
 
     const noted = [call("go A", "", "fact 1")];
-    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", "free", null), memory: ["#1: fact 1"] });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, noted, { ...NO_TURN, noProgress: { stuck: 20, since: 0 }, turn: "reflection", request: turnRequest("reflection", "free", null, []), memory: ["#1: fact 1"] });
     expect(prompt).toContain("Decision points since your last progress (a new map, a new Milestone, a new exit seen, a level up, a new text of a person, a trainer beaten, an item found or a new species caught): 20.");
     expect(prompt).toContain(
       [
@@ -1364,7 +1457,7 @@ describe("the review turn", () => {
     expect([at(decided(20), "battleAction"), at([...decided(5), ...reviewed, ...decided(19)])]).toEqual(["normal", "normal"]);
     expect(systemPrompt(SYSTEM, true)).toContain("Every 20 decisions, you get a review turn");
 
-    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review", request: turnRequest("review", "free", null) });
+    const prompt = userPrompt(observation, askedOf(observation, true)!, [], { ...NO_TURN, turn: "review", request: turnRequest("review", "free", null, []) });
     expect(prompt).toContain(
       [
         "Review turn: check your plan against the facts before you act.",
@@ -1378,6 +1471,91 @@ describe("the review turn", () => {
       ].join("\n"),
     );
     expect(prompt).toContain("Full Atlas, the other maps that you know, nearest first:");
+  });
+
+  const walked = [call("go A"), played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+  const entered = (map: string): RunEvent => ({ type: "map", frame: 0, map });
+  const reviewedHere = [{ ...call("go A"), review: true }, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+
+  test("the first walk after an entry into a Gym or into the Pokémon Center of the Indigo Plateau is a review turn, at each entry; the 20 decisions to the next review count from it", () => {
+    const at = (events: RunEvent[], kind: "walk" | "battleAction" = "walk") => turnKind(kind, events, { stuck: 0, since: 0 }, 1);
+    const inGym = [...walked, entered("PewterCity_Gym")];
+    const battled = [{ ...call("fight 0"), situation: "a battle" }, played({ name: "fight", move: 0 }, { status: "done", frames: 10, text: [] })];
+    expect([at(inGym), at([...inGym, ...battled]), at(inGym, "battleAction")]).toEqual(["review", "review", "normal"]);
+    expect([at([...inGym, ...reviewedHere]), at([...inGym, ...reviewedHere, ...walked])]).toEqual(["normal", "normal"]);
+    const again = [...inGym, ...reviewedHere, entered("PewterCity"), ...walked, entered("PewterCity_PokemonCenter_1F"), ...walked, entered("PewterCity"), entered("PewterCity_Gym")];
+    expect(at(again)).toBe("review");
+    expect(systemPrompt(SYSTEM, true)).toContain("The first walk after each entry into a Gym or into the Pokémon Center of the Indigo Plateau is also a review turn, with a check of the team.");
+    expect([at([...walked, entered("IndigoPlateau_PokemonCenter_1F")]), at([...walked, entered("IndigoPlateau_Exterior")]), at([...walked, entered("SaffronCity_Dojo")])]).toEqual(["review", "normal", "normal"]);
+    const decided = (n: number) => Array.from({ length: n }, () => walked).flat();
+    expect([at([...inGym, ...reviewedHere, entered("PewterCity"), ...decided(19)]), at([...inGym, ...reviewedHere, entered("PewterCity"), ...decided(20)])]).toEqual(["normal", "review"]);
+  });
+
+  test("a Reflection turn that is due at the entry into a Gym wins, and the review of the Gym does not follow it", () => {
+    const inGym = [...walked, entered("CeladonCity_Gym")];
+    const reflected = [{ ...call("go A"), stuck: 20, reflection: true }, played({ name: "goTo", x: 1, y: 1 }, { status: "done", frames: 10 })];
+    expect(turnKind("walk", inGym, { stuck: 20, since: 0 }, 1)).toBe("reflection");
+    expect(turnKind("walk", [...inGym, ...reflected], { stuck: 21, since: 0 }, 1)).toBe("normal");
+  });
+
+  test("the review of a Gym asks if the team is ready for the Gym Leader; the review of the Pokémon Center of the Indigo Plateau asks it for the Pokémon League, with the battles that follow it", () => {
+    const plain = turnRequest("review", "free", null, [entered("Route1")]);
+    const gym = turnRequest("review", "free", null, [entered("CeladonCity_Gym")]);
+    expect(gym).toContain("- You are in a Gym. Is the team ready for the Gym Leader? If not, what to buy or to train first?");
+    const league = turnRequest("review", "free", null, [entered("IndigoPlateau_PokemonCenter_1F")]);
+    expect(league).toContain("- You are in the Pokémon Center of the Indigo Plateau. After this Pokémon Center, several battles come one after the other, with no Pokémon Center between them. Is the team ready for the Pokémon League? If not, what to buy or to train first?");
+    expect([gym.length, league.length]).toEqual([plain.length + 1, plain.length + 1]);
+    expect(plain.join("\n")).not.toContain("Gym Leader");
+    expect(turnRequest("normal", "free", null, [entered("CeladonCity_Gym")])).toEqual([]);
+    expect(reviewRequestIn(gym.join("\n"))).toContain("Is the team ready for the Gym Leader?");
+  });
+});
+
+describe("the team line", () => {
+  const item = (name: string, quantity: number, effect: object) => ({ name, quantity, description: "", price: 100, battle: "pokemon", walk: "pokemon", effect });
+
+  test("each walk prompt, after the money, gives the levels of the party, the count of the items that restore HP and the count of the items that cure a status", () => {
+    const observation = route1(22, [item("POTION", 5, { hp: 20 }), item("FULL RESTORE", 1, { hp: "full", cures: ["sleep", "poison", "burn", "freeze", "paralysis", "confusion"] }), item("ANTIDOTE", 2, { cures: ["poison"] }), item("PERSIM BERRY", 3, { cures: ["confusion"] }), item("REVIVE", 4, { hp: "half", revive: true })]);
+    const [mon] = observation.party;
+    observation.party = [{ ...mon, level: 46 }, { ...mon, level: 12 }, { ...mon, level: 5 }];
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain("Money: 3080\nYour team: Lv 46, 12, 5. Your Bag has 6 items that restore HP and 3 items that cure a status.");
+  });
+
+  test("with no heal item, the line gives 0 of each; with no Pokémon, there is no line", () => {
+    const observation = route1(22, []);
+    expect(systemPrompt(SYSTEM, true)).toContain("your money, the levels of your team with the count of your items that restore HP or cure a status, your party");
+    expect(userPrompt(observation, askedOf(observation, false)!, [], NO_TURN)).toContain("Your team: Lv 6. Your Bag has 0 items that restore HP and 0 items that cure a status.");
+    const alone = { ...observation, party: [] } as Observation;
+    expect(userPrompt(alone, askedOf(alone, false)!, [], NO_TURN)).not.toContain("Your team:");
+  });
+
+  const TEAM = "Your Bag has 0 items that restore HP and 0 items that cure a status.";
+  const entered = (map: string): RunEvent => ({ type: "map", frame: 0, map });
+  const beat = (levels?: number[], trainer = "LASS ALI"): RunEvent => ({ type: "trainer", frame: 0, trainer, id: 1, ...(levels === undefined ? {} : { levels }) });
+  const teamOn = (events: RunEvent[]) => userPrompt(route1(22, []), askedOf(route1(22, []), false)!, events, NO_TURN).split("\n").find((line) => line.startsWith("Your team:"));
+
+  test("on a Gym map, the line gives the lowest and the highest level of the trainers of this Gym that you beat, also after a return from a Pokémon Center", () => {
+    const gym = [entered("CeladonCity_Gym"), beat([38, 40]), beat([43]), entered("Route7"), beat([20]), entered("FuchsiaCity_Gym"), beat([50])];
+    expect(teamOn(gym.slice(0, 3))).toBe(`Your team: Lv 6. ${TEAM} The trainers of this Gym that you beat had Pokémon at Lv 38 to 43.`);
+    expect(teamOn([...gym, entered("CeladonCity"), entered("CeladonCity_PokemonCenter_1F"), entered("CeladonCity"), entered("CeladonCity_Gym")])).toBe(`Your team: Lv 6. ${TEAM} The trainers of this Gym that you beat had Pokémon at Lv 38 to 43.`);
+    expect(teamOn([entered("PewterCity_Gym"), beat([10, 10])])).toBe(`Your team: Lv 6. ${TEAM} The trainers of this Gym that you beat had Pokémon at Lv 10.`);
+  });
+
+  test("on a Gym map with no trainer beaten, or with trainer events of an old Run record with no levels, the line has no levels; out of a Gym also", () => {
+    expect(teamOn([entered("Route7"), beat([20]), entered("CeladonCity_Gym")])).toBe(`Your team: Lv 6. ${TEAM}`);
+    expect(teamOn([entered("CeladonCity_Gym"), beat()])).toBe(`Your team: Lv 6. ${TEAM}`);
+    expect(teamOn([entered("CeladonCity_Gym"), beat([38]), entered("CeladonCity")])).toBe(`Your team: Lv 6. ${TEAM}`);
+  });
+
+  test("the line never gives the levels of a Gym Leader, of the Elite Four or of the Champion, also after their battle", () => {
+    expect(teamOn([entered("CeladonCity_Gym"), beat([38]), beat([50], "LEADER ERIKA")])).toBe(`Your team: Lv 6. ${TEAM} The trainers of this Gym that you beat had Pokémon at Lv 38.`);
+    expect(teamOn([entered("CeladonCity_Gym"), beat([50], "LEADER ERIKA")])).toBe(`Your team: Lv 6. ${TEAM}`);
+    expect(teamOn([entered("VictoryRoad_1F"), beat([42]), beat([60], "ELITE FOUR LORELEI"), beat([65], "CHAMPION BOB"), entered("IndigoPlateau_PokemonCenter_1F")])).toBe(`Your team: Lv 6. ${TEAM} The trainers of Victory Road that you beat had Pokémon at Lv 42.`);
+  });
+
+  test("at IndigoPlateau_PokemonCenter_1F, the line gives the levels of the trainers beaten on the three floors of Victory Road", () => {
+    const events = [entered("VictoryRoad_1F"), beat([42]), entered("VictoryRoad_2F"), beat([44, 47]), entered("VictoryRoad_3F"), beat([43]), entered("Route23"), beat([60]), entered("IndigoPlateau_Exterior"), entered("IndigoPlateau_PokemonCenter_1F")];
+    expect(teamOn(events)).toBe(`Your team: Lv 6. ${TEAM} The trainers of Victory Road that you beat had Pokémon at Lv 42 to 47.`);
   });
 });
 

@@ -21,6 +21,13 @@ export const MILESTONE_NAMES: Record<Milestone, string> = {
   "badge-6": "Sabrina",
   "badge-7": "Blaine",
   "badge-8": "Giovanni",
+  "victory-road": "Victory Road",
+  "indigo-plateau": "Indigo Plateau",
+  "elite-four-1": "Lorelei",
+  "elite-four-2": "Bruno",
+  "elite-four-3": "Agatha",
+  "elite-four-4": "Lance",
+  champion: "Champion",
 };
 
 function titleCase(name: string): string {

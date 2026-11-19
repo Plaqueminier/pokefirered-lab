@@ -367,7 +367,7 @@ export function InfoCardDemo() {
   return (
     <div class="grid gap-3 sm:grid-cols-3">
       <InfoCard title="🚶 Walk" lines={["the map as a grid: ? not seen, a letter is a target", "the targets, with distance and direction"]} chips={["go", "goTo", "use", "zoom"]} />
-      <InfoCard icon={Trophy} tone="ok" title="goal" lines={["the goal Milestone is reached", <>with no goal: <Code>badge-8</Code></>]} />
+      <InfoCard icon={Trophy} tone="ok" title="goal" lines={["the goal Milestone is reached", <>with no goal: <Code>champion</Code></>]} />
       <InfoCard icon={Coins} tone="warn" title="cost limit" lines={["the Model calls cost more than the limit"]} />
       <InfoCard icon={Skull} tone="bad" title="whiteout" lines={["all the Pokémon of the party faint"]} />
       <InfoCard title="Title only" />

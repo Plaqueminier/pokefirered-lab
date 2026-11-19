@@ -8,7 +8,7 @@ import type { Run } from "../run";
 import { type GameWatchSnapshot, originDifferences, type RunRecord, RUNS_DIR } from "./record";
 
 // The shape check finds a new or a removed field only: a field with a new meaning needs a new format.
-const CHECKPOINT_FORMAT = 1;
+const CHECKPOINT_FORMAT = 2;
 
 type EmulatorState = { state: Uint8Array; flash: Uint8Array };
 

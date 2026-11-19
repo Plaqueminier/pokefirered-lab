@@ -30,7 +30,7 @@ import { REPO_DIR, readMapJsons, readSectionNames } from "./map-data";
 import { EventReads, FLAG_HIDDEN_ITEMS_COUNT, FLAG_HIDDEN_ITEMS_START, FLAG_SYS_FLASH_ACTIVE, FLAG_SYS_USE_STRENGTH, isTemporaryFlag, TRAINER_FLAGS_COUNT, TRAINER_FLAGS_START } from "./event-reads";
 import type { Inventory } from "./inventory";
 import { bitAt, type Memory, type Ref } from "./memory";
-import { keyboardBytes, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, scriptListMenu, startMenu, type WordScreen, wordScreen } from "./menus";
+import { keyboardBytes, FLAG_SYS_GAME_CLEAR, FLAG_SYS_POKEDEX_GET, multichoice, multichoiceGrid, type NamingScreen, namingScreen, partyLearnMoveBox, type PartyMenu, partyMenu, pcMenu, playerPcMenu, ppMoveCursor, SCRIPT_CONTEXT_SHUTDOWN, scriptListMenu, startMenu, type WordScreen, wordScreen } from "./menus";
 import { type BoxMon, nameAt, newMove, type PartyMon, type PartyMove, readBoxMons, readParty } from "./party";
 import { currentBox, itemPcRow, itemStorageCursor, type PcItem, pcItems, pcQuantity, pcTransfer, pokemonPcCursor, storageScreen, type StorageScreen, withdrawMenuCursor } from "./pc";
 import { activeTask, type Choice, type Decode, decoder, type Messages, oneLine, Prompts } from "./prompts";
@@ -53,13 +53,25 @@ const NATIONAL_DEX_MAGIC = 0xb9;
 // EndRivalBattle sets it after the first rival battle, won or lost.
 const FLAG_BEAT_RIVAL_IN_OAKS_LAB = 0x258;
 const BADGES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const ELITE_FOUR = [1, 2, 3, 4] as const;
+// The game sets these flags at the first entry into the map.
+const FLAG_WORLD_MAP_VICTORY_ROAD_1F = 0x8aa;
+const FLAG_WORLD_MAP_INDIGO_PLATEAU_EXTERIOR = 0x899;
+// The 4 flags of the Elite Four are in a row: Lorelei, Bruno, Agatha, Lance.
+const FLAG_DEFEATED_LORELEI = 0x4b8;
 const MILESTONE_FLAGS: [Milestone, number][] = [
   ["has-pokemon", FLAG_SYS_POKEMON_GET],
   ["first-rival-battle", FLAG_BEAT_RIVAL_IN_OAKS_LAB],
   ["pokedex", FLAG_SYS_POKEDEX_GET],
   ...BADGES.map((n): [Milestone, number] => [`badge-${n}`, badgeFlag(n)]),
+  ["victory-road", FLAG_WORLD_MAP_VICTORY_ROAD_1F],
+  ["indigo-plateau", FLAG_WORLD_MAP_INDIGO_PLATEAU_EXTERIOR],
+  ...ELITE_FOUR.map((n): [Milestone, number] => [`elite-four-${n}`, FLAG_DEFEATED_LORELEI + n - 1]),
+  // Not FLAG_DEFEATED_CHAMP: DoWhiteOut and the Hall of Fame clear it.
+  ["champion", FLAG_SYS_GAME_CLEAR],
 ];
 export const MILESTONES: readonly Milestone[] = MILESTONE_FLAGS.map(([milestone]) => milestone);
+export const LAST_MILESTONE = MILESTONES[MILESTONES.length - 1];
 // CB2_BuyMenu draws the map behind the buy list, so the map stays the same.
 const OVERWORLD_CALLBACKS = new Set(["CB2_Overworld", "CB2_OverworldBasic", "CB2_BuyMenu"]);
 const BATTLE_START_CALLBACKS = new Set(["CB2_InitBattle", "CB2_HandleStartBattle"]);
@@ -101,6 +113,25 @@ const TRAINER_TYPE_NORMAL = 1;
 const VARS_START = 0x4000;
 const SPECIAL_VARS_START = 0x8000;
 const VAR_REPEL_STEP_COUNT = 0x4020;
+// The flags and vars that the map scripts of a map read when the map loads, and that the scripts of another map change.
+// The OnTransition script of Route 23 resets the vars of the Victory Road floor switches.
+// The hide flags of the boulders are not here: the Atlas reads them at each look.
+const FLAG_POKEMON_MANSION_SWITCH_STATE = 0x26c;
+const VAR_MAP_SCENE_VICTORY_ROAD_1F = 0x4064;
+const VAR_MAP_SCENE_VICTORY_ROAD_2F_BOULDER1 = 0x4065;
+const VAR_MAP_SCENE_VICTORY_ROAD_2F_BOULDER2 = 0x4066;
+const VAR_MAP_SCENE_VICTORY_ROAD_3F = 0x4067;
+type ScriptValue = { flag: number } | { var: number };
+const MANSION_SWITCH: ScriptValue[] = [{ flag: FLAG_POKEMON_MANSION_SWITCH_STATE }];
+const MAP_SCRIPT_VALUES: Record<string, ScriptValue[]> = {
+  PokemonMansion_1F: MANSION_SWITCH,
+  PokemonMansion_2F: MANSION_SWITCH,
+  PokemonMansion_3F: MANSION_SWITCH,
+  PokemonMansion_B1F: MANSION_SWITCH,
+  VictoryRoad_1F: [{ var: VAR_MAP_SCENE_VICTORY_ROAD_1F }],
+  VictoryRoad_2F: [{ var: VAR_MAP_SCENE_VICTORY_ROAD_2F_BOULDER1 }, { var: VAR_MAP_SCENE_VICTORY_ROAD_2F_BOULDER2 }],
+  VictoryRoad_3F: [{ var: VAR_MAP_SCENE_VICTORY_ROAD_3F }],
+};
 const DIRECTION_OF_DIR: Record<number, Direction> = { 1: "south", 2: "north", 3: "west", 4: "east" };
 // BG_EVENT_PLAYER_FACING_NORTH, _SOUTH, _EAST and _WEST.
 const SIGN_PLAYER_FACING: Record<number, Direction> = { 1: "north", 2: "south", 3: "east", 4: "west" };
@@ -115,7 +146,7 @@ const SCRIPT_MODE_NATIVE = 2;
 const MAP_SCRIPT_ON_FRAME_TABLE = 2;
 const MAP_SCRIPT_ENTRY_SIZE = 5;
 const MAP_SCRIPT_ROW_SIZE = 8;
-export type Milestone = "has-pokemon" | "first-rival-battle" | "pokedex" | `badge-${(typeof BADGES)[number]}`;
+export type Milestone = "has-pokemon" | "first-rival-battle" | "pokedex" | `badge-${(typeof BADGES)[number]}` | "victory-road" | "indigo-plateau" | `elite-four-${(typeof ELITE_FOUR)[number]}` | "champion";
 
 export type GameState = {
   map: { group: number; num: number; name: string };
@@ -829,7 +860,8 @@ export class Game {
     return party.map((_, i) => party[battleMenuSlot(this.mem, i)]);
   }
 
-  milestones(): Milestone[] {
+  /** The Milestones of the flags now: a whiteout clears the flags of the Elite Four. See `GameWatch.milestones`. */
+  milestoneFlags(): Milestone[] {
     return MILESTONE_FLAGS.filter(([, flag]) => this.flag(flag)).map(([milestone]) => milestone);
   }
 
@@ -1211,6 +1243,11 @@ export class Game {
 
   repelActive(): boolean {
     return this.varGet(VAR_REPEL_STEP_COUNT) !== 0;
+  }
+
+  /** The values now of the flags and vars that the map scripts of `map` read (MAP_SCRIPT_VALUES), as one text. It is empty for a map with none. */
+  mapScriptKey(map: string): string {
+    return (MAP_SCRIPT_VALUES[map] ?? []).map((v) => ("flag" in v ? Number(this.flag(v.flag)) : this.varGet(v.var))).join(" ");
   }
 
   /** Value of a script variable, as VarGet() returns it. Null for special variables. */

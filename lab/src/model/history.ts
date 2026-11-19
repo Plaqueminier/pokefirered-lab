@@ -192,8 +192,9 @@ function statusText(result: Try["result"]): string {
   return effect ? `${status}, ${effect}` : status;
 }
 
-function effectText({ push, slidTo }: Try["result"]): string | null {
+function effectText({ push, slidTo, padTo }: Try["result"]): string | null {
   if (push) return pushText(push);
+  if (padTo) return `you stepped on the pad and it led you to (${padTo.x}, ${padTo.y})`;
   return slidTo ? `you stepped on the spin tile and slid to (${slidTo.x}, ${slidTo.y})` : null;
 }
 

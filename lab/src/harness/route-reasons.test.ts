@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AtlasMap } from "./atlas";
-import type { Leg, MapSource, RouteMap } from "./path";
-import { closedOnRouteMaps, elevationReason, LoopGuard } from "./route-reasons";
+import { elevationReason, LoopGuard } from "./route-reasons";
 
 const cliff = (elevations: string): AtlasMap => ({
   name: "Cliff",
@@ -40,24 +39,11 @@ describe("a goTo to another elevation", () => {
   });
 });
 
-describe("the cells that a route of the map data needs, and that a map script closed before the last step", () => {
-  const floor = (name: string, kinds: string): RouteMap => ({ name, kinds, x0: 0, y0: 0, width: 3, height: 1, mapWidth: 3, mapHeight: 1, blocks: [0, 0, 0], warps: [], connections: [], people: [], obstacles: [], removable: [], flyDestinations: [], stepFrames: 16 });
-  const lastSteps: MapSource = (name) => floor(name, name === "SilphCo_3F" ? ".#." : "...");
-  const rom: MapSource = (name) => floor(name, "...");
-
-  test("names each cell of the maps of the route that is open in the map data and closed now", () => {
-    const route: Leg[] = [{ map: "SilphCo_2F", moves: [] }, { map: "SilphCo_3F", moves: [] }];
-    expect(closedOnRouteMaps(route, lastSteps, rom)).toEqual(["SilphCo_3F (1, 0)"]);
-  });
-
-  test("a walk that arrives again on a cell of another map stops, and the reason names the closed cells of the routes of the map data", () => {
+describe("a walk that arrives again on a map", () => {
+  test("a walk that arrives again on a cell of another map stops", () => {
     const loop = new LoopGuard();
     const on = (map: string) => ({ map, x: 1, y: 0 });
-    expect([loop.arrive(on("SilphCo_2F")), loop.arrive(on("SilphCo_3F"))]).toEqual([null, null]);
-    loop.romRoute([{ map: "SilphCo_3F", moves: [] }], lastSteps, rom);
-    expect(loop.arrive(on("SilphCo_2F"))).toBeNull();
-    expect(loop.arrive(on("SilphCo_3F"))).toBe(
-      "the walk arrives again at SilphCo_3F (1, 0): the way to the target through the other maps is not open; on the maps of the route, the map data has SilphCo_3F (1, 0) open, but a map script closed them before your last step there",
-    );
+    expect([loop.arrive(on("SilphCo_2F")), loop.arrive(on("SilphCo_3F")), loop.arrive(on("SilphCo_2F"))]).toEqual([null, null, null]);
+    expect(loop.arrive(on("SilphCo_3F"))).toBe("the walk arrives again at SilphCo_3F (1, 0): the way to the target through the other maps is not open");
   });
 });

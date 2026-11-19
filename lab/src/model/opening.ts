@@ -9,7 +9,7 @@ import { type AnswerFormat, DECISION_FORMAT } from "./openrouter";
 import { battleSystemPrompt, systemPrompt, type TurnKind, turnRequest, userPrompt } from "./prompt";
 
 /** The version of the model bot. A change of what the bot sends to the model needs a new version, here and in the README. */
-export const BOT_VERSION = "51";
+export const BOT_VERSION = "52";
 
 const TURN_FORMATS: Record<TurnKind, AnswerFormat> = {
   normal: DECISION_FORMAT,
@@ -37,7 +37,7 @@ export function openingPrompt(settings: ModelSettings, { observation, before, ev
   const coached = settings.coach !== undefined;
   const { plays, advises } = coachRole(coached, turn, asked);
   const battle = inBattle(asked);
-  const request = [...turnRequest(turn, settings.starter, names), ...(advises ? ADVICE_REQUEST : [])];
+  const request = [...turnRequest(turn, settings.starter, names, events), ...(advises ? ADVICE_REQUEST : [])];
   const advice = coached ? [...(battle ? battleAdviceLine(events) : adviceLine(events)), ...wantLines(events, asked, observation.bag)] : [];
   const limits = { whiteoutLimit: settings.whiteoutLimit, timeLimit: settings.timeLimit, whiteouts, frame };
   const user = userPrompt(observation, asked, events, { noProgress, turn, happened, request, memory: memory.lines, advice, limits });

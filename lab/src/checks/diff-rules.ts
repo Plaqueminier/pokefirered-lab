@@ -18,7 +18,7 @@ const PHRASAL_VERBS: Record<string, string[]> = {
   up: ["set", "pick", "look", "give", "end", "show", "make", "speed", "clean", "wake", "come", "fill", "sum"],
   out: ["find", "carry", "point", "figure", "run", "sort", "work", "fill", "rule", "leave", "try", "check", "print"],
   back: ["put", "go", "come", "give", "bring", "get", "send", "fall"],
-  down: ["slow", "shut", "write", "break", "narrow", "calm"],
+  down: ["slow", "shut", "write", "break", "narrow", "calm", "round"],
   over: ["take", "hand"],
   away: ["go", "give", "throw", "put"],
 };

@@ -17,7 +17,7 @@ const MULTICHOICE_NONE = 255;
 // While the script waits, the id of the special is the u16 3 bytes before the script pointer.
 const SPECIAL_ID_OFFSET = 3;
 export const FLAG_SYS_POKEDEX_GET = 0x829;
-const FLAG_SYS_GAME_CLEAR = 0x82c;
+export const FLAG_SYS_GAME_CLEAR = 0x82c;
 const FLAG_SYS_NOT_SOMEONES_PC = 0x834;
 const PC_STORAGE_PLACE = 0;
 // The script pointer is past the command multichoicegrid: the id of the menu is the third of its five bytes, so it is 3 bytes before the pointer.

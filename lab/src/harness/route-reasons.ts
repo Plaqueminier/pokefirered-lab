@@ -1,7 +1,7 @@
 import { KIND } from "../cells";
 import { destinationNow, type FieldMove, type Obstacle } from "../game";
 import { type Atlas, type AtlasMap, atlasCells, blockedText, cellAt, elevationSplit, personName, seenIn } from "./atlas";
-import { allCells, type BlockOf, type Cell, type Destination, inside, type Leg, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson, walkable } from "./path";
+import { allCells, type BlockOf, type Cell, type Destination, inside, MAX_ROUTE_MAPS, type MapSource, obstacleOnRoute, pastEdge, type Place, type RouteMap, type RoutePerson } from "./path";
 import { partAt, partNear, slidesLeaving } from "./slides";
 
 export type Remedies = { move: (move: FieldMove) => string; obstacle: (obstacle: Obstacle) => string };
@@ -45,6 +45,7 @@ function elevatorReason(here: Place, asked: Place, maps: MapSource): string | nu
 export function stayingReason(person: RoutePerson & Place, { maps: known }: Atlas): string {
   const seen = known.find((m) => m.name === person.map)?.people.find((p) => p.x === person.x && p.y === person.y);
   if (!seen) return "a person or an object that you did not see stands on the only way on the cells that you saw";
+  if (seen.texts.length > 0) return `you talked to the ${personName(seen)} at ${at(person)}, and it does not leave after a talk: something else must happen in the game first. Explore other places, and come back later`;
   return `the ${personName(seen)} at ${at(person)} stands on the only way on the cells that you saw, and it does not leave by itself. Walk next to it and interact with it, or look for another way`;
 }
 
@@ -68,20 +69,9 @@ export function elevationReason(map: AtlasMap, here: Cell, asked: Cell): string 
   return `(${asked.x}, ${asked.y}) is on another level of ${map.name} than you, and no stairs that you saw join the two levels. A step from one level to the next is possible only on stairs, and no route that you know reaches it now: explore other exits first`;
 }
 
-/** The cells of the maps of `route` that the map data has open, and that a map script closed before the last step of the player on these maps. */
-export function closedOnRouteMaps(route: readonly Leg[], lastSteps: MapSource, rom: MapSource): string[] {
-  return [...new Set(route.map((leg) => leg.map))].flatMap((name) => {
-    const now = lastSteps(name);
-    const data = rom(name);
-    if (!now || !data) return [];
-    return allCells(data).filter((c) => walkable(data, c) && !walkable(now, c)).map((c) => at({ map: name, ...c }));
-  });
-}
-
 /** Stops a walk that arrives on another map at a cell where an earlier leg of the same walk arrived. */
 export class LoopGuard {
   readonly #arrivals = new Set<string>();
-  readonly #closed = new Set<string>();
   #lastMap: string | null = null;
 
   /** The reason to stop when the walk arrives again at `here`. */
@@ -89,18 +79,8 @@ export class LoopGuard {
     const arrived = this.#lastMap !== null && here.map !== this.#lastMap;
     this.#lastMap = here.map;
     if (!arrived) return null;
-    if (this.#arrivals.has(at(here))) return loopReason(here, [...this.#closed]);
+    if (this.#arrivals.has(at(here))) return `the walk arrives again at ${at(here)}: the way to the target through the other maps is not open`;
     this.#arrivals.add(at(here));
     return null;
   }
-
-  /** The walk takes a route on the cells of the ROM: the reason names the cells that it can need. */
-  romRoute(route: readonly Leg[], lastSteps: MapSource, rom: MapSource): void {
-    for (const cell of closedOnRouteMaps(route, lastSteps, rom)) this.#closed.add(cell);
-  }
-}
-
-function loopReason(here: Place, closed: readonly string[]): string {
-  const cells = closed.length > 0 ? `; on the maps of the route, the map data has ${closed.join(", ")} open, but a map script closed them before your last step there` : "";
-  return `the walk arrives again at ${at(here)}: the way to the target through the other maps is not open${cells}`;
 }

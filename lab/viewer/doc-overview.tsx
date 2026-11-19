@@ -70,6 +70,7 @@ export function PrinciplePage() {
           "what the Run knows of the world. It has the maps visited and the cells seen on the screen: 15 × 10, or 3 × 3 on a Dark map with no FLASH at the `player` level. " +
             "On the map of the player, the cells are the cells of the game now. On another map, they are the cells of that map at the last step of the player on it, after its map scripts. " +
             "The ROM has the Card Key doors of Silph Co. open, and the map scripts close them. So the cells of the ROM stay only for a map with no step of the player on it. " +
+            "Some map scripts read a flag or a var that another map changes, on Pokémon Mansion and Victory Road. There the cells are those of the last step with the values now. With no such step, they are the cells of the ROM. " +
             "The route of a goTo uses the same cells. The exits of another map stay the exits of the ROM: the game sets the destination of an Elevator exit again at each entry. " +
             "The Atlas has the exits taken, with their destination and arrival cell. A flight with FLY is not an exit. " +
             "An Elevator exit has one destination for each floor that the player reached by it or came from. At the `full` level, it has one for each map with a warp to the Elevator that the player can take. " +
@@ -194,7 +195,7 @@ export function GridPage() {
         ["Cost", "the form “Bots” shows the maximum total cost of its N Runs, or the maximum total tokens on a Plan provider. Each Run keeps its own limit."],
         ["Smaller Grid", "a replay in a cell that goes away leaves the Grid."],
         ["Ended Runs", "an ended live Run keeps its cell until you remove it: the X of its cell, or “Remove N ended” in the bar. It also leaves the Run select. Its Run record stays, so you can still replay it or continue it."],
-        ["Continue", "the button “Continue” of an ended Run opens the form “Bots” on its Run record, with “Keep the same Run” on. After the end reason `whiteout` or `time limit`, this checkbox is off and disabled, so the form starts a Continued Run. Other Runs can play at the same time."],
+        ["Continue", "the button “Continue” of an ended Run opens the form “Bots” on its Run record, with “Keep the same Run” on. After the end reason `whiteout` or `time limit`, or `goal` at `champion`, this checkbox is off and disabled, so the form starts a Continued Run. Other Runs can play at the same time."],
         ["Reload", "the Grid does not keep its replays when the last page closes. The live Runs fill it again."],
         ["Errors", "a worker that fails, or a Run record of another origin, shows its error in its cell."],
         ["Lab tab only", "the panels, the Timeline, the keyboard, the speed and the savestate are for the shown Run. The Grid has no sound, and the arrow keys scroll the page."],

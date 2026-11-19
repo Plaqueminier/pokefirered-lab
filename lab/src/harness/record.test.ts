@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import starter from "./scripted-bot";
 import { extendProblem, TRACK_POINT } from "../protocol";
-import { ROM_FILE, SAVES_DIR, START_SAVE } from "../run";
+import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { type Bot, Harness, must, type RunResult } from "./harness";
 import { withoutFormat } from "./game-events";
 import { migrate } from "./migrate";
@@ -94,15 +94,27 @@ describe("recordFacts", () => {
     await write(dir, "00002-model-20-b.json", { ...header, bot: { name: "model", version: "20", model } });
     await write(dir, "00003-test-1-c.json", { ...header, parent: "00001-test-1-a.json" });
     const facts = await recordFacts(["00001-test-1-a.json", "00002-model-20-b.json", "00003-test-1-c.json"], dir);
-    expect(facts["00001-test-1-a.json"]).toEqual({ bot: "test", version: "1", model: null, continued: true, endReason: "goal" });
+    expect(facts["00001-test-1-a.json"]).toEqual({ bot: "test", version: "1", model: null, continued: true, endReason: "goal", atLastMilestone: false });
     expect(facts["00002-model-20-b.json"]).toEqual({
       bot: "model",
       version: "20",
       model: { id: "gpt-x", provider: "codex", reasoning: "low", thinking: "medium", starter: "free", whiteoutLimit: null, timeLimit: null, limit: { unit: "tokens", amount: 30_000_000 } },
       continued: false,
       endReason: "goal",
+      atLastMilestone: false,
     });
     expect(facts["00003-test-1-c.json"].continued).toBe(false);
+  });
+
+  test("it tells if a Run record ended with the last Milestone, also for a file with the header after the buttons", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runs-"));
+    const atBadge8: RunResult = { ...result, milestones: ["has-pokemon", "first-rival-battle", "pokedex", "badge-1", "badge-8"] };
+    const atChampion: RunResult = { ...result, milestones: [...atBadge8.milestones, "victory-road", "indigo-plateau", "champion"] };
+    await Bun.write(join(dir, "00001-a.json"), JSON.stringify({ format: 3, header, buttons: [[0, 6]], events: [], result: atBadge8 }));
+    await Bun.write(join(dir, "00002-b.json"), JSON.stringify({ format: 3, header, buttons: [[0, 6]], events: [], result: atChampion }));
+    await Bun.write(join(dir, "00003-old.json"), JSON.stringify({ buttons: [[0, 6]], events: [], result: atChampion, header }));
+    const facts = await recordFacts(["00001-a.json", "00002-b.json", "00003-old.json"], dir);
+    expect([facts["00001-a.json"].atLastMilestone, facts["00002-b.json"].atLastMilestone, facts["00003-old.json"].atLastMilestone]).toEqual([false, true, true]);
   });
 
   test("it reads a file with the header after the buttons as a whole, and it has no facts for a file that is not a Run record", async () => {
@@ -144,13 +156,19 @@ test("a replay of an Extended Run starts its limit at its last earlier part; a R
 });
 
 test("a Run record cannot play on in the same Run with no header, with a Run record that continues it, while a Run plays from it, or after it ended at one of its limits", () => {
-  const facts = { bot: "model", version: "20", model: null, continued: false, endReason: "token limit" } as const;
+  const facts = { bot: "model", version: "20", model: null, continued: false, endReason: "token limit", atLastMilestone: false } as const;
   expect(extendProblem(facts, false)).toBeNull();
   expect(extendProblem(undefined, false)).toContain("no header");
   expect(extendProblem({ ...facts, continued: true }, false)).toContain("continues this one");
   expect(extendProblem(facts, true)).toContain("plays from");
   expect(extendProblem({ ...facts, endReason: "whiteout" }, false)).toBe("The Run ended at its whiteout limit.");
   expect(extendProblem({ ...facts, endReason: "time limit" }, false)).toBe("The Run ended at its time limit.");
+});
+
+test("a Run record that ended with goal at an older goal, badge-8, can play on in the same Run; a Run record that ended with goal at champion cannot", () => {
+  const facts = { bot: "model", version: "49", model: null, continued: false, endReason: "goal", atLastMilestone: false } as const;
+  expect(extendProblem(facts, false)).toBeNull();
+  expect(extendProblem({ ...facts, atLastMilestone: true }, false)).toBe("The Run ended at the last Milestone.");
 });
 
 describe("isRunRecord", () => {
@@ -202,7 +220,7 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
       { type: "faint", species: "BULBASAUR", side: "enemy" },
       { type: "money", before: 3000, after: 3080, cause: "battle" },
       { type: "battle", state: "end" },
-      { type: "trainer", trainer: "RIVAL BOB", id: 327 },
+      { type: "trainer", trainer: "RIVAL BOB", id: 327, levels: [5] },
       { type: "level", species: "SQUIRTLE", from: 5, level: 6, moves: [], evolution: null },
       { type: "heal", source: "other", item: null, party: [{ species: "SQUIRTLE", before: 7, after: 22, maxHp: 22 }] },
       { type: "milestone", milestone: "first-rival-battle" },
@@ -216,6 +234,17 @@ describe.skipIf(!ready)("Run record on the Starting save", () => {
     expect(replayed.frame).toBe(harness.frame);
     expect(replayed.screen).toBe(harness.screenHash());
     expect((await replay({ ...record, header: { ...record.header, seed: 1 } })).screen).not.toBe(harness.screenHash());
+  });
+
+  test("a trainer event has the levels of the party of the trainer, from gTrainers, for each of the four kinds of party", async () => {
+    const run = await Run.open();
+    try {
+      const reads = run.game.eventReads();
+      expect([89, 414, 317, 410].map((id) => reads.trainerLevels(id))).toEqual([[11, 11], [12, 14], [37, 37], [52, 51, 52, 54, 54]]);
+      expect(reads.trainerLevels(743)).toEqual([]);
+    } finally {
+      run.core.close();
+    }
   });
 
   test("a Run with another seed keeps that seed in its Run record, and its replay plays with that seed: the same Game events, the same frames and the same screen", async () => {

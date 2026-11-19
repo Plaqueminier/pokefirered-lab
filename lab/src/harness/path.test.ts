@@ -208,10 +208,10 @@ describe("destinationOf", () => {
 
   test("an exit is reached at its arrival or on the next cell, where a door moves the player, and not on another cell of its map: the route can pass through this map first", () => {
     const exit = { map: "B", x: 5, y: 5, exit: true };
-    expect(reached(exit, { map: "B", x: 5, y: 5 })).toBe(true);
-    expect(reached(exit, { map: "B", x: 5, y: 6 })).toBe(true);
-    expect(reached(exit, { map: "B", x: 20, y: 5 })).toBe(false);
-    expect(reached(exit, { map: "A", x: 5, y: 5 })).toBe(false);
+    expect(reached(exit, { map: "B", x: 5, y: 5 }, false)).toBe(true);
+    expect(reached(exit, { map: "B", x: 5, y: 6 }, false)).toBe(true);
+    expect(reached(exit, { map: "B", x: 20, y: 5 }, false)).toBe(false);
+    expect(reached(exit, { map: "A", x: 5, y: 5 }, false)).toBe(false);
   });
 
   test("stairs stay a cell with a map, and with no map they are an exit", () => {

@@ -15,7 +15,7 @@ export type StateEvent =
   | { type: "faint"; species: string; side: "player" | "enemy" }
   | { type: "level"; species: string; from: number; level: number; moves: string[]; evolution: string | null }
   | { type: "money"; before: number; after: number; cause: "purchase" | "sale" | "battle" | "whiteout" | "other" }
-  | { type: "trainer"; trainer: string; id: number }
+  | { type: "trainer"; trainer: string; id: number; levels?: number[] }
   | { type: "obstacle"; move: FieldMove; map: string; x: number; y: number; species: string }
   | { type: "flash"; map: string; species: string }
   | { type: "surf"; map: string; x: number; y: number; species: string }
@@ -181,7 +181,7 @@ export class StateWatch {
     if (money !== 0) events.push({ type: "money", before: before.keys.money, after: after.keys.money, cause: moneyCause(money, purchase !== null, spent.length > 0, moment) });
     const used = money === 0 ? (spent[0]?.[0] ?? null) : null;
     events.push(...this.#partyEvents(before.party, after.party, used, moment));
-    for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: reads.trainerName(id), id });
+    for (const id of flags?.trainers ?? []) events.push({ type: "trainer", trainer: reads.trainerName(id), id, levels: reads.trainerLevels(id) });
     events.push(...this.#obstacleEvents(flags?.temporary ?? [], after.party));
     if (flags?.flash) events.push(...this.#flashEvent(after.party));
     if (flags?.strength) events.push(...this.#strengthEvent(after.party));

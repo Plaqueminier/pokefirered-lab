@@ -1,18 +1,17 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { modelBot } from "../../bots/model";
 import { atlasExtract } from "../model/extract";
 import type { ModelClient } from "../model/openrouter";
 import { FLAG_SYS_B_DASH } from "../game";
 import { decryptBox } from "../party";
-import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
+import { ROM_FILE, Run, START_SAVE } from "../run";
 import { cellAt, mapNamed } from "./atlas";
+import { openAt, overworld, PALLET_DOOR, PARTY_SAVE, setFlag, VARS_START, warpPatch } from "./game-fixtures";
 import { type ActionEntry, type Bot, Harness, must } from "./harness";
 
 setDefaultTimeout(60_000);
 
-const PARTY_SAVE = join(SAVES_DIR, "test-party.sav");
 const FLAG_BADGE01_GET = 0x820;
 const FLAG_BADGE02_GET = 0x821;
 const FLAG_BADGE05_GET = 0x824;
@@ -26,33 +25,7 @@ const ITEM_TM_CASE = 364;
 const TM_CASE_POCKET = 3;
 const KEY_ITEMS_POCKET = 1;
 const MAP_WIDTH = 48;
-const PALLET_DOOR = { x: 6, y: 7 };
 const THIRD_MOVE_OFFSET = 4;
-
-type WarpTo = { map: string; x: number; y: number };
-
-function warpPatch(run: Run, first: WarpTo, wild: boolean): { onFrame: () => void; warpTo: (next: WarpTo) => void } {
-  let target: WarpTo | null = first;
-  const warp = run.game.mem.global("sWarpDestination");
-  return {
-    warpTo: (next) => {
-      target = next;
-    },
-    onFrame: () => {
-      if (!wild) run.core.patch16(run.game.mem.global("sWildEncountersDisabled").addr, 1);
-      if (!target) return;
-      if (run.game.map().name === target.map) {
-        target = null;
-        return;
-      }
-      const group = run.game.allMapNames.findIndex((names) => target !== null && names.includes(target.map));
-      run.core.patch16(warp.addr, group | (run.game.allMapNames[group].indexOf(target.map) << 8));
-      run.core.patch16(warp.field("warpId").addr, 0xff);
-      run.core.patch16(warp.field("x").addr, target.x);
-      run.core.patch16(warp.field("y").addr, target.y);
-    },
-  };
-}
 
 function firstAnswer(users: string[], first: (user: string) => string): ModelClient {
   return async ({ user }) => {
@@ -60,23 +33,6 @@ function firstAnswer(users: string[], first: (user: string) => string): ModelCli
     const action = users.length === 1 ? first(user) : "I do not know";
     return { content: JSON.stringify({ reason: "r", action, mission: "m", objective: "o", note: "" }), usage: { promptTokens: 1, cachedTokens: 0, completionTokens: 1, reasoningTokens: 0, cost: 0 } };
   };
-}
-
-async function openAt(map: string, x: number, y: number, wild = true): Promise<{ harness: Harness; run: Run; warpTo: (next: WarpTo) => void }> {
-  const run = await Run.open({ startSave: PARTY_SAVE });
-  const { onFrame, warpTo } = warpPatch(run, { map, x, y }, wild);
-  const harness = await Harness.open({ onFrame }, run);
-  await harness.goTo(PALLET_DOOR.x, PALLET_DOOR.y);
-  expect(harness.observe()).toMatchObject({ map: { name: map }, player: { x, y } });
-  return { harness, run, warpTo };
-}
-
-function setFlag(run: Run, flag: number): void {
-  const flags = run.game.mem.global("gSaveBlock1Ptr").deref().field("flags");
-  const at = flags.addr + (flag >> 3);
-  const even = at & ~1;
-  const [low, high] = run.core.read(even, 2);
-  run.core.patch16(even, (low | (high << 8)) | (1 << ((flag & 7) + (at === even ? 0 : 8))));
 }
 
 function patchSecure(run: Run, slot: number, part: "growth" | "attacks", offset: number, value: number): void {
@@ -497,7 +453,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("SURF, on real
 });
 
 const FLAG_GOT_BICYCLE = 0x271;
-const VARS_START = 0x4000;
 const PLAYER_AVATAR_FLAG_SURFING = 1 << 3;
 const TRAINER_FLAGS_START = 0x500;
 const TRAINER_FLAGS_END = 0x800;
@@ -651,12 +606,6 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the speed of 
     harness.close();
   });
 });
-
-function overworld(harness: Harness) {
-  const seen = harness.observe();
-  if (seen.mode !== "overworld") throw new Error(`the game waits for a ${seen.waitingFor.kind}`);
-  return seen;
-}
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(PARTY_SAVE))("the BICYCLE", () => {
   test("use BICYCLE registers it one time, then a use takes 2 frames, and the Bag and a walk prompt offer it", async () => {

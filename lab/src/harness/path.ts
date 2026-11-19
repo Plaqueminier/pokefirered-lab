@@ -49,8 +49,11 @@ type Step = { move: Move } | { fly: FlyDestination };
 type Edge = Step & { to: Place; cost: number; leaves: boolean };
 type Link = Step & { from: string; leaves: boolean; to: Place };
 
-/** With `exit`, the destination is the arrival of an exit: it can be a cell where the player cannot stand (the arrival of a door is a blocked cell), and the player reaches it when it arrives on its map. */
-export type Destination = Place & { exit?: boolean };
+/**
+ * With `exit`, the destination is the arrival of an exit: it can be a cell where the player cannot stand (the arrival of a door is a blocked cell), and the player reaches it when it arrives on its map.
+ * With `pad`, the destination is the arrival of a Same-map pad, and a route to it ends with a step onto the pad.
+ */
+export type Destination = Place & { exit?: boolean; pad?: Cell };
 
 export function findRoute(from: Place, to: Destination, mapOf: MapSource): Leg[] | null {
   const links = search(from, to, mapOf);
@@ -104,32 +107,36 @@ function search(from: Place, to: Destination, mapOf: MapSource): Link[] | null {
   };
   const flownFrom = new Set<string>();
   const target = load(to.map);
-  if (!load(from.map) || !target || !(to.exit || free(target, to) || removableAt(target, to))) return null;
+  const cell = to.pad ?? to;
+  if (!load(from.map) || !target || !(to.exit || free(target, cell) || removableAt(target, cell))) return null;
 
   const id = (p: Place) => `${p.map}:${p.x},${p.y}`;
+  const goal = to.pad ? "pad" : id(to);
+  // The arrival of a Same-map pad is the end of a route only after a step onto the pad, so this step leads to a node of its own.
+  const keyOf = (place: Place, edge: Step & { to: Place; leaves: boolean }) => (to.pad && "move" in edge && edge.leaves && place.map === to.map && stepsOnto(place, edge.move.direction, to.pad) ? goal : id(edge.to));
   // A flight, or a warp to the same map (the pads of a gym), can cost less than the steps that it saves.
   const selfWarp = target.warps.some((w) => w.to === target.name);
   const fastestStep = Math.min(target.stepFrames, WATER_STEP_FRAMES);
   const estimate = (p: Place) => (p.map !== to.map || selfWarp ? 0 : Math.min(FLY_FRAMES, fastestStep * (Math.abs(p.x - to.x) + Math.abs(p.y - to.y))));
   const cost = new Map<string, number>([[id(from), 0]]);
   const cameFrom = new Map<string, Link>();
-  const open = new Queue<Place>();
-  open.push(from, estimate(from));
+  const open = new Queue<{ place: Place; key: string }>();
+  open.push({ place: from, key: id(from) }, estimate(from));
 
-  for (let place = open.pop(); place; place = open.pop()) {
-    const here = id(place);
-    if (here === id(to)) return linksTo(here, cameFrom);
+  for (let item = open.pop(); item; item = open.pop()) {
+    const { place, key: here } = item;
+    if (here === goal) return linksTo(here, cameFrom);
     const spent = cost.get(here)!;
     // A flight costs the same from each cell of a map, so only the first cell of the map that the search reaches can fly.
     const flies = !flownFrom.has(place.map);
     flownFrom.add(place.map);
     for (const { cost: edgeCost, ...edge } of edges(place, load, flies)) {
-      const next = id(edge.to);
+      const next = keyOf(place, edge);
       const total = spent + edgeCost;
       if (cost.has(next) && cost.get(next)! <= total) continue;
       cost.set(next, total);
       cameFrom.set(next, { from: here, ...edge });
-      open.push(edge.to, total + estimate(edge.to));
+      open.push({ place: edge.to, key: next }, total + estimate(edge.to));
     }
   }
   return null;
@@ -189,14 +196,26 @@ function* edges(place: Place, load: MapLoad, flies: boolean): Generator<Edge> {
 export function destinationOf(cell: Place, canExit: boolean, load: MapSource): Destination {
   const map = load(cell.map);
   const warp = map && warpAt(map, cell);
+  const pad = warp && isSameMapPad(warp, cell.map) ? arrivalOf(warp, load) : null;
+  if (pad) return { ...pad, pad: { x: cell.x, y: cell.y } };
   if (!canExit) return warp && "from" in warp && warp.from ? { map: cell.map, ...warp.from } : cell;
   const arrival = map && exitArrival(map, cell, load);
   return arrival && arrival.map !== cell.map ? { ...arrival, exit: true } : cell;
 }
 
-export function reached(destination: Destination, here: Place): boolean {
+export function reached(destination: Destination, here: Place, tookPad: boolean): boolean {
+  if (destination.pad && !tookPad) return false;
   const steps = Math.abs(here.x - destination.x) + Math.abs(here.y - destination.y);
   return here.map === destination.map && steps <= (destination.exit ? 1 : 0);
+}
+
+function isSameMapPad(warp: WarpExit, map: string): boolean {
+  return warp.how === "step" && !warp.from && warp.to === map;
+}
+
+function stepsOnto(place: Cell, direction: Direction, cell: Cell): boolean {
+  const [dx, dy] = DIRECTION_STEP[direction];
+  return place.x + dx === cell.x && place.y + dy === cell.y;
 }
 
 function isSurf(map: MapCells, cell: Cell): boolean {

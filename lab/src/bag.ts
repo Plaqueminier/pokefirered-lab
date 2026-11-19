@@ -211,6 +211,12 @@ export function sellRefusal(pocket: number, price: number, item: string): string
   return price > 0 ? null : `the shop does not buy ${item}`;
 }
 
+/** The count of the items that restore HP (a REVIVE does not count) and of the items that cure a status (a cure of confusion only does not count). */
+export function healCounts(bag: BagPocket[]): { hp: number; status: number } {
+  const count = (heals: (effect: ItemEffect) => boolean) => bag.flatMap(({ items }) => items).reduce((total, { effect, quantity }) => total + (effect && heals(effect) ? quantity : 0), 0);
+  return { hp: count(({ hp, revive }) => hp !== undefined && !revive), status: count(({ cures }) => (cures ?? []).some((cure) => cure !== "confusion")) };
+}
+
 export function sellableItems(bag: BagPocket[]): BagItem[] {
   return bag.flatMap(({ pocket, items }) => items.filter((item) => sellRefusal(POCKET_NAMES.indexOf(pocket), item.price, item.name) === null));
 }

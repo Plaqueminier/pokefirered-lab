@@ -22,7 +22,7 @@ export function BotsPage() {
     <Page
       lead="A Bot decides what to do, and acts only through the Harness."
       details={[
-        ["model", "plays past the first rival battle, up to a limit: the cost limit or the Token limit, a plan limit, the Whiteout limit (3 by default) or the Time limit. A user stop, an unknown screen or `badge-8` also ends it. At each Decision point, it asks an AI model for the action (a Model call). A walk that continues after a wild battle or after a trigger with no text makes no call. The code reads the texts alone."],
+        ["model", "plays past the first rival battle, up to a limit: the cost limit or the Token limit, a plan limit, the Whiteout limit (3 by default) or the Time limit. A user stop, an unknown screen or the last Milestone, `champion`, also ends it. At each Decision point, it asks an AI model for the action (a Model call). A walk that continues after a wild battle or after a trigger with no text makes no call. The code reads the texts alone."],
         ["genetic", "plays with a Genome, with no AI model: at each Decision point, its code gives each action a score with the weights of the Genome, and plays the action with the best score. It starts from the command line (`bun run bot genetic --genome <Genome file>`), or from the form “Bots” as a continue of a Run record that holds a Genome: the form lists it only after “continue”. An Evolution plays it too (page “Evolution”). The page “Genome and criteria” tells how it chooses."],
         ["Model provider", "who answers the calls of a Run: `openrouter` (the default, it bills each call), or a Plan provider, `claude-code` or `codex`, which uses a subscription. The page “Model providers” tells how to use them."],
         ["starter", "the scripted bot is a tool for the tests of the Harness only: it is not in the list."],
@@ -30,7 +30,7 @@ export function BotsPage() {
       ]}
     >
       <div class={GRID3}>
-        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call), except when a walk continues after a wild battle or after a trigger with no text", "the code reads the texts alone", "plays to one of its limits (cost or tokens, the Whiteout limit, the Time limit), a user stop, an unknown screen or `badge-8`"]} />
+        <DocCard icon={Bot} title="model" lines={["asks an AI model for the action at each Decision point (a Model call), except when a walk continues after a wild battle or after a trigger with no text", "the code reads the texts alone", "plays to one of its limits (cost or tokens, the Whiteout limit, the Time limit), a user stop, an unknown screen or `champion`"]} />
         <DocCard icon={Dna} title="genetic" lines={["plays with a Genome: weights over criteria", "no AI model", "starts from the command line, or from the form “Bots” as a continue of a Run record with a Genome"]} />
         <DocCard icon={Cpu} title="starter (scripted)" lines={["a tool for the tests of the Harness only", "not in the list"]} />
       </div>
@@ -174,7 +174,13 @@ const PROMPT_PARTS = [
       "On an underground map with a REPEL in the Bag and none active, it tells what a REPEL does. " +
       "After the text that a REPEL stopped, it has one line when the Bag has another. " +
       "In the Safari Zone, one line gives the steps and the SAFARI BALLs left. " +
-      "With a BICYCLE in the Bag, it gives the frames of the BICYCLE for each cell, and whether the player rides or walks.",
+      "With a BICYCLE in the Bag, it gives the frames of the BICYCLE for each cell, and whether the player rides or walks. " +
+      "Since bot version 52, the Team line comes after the money. It gives the team in short, for the battles that come with no warning. " +
+      "A REVIVE does not count as an item that restores HP. A cure of confusion only does not count as a cure of a status. " +
+      "An example: “Your team: Lv 46, 12, 5. Your Bag has 6 items that restore HP and 3 items that cure a status.” " +
+      "In a Gym, the Team line also gives the lowest and the highest level of the trainers that the player beat in this Gym. " +
+      "It reads all the Game events of the Run, so the line is there again after a Pokémon Center. An example: “The trainers of this Gym that you beat had Pokémon at Lv 38 to 43.” " +
+      "At IndigoPlateau_PokemonCenter_1F, it gives the levels of the trainers of the three floors of Victory Road. With no trainer beaten on these maps, or in an old Run record with no levels, the line has no levels. It skips each trainer whose name starts with “LEADER ”, “ELITE FOUR ” or “CHAMPION ”. So it never gives a level of a Gym Leader, of the Elite Four or of the Champion.",
   ],
   ["The screen", "the part of the Decision point"],
   ["The game waits for", "a walk, a choice, a battle action…"],
@@ -274,6 +280,8 @@ export function PromptPage() {
             "Then it has the answer (reason, action, note and say), the program rules that apply in a battle, and the advice for battles. " +
             "It has no rule of the Atlas or of the Memory tree. " +
             "The user prompt has the Milestones and the next one. With a Whiteout limit of 2 or more, the count of whiteouts follows them after the first whiteout. " +
+            "On a map whose name starts with `PokemonLeague_`, the next line tells the rule of the Pokémon League. " +
+            "There, a whiteout makes the player battle the Elite Four again, from the first member. " +
             "Then come the character, the money and the party with all the descriptions. " +
             "Its Bag has the pockets that work in a battle (ITEMS, POKé BALLS, BERRY POUCH) with their descriptions. " +
             "It also has the items of the other pockets that work in a battle, for example the POKé FLUTE of KEY ITEMS. " +
@@ -292,8 +300,10 @@ export function PromptPage() {
           "Walk prompt",
           "the parts that change little come first, so that the provider caches more of the prompt. " +
             "First come the Milestones and the next one (a short text only). With a Whiteout limit of 2 or more, the count of whiteouts follows them after the first whiteout. " +
+            "On a map whose name starts with `PokemonLeague_`, the next line tells the rule of the Pokémon League. " +
+            "There, a whiteout makes the player battle the Elite Four again, from the first member. " +
             "The top nodes of the Memory tree come next. " +
-            "At a walk, the Known world comes next. Then come the Bag, the money and the party. " +
+            "At a walk, the Known world comes next. Then come the Bag, the money, the Team line and the party. " +
             "At a walk, one line gives the Pokémon in the boxes when there are some. " +
             "At a Reflection or Review turn, the items of the PC and the box Pokémon come in detail. At a Review turn, the counts of the game come too. " +
             "Then come the lines of the REPEL, the line of the Safari Zone and the line of the BICYCLE. " +
@@ -414,6 +424,13 @@ export function PromptPage() {
         ],
         ["Battle: turns", "the line `Last turn: …` tells who moved first, the moves, their results (critical hit, miss) and the HP before and after. `Your moves on this foe: …` lists the moves already used on this foe, with their results. Both sides show their states after their status (`States: seeded, confused.`)."],
         [
+          "Battle: speed",
+          "since bot version 52, the line of your Pokémon gives its speed now when it is not the stat: `Speed 25 now: 101 × ¼ for paralysis.` The rules are the rules of the game for the order of a turn (GetWhoStrikesFirst). The stat stage multiplies the speed (`× 1.5 for the stage +1`). " +
+            "The Thunder Badge multiplies it by 1.1, and paralysis divides it by 4. Each step drops the fraction. With no change, the line is as before. " +
+            "At the `full` Knowledge level, a line under the foe gives the order when both moves have priority 0: `You move first`, `The foe moves first` or `The order is random`, with the two speeds. A double battle gives the order against each foe. " +
+            "The order does not count a held item (QUICK CLAW), SWIFT SWIM and CHLOROPHYLL, or a move of another priority. At the `player` level, the prompt gives no order, because a player does not know the stats of the foe.",
+        ],
+        [
           "Battle: no effect",
           "a move with no PP shows `No PP: you cannot use it.` and no estimate. A move that does no damage tells why it cannot have an effect on the foe now, only when the facts make it sure (`No effect: the foe is a POISON type.`, `No effect: the foe already has a status.`, `No effect: the foe is already seeded.`), from the `EFFECT_*` of the move: types, status, states and stat stages at -6 or +6.",
         ],
@@ -481,7 +498,17 @@ export function PromptPage() {
         ],
         ["Object", "a graphic of the map that is not a person: a fossil, an item ball, a clipboard, SNORLAX. Its target says “an object that you can interact with”, also when it closes no way; a free ITEM BALL says that `go` takes it. A rule of the prompt tells the model to interact with people, objects and things to check, that an object can be a thing to take, and to come back later when nothing changes."],
         ["Thing to check", "a sign event of the map: the target says “something you can check”, because the same event is a sign, a poster, a trash can, a statue, a door of Silph Co or an elevator panel."],
-        ["In your way", "a person or an object whose movement type does not leave its cell, and whose cell closes a way: it joins two groups of seen cells, or it leads to unseen cells that no other seen cell touches. Its target says “in your way”, an unseen target on its cell says “past the …”, and the target, the reason of `blocked` and the rule of the prompt say that the way is closed on the cells that the player saw, and tell the model to interact with it or to look for another way. It comes first among the people of its part. A person behind a counter closes nothing. The rule works for each map, with no facts about the map."],
+        [
+          "In your way",
+          "a person or an object whose movement type does not leave its cell, and whose cell closes a way: it joins two groups of seen cells, or it leads to unseen cells that no other seen cell touches. " +
+            "Its target says “in your way”, and an unseen target on its cell says “past the …”. " +
+            "The target, the reason of `blocked` and the rule of the prompt say that the way is closed on the cells that the player saw. " +
+            "They tell the model to interact with it or to look for another way. " +
+            "When the Atlas has a text of the person, the reason of `blocked` says that the player talked to it. " +
+            "It also says that the person does not leave after a talk: something else must happen in the game first. " +
+            "So the model explores other places and returns later. This reason names no event of the story. " +
+            "A person in your way comes first among the people of its part. A person behind a counter closes nothing. The rule works for each map, with no facts about the map.",
+        ],
         ["Last line of a person", "a text that the program reads right after a battle belongs to the person that the player faces, also with no `interact` before it: a script can go on after its battle. The target shows this line."],
         ["Dark map", "the two floors of Rock Tunnel. All this applies at the `player` Knowledge level. In the dark, the Atlas marks only the 3 × 3 cells around the player, also for the people and the fixed obstacles. A Pokémon that knows FLASH and badge 1 make the map a lit map for the model: the program uses FLASH at the arrival and before each walk prompt, with the first Pokémon that knows it, also a Pokémon that fainted. The model gets no action and no text, and the record gets the event `flash`. The game keeps FLASH on the two floors and clears it outside. With no FLASH, the map is dark for the model: one line tells it what the dark means, with no place and no HM number, `goTo` uses only seen cells, each direction of a group of unseen cells has one target at the nearest cell, `go` to this target continues in the same direction, then along a wall while the side of the wall has unseen cells, and a new cell seen is progress."],
         [
@@ -579,6 +606,14 @@ export function ProgressPage() {
           "Review turn",
           "the first walk with a Model call after 20 decisions (Model calls that played an action) since the last Review or Reflection turn, also with progress. A normal Model call, with the full Atlas after the extract and a short check: the way to the next Milestone, the facts against the Mission, the guesses from the things checked and the people, the exits left to explore, the team (levels, HP, status, PP), and one line that counts the Pokémon caught, the box Pokémon and the whiteouts so far in the game (a Continued Run counts those of its parent too). With a TM or an HM in the Bag, it also shows each one, its move, who can learn it, and the question: does it help your Objective? The top nodes of the Memory tree show a number before each sentence, and the first answer that the Bot can read can name 5 of them at most in `remove`, or none. The model writes the result in `mission`, `objective` and `note`. When a Reflection turn and a Review turn are both due at the same decision, only the Reflection turn shows. No `viewAtlas` there.",
         ],
+        [
+          "Review at a Check map",
+          "since bot version 52, the first walk with a Model call after each entry into a Check map is also a Review turn. " +
+            "A Check map is a map whose name ends with `_Gym`, or IndigoPlateau_PokemonCenter_1F. " +
+            "Its check adds the question “Is the team ready for the Gym Leader? If not, what to buy or to train first?”, or the same question for the Pokémon League. " +
+            "At IndigoPlateau_PokemonCenter_1F, it first tells that several battles follow with no Pokémon Center between them. " +
+            "The 20 decisions to the next Review turn count from it. No prompt gives a level of a Gym Leader, of the Elite Four or of the Champion.",
+        ],
         ["Team at the two turns", "a Reflection or Review turn also shows the items in the PC and the box Pokémon in place of the short line of the boxes: the 12 of the highest levels with their types, ability and moves, the others in one line, in groups by species, with their levels, and each description of a move or an ability one time, none that the party shows. The game keeps no HP for a box Pokémon."],
         [
           "Events that ask for a note",
@@ -634,7 +669,7 @@ export function ProgressPage() {
       </div>
       <div class={GRID2}>
         <DocCard icon={Repeat} tone="warn" title="Reflection turn" lines={["when: the stuck counter at 20, 40, 60…, at the next walk with a Model call", "reads the Memory tree and the full Atlas", "writes a lesson in `note` and a new `objective`"]} />
-        <DocCard icon={Eye} title="Review turn" lines={["when: the first walk with a Model call after 20 decisions since the last Review or Reflection", "the full Atlas and a short check: the way, the facts, the guesses, the exits, the team", "writes `mission`, `objective`, `note`, and `remove` for false sentences of the top nodes"]} />
+        <DocCard icon={Eye} title="Review turn" lines={["when: the first walk with a Model call after 20 decisions since the last Review or Reflection, or after an entry into a Gym or the Pokémon Center of the Indigo Plateau", "the full Atlas and a short check: the way, the facts, the guesses, the exits, the team", "writes `mission`, `objective`, `note`, and `remove` for false sentences of the top nodes"]} />
       </div>
       <div class={BLOCKS2}>
         <Block label="📝 Events that ask for a note" sub="One line “Something important happened: …”. The model decides.">

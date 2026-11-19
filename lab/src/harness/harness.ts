@@ -3,10 +3,10 @@ import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { BICYCLE, type BagPocket, battleItems, depositableItems, holdableItems, sellableItems, type Stone, type Teachable, walkItems } from "../bag";
 import { type Battle, BattleWatch, type EnemyMon, enemyView, type MoveReach, struggles } from "../battle";
-import { type BattleTurn, type FightFacts, fightFacts } from "../battle-facts";
+import { type BattleSpeed, type BattleTurn, battleSpeed, type FightFacts, fightFacts } from "../battle-facts";
 import { DIRECTION_STEP, type Direction, KIND, OPPOSITE, SWITCH, withSurf } from "../cells";
 import type { FlyDestination } from "../fly-destinations";
-import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, type MapScriptCells, MILESTONES, type Milestone, type Obstacle, type PlayerPosition, type SafariZone, type WaitingFor, walkRemoves } from "../game";
+import { type FieldMove, isDecisionPoint, type GameInterruption, type GameState, type MapActors, type MapGrid, type MapKind, LAST_MILESTONE, type Milestone, type Obstacle, type PlayerPosition, type SafariZone, type WaitingFor, walkRemoves } from "../game";
 import { type BoxMon, hasTakableItem, isHmMove, type PartyMon, sendableSlots } from "../party";
 import type { PcItem } from "../pc";
 import { type BotInfo, type EndReason, type FieldMoveUse, Keys, moveRemedy, obstacleRemedy } from "../protocol";
@@ -71,7 +71,7 @@ export const KNOWLEDGE_LEVELS = ["player", "full"] as const;
 
 export type KnowledgeLevel = (typeof KNOWLEDGE_LEVELS)[number];
 
-export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; double?: { ally: Battle["player"] | null; otherFoe: { enemy: EnemyMon; fights: (FightFacts | null)[] } | null; reach: MoveReach[] }; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & Pick<Battle, "ghost" | "safari"> & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
+export type BattleState = { player: Battle["player"]; enemy: EnemyMon; fights: (FightFacts | null)[]; speed: BattleSpeed; double?: { ally: Battle["player"] | null; otherFoe: { enemy: EnemyMon; fights: (FightFacts | null)[] } | null; reach: MoveReach[] }; lastTurn: BattleTurn | null; foeTurns: BattleTurn[] } & Pick<Battle, "ghost" | "safari"> & ({ kind: "trainer" } | { kind: "wild"; inPc: number });
 
 type ObservationBase = { waitingFor: WaitingFor; party: PartyMon[]; bag: BagPocket[]; money: number; milestones: Milestone[]; atlas: Atlas };
 
@@ -95,7 +95,9 @@ export type Interruption = GameInterruption | "map";
 
 export type PushReport = { pushes: number; x: number; y: number; direction: Direction } & ({ stop: "steps" | "blocked" | "switch" | "interrupted" } | { stop: "hole"; into: string | null });
 
-export type ActionResult = Outcome & Slid & { push?: PushReport } & {
+type PadTaken = { padTo?: Cell };
+
+export type ActionResult = Outcome & Slid & PadTaken & { push?: PushReport } & {
   frames: number;
   leftWordScreen?: true;
 };
@@ -207,6 +209,8 @@ export type HarnessOptions = {
   parent?: ParentRecord;
   /** The first frame of the Run, from which its whiteouts count. An Extended Run gives the start of its first part. By default: the frame where the play starts. */
   runStart?: number;
+  /** The goal of the Run, in place of the goal of the Bot. An Extended Run gives the last Milestone, also for a Bot with its own goal. */
+  goal?: Milestone;
   /** The read of the Checkpoint at the end of the parent: a good one replaces the replay, and else `resumed` gives the problem. */
   checkpoint?: CheckpointRead;
 };
@@ -273,6 +277,7 @@ export class Harness {
   readonly #items: ItemDriver;
   readonly #parent: string | null;
   #runStart: number | undefined;
+  #goal: Milestone | undefined;
   readonly #walk: WalkDriver;
   /** Where the play of a continued Run started, in its parent: the Run result counts the frames and the Raw inputs of the whole Run. */
   #playStart: { frame: number; rawInputs: number } | null = null;
@@ -292,6 +297,7 @@ export class Harness {
     this.#stopAsked = options.stopAsked ?? (() => false);
     this.#parent = options.parent?.name ?? null;
     this.#runStart = options.runStart;
+    this.#goal = options.goal;
     this.#watch = new GameWatch(run.game);
     this.#atlas = new AtlasWatch(run.game, this.#knowledge);
     // A replay does not pass here, so an old Run record that stopped an evolution with B stays the same game.
@@ -416,7 +422,7 @@ export class Harness {
     this.#playStart ??= { frame: this.frame, rawInputs: this.rawInputs };
     const { frame: start, rawInputs } = this.#playStart;
     const frameBudget = this.#frameBudget ?? bot.frameBudget ?? Number.POSITIVE_INFINITY;
-    const goal = bot.goal ?? MILESTONES[MILESTONES.length - 1];
+    const goal = this.#goal ?? bot.goal ?? LAST_MILESTONE;
     const noProgressLimit = this.#noProgressLimit ?? bot.noProgressLimit ?? Number.POSITIVE_INFINITY;
     const limits = new RunLimits({ goal, lastFrame: this.frame + frameBudget, noProgressLimit, progress: this.progress(), ...modelLimits(bot.model), runStart: (this.#runStart ??= this.frame) }, this.#events);
     this.#phase = { kind: "playing", limits };
@@ -432,7 +438,7 @@ export class Harness {
       endReason = error.reason;
       planLimit = error.planLimit;
     } finally {
-      result = { endReason, frames: this.frame - start, milestones: this.#run.game.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}), ...(planLimit === undefined ? {} : { planLimit }) };
+      result = { endReason, frames: this.frame - start, milestones: this.#watch.milestones(), rawInputs: this.rawInputs - rawInputs, ...(ENDS_WITH_TEXT.includes(endReason) ? { lastText: this.lastText() } : {}), ...(planLimit === undefined ? {} : { planLimit }) };
       this.#phase = { kind: "ended", bot: { name: bot.name, version: bot.version, ...(bot.model ? { model: bot.model } : {}), ...(bot.genome ? { genome: bot.genome } : {}) }, result };
     }
     return result;
@@ -443,6 +449,7 @@ export class Harness {
     if (this.#phase.kind !== "ended") throw new Error("the next part starts after the end of a part");
     this.#phase = { kind: "ready" };
     this.#resumed = { from: "live" };
+    this.#goal = LAST_MILESTONE;
   }
 
   /** The last text of the game in the results of the actions. */
@@ -528,7 +535,7 @@ export class Harness {
       party: game.partyOnScreen(),
       bag: game.bag(),
       money: game.money(),
-      milestones: game.milestones(),
+      milestones: this.#watch.milestones(),
       atlas: this.#atlas.atlas(),
     };
     // The naming screen has no map and no grid: overworld() would fail there.
@@ -653,26 +660,23 @@ export class Harness {
     return nextStraightStep(cells, player, direction) ?? (heading && nextStepAlong(cells, player, direction, heading, seen));
   }
 
-  private walkTo(asked: Place, canExit: boolean): Outcome {
+  private walkTo(asked: Place, canExit: boolean): Outcome & PadTaken {
     const destination = destinationOf(asked, canExit, this.routeMaps());
     const outside = destination.exit ? null : outsideReason(asked, this.routeMaps()(asked.map), canExit, this.#atlas.blockOf, (move) => this.obstacleRemedyNow(move));
     if (outside) return { status: "impossible", reason: outside };
     let tries = 0;
     let stuckAt: Place | null = null;
     const loop = new LoopGuard();
+    let tookPad = false;
     for (let legs = 0; legs < MAX_LEGS; legs++) {
       const here = this.#run.game.playerPlace();
-      if (reached(destination, here)) return { status: "done" };
+      if (reached(destination, here, tookPad)) return destination.pad ? { status: "done", padTo: { x: here.x, y: here.y } } : { status: "done" };
       const again = loop.arrive(here);
       if (again) return { status: "impossible", reason: again };
       const changed = this.#walk.matchRide();
       if (changed.status !== "done") return changed;
       const maps = this.routeMaps();
-      // A map script can read a flag that changed on another map (the switch of Pokémon Mansion): then the ROM cells can be right.
-      const lastStepRoute = findRoute(here, destination, maps);
-      const rom = this.romMaps();
-      const route = lastStepRoute ?? findRoute(here, destination, rom);
-      if (!lastStepRoute && route) loop.romRoute(route, maps, rom);
+      const route = findRoute(here, destination, maps);
       const failed = route ? null : this.noRouteOutcome(here, destination, asked, maps);
       if (failed) return failed;
       const leg = route?.[0];
@@ -683,6 +687,8 @@ export class Harness {
         continue;
       }
       const result = leg ? this.#walk.walkLeg(leg, route[1]?.map ?? leg.map) : "stuck";
+      // A route to a Same-map pad ends with the step onto the pad, then an empty leg.
+      tookPad = result === "done" && route?.length === 2;
       switch (result) {
         case "done":
           tries = 0;
@@ -934,7 +940,7 @@ export class Harness {
     this.#onAction?.(entry, this);
     if (this.#phase.kind === "playing") {
       const waiting = this.#run.game.waitingFor();
-      this.#phase.limits.atAction(this.#run.game.milestones(), this.progress(), this.#events.length, { frame: this.frame, decisionPoint: isDecisionPoint(waiting), walk: waiting.kind === "walk" });
+      this.#phase.limits.atAction(this.#watch.milestones(), this.progress(), this.#events.length, { frame: this.frame, decisionPoint: isDecisionPoint(waiting), walk: waiting.kind === "walk" });
     }
     this.stopIfAsked();
     return result;
@@ -1083,13 +1089,14 @@ export class Harness {
     const { kind, player, enemy, double, ghost, safari } = battle;
     const game = this.#run.game;
     const view = (foe: Battle["enemy"]) => enemyView(foe, this.#battles.movesSeen(foe.partyIndex).map((move) => game.moveName(move)), this.#knowledge === "full");
-    const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), game.milestones(), this.#battles.battleTexts());
+    const facts = (foe: Battle["enemy"]) => fightFacts({ ...battle, enemy: foe }, game.typeChart(), this.#watch.milestones(), this.#battles.battleTexts());
     return {
       ...(kind === "wild" ? { kind, inPc: game.pcCount(enemy.species) } : { kind }),
       player,
       enemy: view(enemy),
       ...(ghost ? { fights: player.moves.map(() => null), ghost } : { fights: facts(enemy) }),
       ...(safari ? { safari } : {}),
+      speed: battleSpeed(battle, this.#watch.milestones(), this.#knowledge === "full"),
       ...(double ? { double: { ally: double.ally, otherFoe: double.otherFoe && { enemy: view(double.otherFoe), fights: facts(double.otherFoe) }, reach: double.reach } } : {}),
       lastTurn: this.#battles.lastTurn(),
       // The text of a double battle does not tell the foe of a move.
@@ -1132,20 +1139,11 @@ export class Harness {
 
   /** The maps of a route: another map has the cells of the last step of the player on it. */
   private routeMaps(): MapSource {
-    return this.mapsWith((name) => this.#atlas.lastStepCells(name));
-  }
-
-  /** The maps of a route, with the cells of the ROM for each map other than the map of the player. */
-  private romMaps(): MapSource {
-    return this.mapsWith(() => null);
-  }
-
-  private mapsWith(lastStepCells: (name: string) => MapScriptCells | null): MapSource {
     const maps = new Map<string, RouteMap | null>();
     const destinations = this.flyDestinations();
     return (name) => {
       if (!maps.has(name)) {
-        const view = this.#run.game.mapView(name, lastStepCells(name));
+        const view = this.#run.game.mapView(name, this.#atlas.lastStepCells(name));
         if (!view) {
           maps.set(name, null);
           return null;

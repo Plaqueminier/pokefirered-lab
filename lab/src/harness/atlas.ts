@@ -30,7 +30,7 @@ export type AtlasSign = { x: number; y: number; facing: Direction | "any"; text:
 // The members of the Game that an AtlasWatch reads. A test fakes these only (see fakes.ts).
 export type AtlasGame = Pick<
   Game,
-  "actors" | "allMapNames" | "battleUnderway" | "flashActive" | "flashBadgeMissing" | "flashUser" | "flyLanding" | "grid" | "gridOf" | "map" | "mapView" | "mode" | "obstaclesOf" | "player" | "rivalName" | "usableFieldMoves"
+  "actors" | "allMapNames" | "battleUnderway" | "flashActive" | "flashBadgeMissing" | "flashUser" | "flyLanding" | "grid" | "gridOf" | "map" | "mapScriptKey" | "mapView" | "mode" | "obstaclesOf" | "player" | "rivalName" | "usableFieldMoves"
 >;
 
 export type AtlasPerson = { localId: number; graphics: string; rival?: string; x: number; y: number; texts: string[] };
@@ -140,7 +140,7 @@ type Visit = {
   parts: number[];
   people: Map<number, AtlasPerson>;
   obstacles: Set<number>;
-  lastStepCells: MapScriptCells | null;
+  lastStepCells: Map<string, MapScriptCells>;
   /** The map has a step between two cells of land that the elevation rule refuses (hasElevationEdges). A map script changes the metatile of a cell and keeps its elevation, so the ROM grid tells it. */
   hasElevations: boolean;
 };
@@ -230,6 +230,7 @@ export class AtlasWatch {
         parts: [...visit.parts],
         people: structuredClone(visit.people),
         obstacles: structuredClone(visit.obstacles),
+        lastStepCells: new Map(visit.lastStepCells),
       });
     }
     for (const [key, grid] of this.#grids) copy.#grids.set(key, grid);
@@ -261,7 +262,7 @@ export class AtlasWatch {
     const here = { map: map.name, x: player.x, y: player.y };
     this.#place = here;
     const live = game.grid();
-    if (live) visit.lastStepCells = mapScriptCells(live);
+    if (live) visit.lastStepCells.set(this.game.mapScriptKey(map.name), mapScriptCells(live));
     this.#inDarkness = inDarkness;
     this.see(visit, here);
     this.seeActors(visit, here);
@@ -311,7 +312,7 @@ export class AtlasWatch {
   }
 
   lastStepCells(map: string): MapScriptCells | null {
-    return this.#visits.get(map)?.lastStepCells ?? null;
+    return this.#visits.get(map)?.lastStepCells.get(this.game.mapScriptKey(map)) ?? null;
   }
 
   peopleSeen(map: string): number {
@@ -448,7 +449,7 @@ export class AtlasWatch {
     if (known) return known;
     const grid = this.grid(name, group, num);
     if (!grid) return null;
-    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Set<number>(), lastStepCells: null, hasElevations: this.hasElevations(grid) };
+    const visit = { grid, seen: new Uint8Array(grid.mapWidth * grid.mapHeight), entry: null, warpsTaken: new Map(), floors: new Map(), edgesTaken: new Map(), signTexts: new Map(), slidesTaken: new Map(), parts: [], people: new Map(), obstacles: new Set<number>(), lastStepCells: new Map(), hasElevations: this.hasElevations(grid) };
     this.#visits.set(name, visit);
     return visit;
   }
@@ -644,7 +645,7 @@ function fullVisit(grid: MapGrid, visit: Visit | undefined, arrivalOf: (warp: Wa
     parts: visit?.parts ?? [],
     people: visit?.people ?? new Map(),
     obstacles: visit?.obstacles ?? new Set(),
-    lastStepCells: visit?.lastStepCells ?? null,
+    lastStepCells: visit?.lastStepCells ?? new Map(),
     hasElevations,
   };
   return { ...full, parts: partsOf(full) };

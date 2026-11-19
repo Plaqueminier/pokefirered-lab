@@ -1,6 +1,6 @@
 import type { BagItem } from "../bag";
 import { type SafariBattle, struggles } from "../battle";
-import { type BattleTurn, type FightFacts, poisonDamage, reviveFacts, type UseFacts, useFacts } from "../battle-facts";
+import { type BattleTurn, type FightFacts, poisonDamage, reviveFacts, type SpeedFacts, stageRatio, type UseFacts, useFacts } from "../battle-facts";
 import type { BattleState } from "../harness/harness";
 import { isDamageMove, type PartyMon, type PartyMove, statLabel } from "../party";
 import { monPlace, moveText, statsText } from "./party-text";
@@ -88,7 +88,7 @@ function fightText({ effect, stab, estimate }: Extract<FightFacts, { effect: num
   ].join(", ");
 }
 
-function rangeText(min: number, max: number, unit = ""): string {
+export function rangeText(min: number, max: number, unit = ""): string {
   return min === max ? `${min}${unit}` : `${min}${unit} to ${max}${unit}`;
 }
 
@@ -99,10 +99,11 @@ export function battleLines(battle: BattleState, party: PartyMon[]): string[] {
   return [
     `Battle against ${battle.kind === "trainer" ? "a trainer" : "a wild Pokémon"}.`,
     ...(double ? doubleLines(battle) : []),
-    `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}${badPoisonText(player)}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}. Stat stages: ${stagesText(player.statStages)}.`,
+    `Your ${player.nickname}: level ${player.level}, HP ${player.hp}/${player.maxHp}, status ${player.status}${badPoisonText(player)}. States: ${player.states.join(", ") || "none"}. Stats: ${statsText(player.stats)}.${speedText(battle.speed.player)} Stat stages: ${stagesText(player.statStages)}.`,
     ...(double?.ally ? [`Your other Pokémon in the battle, ${double.ally.nickname}: level ${double.ally.level}, HP ${double.ally.hp}/${double.ally.maxHp}, status ${double.ally.status}.`] : []),
     foeLine(enemy, double?.otherFoe ? "Foe 1" : "Foe"),
     ...(double?.otherFoe ? [foeLine(double.otherFoe.enemy, "Foe 2")] : []),
+    ...orderLines(battle.speed),
     ...(battle.ghost ? [GHOST_LINE] : ownedLines(battle, party)),
     ...(lastTurn ? [turnLine(lastTurn)] : []),
     ...(used.length > 0 ? [`Your moves on this foe: ${used.join(", ")}.`] : []),
@@ -163,6 +164,30 @@ function turnLine({ moves, player, foe }: BattleTurn): string {
 
 function sideText({ before, after }: BattleTurn["player"]): string {
   return before.name === after.name ? `${before.name}: HP ${before.hp} → ${after.hp}` : `${before.name}: HP ${before.hp}, then ${after.name}: HP ${after.hp}`;
+}
+
+function speedText({ stat, stage, badge, paralysis, now }: SpeedFacts): string {
+  const [numerator, denominator] = stageRatio(stage);
+  const steps = [
+    ...(stage === 0 ? [] : [`× ${stage > 0 ? numerator / denominator : fractionText(numerator, denominator)} for the stage ${stage > 0 ? "+" : ""}${stage}`]),
+    ...(badge ? ["× 1.1 for the Thunder Badge"] : []),
+    ...(paralysis ? ["× ¼ for paralysis"] : []),
+  ];
+  return steps.length === 0 ? "" : ` Speed ${now} now: ${stat} ${steps.join(", ")}.`;
+}
+
+function orderLines({ player, foes }: BattleState["speed"]): string[] {
+  if (foes === null) return [];
+  const yours = player.now;
+  const order = (foe: number) => (yours === foe ? `The order is random (speed ${yours} on both sides)` : `${yours > foe ? "You move" : "The foe moves"} first (your speed ${yours}, its speed ${foe})`);
+  if (foes.length === 1) return [`When both moves have priority 0: ${order(foes[0])}.`];
+  return [`When both moves have priority 0, ${foes.map((foe, i) => `${i === 0 ? "against" : "Against"} foe ${i + 1}: ${order(foe)}.`).join(" ")}`];
+}
+
+function fractionText(numerator: number, denominator: number): string {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(numerator, denominator);
+  return MULTIPLIERS[numerator / denominator] ?? `${numerator / divisor}/${denominator / divisor}`;
 }
 
 function stagesText(stages: Record<string, number>): string {

@@ -277,6 +277,7 @@ const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
     model: { id: "gpt-6.1-terra", provider: "codex", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, whiteoutLimit: 1, timeLimit: null },
     continued: false,
     endReason: "token limit",
+    atLastMilestone: false,
   },
   [CONTINUED_RECORD]: {
     bot: "model",
@@ -284,6 +285,7 @@ const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
     model: { id: "deepseek/deepseek-v4-flash", provider: "openrouter", reasoning: "off", thinking: "medium", starter: "free", limit: { unit: "dollars", amount: 1 }, whiteoutLimit: 1, timeLimit: null },
     continued: true,
     endReason: "cost limit",
+    atLastMilestone: false,
   },
   [LIMIT_RECORD]: {
     bot: "model",
@@ -291,8 +293,9 @@ const DEMO_RECORD_FACTS: Record<string, RecordFacts> = {
     model: { id: "claude-haiku-5-5", provider: "claude-code", reasoning: "low", thinking: "medium", starter: "free", limit: { unit: "tokens", amount: 30_000_000 }, whiteoutLimit: 3, timeLimit: 10 },
     continued: false,
     endReason: "whiteout",
+    atLastMilestone: false,
   },
-  [GENETIC_RECORD]: { bot: "genetic", version: "2", model: null, continued: false, endReason: null },
+  [GENETIC_RECORD]: { bot: "genetic", version: "2", model: null, continued: false, endReason: null, atLastMilestone: false },
 };
 
 export function BotsDemo() {

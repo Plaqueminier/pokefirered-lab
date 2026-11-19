@@ -20,6 +20,7 @@ test("a doc has no phrasal verb, also with a pronoun between the verb and the pa
   expect(rules("lab/HISTORY.md", "The model goes back to the map.")).toEqual(["STE: phrasal verb"]);
   expect(rules("lab/HISTORY.md", "The Bot puts it back in the Bag.")).toEqual(["STE: phrasal verb"]);
   expect(rules("lab/viewer/doc-model.tsx", "<p>The program turns this off.</p>")).toEqual(["STE: phrasal verb"]);
+  expect(rules("lab/HISTORY.md", "Each step rounds down.")).toEqual(["STE: phrasal verb"]);
   expect(rules("lab/HISTORY.md", "The model returns to the map.")).toEqual([]);
   expect(rules("CONTEXT.md", "An Evolution plays its own Runs out of this limit.")).toEqual([]);
 });

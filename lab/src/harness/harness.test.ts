@@ -4,14 +4,16 @@ import { join } from "node:path";
 import { BOT_VERSION } from "../model/opening";
 import { modelSettings } from "../model/providers";
 import { CACHE_DIR } from "../core";
-import { isDecisionPoint } from "../game";
+import { isDecisionPoint, LAST_MILESTONE } from "../game";
 import { Memory } from "../memory";
+import { FLAG_SYS_GAME_CLEAR } from "../menus";
 import type { BoxMon } from "../party";
 import { ROM_FILE, Run, SAVES_DIR, START_SAVE } from "../run";
 import { type BotInfo, GBA_FPS } from "../protocol";
 import { loadSymbols } from "../symbols";
 import starter from "./scripted-bot";
 import { cellAt, mapNamed } from "./atlas";
+import { setFlag } from "./game-fixtures";
 import { type AvailableAction, type BattleState, type Bot, botInfos, Harness, must } from "./harness";
 import { findRoute } from "./path";
 
@@ -521,6 +523,23 @@ describe.skipIf(!ready)("Harness on the Starting save", () => {
     expect(harness.observe()).toMatchObject({ mode: "overworld", map: { name: "PalletTown_PlayersHouse_2F" } });
   });
 
+  test("goTo to the cell of Mom tells to interact with her before a talk, and after a talk, that she does not leave after a talk and to come back later", async () => {
+    const harness = await Harness.open();
+    must(await harness.goTo(8, 5, "PalletTown_PlayersHouse_1F"));
+    expect(await harness.goTo(8, 4)).toEqual({
+      status: "blocked",
+      reason: "the MOM at PalletTown_PlayersHouse_1F (8, 4) stands on the only way on the cells that you saw, and it does not leave by itself. Walk next to it and interact with it, or look for another way",
+      frames: 0,
+    });
+    must(await harness.interact(8, 4));
+    while (harness.observe().waitingFor.kind !== "walk") must(await harness.readText());
+    expect(await harness.goTo(8, 4)).toEqual({
+      status: "blocked",
+      reason: "you talked to the MOM at PalletTown_PlayersHouse_1F (8, 4), and it does not leave after a talk: something else must happen in the game first. Explore other places, and come back later",
+      frames: 0,
+    });
+  });
+
   test("a Run without a goal ends when its Bot stops", async () => {
     const harness = await Harness.open();
     const result = await harness.play({ name: "idle", version: "1", play: async () => {} });
@@ -952,6 +971,13 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(MART_SAVE))("Harness on the
 });
 
 const WHITEOUT_SAVE = join(SAVES_DIR, "test-whiteout.sav");
+const FLAG_BADGE01_GET = 0x820;
+const FLAG_DEFEATED_LORELEI = 0x4b8;
+const FLAG_DEFEATED_BRUNO = 0x4b9;
+const FLAG_DEFEATED_AGATHA = 0x4ba;
+const FLAG_DEFEATED_LANCE = 0x4bb;
+const FLAG_WORLD_MAP_INDIGO_PLATEAU_EXTERIOR = 0x899;
+const FLAG_WORLD_MAP_VICTORY_ROAD_1F = 0x8aa;
 
 describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on the test Starting save before a whiteout", () => {
   test("a whiteout ends the Run of a model bot: readText reads the texts through the warp to the Pokémon Center and ends at the walk there, then the Run ends", async () => {
@@ -999,6 +1025,86 @@ describe.skipIf(!existsSync(ROM_FILE) || !existsSync(WHITEOUT_SAVE))("Harness on
     };
     expect(await harness.play(bot)).toMatchObject({ endReason: "bot stopped" });
     expect(counted).toBe(1);
+  });
+
+  test("the flags of the Pokémon League give the Milestones after badge-8, in the order of the story", async () => {
+    const run = await Run.open({ startSave: WHITEOUT_SAVE });
+    const harness = await Harness.open({}, run);
+    const before = harness.observe().milestones;
+    for (const flag of [FLAG_DEFEATED_LANCE, FLAG_WORLD_MAP_VICTORY_ROAD_1F, FLAG_SYS_GAME_CLEAR, FLAG_DEFEATED_LORELEI, FLAG_DEFEATED_BRUNO, FLAG_WORLD_MAP_INDIGO_PLATEAU_EXTERIOR, FLAG_DEFEATED_AGATHA]) setFlag(run, flag);
+    expect(harness.observe().milestones).toEqual([...before, "victory-road", "indigo-plateau", "elite-four-1", "elite-four-2", "elite-four-3", "elite-four-4", "champion"]);
+  });
+
+  test("with no goal, a Run continues after badge-8 and ends with goal at the Champion", async () => {
+    const run = await Run.open({ startSave: WHITEOUT_SAVE });
+    const harness = await Harness.open({}, run);
+    let afterBadges = false;
+    const bot: Bot = {
+      name: "no goal",
+      version: "1",
+      play: async (played) => {
+        for (let badge = 0; badge < 8; badge++) setFlag(run, FLAG_BADGE01_GET + badge);
+        await played.goTo(25, 26);
+        afterBadges = true;
+        setFlag(run, FLAG_SYS_GAME_CLEAR);
+        await played.goTo(24, 26);
+        throw new Error("the Run continues after the Champion");
+      },
+    };
+    expect(await harness.play(bot)).toMatchObject({ endReason: "goal", milestones: expect.arrayContaining(["badge-8", "champion"]) });
+    expect(afterBadges).toBe(true);
+  });
+
+  // A Bot with its own goal, badge-8, that plays to the Champion.
+  const goalAtBadge8 = (run: Run): Bot => ({
+    name: "goal at badge-8",
+    version: "1",
+    goal: "badge-8",
+    play: async (played) => {
+      for (let badge = 0; badge < 8; badge++) setFlag(run, FLAG_BADGE01_GET + badge);
+      await played.goTo(25, 26);
+      setFlag(run, FLAG_SYS_GAME_CLEAR);
+      await played.goTo(24, 26);
+      throw new Error("the Run continues after the Champion");
+    },
+  });
+
+  test("a Run that ended with goal at badge-8 continues in the same Run, and its new part ends with goal at the Champion", async () => {
+    const run = await Run.open({ startSave: WHITEOUT_SAVE });
+    const harness = await Harness.open({}, run);
+    const bot = goalAtBadge8(run);
+    expect(await harness.play(bot)).toMatchObject({ endReason: "goal", milestones: expect.not.arrayContaining(["champion"]) });
+    harness.nextPart();
+    expect(await harness.play(bot)).toMatchObject({ endReason: "goal", milestones: expect.arrayContaining(["badge-8", "champion"]) });
+  });
+
+  test("the option goal replaces the goal of the Bot: an Extended Run of a Bot with its own goal ends with goal at the Champion", async () => {
+    const run = await Run.open({ startSave: WHITEOUT_SAVE });
+    const harness = await Harness.open({ goal: LAST_MILESTONE }, run);
+    expect(await harness.play(goalAtBadge8(run))).toMatchObject({ endReason: "goal", milestones: expect.arrayContaining(["badge-8", "champion"]) });
+  });
+
+  test("a whiteout clears the flag of Lorelei, but elite-four-1 stays a Milestone of the Run, and its event comes only once", async () => {
+    const run = await Run.open({ startSave: WHITEOUT_SAVE });
+    const harness = await Harness.open({}, run);
+    setFlag(run, FLAG_DEFEATED_LORELEI);
+    let afterWhiteout: { flag: boolean; milestones: readonly string[] } | null = null;
+    const bot: Bot = {
+      name: "whiteout",
+      version: "1",
+      model: modelSettings({ whiteoutLimit: 2 }, {}),
+      play: async (played) => {
+        await played.goTo(26, 26);
+        await played.readText();
+        await played.readText();
+        afterWhiteout = { flag: run.game.flag(FLAG_DEFEATED_LORELEI), milestones: played.observe().milestones };
+        setFlag(run, FLAG_DEFEATED_LORELEI);
+        await played.goTo(7, 6);
+      },
+    };
+    expect(await harness.play(bot)).toMatchObject({ endReason: "bot stopped", milestones: expect.arrayContaining(["elite-four-1"]) });
+    expect(afterWhiteout).toMatchObject({ flag: false, milestones: expect.arrayContaining(["elite-four-1"]) });
+    expect(harness.events.filter((e) => e.type === "milestone" && e.milestone === "elite-four-1")).toHaveLength(1);
   });
 });
 

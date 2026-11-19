@@ -1,12 +1,12 @@
-import { BICYCLE, type BagItem, type BagPocket, battleBag, type ItemUse, type Stone, type Teachable } from "../bag";
+import { BICYCLE, type BagItem, type BagPocket, battleBag, healCounts, type ItemUse, type Stone, type Teachable } from "../bag";
 import { type Milestone, MILESTONES, type WaitingFor } from "../game";
 import type { NoProgress, Observation } from "../harness/harness";
-import { callTurns, isDecision, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
+import { callTurns, currentMap, isDecision, type ModelSettings, type NodeRange, type RunEvent, sinceLastCall, textsOf } from "../harness/record";
 import { nicknamedSpecies } from "../menus";
 import { type BoxMon, hasTakableItem, isDamageMove, isHmMove, type PartyMon, type PartyMove, type Status, walkStatus } from "../party";
 import { badgeNeeded, hoursText, modelEvents, timeLimitHours, whiteoutKind } from "../protocol";
 import type { TrainerNames } from "../save-file";
-import { battleLines, fights, itemEstimates } from "./battle-text";
+import { battleLines, fights, itemEstimates, rangeText } from "./battle-text";
 import { characterTurn, runCharacter } from "./character";
 import { COACH_DUTY, COACH_INTRO, COACH_RULE } from "./coach";
 import { actionsOf, alternatives, type Asked, type BattleAsked, inBattle, itemUse, MAX_SENTENCE, REFLECTION_EVERY, REMOVE_RULE, REVIEW_EVERY, sendable, teachableName } from "./decision";
@@ -30,6 +30,13 @@ const MILESTONE_TEXTS: Record<Milestone, string> = {
   "badge-6": "Earn the Marsh Badge from Sabrina, the Gym Leader of Saffron City.",
   "badge-7": "Earn the Volcano Badge from Blaine, the Gym Leader of Cinnabar Island.",
   "badge-8": "Earn the Earth Badge from Giovanni, the Gym Leader of Viridian City.",
+  "victory-road": "Enter Victory Road, at the end of Route 23.",
+  "indigo-plateau": "Reach the Indigo Plateau, at the exit of Victory Road.",
+  "elite-four-1": "Beat Lorelei, the first member of the Elite Four, at the Indigo Plateau.",
+  "elite-four-2": "Beat Bruno, the second member of the Elite Four, at the Indigo Plateau.",
+  "elite-four-3": "Beat Agatha, the third member of the Elite Four, at the Indigo Plateau.",
+  "elite-four-4": "Beat Lance, the fourth member of the Elite Four, at the Indigo Plateau.",
+  champion: "Beat the Champion of the Pokémon League, at the Indigo Plateau.",
 };
 const AS_IS = (status: Status): Status => status;
 const TEACH_RULE = "A TM works one time, then it leaves your Bag. An HM stays in your Bag. A Pokémon with 4 moves must forget a move to learn a new one: you choose the move, or you keep the 4 moves.";
@@ -118,7 +125,7 @@ export function systemPrompt({ starter, whiteoutLimit, timeLimit, coach }: Pick<
 Long-term goal: ${LONG_TERM_GOAL}
 ${rules}
 
-At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. In a battle, you get another prompt, about the battle only. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
+At each decision, you get your Milestones, the next Milestone (the next big step of the story, with its name and place only), your Memory tree, your Bag, your money, the levels of your team with the count of your items that restore HP or cure a status, your party, at a walk the Pokémon in your boxes, whether a REPEL is active and, with a BICYCLE in your Bag, whether you ride, the part of the decision (at a walk, the Known world, the list What is left on a floor of a cave, a forest or a large building, and the extract of your Atlas), what the game waits for, your Mission, your objective, the Coach advice and what happened since when the Run has a Coach, the number of Decision points since your last progress, your tries, your last decisions with what the program played and the texts of the game, the important events since your last decision, and the actions that you can choose now. In a battle, you get another prompt, about the battle only. After ${REFLECTION_EVERY} Decision points with no progress, and after each ${REFLECTION_EVERY} more, you get a reflection turn at the next walk: the request to write a lesson and a new objective, and the full Atlas. Every ${REVIEW_EVERY} decisions, you get a review turn: the full Atlas, and a short check of your Mission and of your team against the facts. The first walk after each entry into a Gym or into the Pokémon Center of the Indigo Plateau is also a review turn, with a check of the team. These two turns also list your TMs and HMs, the items in your PC and the Pokémon in your boxes with their moves. The review turn also counts the Pokémon caught, the Pokémon in the boxes and the whiteouts so far in the game. After viewAtlas or zoom, or after an answer that the program cannot read, you get a new message at the same decision: answer again.
 
 Your Memory tree is your notes, numbered from 1. Two neighbour nodes of the same size get a short summary, so you see only the top nodes: #a-b is the summary of the notes a to b, and #n is the note n. zoom <a-b> shows the two halves of a node; zoom again to go down to the notes.
 
@@ -199,16 +206,36 @@ const REFLECTION = [
   '- Set a new "objective" that follows this lesson.',
 ];
 
-const REVIEW = [
+const REVIEW_HEAD = [
   "Review turn: check your plan against the facts before you act.",
   "- Where are you on the way to the next Milestone?",
   "- Do the facts of your Memory tree and of the full Atlas above still agree with your Mission?",
   "- What do the things that you checked and the people tell you? Which of your guesses do they confirm?",
   "- Which exits, edges, unseen cells and leads are left to explore?",
   "- Is your team ready for the next Milestone? Look at the levels, the HP, the status and the PP: does a weak Pokémon need training, do you need a Pokémon Center or items from a Poké Mart?",
+];
+
+const REVIEW_TAIL = [
   `- Write in "remove" ${REMOVE_RULE}. The number of a sentence is the [n] before it. You cannot change a sentence.`,
   '- Write the result in "mission" (change it only when the facts disagree with it), in "objective", and in a short "note".',
 ];
+
+const LEAGUE_CENTER = "IndigoPlateau_PokemonCenter_1F";
+const VICTORY_ROAD = ["VictoryRoad_1F", "VictoryRoad_2F", "VictoryRoad_3F"];
+const TEAM_QUESTION = "If not, what to buy or to train first?";
+const GYM_QUESTION = `- You are in a Gym. Is the team ready for the Gym Leader? ${TEAM_QUESTION}`;
+const LEAGUE_QUESTION = `- You are in the Pokémon Center of the Indigo Plateau. After this Pokémon Center, several battles come one after the other, with no Pokémon Center between them. Is the team ready for the Pokémon League? ${TEAM_QUESTION}`;
+
+/** A Check map: before its battles, the first walk at each entry is a Review turn with a question about the team. `beaten`: the maps of the trainers that the Team line counts, and the place that it names. */
+function checkSite(map: string): { question: string; beaten: { maps: string[]; where: string } } | null {
+  if (map === LEAGUE_CENTER) return { question: LEAGUE_QUESTION, beaten: { maps: VICTORY_ROAD, where: "Victory Road" } };
+  return map.endsWith("_Gym") ? { question: GYM_QUESTION, beaten: { maps: [map], where: "this Gym" } } : null;
+}
+
+function reviewLines(map: string | null): string[] {
+  const site = map === null ? null : checkSite(map);
+  return [...REVIEW_HEAD, ...(site ? [site.question] : []), ...REVIEW_TAIL];
+}
 
 export function reviewRequestIn(user: string): string | null {
   return /^Review turn:.*(\n- .*)*/m.exec(user)?.[0] ?? null;
@@ -221,10 +248,10 @@ type LimitState = Limits & { whiteouts: number; frame: number };
 export type PromptState = { noProgress: NoProgress; turn: TurnKind; happened: string[]; request: string[]; memory: string[]; advice: string[]; limits: LimitState };
 
 /** The request of a turn. The bot calls it once for each conversation, because a character turn selects an idea at random. */
-export function turnRequest(turn: TurnKind, starter: ModelSettings["starter"], gameNames: TrainerNames | null): string[] {
+export function turnRequest(turn: TurnKind, starter: ModelSettings["starter"], gameNames: TrainerNames | null, events: readonly RunEvent[]): string[] {
   if (turn === "character") return characterTurn(starter, gameNames);
   if (turn === "reflection") return REFLECTION;
-  return turn === "review" ? REVIEW : [];
+  return turn === "review" ? reviewLines(currentMap(events)) : [];
 }
 
 export function showsAtlas(turn: TurnKind): boolean {
@@ -235,7 +262,14 @@ export function turnKind(kind: WaitingFor["kind"], events: readonly RunEvent[], 
   if (partySize === 0 && !runCharacter(events)) return "character";
   if (kind !== "walk") return "normal";
   if (reflectionDue(events, noProgress)) return "reflection";
-  return reviewDue(events) ? "review" : "normal";
+  return reviewDue(events) || checkDue(events) ? "review" : "normal";
+}
+
+function checkDue(events: readonly RunEvent[]): boolean {
+  const entry = events.findLastIndex((e) => e.type === "map");
+  const map = events[entry];
+  if (map?.type !== "map" || checkSite(map.map) === null) return false;
+  return !modelEvents(events.slice(entry)).some((e) => e.review || e.reflection);
 }
 
 function reflectionDue(events: readonly RunEvent[], { stuck, since }: NoProgress): boolean {
@@ -266,6 +300,7 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
     ...whiteoutLine(limits),
+    ...leagueLine(events),
     ...characterLine(events),
     "",
     memoryText(memory),
@@ -273,6 +308,7 @@ function walkPrompt(observation: Observation, asked: Asked, events: readonly Run
     ...world,
     bagText(observation.bag),
     `Money: ${observation.money}`,
+    ...teamLine(observation.party, observation.bag, events),
     partyText(observation.party, asked.kind === "learnMove" ? moveAtMaxPp : moveText, observation.mode === "battle" ? AS_IS : walkStatus),
     ...(asked.kind === "walk" ? [...boxFacts(asked, showsAtlas(turn)), ...(turn === "review" ? [gameCounts(asked.overworld.boxes, events)] : []), ...repelLines(asked.overworld, observation.bag, events), ...safariLines(asked.overworld), ...bicycleLines(asked.overworld, observation.bag), ...surfLines(asked.overworld), ...(asked.overworld.strength.moved ? [BOULDERS_MOVED] : [])] : []),
     "",
@@ -308,6 +344,7 @@ function battlePrompt(observation: Observation, asked: BattleAsked, events: read
     `Milestones: ${observation.milestones.join(", ") || "none"}`,
     `Next Milestone: ${nextMilestone(observation.milestones) ?? "none: you reached all the Milestones."}`,
     ...whiteoutLine(limits),
+    ...leagueLine(events),
     ...characterLine(events),
     "",
     bagText(battleBag(observation.bag)),
@@ -418,9 +455,36 @@ function gameTimeLine({ frame, timeLimit }: LimitState): string[] {
   return timeLimit === null ? [] : [`Game time: ${hoursText(frame)} of ${timeLimitHours(timeLimit)}.`];
 }
 
+function leagueLine(events: readonly RunEvent[]): string[] {
+  return currentMap(events)?.startsWith("PokemonLeague_") ? ["In the Pokémon League, a whiteout makes you battle the Elite Four again, from the first member."] : [];
+}
+
 export function nextMilestone(reached: readonly Milestone[]): string | null {
   const next = MILESTONES.find((milestone) => !reached.includes(milestone));
   return next ? MILESTONE_TEXTS[next] : null;
+}
+
+function teamLine(party: PartyMon[], bag: BagPocket[], events: readonly RunEvent[]): string[] {
+  if (party.length === 0) return [];
+  const { hp, status } = healCounts(bag);
+  return [[`Your team: Lv ${party.map((mon) => mon.level).join(", ")}. Your Bag has ${hp} items that restore HP and ${status} items that cure a status.`, ...beatenLevels(events)].join(" ")];
+}
+
+// A player does not know the levels of a Gym Leader, of the Elite Four or of the Champion (step 28 of lab/HISTORY.md). The name of a trainer starts with its class.
+const BOSSES = /^(LEADER|ELITE FOUR|CHAMPION) /;
+
+function beatenLevels(events: readonly RunEvent[]): string[] {
+  const map = currentMap(events);
+  const site = map === null ? null : checkSite(map);
+  if (site === null) return [];
+  const { maps, where } = site.beaten;
+  let on: string | null = null;
+  const levels: number[] = [];
+  for (const event of events) {
+    if (event.type === "map") on = event.map;
+    else if (event.type === "trainer" && on !== null && maps.includes(on) && !BOSSES.test(event.trainer)) levels.push(...(event.levels ?? []));
+  }
+  return levels.length === 0 ? [] : [`The trainers of ${where} that you beat had Pokémon at Lv ${rangeText(Math.min(...levels), Math.max(...levels))}.`];
 }
 
 function boxFacts({ overworld: { boxes, pcItems }, party }: WalkAsked, detailed: boolean): string[] {

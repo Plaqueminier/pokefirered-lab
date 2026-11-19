@@ -1,5 +1,4 @@
 import { Bike, ChevronRight, CircleHelp, Coins, Footprints, Hand, Layers, OctagonX, Play, Rabbit, Repeat, Skull, Timer, TriangleAlert, Trophy } from "lucide-preact";
-import type { Milestone } from "../src/game";
 import type { EndReason } from "../src/protocol";
 import type { Outcome } from "../src/harness/menu-driver";
 import type { GameEvent } from "../src/harness/record";
@@ -27,16 +26,15 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
     when: "walk",
     effect:
       "Goes to a cell, also on another map: doors, stairs, edges, ledges. With an exit as the cell and no map, it takes the exit. With a map, a door is the cell next to it, because the game moves the player off the door. The route does not cross a thin wall. " +
-      "On another map, the route first uses the cells of that map at the last step of the player on it, after the map scripts. On a map with no step of the player on it, it uses the cells of the ROM. " +
-      "When the cells of the last step give no route, the route uses the cells of the ROM. The reason: a map script can read a flag that changed on another map. " +
-      "An example is the switch of Pokémon Mansion, which changes the barriers of all its floors. Then the cells of the last step are old. The Atlas still shows the cells of the last step. " +
+      "On another map, the route uses the cells of that map at the last step of the player on it, after the map scripts. On a map with no step of the player on it, it uses the cells of the ROM. " +
+      "Some map scripts read a flag or a var that another map changes: the switch of Pokémon Mansion, and the floor switches of Victory Road, which Route 23 resets. " +
+      "For these maps, the route uses the cells of the last step with the values now. With no such step, it uses the cells of the ROM. The Atlas shows the same cells. " +
       "The exits of another map stay the exits of the ROM, because the game sets the destination of an Elevator exit again at each entry. " +
       "A step on land between two cells of different elevations is impossible, as in the game. A step from or to a cell at elevation 0 is possible. No layout of FireRed has a cell at elevation 15. " +
       "Water at elevation 3, the elevation of the shore, is an open cell: the player walks on it with no SURF, as on the east edge of Route 14. " +
       "A target at another elevation of the same map, with no stairs that the player saw, gets its own reason: “(x, y) is on another level of <map> than you”. " +
       "When a leg arrives on another map at a cell where an earlier leg of the same walk arrived, the result is `impossible`: the way through the other maps is not open. " +
-      "So a route on the cells of the ROM that goes in a loop stops with “the walk arrives again at …”. " +
-      "The route of the ROM can go through cells that a map script closed before the last step of the player there. An example is a Card Key door of Silph Co. Then the reason names them. " +
+      "So a route through the other maps that goes in a loop stops with “the walk arrives again at …”. " +
       "A blocked cell that the player saw gets its own reason, not “no route”. A water cell gets one too, while the party cannot use SURF. " +
       "When only a person or an object that does not move closes all the ways, it returns `blocked` at once. It names the person or the object, if the player saw it; for a person who walks, it waits and tries again. " +
       "It also crosses a cut tree or a rock that the party can remove: it faces the obstacle, presses A, answers YES, reads the texts and steps. The result has no text of this. " +
@@ -47,6 +45,8 @@ export const MACRO_DOC: { form: string; when: string; effect: string; cards: Par
       "The player arrives in front of the Pokémon Center, and the walk continues from there. On a map that is dark for the model, it refuses an unseen cell, and its route uses only seen cells. " +
       "A route never steps on a spin tile. A goTo to a spin tile walks to a cell next to it, steps on it and waits for the end of the slide; the result then has `slidTo`, the cell where the player stopped. " +
       "A goTo to a cell of another Part with no way on foot names the two Parts. It says that only a slide leaves the Part of the player. " +
+      "A route to another cell takes the Same-map pads of the Saffron Gym and of Silph Co on its way. A goTo to a Same-map pad takes this pad: the route ends with a step onto it. " +
+      "When the player stands on the pad, the walk first steps to a cell next to it. The walk ends at the arrival cell of the pad, and the result then has `padTo`, this cell. " +
       "The walk runs when the player has the Running Shoes and the map allows it. It rides when the Bot chose the BICYCLE (page “Running and the BICYCLE”).",
     cards: { walk: "go to a cell, also on another map; at an exit, take it" },
   },
@@ -175,7 +175,11 @@ export function MacroPage() {
         ],
         [
           "Battle facts",
-          "the player's Pokémon, and the enemy as the player sees it, with its types. Both have `states`: the volatile states that a text of the game tells (seeded, confused, infatuated…). The Pokémon of the player also has the abilities of its species and its toxic counter. In a wild battle: `inPc`, the number of Pokémon of the enemy species in the boxes of the PC (the party is in `party`). For each move: its effect on the enemy (type chart of the game), STAB and the damage estimate in percent of the enemy HP and in hits to KO. A move can also have its chance to hit now (`hitChance`, only when the stages of accuracy and evasion change it). It can have a flag for 2 turns or a recharge turn (`turns`). It can have the ability of the enemy that stops it (`abilityBlock`, from the abilities of its species). The facts also have the last turn and the turns against the current enemy.",
+          "the player's Pokémon, and the enemy as the player sees it, with its types. Both have `states`: the volatile states that a text of the game tells (seeded, confused, infatuated…). The Pokémon of the player also has the abilities of its species and its toxic counter. " +
+            "In a wild battle: `inPc`, the number of Pokémon of the enemy species in the boxes of the PC (the party is in `party`). For each move: its effect on the enemy (type chart of the game), STAB and the damage estimate. The estimate is in percent of the enemy HP and in hits to KO. " +
+            "A move can also have its chance to hit now (`hitChance`, only when the stages of accuracy and evasion change it). It can have a flag for 2 turns or a recharge turn (`turns`). It can have the ability of the enemy that stops it (`abilityBlock`, from the abilities of its species). " +
+            "`speed` has the speed of the Pokémon of the player in the order of a turn. It counts the stat, the stage, the badge boost and the paralysis. At the `full` Knowledge level, it also has the speed of each enemy with the same rules. " +
+            "The facts also have the last turn and the turns against the current enemy.",
         ],
         [
           "Unknown GHOST",
@@ -228,15 +232,16 @@ export function MacroPage() {
   );
 }
 
-const STEPS: (Milestone | "…")[] = ["has-pokemon", "first-rival-battle", "pokedex", "badge-1", "badge-2", "…", "badge-8"];
+const STEPS: string[] = ["has-pokemon", "first-rival-battle", "pokedex", "badge-1 … badge-8", "victory-road", "indigo-plateau", "elite-four-1 … elite-four-4", "champion"];
 
 export function MilestonesPage() {
   return (
     <Page
       lead="The steps of the story, read from the game flags."
       details={[
-        ["Order", "`has-pokemon` → `first-rival-battle` → `pokedex` → `badge-1` … `badge-8`."],
-        ["Goal", "the goal of a scripted Bot is a Milestone. The model bot has no goal: the code gives it the next Milestone in the prompt, and its Run continues after it."],
+        ["Order", "`has-pokemon` → `first-rival-battle` → `pokedex` → `badge-1` … `badge-8` → `victory-road` → `indigo-plateau` → `elite-four-1` … `elite-four-4` → `champion`."],
+        ["Goal", "the goal of a scripted Bot is a Milestone. The model bot has no goal: the code gives it the next Milestone in the prompt, and its Run continues after it. With no goal, a Run ends at the last Milestone, `champion`."],
+        ["A Milestone stays", "the Milestones of a Run are the Milestones of its flags and of its Run record. A whiteout clears the flags of the Elite Four, but their Milestones stay, and the event of a Milestone comes only once."],
       ]}
     >
       <div class="flex flex-wrap items-center gap-2">
@@ -250,6 +255,9 @@ export function MilestonesPage() {
       <Terms
         rows={[
           ["`pokedex`", "Oak gives the Pokédex for OAK'S PARCEL"],
+          ["`victory-road`, `indigo-plateau`", "the first entry into VictoryRoad_1F, and into IndigoPlateau_Exterior"],
+          ["`elite-four-1` … `elite-four-4`", "the player beats Lorelei, Bruno, Agatha, then Lance"],
+          ["`champion`", "the Hall of Fame, after the Champion"],
           ["Scripted Bot", "its goal is a Milestone"],
           ["Model bot", "no goal: the code gives it the next Milestone in the prompt, and its Run continues after it"],
         ]}
@@ -259,7 +267,7 @@ export function MilestonesPage() {
 }
 
 const END: Record<EndReason, { icon: typeof Trophy; tone?: InfoTone; lines: string[]; detail: string }> = {
-  goal: { icon: Trophy, tone: "ok", lines: ["the goal Milestone is reached", "with no goal: `badge-8`"], detail: "the goal Milestone is reached (with no goal: `badge-8`)." },
+  goal: { icon: Trophy, tone: "ok", lines: ["the goal Milestone is reached", "with no goal: `champion`"], detail: "the goal Milestone is reached (with no goal: `champion`)." },
   "bot stopped": { icon: OctagonX, lines: ["the Bot stops or throws an error"], detail: "the Bot stops or throws an error." },
   "user stop": { icon: Hand, lines: ["“Stop the Run”, after the current action", "at once in a Model call"], detail: "“Stop the Run”, after the current action, or at once in a Model call." },
   "cost limit": { icon: Coins, tone: "warn", lines: ["the Model calls cost more than the limit"], detail: "the Model calls cost more than the cost limit (model bot on OpenRouter)." },
@@ -345,6 +353,7 @@ export function RecordPage() {
           "Game events",
           "from the game state, with typed fields: map, battle (a start has the trainer flag and the foe: the name of the trainer, or the species of a wild Pokémon), Milestone, heal (Pokémon Center, item or other, with the HP of the party before and after), purchase, item (found or received), catch, faint (of the player or of the enemy), level (with the new moves and the evolution), money (before, after and cause), trainer beaten, obstacle removed (the move, the map, the cell and the Pokémon), FLASH used (the map and the Pokémon), SURF used (the map, the cell of the shore and the Pokémon), STRENGTH used (the map, the cell of the boulder and the Pokémon), FLY used (the map of departure, the map and the name of the Fly destination, and the Pokémon) and whiteout.",
         ],
+        ["Trainer levels", "since bot version 52, the event of a trainer beaten also has the levels of the Pokémon of the trainer. An event of an older record has no levels."],
         ["Old record", "a record from before format 1 has only the map, battle and Milestone events, and the facts of the record say “No Game events in this record”. A record from before format 2 has no track, and a record from before format 3 has no State track; a replay and Continue still work on them. `bun run migrate` replays the keys of each one, and writes the track and the State track, and the Game events of the state when the record has none; it does not change the keys."],
         ["Seed", "the seed of the game RNG, `gLabRngSeed` in the ROM (`0x4c41`). `--seed` of `bun run bot` gives another one: the Harness writes it in the ROM image before the boot. The header keeps it, and the replay, the Grid and Continue play with the seed of the record."],
         ["Replay", "choose the record in the list of the Run, in the top bar."],
@@ -366,7 +375,8 @@ export function RecordPage() {
             "The cost limit or the Token limit counts from 0. " +
             "The Whiteout limit and the Time limit stay those of the start, and they count all the parts. " +
             "The checkbox is disabled when another record names this one as its parent, or when a Run plays from it. " +
-            "It is also disabled after the end reason `whiteout` or `time limit`. " +
+            "It is also disabled after the end reason `whiteout` or `time limit`, and after `goal` at `champion`. " +
+            "The goal of an Extended Run is `champion`. So a Run that ended with `goal` at an older goal, for example `badge-8` before bot version 52, continues. " +
             "The new part continues in the worker of the last part when this worker is still idle. Then it has no replay and no Checkpoint. " +
             "A file of `lab/src` or `lab/bots` that changed since the start of the worker needs a new worker, which loads the Checkpoint.",
         ],
@@ -377,7 +387,7 @@ export function RecordPage() {
             "With a Checkpoint of another record, of another format or with other fields, the Harness replays the keys, and the notice tells why. " +
             "A Run that ends with an error writes none. `--continue` of `bun run bot` replays the keys.",
         ],
-        ["Prompt", "the prompt of the model bot does not use the new kinds of Game events yet."],
+        ["Prompt", "the prompts of the model bot use some Game events: the line after a battle, the counts of a Review turn and the Coach advice. Since bot version 52, the Team line of a Check map also reads the levels of the trainers beaten."],
         [
           "Parallel Runs",
           "10 emulators at most: the Viewer Run, and 9 places in workers. " +

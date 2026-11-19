@@ -15,6 +15,8 @@ const LAST_TEMPORARY_FLAG = 0x1f;
 const TEMPORARY_FLAGS = Array.from({ length: LAST_TEMPORARY_FLAG }, (_, i) => i + 1);
 // TRAINER_CLASS_RIVAL_EARLY, TRAINER_CLASS_RIVAL_LATE and TRAINER_CLASS_CHAMPION: the name of these trainers is the name that the player gave to the rival.
 const RIVAL_CLASSES = new Set([81, 89, 90]);
+// The index is partyFlags: bit 0 is F_TRAINER_PARTY_CUSTOM_MOVESET, bit 1 is F_TRAINER_PARTY_HELD_ITEM.
+const PARTY_KINDS = ["NoItemDefaultMoves", "NoItemCustomMoves", "ItemDefaultMoves", "ItemCustomMoves"];
 const B_OUTCOME_CAUGHT = 7;
 const BATTLE_TYPE_TRAINER = 1 << 3;
 const SIDES = { player: { battler: 0, party: "gPlayerParty" }, foe: { battler: 1, party: "gEnemyParty" } } as const;
@@ -132,6 +134,15 @@ export class EventReads {
     const trainerClass = trainer.field("trainerClass").int();
     const name = RIVAL_CLASSES.has(trainerClass) ? this.game.rivalName() : this.decode(trainer.field("trainerName").bytes());
     return `${this.decode(this.mem.global("gTrainerClassNames").at(trainerClass).bytes())} ${name}`;
+  }
+
+  // There are more trainer flags than trainers in gTrainers.
+  trainerLevels(id: number): number[] {
+    const trainers = this.mem.global("gTrainers");
+    if (id >= trainers.length) return [];
+    const trainer = trainers.at(id);
+    const party = trainer.field("party").field(PARTY_KINDS[trainer.field("partyFlags").int()]);
+    return Array.from({ length: trainer.field("partySize").int() }, (_, i) => party.at(i).field("lvl").int());
   }
 
   // The script of a hidden item sets its flag only after its text.

@@ -79,6 +79,11 @@ export type FightFacts = (({ effect: number; stab: boolean; estimate: { minPerce
 
 export type UseFacts = { hp: { from: number; to: number } | null; cures: string[]; poisonStays: boolean; raise: ItemEffect["raise"] | null };
 
+export type SpeedFacts = { stat: number; stage: number; badge: boolean; paralysis: boolean; now: number };
+
+/** `foes`: the speed now of each foe, in the order of the foes. Null: hidden, below the `full` Knowledge level. */
+export type BattleSpeed = { player: SpeedFacts; foes: number[] | null };
+
 type TurnSide = { before: { name: string; hp: string }; after: { name: string; hp: string } };
 
 type MoveUse = { user: string; move: string; results: string[] };
@@ -224,8 +229,30 @@ function baseDamage(attacker: BattleMon, defender: BattleMon, power: number, spe
   return damage + 2;
 }
 
+/** The multiplier of a stat stage, as a numerator and a denominator. */
+export function stageRatio(stage: number): [number, number] {
+  return [10 + 5 * Math.max(0, stage), 10 + 5 * Math.max(0, -stage)];
+}
+
 function staged(stat: number, stage: number): number {
-  return Math.floor((stat * (10 + 5 * Math.max(0, stage))) / (10 + 5 * Math.max(0, -stage)));
+  const [numerator, denominator] = stageRatio(stage);
+  return Math.floor((stat * numerator) / denominator);
+}
+
+/** The rules of GetWhoStrikesFirst, but with no held item, SWIFT SWIM or CHLOROPHYLL. */
+export function speedFacts({ stats, statStages, status }: Pick<BattleMon, "stats" | "statStages" | "status">, badge: boolean): SpeedFacts {
+  const stage = statStages.speed;
+  const paralysis = status === "paralysis";
+  let now = staged(stats.speed, stage);
+  if (badge) now = Math.floor((now * 110) / 100);
+  if (paralysis) now = Math.floor(now / 4);
+  return { stat: stats.speed, stage, badge, paralysis, now };
+}
+
+/** The speed of the player, with its badge boost, and at the `full` Knowledge level the speed of each foe: no badge boost for a foe. */
+export function battleSpeed({ player, enemy, double }: Battle, milestones: readonly string[], full: boolean): BattleSpeed {
+  const foes = [enemy, ...(double?.otherFoe ? [double.otherFoe] : [])];
+  return { player: speedFacts(player, milestones.includes("badge-3")), foes: full ? foes.map((foe) => speedFacts(foe, false).now) : null };
 }
 
 export function battleTurn(before: Battle, after: Battle, texts: string[]): BattleTurn {

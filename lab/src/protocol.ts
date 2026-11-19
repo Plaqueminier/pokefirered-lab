@@ -226,7 +226,7 @@ export function modelLabel({ id, coach }: { id: string; coach?: Coach }): string
 /** The Run record that a Run starts from. `continued`: a new Run with this parent. `extended`: the same Run, and its end replaces this file. */
 export type RunFrom = { record: string; kind: "continued" | "extended" };
 
-export type RecordFacts = { bot: string; version: string; model: ModelFacts | null; continued: boolean; endReason: EndReason | null };
+export type RecordFacts = { bot: string; version: string; model: ModelFacts | null; continued: boolean; endReason: EndReason | null; atLastMilestone: boolean };
 
 const LIMIT_ENDS: Partial<Record<EndReason, string>> = { whiteout: "The Run ended at its whiteout limit.", "time limit": "The Run ended at its time limit." };
 
@@ -235,6 +235,7 @@ export function extendProblem(facts: RecordFacts | undefined, playing: boolean):
   if (!facts) return "This file has no header of a Run record.";
   if (facts.continued) return "Another Run record continues this one, and it needs this one as it is.";
   if (playing) return "A Run plays from this Run record now.";
+  if (facts.endReason === "goal" && facts.atLastMilestone) return "The Run ended at the last Milestone.";
   return (facts.endReason && LIMIT_ENDS[facts.endReason]) ?? null;
 }
 

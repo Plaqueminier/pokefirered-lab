@@ -2,8 +2,8 @@
 import { mkdir, open, readdir, rename } from "node:fs/promises";
 import type { CoachAdvice } from "../protocol";
 import { join } from "node:path";
-import type { Game, Milestone } from "../game";
-import { DEFAULT_PROVIDER, DEFAULT_STARTER, END_REASONS, type EndReason, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
+import { type Game, LAST_MILESTONE, MILESTONES, type Milestone } from "../game";
+import { DEFAULT_PROVIDER, DEFAULT_STARTER, END_REASONS, type ModelFacts, type ModelProvider, parseRunId, type PlanProvider, type ReasoningLevel, type RecordFacts, runIdText, type Spend, type StarterSpecies, type STARTERS, type StateEntry, type Track, TRACK_FIELD, TRACK_POINT } from "../protocol";
 import { Run, type RunOrigin } from "../run";
 import type { Fitness } from "../genetic/fitness";
 import type { TrainerNames } from "../save-file";
@@ -140,6 +140,11 @@ export function callTurns(events: readonly RunEvent[]): CallTurn[] {
   return turns;
 }
 
+/** The map of the last `map` event: the map that the player is on now. */
+export function currentMap(events: readonly RunEvent[]): string | null {
+  return events.findLast((e) => e.type === "map")?.map ?? null;
+}
+
 export function sinceLastCall(events: readonly RunEvent[]): readonly RunEvent[] {
   return events.slice(events.findLastIndex((e) => e.type === "model") + 1);
 }
@@ -262,6 +267,12 @@ export class GameWatch {
     this.track = Array.from(track);
   }
 
+  /** A whiteout clears the flags of the Elite Four, so the flags alone lose their Milestones. */
+  milestones(): Milestone[] {
+    const now = this.game.milestoneFlags();
+    return MILESTONES.filter((milestone) => this.#milestones.has(milestone) || now.includes(milestone));
+  }
+
   get gameProgress(): number {
     this.#levels = Math.max(this.#levels, this.game.party().reduce((sum, mon) => sum + mon.level, 0));
     this.#flags = Math.max(this.#flags, this.game.flagProgress());
@@ -282,7 +293,7 @@ export class GameWatch {
       if (map !== this.#map) events.push({ frame, type: "map", map });
       this.#maps.add(map);
       this.#map = map;
-      for (const milestone of this.game.milestones()) {
+      for (const milestone of this.game.milestoneFlags()) {
         if (this.#milestones.has(milestone)) continue;
         this.#milestones.add(milestone);
         events.push({ frame, type: "milestone", milestone });
@@ -563,17 +574,19 @@ async function readRunHead(name: string, dir: string): Promise<{ header: RunHead
   return isObject(whole) && isRunHeader(whole.header) ? { header: whole.header, whole } : null;
 }
 
-// The Harness writes the result after the events. A migration of an old record writes the State track after it, so the result is not always near the end: then the end reason is unknown.
-async function readEndReason(name: string, dir: string): Promise<EndReason | null> {
+type RecordEnd = Pick<RecordFacts, "endReason" | "atLastMilestone">;
+
+// The Harness writes the result after the events. A migration of an old record writes the State track after it, so the result is not always near the end: then the end is unknown.
+async function readRecordEnd(name: string, dir: string): Promise<RecordEnd> {
   const file = Bun.file(join(dir, name));
   const tail = await file.slice(Math.max(0, file.size - HEADER_BYTES)).text().catch(() => "");
   const at = tail.lastIndexOf(',"result":');
-  return at < 0 ? null : endReasonOf(parsedJson(tail.slice(at + ',"result":'.length, -1)));
+  return resultEnd(at < 0 ? null : parsedJson(tail.slice(at + ',"result":'.length, -1)));
 }
 
-function endReasonOf(result: unknown): EndReason | null {
-  const reason = isObject(result) ? result.endReason : null;
-  return END_REASONS.find((known) => known === reason) ?? null;
+export function resultEnd(result: unknown): RecordEnd {
+  const { endReason, milestones } = isObject(result) ? result : {};
+  return { endReason: END_REASONS.find((known) => known === endReason) ?? null, atLastMilestone: Array.isArray(milestones) && milestones.includes(LAST_MILESTONE) };
 }
 
 function isRunHeader(value: unknown): value is RunHeader {
@@ -581,17 +594,18 @@ function isRunHeader(value: unknown): value is RunHeader {
 }
 
 export async function recordFacts(names: readonly string[], dir = RUNS_DIR): Promise<Record<string, RecordFacts>> {
-  const heads = await Promise.all(names.map(async (name) => {
-    const head = await readRunHead(name, dir);
-    return { name, head, endReason: head?.whole ? endReasonOf(head.whole.result) : head && (await readEndReason(name, dir)) };
-  }));
-  const continued = new Set(heads.map(({ head }) => head?.header.parent));
-  const facts = heads.flatMap(({ name, head, endReason }): [string, RecordFacts][] => {
-    if (!head) return [];
-    const { bot } = head.header;
-    return [[name, { bot: bot.name, version: bot.version, model: bot.model ? modelFacts(bot.model) : null, continued: continued.has(name), endReason: endReason ?? null }]];
-  });
-  return Object.fromEntries(facts);
+  const records = (
+    await Promise.all(
+      names.map(async (name) => {
+        const head = await readRunHead(name, dir);
+        return head && { name, header: head.header, end: head.whole ? resultEnd(head.whole.result) : await readRecordEnd(name, dir) };
+      }),
+    )
+  ).filter((record) => record !== null);
+  const continued = new Set(records.map(({ header }) => header.parent));
+  return Object.fromEntries(
+    records.map(({ name, header: { bot }, end }): [string, RecordFacts] => [name, { bot: bot.name, version: bot.version, model: bot.model ? modelFacts(bot.model) : null, continued: continued.has(name), ...end }]),
+  );
 }
 
 async function nextRunId(dir: string): Promise<string> {

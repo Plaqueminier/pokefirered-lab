@@ -6,7 +6,7 @@ import { fake } from "./fakes";
 import type { ActionEntry, KnowledgeLevel } from "./harness";
 
 // The members that a test does not read: each fake starts from these.
-const QUIET = { rivalName: () => "", flashActive: () => false, flashUser: () => null, flashBadgeMissing: () => null, actors: () => ({ people: [], obstacles: [] }), allMapNames: [] };
+const QUIET = { rivalName: () => "", mapScriptKey: () => "", flashActive: () => false, flashUser: () => null, flashBadgeMissing: () => null, actors: () => ({ people: [], obstacles: [] }), allMapNames: [] };
 
 function grid(name: string, num: number, warps: Warp[]): MapGrid {
   return { name, group: 0, num, x0: 0, y0: 0, width: 3, height: 1, mapWidth: 3, mapHeight: 1, kinds: "...", warps, connections: [], signs: [], outside: false } as unknown as MapGrid;
@@ -63,6 +63,32 @@ describe("the cells of a map at the last step of the player on it", () => {
     state.x = 1;
     watch.onFrame();
     expect(watch.clone().lastStepCells("SilphCo_9F")).toEqual(mapScriptCells(opened));
+  });
+
+  test("on a map whose map scripts read a flag that another map changes, they are the cells of the last step with the values now, else the cells of the ROM", () => {
+    const rom = grid("PokemonMansion_2F", 1, []);
+    const pressed = { ...rom, kinds: ".#." };
+    const state = { x: 0, grid: pressed, switchOn: true };
+    const game = {
+      ...QUIET,
+      mapScriptKey: () => String(state.switchOn),
+      mode: () => "overworld",
+      battleUnderway: () => false,
+      flyLanding: () => false,
+      player: () => ({ x: state.x, y: 0 }),
+      map: () => rom,
+      gridOf: () => rom,
+      usableFieldMoves: () => new Set(),
+      grid: () => state.grid,
+      obstaclesOf: () => [],
+      mapView: () => ({ grid: rom, actors: { people: [], obstacles: [] } }),
+    };
+    const watch = new AtlasWatch(fake<AtlasGame>(game), "player");
+    watch.onFrame();
+    state.switchOn = false;
+    expect(watch.lastStepCells("PokemonMansion_2F")).toBeNull();
+    state.switchOn = true;
+    expect(watch.clone().lastStepCells("PokemonMansion_2F")).toEqual(mapScriptCells(pressed));
   });
 
   test("the Atlas shows them for another map, and the cells of the game for the map of the player", () => {
