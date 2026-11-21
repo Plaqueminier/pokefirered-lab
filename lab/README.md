@@ -13,7 +13,7 @@ Homebrew `mgba` (for `libmgba` and its headers), the macOS `dwarfdump`, and a C 
 
 1. At the repo root: `make lab -j8`. This gives `pokefirered_modern_lab.gba` and its `.elf` with debug info.
 2. In `lab/`: `bun install`, then `bun run viewer`.
-3. Open http://localhost:8766. For another port: `LAB_PORT=8767 bun run viewer`.
+3. Open http://localhost:8766. For another port: `LAB_PORT=8767 bun run viewer`. The Viewer listens on 127.0.0.1 only, so another device cannot open it.
 
 ## Make the Starting save
 
