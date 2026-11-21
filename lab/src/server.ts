@@ -798,6 +798,8 @@ function enqueue(message: ClientMessage, ws: ServerWebSocket<unknown>): void {
 }
 
 async function botProvider(message: Extract<ClientMessage, { type: "start-bot" }>): Promise<ModelProvider | null> {
+  // loadBot imports a path too: only a Bot of lab/bots/ comes from the Viewer.
+  if (!(await botNames()).includes(message.name)) return null;
   const bot = await loadBot(message.name, message.model).catch(() => null);
   return bot?.model ? providerOf(bot.model) : null;
 }
@@ -815,8 +817,12 @@ async function startWhenReady(message: Extract<ClientMessage, { type: "start-bot
   else enqueue(message, ws);
 }
 
+// A page of another site can open a WebSocket to localhost: only the Viewer page may.
+const VIEWER_ORIGINS = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
+
 Bun.serve({
   port: PORT,
+  hostname: "127.0.0.1",
   development: true,
   routes: {
     "/": viewerPage,
@@ -828,7 +834,10 @@ Bun.serve({
     "/prompts": (req) => promptsResponse(new URL(req.url).searchParams),
   },
   fetch(req, server) {
-    if (new URL(req.url).pathname === "/ws" && server.upgrade(req)) return;
+    if (new URL(req.url).pathname === "/ws") {
+      if (!VIEWER_ORIGINS.includes(req.headers.get("origin") ?? "")) return new Response("Forbidden", { status: 403 });
+      if (server.upgrade(req)) return;
+    }
     return new Response("Not found", { status: 404 });
   },
   websocket: {
