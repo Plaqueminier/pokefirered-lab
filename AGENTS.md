@@ -46,6 +46,8 @@ Before you change the code of a video or of the Edit lab, read `lab/video/CODING
 
 A prototype of a scene of a video (for example with `/prototype`) goes in the Edit lab. Make its versions as Variants, with one Comparison for each group of Beats that it changes. Follow "Prototype a scene" in the section "Edit lab" of `lab/video/README.md`. Do not remove an older prototype until each of its parts has a Comparison and the user agrees.
 
+Each scene must play smoothly at 60 fps in the Player of the Studio and of the Edit lab. Before you give the link of a Comparison, run `bun run fps -- <comparison>` in `lab/video`. Correct each Beat that it marks `SLOW`. The causes and the fixes are in the section "Smooth playback" of `lab/video/CODING_STANDARDS.md`.
+
 ## Tools
 
 - macOS: `sed` has no `\b`, and `grep` is ugrep. Use `perl -pi -e` for a regex edit.
