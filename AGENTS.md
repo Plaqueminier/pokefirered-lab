@@ -42,6 +42,8 @@ In `lab/`: `bun run check` (lint, knip, typecheck and `bun run rules`), then `bu
 
 `lab/video` is a separate git repo, with its own `README.md` and `NOTES.md`. This repo does not track it, and a worktree does not have it. Its type check also reads `lab/src`: after you rename or change an export of `lab/src`, run `bun run lint` in `lab/video` of the main checkout.
 
+Before you change the code of a video or of the Edit lab, read `lab/video/CODING_STANDARDS.md`. To compare versions of a scene, or to read the Notes that the user pastes, read the section "Edit lab" of `lab/video/README.md`.
+
 ## Tools
 
 - macOS: `sed` has no `\b`, and `grep` is ugrep. Use `perl -pi -e` for a regex edit.
