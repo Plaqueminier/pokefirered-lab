@@ -44,6 +44,8 @@ In `lab/`: `bun run check` (lint, knip, typecheck and `bun run rules`), then `bu
 
 Before you change the code of a video or of the Edit lab, read `lab/video/CODING_STANDARDS.md`. To compare versions of a scene, or to read the Notes that the user pastes, read the section "Edit lab" of `lab/video/README.md`.
 
+A prototype of a scene of a video (for example with `/prototype`) goes in the Edit lab. Make its versions as Variants, with one Comparison for each group of Beats that it changes. Follow "Prototype a scene" in the section "Edit lab" of `lab/video/README.md`. Do not remove an older prototype until each of its parts has a Comparison and the user agrees.
+
 ## Tools
 
 - macOS: `sed` has no `\b`, and `grep` is ugrep. Use `perl -pi -e` for a regex edit.
