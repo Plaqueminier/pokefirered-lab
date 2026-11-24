@@ -3,8 +3,8 @@ import { CELL, dotOf, isGeneticRun, type RaceFile } from "../src/race/file";
 import type { Door, IslandLink, World, WorldGym, WorldMap, WorldPlace } from "../src/race/world";
 import { Store } from "./cursor";
 import { fitCanvas, type RaceArt } from "./race-art";
-import { RaceCamera } from "./race-camera";
-import { framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
+import { type CellBox, RaceCamera } from "./race-camera";
+import { doorKey, framedBox, type GhostNow, type RaceDoor, RaceGhosts, type RaceMoment, worldCell } from "./race-ghosts";
 import { GraveMarks } from "./race-grave-marks";
 import { type Grave, RaceGraveyard } from "./race-graveyard";
 import { type Box, inBox, RaceMarks, type RaceTheme, raceTheme } from "./race-marks";
@@ -36,6 +36,9 @@ const FACING_RIGHT = 3;
 export type RaceHit = { kind: "door"; door: RaceDoor } | { kind: "open"; key: string } | { kind: "ghosts"; ghosts: GhostNow[]; nearest: GhostNow } | { kind: "grave"; grave: Grave };
 
 type Item = { ghost: GhostNow; x: number; y: number };
+
+/** A building open on the map, above its door: `map` is the floor that it shows. */
+type Building = { door: Door; map: string };
 
 /** `box`: the sprite and its label on the screen. */
 export type GhostHit = { box: Box; ghost: GhostNow; group: GhostNow[] };
@@ -77,7 +80,9 @@ export class RaceView {
   readonly graveyard: RaceGraveyard;
   readonly #ghosts: RaceGhosts;
   /** The floor of a building is the busiest one at the click: it stays while the building is open. */
-  readonly #opened = new Map<string, { door: Door; map: string }>();
+  readonly #opened = new Map<string, Building>();
+  /** The building of the Ghost that the camera follows, open on its floor: the camera frames it with its door. */
+  #followed: (Building & { key: string }) | null = null;
   #last = 0;
   #surface: Surface | null = null;
   #ghostHits: GhostHit[] = [];
@@ -158,7 +163,11 @@ export class RaceView {
   }
 
   isOpen(key: string): boolean {
-    return this.#opened.has(key);
+    return this.#opened.has(key) || this.#followed?.key === key;
+  }
+
+  #openFloor(key: string): string | undefined {
+    return this.#followed?.key === key ? this.#followed.map : this.#opened.get(key)?.map;
   }
 
   openBuilding({ key, door, interiors }: RaceDoor): void {
@@ -196,12 +205,17 @@ export class RaceView {
     ctx.fillRect(0, 0, width, height);
     const { aim } = this.camera;
     const followed = aim === "selected" && this.selected.value !== null ? this.moment.ghosts[this.selected.value] : null;
-    const box = aim === "free" ? null : (this.graveyard.box(this.frame) ?? framedBox(followed ? [followed] : this.moment.ghosts));
+    const place = followed?.place;
+    this.#followed = followed && place?.kind === "door" ? { key: doorKey(place.door), door: place.door, map: followed.map } : null;
+    const building = this.#followed && this.#interiorCells(this.#followed)?.all;
+    const box = aim === "free" ? null : (this.graveyard.box(this.frame) ?? building ?? framedBox(followed ? [followed] : this.moment.ghosts));
     if (box) this.camera.frame(box, width, height);
     const frame: DrawFrame = { ctx, theme, marks, width, height };
     this.#drawLinks(frame);
     this.#drawPlaces(frame);
-    this.#openHits = [...this.#opened].flatMap(([key, building]) => this.#drawOpenBuilding(frame, key, building));
+    const open = new Map(this.#opened);
+    if (this.#followed) open.set(this.#followed.key, this.#followed);
+    this.#openHits = [...open].flatMap(([key, shown]) => this.#drawOpenBuilding(frame, key, shown));
     const { hits, labels } = this.#drawGhosts(frame, this.#outdoorItems(width, height), Math.max(this.camera.zoom, MIN_SPRITE_SCALE), this.camera.zoom);
     this.#ghostHits = [...hits, ...this.#openHits.flatMap((open) => open.hits)];
     this.#doorHits = [];
@@ -350,24 +364,39 @@ export class RaceView {
     const crown = door.ghosts.some((ghost) => ghost.run === this.moment.leader);
     const box = marks.doorCount(ctx, x, y, door.ghosts.length, crown);
     const selected = door.ghosts.find((ghost) => ghost.run === this.selected.value);
-    if (selected && selected.map !== this.#opened.get(door.key)?.map) marks.selectedName(ctx, x, box.y - (crown ? 34 : 20), runName(selected));
+    if (selected && selected.map !== this.#openFloor(door.key)) marks.selectedName(ctx, x, box.y - (crown ? 34 : 20), runName(selected));
     return [{ door, box }];
   }
 
-  #drawOpenBuilding(frame: DrawFrame, key: string, { door, map: mapKey }: { door: Door; map: string }): { box: Box; key: string; hits: GhostHit[] }[] {
-    const { ctx, theme } = frame;
-    const { camera } = this;
+  /**
+   * The cells of an open building on the map, and of its door: a building opens above its door, a cave at its right. The
+   * box has the shape of the floor, with no empty band around it.
+   */
+  #interiorCells({ door, map: mapKey }: Building): { inside: CellBox; all: CellBox } | null {
     const cell = this.#doorCell(door);
     const map = this.mapOf(mapKey);
-    if (!cell || !map) return [];
+    if (!cell || !map) return null;
     const cave = map.kind === "cave" || map.kind === "route";
-    const cellsWide = cave ? CAVE_CELLS.w : Math.min(map.width, BUILDING_CELLS.w);
-    const cellsHigh = cave ? CAVE_CELLS.h : Math.min(map.height, BUILDING_CELLS.h);
+    const most = cave ? CAVE_CELLS : BUILDING_CELLS;
+    const fit = Math.min(1, most.w / map.width, most.h / map.height);
+    const wide = map.width * fit;
+    const high = map.height * fit;
+    const left = cave ? cell.x + 2 : cell.x + 0.5 - wide / 2;
+    const top = cave ? cell.y - high / 2 : cell.y - high;
+    const inside = { left, top, right: left + wide, bottom: top + high };
+    return { inside, all: { left: Math.min(left, cell.x), top, right: inside.right, bottom: Math.max(inside.bottom, cell.y + 1) } };
+  }
+
+  #drawOpenBuilding(frame: DrawFrame, key: string, building: Building): { box: Box; key: string; hits: GhostHit[] }[] {
+    const { ctx, theme } = frame;
+    const { camera } = this;
+    const cells = this.#interiorCells(building)?.inside;
+    if (!cells) return [];
     const box: Box = {
-      x: camera.screenX(cave ? cell.x + 2 : cell.x + 0.5 - cellsWide / 2),
-      y: camera.screenY(cave ? cell.y - cellsHigh / 2 : cell.y - cellsHigh),
-      w: cellsWide * CELL * camera.zoom,
-      h: cellsHigh * CELL * camera.zoom,
+      x: camera.screenX(cells.left),
+      y: camera.screenY(cells.top),
+      w: (cells.right - cells.left) * CELL * camera.zoom,
+      h: (cells.bottom - cells.top) * CELL * camera.zoom,
     };
     ctx.fillStyle = theme.bg;
     ctx.strokeStyle = theme.accent;
@@ -377,7 +406,7 @@ export class RaceView {
     ctx.fill(outline);
     ctx.save();
     ctx.clip(outline);
-    const hits = this.drawInterior(ctx, mapKey, box);
+    const hits = this.drawInterior(ctx, building.map, box);
     ctx.restore();
     ctx.stroke(outline);
     return [{ box, key, hits }];

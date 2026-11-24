@@ -95,7 +95,7 @@ export class RaceGraveyard {
   setFocus(id: string | null): void {
     if (id === this.focus.value) return;
     this.focus.set(id);
-    if (this.#mode === "memorial") this.#inputs.camera.frameAgain();
+    if (this.#mode === "memorial") this.#inputs.camera.glide();
   }
 
   stepTour(by: number, now: number): void {

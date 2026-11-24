@@ -120,12 +120,17 @@ function rankingOf(ghosts: readonly GhostNow[]): GhostNow[] {
   return [...ghosts].sort((a, b) => b.stats.milestones - a.stats.milestones || a.stats.lastMilestone - b.stats.lastMilestone || levels(b) - levels(a) || a.number - b.number);
 }
 
+/** The key of a door, the same for all the floors behind it. */
+export function doorKey(door: Door): string {
+  return `${door.map}.${door.x}.${door.y}`;
+}
+
 function doorsOf(ghosts: readonly GhostNow[]): RaceDoor[] {
   const doors = new Map<string, RaceDoor>();
   for (const ghost of ghosts) {
     if (ghost.place.kind !== "door") continue;
     const { door } = ghost.place;
-    const key = `${door.map}.${door.x}.${door.y}`;
+    const key = doorKey(door);
     const entry = doors.get(key) ?? { key, door, ghosts: [], interiors: [] };
     entry.ghosts.push(ghost);
     const interior = entry.interiors.find(({ map }) => map === ghost.map);
@@ -171,7 +176,9 @@ export class RaceGhosts {
     const inside = new Map<string, GhostNow[]>();
     for (const ghost of ghosts) if (ghost.place.kind !== "world") inside.set(ghost.map, [...(inside.get(ghost.map) ?? []), ghost]);
     const ranking = rankingOf(ghosts);
-    const first = ranking[0];
+    // The crown goes to the best Run that still plays (Day 18: a dead leader gives it to the next one). When no Run plays,
+    // the last Run to end keeps it.
+    const first = ranking.find((ghost) => ghost.result === null) ?? ranking.find((ghost) => this.#ghosts[ghost.run].run.end.frame === this.lastFrame);
     return { ghosts, doors: doorsOf(ghosts), inside, ranking, leader: first && first.stats.milestones > 0 ? first.run : null };
   }
 

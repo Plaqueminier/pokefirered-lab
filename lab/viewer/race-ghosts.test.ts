@@ -267,3 +267,14 @@ test("the leader has the most Milestones at the frame; on a tie, the first to re
   expect(ghosts.winners("has-pokemon", 250)).toBe(2);
   expect(ghosts.winners("pokedex", 250)).toBe(0);
 });
+
+test("the crown goes to the best Run that still plays; when no Run plays, the last Run to end keeps it", () => {
+  const ghosts = ghostsOf(
+    run({ number: 1, points: [[0, 3, 0, 1, 1, 0]], milestones: [[100, "has-pokemon"], [200, "first-rival-battle"]], end: { frame: 300, result: "whiteout" } }),
+    run({ number: 2, points: [[0, 3, 0, 2, 2, 0]], milestones: [[150, "has-pokemon"]], end: { frame: 600, result: "user stop" } }),
+  );
+  const leader = (frame: number) => ghosts.at(frame).leader;
+  expect(leader(250)).toBe(0);
+  expect(leader(300)).toBe(1);
+  expect(leader(600)).toBe(1);
+});
